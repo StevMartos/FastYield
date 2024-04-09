@@ -1,0 +1,367 @@
+# %ECSV 1.0
+# ---
+# datatype:
+# - name: PlanetName
+#   datatype: string
+#   description: Planet Name
+#   meta: !!omap
+#   - {_votable_string_dtype: char}
+#   subtype: json
+# - name: StarName
+#   datatype: string
+#   description: Host Name
+#   meta: !!omap
+#   - {_votable_string_dtype: char}
+#   subtype: json
+# - {name: Period, unit: d, datatype: float64}
+# - {name: SMA, unit: AU, datatype: float64}
+# - {name: Ecc, datatype: float64}
+# - {name: Inc, unit: deg, datatype: float64}
+# - {name: PlanetMass, unit: earthMass, datatype: float64}
+# - {name: +DeltaPlanetMass, unit: earthMass, datatype: float64}
+# - {name: -DeltaPlanetMass, unit: earthMass, datatype: float64}
+# - name: PlanetMassRef
+#   datatype: string
+#   description: Planet Mass or Mass*sin(i) [Earth Mass] Reference
+#   meta: !!omap
+#   - {_votable_string_dtype: char}
+#   subtype: json
+# - {name: PlanetRadius, unit: earthRad, datatype: float64}
+# - {name: +DeltaPlanetRadius, unit: earthRad, datatype: float64}
+# - {name: -DeltaPlanetRadius, unit: earthRad, datatype: float64}
+# - name: PlanetRadiusRef
+#   datatype: string
+#   description: Planet Radius Reference
+#   meta: !!omap
+#   - {_votable_string_dtype: char}
+#   subtype: json
+# - {name: PlanetTeq, unit: K, datatype: float64}
+# - {name: +DeltaPlanetTeq, unit: K, datatype: float64}
+# - {name: -DeltaPlanetTeq, unit: K, datatype: float64}
+# - name: PlanetTeqRef
+#   datatype: string
+#   description: Equilibrium Temperature Reference
+#   meta: !!omap
+#   - {_votable_string_dtype: char}
+#   subtype: json
+# - {name: RA, unit: deg, datatype: float64}
+# - {name: Dec, unit: deg, datatype: float64}
+# - {name: Distance, unit: pc, datatype: float64}
+# - name: StarSpT
+#   datatype: string
+#   description: Spectral Type
+#   meta: !!omap
+#   - {_votable_string_dtype: char}
+#   subtype: json
+# - {name: StarMass, unit: solMass, datatype: float64}
+# - {name: StarTeff, unit: K, datatype: float64}
+# - {name: StarRad, unit: solRad, datatype: float64}
+# - {name: StarLogg, unit: dex(cm / s2), datatype: float64}
+# - {name: StarLum, unit: solLum, datatype: float64}
+# - {name: StarAge, unit: Gyr, datatype: float64}
+# - {name: StarVsini, unit: km / s, datatype: float64}
+# - {name: StarRadialVelocity, unit: km / s, datatype: float64}
+# - {name: StarZ, unit: dex, datatype: float64}
+# - {name: StarParallax, unit: mas, datatype: float64}
+# - {name: StarBMag, unit: mag, datatype: float64}
+# - {name: StarVmag, unit: mag, datatype: float64}
+# - {name: StarRmag, unit: mag, datatype: float64}
+# - {name: StarImag, unit: mag, datatype: float64}
+# - {name: StarJmag, datatype: float64}
+# - {name: StarHmag, datatype: float64}
+# - {name: StarKmag, datatype: float64}
+# - name: DiscoveryMethod
+#   datatype: string
+#   description: Discovery Method
+#   meta: !!omap
+#   - {_votable_string_dtype: char}
+#   subtype: json
+# - {name: DiscoveryYear, datatype: int32}
+# - name: DiscoveryRef
+#   datatype: string
+#   description: Discovery Reference
+#   meta: !!omap
+#   - {_votable_string_dtype: char}
+#   subtype: json
+# - {name: Flux Ratio, datatype: float64}
+# - {name: ProjAU, unit: AU, datatype: float64}
+# - {name: Phase, unit: rad, datatype: float64}
+# - {name: AngSep, unit: mas, datatype: float64}
+# - {name: PlanetLogg, unit: dex(cm / s2), datatype: float64}
+# - {name: DeltaRadialVelocity, unit: km / s, datatype: float64}
+# - {name: alpha, datatype: float64}
+# - {name: g_alpha, datatype: float64}
+# - {name: StarINSTRUmag(HARMONI), datatype: float64}
+# - {name: StarINSTRUmag(ERIS), datatype: float64}
+# - {name: StarINSTRUmag(MIRIMRS), datatype: float64}
+# - {name: StarINSTRUmag(NIRCam), datatype: float64}
+# - {name: StarINSTRUmag(NIRSpec), datatype: float64}
+# - {name: StarHKmag, datatype: float64}
+# - {name: StarCHANNEL1mag, datatype: float64}
+# - {name: StarCHANNEL2mag, datatype: float64}
+# - {name: PlanetINSTRUmag(HARMONI)(thermal+reflected), datatype: float64}
+# - {name: PlanetINSTRUmag(HARMONI)(thermal), datatype: float64}
+# - {name: PlanetINSTRUmag(HARMONI)(reflected), datatype: float64}
+# - {name: PlanetINSTRUmag(ERIS)(thermal+reflected), datatype: float64}
+# - {name: PlanetINSTRUmag(ERIS)(thermal), datatype: float64}
+# - {name: PlanetINSTRUmag(ERIS)(reflected), datatype: float64}
+# - {name: PlanetINSTRUmag(MIRIMRS)(thermal+reflected), datatype: float64}
+# - {name: PlanetINSTRUmag(MIRIMRS)(thermal), datatype: float64}
+# - {name: PlanetINSTRUmag(NIRCam)(thermal+reflected), datatype: float64}
+# - {name: PlanetINSTRUmag(NIRCam)(thermal), datatype: float64}
+# - {name: PlanetINSTRUmag(NIRCam)(reflected), datatype: float64}
+# - {name: PlanetINSTRUmag(NIRSpec)(thermal+reflected), datatype: float64}
+# - {name: PlanetINSTRUmag(NIRSpec)(thermal), datatype: float64}
+# - {name: PlanetINSTRUmag(NIRSpec)(reflected), datatype: float64}
+# - {name: PlanetJmag(thermal+reflected), datatype: float64}
+# - {name: PlanetJmag(thermal), datatype: float64}
+# - {name: PlanetJmag(reflected), datatype: float64}
+# - {name: PlanetHmag(thermal+reflected), datatype: float64}
+# - {name: PlanetHmag(thermal), datatype: float64}
+# - {name: PlanetHmag(reflected), datatype: float64}
+# - {name: PlanetHKmag(thermal+reflected), datatype: float64}
+# - {name: PlanetHKmag(thermal), datatype: float64}
+# - {name: PlanetHKmag(reflected), datatype: float64}
+# - {name: PlanetKmag(thermal+reflected), datatype: float64}
+# - {name: PlanetKmag(thermal), datatype: float64}
+# - {name: PlanetKmag(reflected), datatype: float64}
+# - {name: PlanetCHANNEL1mag(thermal), datatype: float64}
+# - {name: PlanetCHANNEL2mag(thermal), datatype: float64}
+# - {name: SNR_band, datatype: string, subtype: 'float64[6]'}
+# - {name: name_band, datatype: string, subtype: 'string[6]'}
+# - {name: SNR_INSTRU, datatype: float64}
+# - {name: SNR_J, datatype: float64}
+# - {name: SNR_H, datatype: float64}
+# - {name: SNR_HK, datatype: float64}
+# - {name: SNR_K, datatype: float64}
+# - {name: SNR_CHANNEL1, datatype: float64}
+# - {name: SNR_CHANNEL2, datatype: float64}
+# meta: !!omap
+# - {isPSCOMPPARS: true}
+# - __serialized_columns__:
+#     +DeltaPlanetMass:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: &id001 !astropy.units.Unit {unit: earthMass}
+#       value: !astropy.table.SerializedColumn
+#         __class__: astropy.utils.masked.core.MaskedNDArray
+#         data: !astropy.table.SerializedColumn {name: +DeltaPlanetMass}
+#     +DeltaPlanetRadius:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: &id002 !astropy.units.Unit {unit: earthRad}
+#       value: !astropy.table.SerializedColumn
+#         __class__: astropy.utils.masked.core.MaskedNDArray
+#         data: !astropy.table.SerializedColumn {name: +DeltaPlanetRadius}
+#     +DeltaPlanetTeq:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: &id003 !astropy.units.Unit {unit: K}
+#       value: !astropy.table.SerializedColumn
+#         __class__: astropy.utils.masked.core.MaskedNDArray
+#         data: !astropy.table.SerializedColumn {name: +DeltaPlanetTeq}
+#     -DeltaPlanetMass:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: *id001
+#       value: !astropy.table.SerializedColumn
+#         __class__: astropy.utils.masked.core.MaskedNDArray
+#         data: !astropy.table.SerializedColumn {name: -DeltaPlanetMass}
+#     -DeltaPlanetRadius:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: *id002
+#       value: !astropy.table.SerializedColumn
+#         __class__: astropy.utils.masked.core.MaskedNDArray
+#         data: !astropy.table.SerializedColumn {name: -DeltaPlanetRadius}
+#     -DeltaPlanetTeq:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: *id003
+#       value: !astropy.table.SerializedColumn
+#         __class__: astropy.utils.masked.core.MaskedNDArray
+#         data: !astropy.table.SerializedColumn {name: -DeltaPlanetTeq}
+#     AngSep:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: &id007 !astropy.units.Unit {unit: mas}
+#       value: !astropy.table.SerializedColumn
+#         __class__: astropy.utils.masked.core.MaskedNDArray
+#         data: !astropy.table.SerializedColumn {name: AngSep}
+#     Dec:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: &id004 !astropy.units.Unit {unit: deg}
+#       value: !astropy.table.SerializedColumn
+#         __class__: astropy.utils.masked.core.MaskedNDArray
+#         data: !astropy.table.SerializedColumn {name: Dec}
+#     DeltaRadialVelocity:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: !astropy.units.Unit {unit: km / s}
+#       value: !astropy.table.SerializedColumn
+#         __class__: astropy.utils.masked.core.MaskedNDArray
+#         data: !astropy.table.SerializedColumn {name: DeltaRadialVelocity}
+#     Distance:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: !astropy.units.Unit {unit: pc}
+#       value: !astropy.table.SerializedColumn
+#         __class__: astropy.utils.masked.core.MaskedNDArray
+#         data: !astropy.table.SerializedColumn {name: Distance}
+#     Inc:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: *id004
+#       value: !astropy.table.SerializedColumn
+#         __class__: astropy.utils.masked.core.MaskedNDArray
+#         data: !astropy.table.SerializedColumn {name: Inc}
+#     Period:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: !astropy.units.Unit {unit: d}
+#       value: !astropy.table.SerializedColumn
+#         __class__: astropy.utils.masked.core.MaskedNDArray
+#         data: !astropy.table.SerializedColumn {name: Period}
+#     Phase:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: !astropy.units.Unit {unit: rad}
+#       value: !astropy.table.SerializedColumn {name: Phase}
+#     PlanetLogg:
+#       __class__: astropy.units.function.logarithmic.Dex
+#       unit: !astropy.units.Unit {unit: dex(cm / s2)}
+#       value: !astropy.table.SerializedColumn {name: PlanetLogg}
+#     PlanetMass:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: *id001
+#       value: !astropy.table.SerializedColumn
+#         __class__: astropy.utils.masked.core.MaskedNDArray
+#         data: !astropy.table.SerializedColumn {name: PlanetMass}
+#     PlanetRadius:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: *id002
+#       value: !astropy.table.SerializedColumn
+#         __class__: astropy.utils.masked.core.MaskedNDArray
+#         data: !astropy.table.SerializedColumn {name: PlanetRadius}
+#     PlanetTeq:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: *id003
+#       value: !astropy.table.SerializedColumn
+#         __class__: astropy.utils.masked.core.MaskedNDArray
+#         data: !astropy.table.SerializedColumn {name: PlanetTeq}
+#     ProjAU:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: &id005 !astropy.units.Unit {unit: AU}
+#       value: !astropy.table.SerializedColumn {name: ProjAU}
+#     RA:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: *id004
+#       value: !astropy.table.SerializedColumn
+#         __class__: astropy.utils.masked.core.MaskedNDArray
+#         data: !astropy.table.SerializedColumn {name: RA}
+#     SMA:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: *id005
+#       value: !astropy.table.SerializedColumn
+#         __class__: astropy.utils.masked.core.MaskedNDArray
+#         data: !astropy.table.SerializedColumn {name: SMA}
+#     StarAge:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: !astropy.units.Unit {unit: Gyr}
+#       value: !astropy.table.SerializedColumn
+#         __class__: astropy.utils.masked.core.MaskedNDArray
+#         data: !astropy.table.SerializedColumn {name: StarAge}
+#     StarBMag:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: &id006 !astropy.units.Unit {unit: mag}
+#       value: !astropy.table.SerializedColumn
+#         __class__: astropy.utils.masked.core.MaskedNDArray
+#         data: !astropy.table.SerializedColumn {name: StarBMag}
+#     StarImag:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: *id006
+#       value: !astropy.table.SerializedColumn
+#         __class__: astropy.utils.masked.core.MaskedNDArray
+#         data: !astropy.table.SerializedColumn {name: StarImag}
+#     StarLogg:
+#       __class__: astropy.units.function.logarithmic.Dex
+#       unit: !astropy.units.Unit {unit: dex(cm / s2)}
+#       value: !astropy.table.SerializedColumn
+#         __class__: astropy.utils.masked.core.MaskedNDArray
+#         data: !astropy.table.SerializedColumn {name: StarLogg}
+#     StarLum:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: !astropy.units.Unit {unit: solLum}
+#       value: !astropy.table.SerializedColumn
+#         __class__: astropy.utils.masked.core.MaskedNDArray
+#         data: !astropy.table.SerializedColumn {name: StarLum}
+#     StarMass:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: !astropy.units.Unit {unit: solMass}
+#       value: !astropy.table.SerializedColumn
+#         __class__: astropy.utils.masked.core.MaskedNDArray
+#         data: !astropy.table.SerializedColumn {name: StarMass}
+#     StarParallax:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: *id007
+#       value: !astropy.table.SerializedColumn
+#         __class__: astropy.utils.masked.core.MaskedNDArray
+#         data: !astropy.table.SerializedColumn {name: StarParallax}
+#     StarRad:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: !astropy.units.Unit {unit: solRad}
+#       value: !astropy.table.SerializedColumn
+#         __class__: astropy.utils.masked.core.MaskedNDArray
+#         data: !astropy.table.SerializedColumn {name: StarRad}
+#     StarRadialVelocity:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: !astropy.units.Unit {unit: km / s}
+#       value: !astropy.table.SerializedColumn
+#         __class__: astropy.utils.masked.core.MaskedNDArray
+#         data: !astropy.table.SerializedColumn {name: StarRadialVelocity}
+#     StarRmag:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: *id006
+#       value: !astropy.table.SerializedColumn
+#         __class__: astropy.utils.masked.core.MaskedNDArray
+#         data: !astropy.table.SerializedColumn {name: StarRmag}
+#     StarTeff:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: *id003
+#       value: !astropy.table.SerializedColumn
+#         __class__: astropy.utils.masked.core.MaskedNDArray
+#         data: !astropy.table.SerializedColumn {name: StarTeff}
+#     StarVmag:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: *id006
+#       value: !astropy.table.SerializedColumn
+#         __class__: astropy.utils.masked.core.MaskedNDArray
+#         data: !astropy.table.SerializedColumn {name: StarVmag}
+#     StarVsini:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: !astropy.units.Unit {unit: km / s}
+#       value: !astropy.table.SerializedColumn
+#         __class__: astropy.utils.masked.core.MaskedNDArray
+#         data: !astropy.table.SerializedColumn {name: StarVsini}
+#     StarZ:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: !astropy.units.Unit {unit: dex}
+#       value: !astropy.table.SerializedColumn
+#         __class__: astropy.utils.masked.core.MaskedNDArray
+#         data: !astropy.table.SerializedColumn {name: StarZ}
+# schema: astropy-2.0
+PlanetName StarName Period SMA Ecc Inc PlanetMass +DeltaPlanetMass -DeltaPlanetMass PlanetMassRef PlanetRadius +DeltaPlanetRadius -DeltaPlanetRadius PlanetRadiusRef PlanetTeq +DeltaPlanetTeq -DeltaPlanetTeq PlanetTeqRef RA Dec Distance StarSpT StarMass StarTeff StarRad StarLogg StarLum StarAge StarVsini StarRadialVelocity StarZ StarParallax StarBMag StarVmag StarRmag StarImag StarJmag StarHmag StarKmag DiscoveryMethod DiscoveryYear DiscoveryRef "Flux Ratio" ProjAU Phase AngSep PlanetLogg DeltaRadialVelocity alpha g_alpha StarINSTRUmag(HARMONI) StarINSTRUmag(ERIS) StarINSTRUmag(MIRIMRS) StarINSTRUmag(NIRCam) StarINSTRUmag(NIRSpec) StarHKmag StarCHANNEL1mag StarCHANNEL2mag PlanetINSTRUmag(HARMONI)(thermal+reflected) PlanetINSTRUmag(HARMONI)(thermal) PlanetINSTRUmag(HARMONI)(reflected) PlanetINSTRUmag(ERIS)(thermal+reflected) PlanetINSTRUmag(ERIS)(thermal) PlanetINSTRUmag(ERIS)(reflected) PlanetINSTRUmag(MIRIMRS)(thermal+reflected) PlanetINSTRUmag(MIRIMRS)(thermal) PlanetINSTRUmag(NIRCam)(thermal+reflected) PlanetINSTRUmag(NIRCam)(thermal) PlanetINSTRUmag(NIRCam)(reflected) PlanetINSTRUmag(NIRSpec)(thermal+reflected) PlanetINSTRUmag(NIRSpec)(thermal) PlanetINSTRUmag(NIRSpec)(reflected) PlanetJmag(thermal+reflected) PlanetJmag(thermal) PlanetJmag(reflected) PlanetHmag(thermal+reflected) PlanetHmag(thermal) PlanetHmag(reflected) PlanetHKmag(thermal+reflected) PlanetHKmag(thermal) PlanetHKmag(reflected) PlanetKmag(thermal+reflected) PlanetKmag(thermal) PlanetKmag(reflected) PlanetCHANNEL1mag(thermal) PlanetCHANNEL2mag(thermal) SNR_band name_band SNR_INSTRU SNR_J SNR_H SNR_HK SNR_K SNR_CHANNEL1 SNR_CHANNEL2
+"""GJ 504 b""" """GJ 504""" "" 43.5 "" 45.82691255492828 1271.3 1430.2 -317.8 """<a refstr=KUZUHARA_ET_AL__2013 href=https://ui.adsabs.harvard.edu/abs/2013ApJ...774...11K/abstract target=ref> Kuzuhara et al. 2013 </a>""" 13.0 "" "" """<a refstr=CALCULATED_VALUE href=/docs/composite_calc.html target=_blank>Calculated Value</a>""" 510.0 30.0 -20.0 """<a refstr=KUZUHARA_ET_AL__2013 href=https://ui.adsabs.harvard.edu/abs/2013ApJ...774...11K/abstract target=ref> Kuzuhara et al. 2013 </a>""" 199.192348 9.4249781 17.5299 """G0 V""" 1.22 6234.0 1.26 4.6 2.147830474130534 0.16 5.47 -27.4 0.28 57.0186 5.768 5.18799 "" 4.555 4.3572001870627215 4.062543695133748 4.033 """Imaging""" 2013 """<a refstr=KUZUHARA_ET_AL__2013 href=https://ui.adsabs.harvard.edu/abs/2013ApJ...774...11K/abstract target=ref> Kuzuhara et al. 2013 </a>""" "" 0.0 1.5707963267948966 2481.4745092670237 3.867516424337543 3.5831933938469556 1.5707963267948966 0.3183098861837907 4.063212330271081 4.210670752713818 4.030206719444535 4.025717623975887 4.24374770601243 4.060143410075064 4.031399323273919 4.0254879520451485 19.132103899654513 19.13215665389606 29.915797617745426 18.617840311125864 18.617870996549684 29.98983613862622 13.340653051302674 14.287965809467511 15.906988205788215 15.906990417692455 30.13438430916481 17.781884222587266 17.78187658637014 29.998377384817584 18.164554791700755 18.16457483712141 29.998837678337775 18.467216337092555 18.46724611628972 29.871759563617132 19.088259841798656 19.088310829729174 29.90892767225858 19.4 19.40006311941667 29.98893491794572 14.893857214854656 13.306883179501723 [128.77524356026268,46.97427435661512,54.66533656413091,11.534708618496465,53.69804574379616,71.47864348528068] "[""1SHORT"",""1MEDIUM"",""1LONG"",""2SHORT"",""2MEDIUM"",""2LONG""]" 128.77524356026268 nan nan nan nan 128.77524356026268 71.47864348528068
+"""2MASS J01225093-2439505 b""" """2MASS J01225093-2439505""" "" 52.0 "" 87.04707961474483 7786.5 794.5 -794.5 """<a refstr=BOWLER_ET_AL__2013 href=https://ui.adsabs.harvard.edu/abs/2013ApJ...774...55B/abstract target=ref> Bowler et al. 2013 </a>""" 11.209 "" "" """<a refstr=HINKLEY_ET_AL__2015 href=https://ui.adsabs.harvard.edu/abs/2015ApJ...805L..10H/abstract target=ref>Hinkley et al. 2015</a>""" 1600.0 100.0 -100.0 """<a refstr=HINKLEY_ET_AL__2015 href=https://ui.adsabs.harvard.edu/abs/2015ApJ...805L..10H/abstract target=ref>Hinkley et al. 2015</a>""" 20.7128012 -24.6646128 33.8281 """M3.5 V""" 0.4 3530.0 0.37 4.86 0.019054607179632473 0.12 8.560284456292441 9.6 "" 29.5326 15.706 14.244 "" "" 10.123487983892455 9.39811955964514 9.198 """Imaging""" 2013 """<a refstr=BOWLER_ET_AL__2013 href=https://ui.adsabs.harvard.edu/abs/2013ApJ...774...55B/abstract target=ref> Bowler et al. 2013 </a>""" "" 0.0 1.5707963267948966 1537.1835840617712 4.783363631566 2.6840029614819514 1.5707963267948968 0.31830988618379064 9.366456443627394 9.718495408561962 8.875666211686037 9.10623691692867 9.75242800969171 9.356287622882482 8.890795785709653 8.822494218035812 15.144149441491564 15.144149442565345 37.65617129337101 15.811159894094187 15.811159895642211 37.92602648476801 12.142152643861703 12.823644152599423 13.914756649064481 13.914756649375404 37.77243668754904 15.563371138900553 15.56337024612833 37.99346860905517 16.908451144307154 16.90845114785474 38.12292940919227 15.426279808204377 15.426279809757265 37.53774178785241 15.123382174289418 15.123382175364213 37.63437808889123 14.530000000000001 14.530000000744753 37.439280902765546 12.945677500343058 12.470703436165087 [2079.0633964350113,1968.9177778547578,4119.462188582706,167.58102458269053,18.16704739592401,35.56266330610326] "[""1SHORT"",""1MEDIUM"",""1LONG"",""2SHORT"",""2MEDIUM"",""2LONG""]" 4119.462188582706 nan nan nan nan 4119.462188582706 167.58102458269053
+"""HR 2562 b""" """HR 2562""" "" 20.3 "" 107.37397182311257 9534.9 4767.45 -4767.45 """<a refstr=KONOPACKY_ET_AL__2016 href=https://ui.adsabs.harvard.edu/abs/2016ApJ...829L...4K/abstract target=ref>Konopacky et al. 2016</a>""" 12.442 1.233 -1.233 """<a refstr=KONOPACKY_ET_AL__2016 href=https://ui.adsabs.harvard.edu/abs/2016ApJ...829L...4K/abstract target=ref>Konopacky et al. 2016</a>""" 1200.0 100.0 -100.0 """<a refstr=KONOPACKY_ET_AL__2016 href=https://ui.adsabs.harvard.edu/abs/2016ApJ...829L...4K/abstract target=ref>Konopacky et al. 2016</a>""" 102.5042716 -60.2486775 34.0071 """F5 V""" 1.3 6785.0 1.47 4.4 3.3962527259040844 0.6 43.51 26.69 0.02 29.3767 6.546 6.11 "" "" 5.24694618218707 5.041208826742606 5.02 """Imaging""" 2016 """<a refstr=KONOPACKY_ET_AL__2016 href=https://ui.adsabs.harvard.edu/abs/2016ApJ...829L...4K/abstract target=ref>Konopacky et al. 2016</a>""" "" 0.0 1.5707963267948966 596.9341696292832 4.78069083056537 7.272236040410331 1.5707963267948968 0.31830988618379064 5.040804693805843 5.145348681878696 5.021551122567159 5.017954145760911 5.172128595383143 5.038894403039672 5.0215816309347225 5.02120150664917 15.826421293060427 15.82642308303493 30.283615874652252 16.212274413134157 16.21227688457672 30.319210143868425 12.542101335638545 13.510119141176894 14.837514265156283 14.837514833530157 30.540240086357922 16.067865844990255 16.067837125368072 30.329219555252465 16.434767948981776 16.434771054657197 30.29369014015859 15.552865113165012 15.552866656351366 30.1711307507815 15.79150210193703 15.79150385629507 30.270518202565487 15.52 15.520001451130836 30.2050450986966 13.73036889105856 12.968345522687772 [1.7234488158529562,2.4680392445863872,4.6877701586296,0.23563180398961298,0.1174591829472174,0.37445004884469735] "[""1SHORT"",""1MEDIUM"",""1LONG"",""2SHORT"",""2MEDIUM"",""2LONG""]" 4.6877701586296 nan nan nan nan 4.6877701586296 0.37445004884469735
+"""HIP 65426 b""" """HIP 65426""" "" 92.0 "" 79.28204437490672 2860.47 953.49 -953.49 """<a refstr=CHAUVIN_ET_AL__2017 href=https://ui.adsabs.harvard.edu/abs/2017A&A...605L...9C/abstract target=ref>Chauvin et al. 2017</a>""" 16.814 1.121 -1.121 """<a refstr=CHAUVIN_ET_AL__2017 href=https://ui.adsabs.harvard.edu/abs/2017A&A...605L...9C/abstract target=ref>Chauvin et al. 2017</a>""" 1500.0 100.0 -200.0 """<a refstr=CHAUVIN_ET_AL__2017 href=https://ui.adsabs.harvard.edu/abs/2017A&A...605L...9C/abstract target=ref>Chauvin et al. 2017</a>""" 201.1501727 -51.5045384 108.875 """A2 V""" 1.96 9097.0 1.74 4.32 18.57804455091698 0.014 299.0 -5.2 "" 9.15662 7.081 7.01 "" "" 6.789706043548608 6.787763573778061 6.771 """Imaging""" 2017 """<a refstr=CHAUVIN_ET_AL__2017 href=https://ui.adsabs.harvard.edu/abs/2017A&A...605L...9C/abstract target=ref>Chauvin et al. 2017</a>""" "" 0.0 1.5707963267948966 845.0057405281286 3.9962503931360462 4.280886022883693 1.5707963267948968 0.31830988618379064 6.782546756779322 6.7855233946666615 6.769067178060057 6.772859243499117 6.787667940317527 6.782748256110137 6.76868654057099 6.770454950246311 17.27980735875782 17.279807406850182 35.66392789787787 17.976351168773647 17.976351270819634 35.54367217290952 13.956845757135824 14.635409718038355 15.860616252672008 15.860616262026605 36.02236453392885 17.637479265096026 17.637484527464228 35.53168470287805 19.182517938572627 19.182518296078243 35.38862174311978 17.607466001016633 17.607466075342252 35.51893054706964 17.258960760641205 17.258960808431528 35.64992171642705 16.621 16.621000027839678 35.598650357377196 14.774299549326582 14.247919686968514 [13.577624610876628,19.368476791735475,30.278323850768395,1.795330902736405,0.5901582996656082,1.4173989715216386] "[""1SHORT"",""1MEDIUM"",""1LONG"",""2SHORT"",""2MEDIUM"",""2LONG""]" 30.278323850768395 nan nan nan nan 30.278323850768395 1.795330902736405
+"""PDS 70 c""" """PDS 70""" "" 34.0 0.11 132.0 635.66 317.83 -317.83 """<a refstr=WANG_ET_AL__2020 href=https://ui.adsabs.harvard.edu/abs/2020AJ....159..263W/abstract target=ref>Wang et al. 2020</a>""" 22.866 6.837 -5.044 """<a refstr=WANG_ET_AL__2020 href=https://ui.adsabs.harvard.edu/abs/2020AJ....159..263W/abstract target=ref>Wang et al. 2020</a>""" 995.0 71.0 -49.0 """<a refstr=WANG_ET_AL__2020 href=https://ui.adsabs.harvard.edu/abs/2020AJ....159..263W/abstract target=ref>Wang et al. 2020</a>""" 212.0421402 -41.3980405 113.064 """K7""" 0.76 3972.0 1.06 3.68 0.32433961734934924 0.005 17.27 3.13 -0.11 8.81593 13.494 12.032 11.696 "" 9.521233116910865 8.663298525805526 8.542 """Imaging""" 2019 """<a refstr=HAFFERT_ET_AL__2019 href=https://ui.adsabs.harvard.edu/abs/2019NatAs...3..749H/abstract target=ref>Haffert et al. 2019</a>""" "" 0.0 1.5707963267948966 300.7146394962146 3.075999567211369 3.3134370102084953 1.5707963267948966 0.3183098861837907 8.659122217250452 9.04860717257215 8.460949702143399 8.538447078322008 9.102160332946891 8.647543526673779 8.474588097525391 8.411287932189667 17.737027195520433 17.737027778655985 33.411914486212865 18.285685085661953 18.28568577707876 33.775646398993906 14.325560195578198 15.011567517182671 16.491279444189075 16.491279612221557 33.517107206485555 18.017862917651087 18.017851100147073 33.83543181784494 18.80587110386855 18.805871910390536 34.128641778912986 17.44250497281117 17.442505455288654 33.323123391959314 17.698514491388693 17.698515064462068 33.39229999657547 17.342 17.342000474490156 33.240743018647166 15.299974793168154 14.35837433224883 [0.763553617991056,1.1981660026377474,2.2741186493997807,0.125703433590596,0.08995310272091647,0.09943186303723578] "[""1SHORT"",""1MEDIUM"",""1LONG"",""2SHORT"",""2MEDIUM"",""2LONG""]" 2.2741186493997807 nan nan nan nan 2.2741186493997807 0.125703433590596
+"""HIP 21152 b""" """HIP 21152""" 22000.0 17.0 0.36 95.3 7627.88177 1906.97044 -1271.31363 """<a refstr=FRANSON_ET_AL__2022 href=https://ui.adsabs.harvard.edu/abs/2022arXiv221109840F/abstract target=ref>Franson et al. 2022</a>""" 12.0 "" "" """<a refstr=CALCULATED_VALUE href=/docs/composite_calc.html target=_blank>Calculated Value</a>""" 1300.0 50.0 -50.0 """<a refstr=FRANSON_ET_AL__2022 href=https://ui.adsabs.harvard.edu/abs/2022arXiv221109840F/abstract target=ref>Franson et al. 2022</a>""" 68.0205209 5.4100745 43.4073 """F5 V""" 1.4 6655.0 1.59 4.3 4.325138310350087 0.65 45.6 40.6 0.13 23.009 6.778 6.37009 "" "" 5.590482556437383 5.3560407675705495 5.333 """Imaging""" 2022 """<a refstr=KUZUHARA_ET_AL__2022 href=https://ui.adsabs.harvard.edu/abs/2022arXiv220502729K/abstract target=ref>Kuzuhara et al. 2022</a>""" "" 0.0 1.5707963267948966 391.6391943290645 4.715196542850592 8.580185665655607 1.5707963267948968 0.31830988618379064 5.356258659571908 5.474687119229715 5.333678044072712 5.32936718684965 5.503714101261506 5.35397787583606 5.333861077197637 5.3327444666875055 17.073823723697647 17.07382536366451 31.62604766124137 17.686474202166064 17.686476986332803 31.664048291204836 14.13560899444626 14.408981317013609 16.197286226771368 16.197286791922934 31.906184968452223 17.556558855272996 17.556541563588233 31.680824787366774 18.456415855418072 18.45642165585114 31.637078505975055 17.02991551340243 17.029917278263778 31.502450716520485 17.042303614710455 17.042305228595463 31.611933752551007 16.550000000000004 16.55000108810051 31.547638809953455 14.573285819146697 13.968510115324193 [0.1953024657367862,0.24057290201116904,0.6113279106193419,0.03430488436115428,0.009149155946433313,0.030551184511909038] "[""1SHORT"",""1MEDIUM"",""1LONG"",""2SHORT"",""2MEDIUM"",""2LONG""]" 0.6113279106193419 nan nan nan nan 0.6113279106193419 0.03430488436115428
+"""bet Pic b""" """bet Pic""" 8617.50952 10.018 0.106 89.009 3727.80939 742.76499 -678.56365 """<a refstr=FENG_ET_AL__2022 href=https://ui.adsabs.harvard.edu/abs/2022ApJS..262...21F/abstract target=ref>Feng et al. 2022</a>""" 18.495 0.673 -0.673 """<a refstr=CURRIE_ET_AL__2013 href=https://ui.adsabs.harvard.edu/abs/2013ApJ...776...15C/abstract target=ref>Currie et al. 2013</a>""" 1612.0 38.0 -38.0 """<a refstr=CURRIE_ET_AL__2013 href=https://ui.adsabs.harvard.edu/abs/2013ApJ...776...15C/abstract target=ref>Currie et al. 2013</a>""" 86.8212337 -51.066148 19.7442 """A5V""" 1.8 8038.68 1.54 4.35 8.974287945007484 0.017 116.41 -18.966578859881572 -0.21 50.6231 4.013 3.85 "" 3.675 3.603850661984405 3.543958309152492 3.526 """Imaging""" 2008 """<a refstr=LAGRANGE_ET_AL__2009 href=https://ui.adsabs.harvard.edu/abs/2009A&A...493L..21L/abstract target=ref> Lagrange et al. 2009 </a>""" "" 0.0 1.5707963267948966 507.3895118566466 4.028500108602891 12.66252774509105 1.5707963267948968 0.31830988618379064 3.539817305960832 3.5720963627727946 3.5404902622012164 3.5338541314239817 3.5841185107274565 3.5395869986515045 3.5396506650707105 3.543494135396194 13.342478543968486 13.342480628764141 27.634131652707218 14.014989108134348 14.014993350156482 27.535369703546216 10.111492071783063 11.120703966862358 11.97112453562453 11.971124945676468 28.028338363996554 13.708358694621714 13.708365434597532 27.54290153863028 15.100372599540076 15.100385725912462 27.394328160882825 13.651529595569617 13.65153279411504 27.47846068836673 13.321076054879741 13.321078126916836 27.619394075410064 12.68 12.680001200443364 27.5709572114752 11.23950607513991 10.776285613573712 [1.1331580881925494,0.9728625914303873,2.7587998841867294,0.08097510298386303,0.028198719938025467,0.09391883733575523] "[""1SHORT"",""1MEDIUM"",""1LONG"",""2SHORT"",""2MEDIUM"",""2LONG""]" 2.7587998841867294 nan nan nan nan 2.7587998841867294 0.09391883733575523
+"""HR 8799 c""" """HR 8799""" 69000.0 38.0 0.5 29.43 3000.0 1000.0 -1000.0 """<a refstr=MAROIS_ET_AL__2008 href=https://ui.adsabs.harvard.edu/abs/2008Sci...322.1348M/abstract target=ref> Marois et al. 2008 </a>""" 13.0 1.0 0.0 """<a refstr=MAROIS_ET_AL__2008 href=https://ui.adsabs.harvard.edu/abs/2008Sci...322.1348M/abstract target=ref> Marois et al. 2008 </a>""" 1200.0 "" "" """<a refstr=BONNEFOY_ET_AL__2016 href=https://ui.adsabs.harvard.edu/abs/2016A&A...587A..58B/abstract target=ref>Bonnefoy et al. 2016</a>""" 346.8701486 21.1340376 41.2441 """A5 V""" 1.5 7204.58 1.49 4.3 4.920395356814509 0.06 34.79 -19.558433361216302 -0.47 24.2175 6.235 5.98 "" "" 5.414086175950423 5.260464391743156 5.24 """Imaging""" 2008 """<a refstr=MAROIS_ET_AL__2008 href=https://ui.adsabs.harvard.edu/abs/2008Sci...322.1348M/abstract target=ref> Marois et al. 2008 </a>""" "" 0.0 1.5707963267948966 921.3439013095206 4.240389632066761 2.91640012320501 1.5707963267948966 0.3183098861837907 5.258375137826029 5.3377037676846495 5.24540909352716 5.240514058755368 5.359762461777303 5.2570902305576315 5.244839899019339 5.247276073777383 13.571765826543633 13.571766355892365 29.351722196451924 14.131305048300245 14.131305928067636 29.35969663628654 10.380648598587324 10.927178792441687 12.555081569047303 12.555081732219415 29.612777619222864 13.95592549176449 13.955903652633912 29.362612733528763 14.708656945788599 14.708658511538859 29.31116229823404 13.389217014352823 13.38921751000253 29.240590931820485 13.53698821185768 13.536988730510744 29.339106904178042 13.130000000000003 13.130000378134836 29.27519427043134 11.115369102495205 10.442256531038156 [272.01951389013954,407.79772974963726,436.93049249400616,29.88897939243815,17.22362889374079,36.485610630270145] "[""1SHORT"",""1MEDIUM"",""1LONG"",""2SHORT"",""2MEDIUM"",""2LONG""]" 436.93049249400616 nan nan nan nan 436.93049249400616 36.485610630270145
+"""HD 95086 b""" """HD 95086""" "" 55.7 "" 45.75046354931465 1589.0 636.0 -636.0 """<a refstr=RAMEAU_ET_AL__2013 href=https://ui.adsabs.harvard.edu/abs/2013ApJ...779L..26R/abstract target=ref> Rameau et al. 2013 </a>""" 12.9 "" "" """<a refstr=CALCULATED_VALUE href=/docs/composite_calc.html target=_blank>Calculated Value</a>""" 1000.0 200.0 -200.0 """<a refstr=RAMEAU_ET_AL__2013 href=https://ui.adsabs.harvard.edu/abs/2013ApJ...779L..26R/abstract target=ref> Rameau et al. 2013 </a>""" 164.2621032 -68.6672917 86.2279 """A8 III""" 1.77 7883.0 1.49 4.34 6.622165037017619 0.017 17.14 -19.284129163565034 0.14 11.5684 7.595 7.36 "" "" 6.89057417883245 6.8073908085463195 6.789 """Imaging""" 2013 """<a refstr=RAMEAU_ET_AL__2013 href=https://ui.adsabs.harvard.edu/abs/2013ApJ...772L..15R/abstract target=ref> Rameau et al. 2013 </a>""" "" 0.0 1.5707963267948966 645.9626176678314 3.971099558569654 3.8083461577463344 1.5707963267948966 0.3183098861837907 6.8036555636012155 6.847791338785841 6.8044067308069796 6.7960275437127144 6.862691098016813 6.8031772450901595 6.803456893334893 6.807787515252849 19.223884382171313 19.223885303471867 34.402192311724946 19.42977216678063 19.429773288160256 34.3947018735125 15.467399603120713 15.865073560025053 18.04173879993875 18.041739053214883 34.62206403637709 19.234416157188903 19.234379596046264 34.38482382345721 19.41375132529879 19.413752489710713 34.337796096610546 18.8558103079205 18.85581102420889 34.30740168309552 19.18563514305745 19.18563604142846 34.39130706775845 18.988999999999997 18.989000793280656 34.329744031658564 16.058433999226466 15.365082922469162 [1.021224316920782,2.344297860826441,5.4927790083918495,0.14985006610540724,0.063428545395542,0.14303778071489157] "[""1SHORT"",""1MEDIUM"",""1LONG"",""2SHORT"",""2MEDIUM"",""2LONG""]" 5.4927790083918495 nan nan nan nan 5.4927790083918495 0.14985006610540724
+"""2MASS J12073346-3932539 b""" """2MASS J12073346-3932539""" "" 55.0 "" 4.052572347566407 1589.15 635.66 -635.66 """<a refstr=CHAUVIN_ET_AL__2004 href=https://ui.adsabs.harvard.edu/abs/2004A&A...425L..29C/abstract target=ref> Chauvin et al. 2004 </a>""" 12.9 "" "" """<a refstr=CALCULATED_VALUE href=/docs/composite_calc.html target=_blank>Calculated Value</a>""" 1250.0 200.0 -200.0 """<a refstr=CHAUVIN_ET_AL__2004 href=https://ui.adsabs.harvard.edu/abs/2004A&A...425L..29C/abstract target=ref> Chauvin et al. 2004 </a>""" 181.8890906 -39.5484399 64.308 """M8""" 0.02 2825.0 0.22 5.03 0.0027478941531023974 0.008 3.482293490651165 12.016223050202562 "" 15.5242 "" 20.15 "" "" 12.876376464346343 12.206066677161605 11.945 """Imaging""" 2004 """<a refstr=CHAUVIN_ET_AL__2004 href=https://ui.adsabs.harvard.edu/abs/2004A&A...425L..29C/abstract target=ref> Chauvin et al. 2004 </a>""" "" 0.0 1.5707963267948966 855.2590657460968 3.9711405535965305 0.044673192643255887 1.5707963267948966 0.3183098861837907 12.17761769094489 12.513949764295338 11.388554306547746 11.7728610798748 12.531269503315077 12.165741855649195 11.415525776813887 11.297636032681488 17.37176597761388 17.37176597869022 39.88120385534798 17.931305549488314 17.931305550865492 40.173142246524534 14.18064828256545 14.59447722365218 16.355081354532587 16.35508135501727 39.73074592542138 17.75592585996364 17.755903275431766 40.20997828530079 18.508658132442225 18.508658134336713 40.40423985622159 17.189217131830404 17.189217132800383 39.81162249873859 17.336988352246077 17.336988353308598 39.860455486206384 16.93 16.93000000093269 39.594967459900715 14.749708689024388 14.172324569490852 [1405.6559124825064,1986.6074824173584,2280.959793013453,160.614026789935,100.59966553361028,228.66416673200655] "[""1SHORT"",""1MEDIUM"",""1LONG"",""2SHORT"",""2MEDIUM"",""2LONG""]" 2280.959793013453 nan nan nan nan 2280.959793013453 228.66416673200655
+"""AF Lep b""" """AF Lep""" 8030.0 8.4 0.24 50.0 1017.0509 222.47988 -190.69704 """<a refstr=FRANSON_ET_AL__2023 href=https://ui.adsabs.harvard.edu/abs/2023arXiv230205420F/abstract target=ref>Franson et al. 2023</a>""" 13.1 "" "" """<a refstr=CALCULATED_VALUE href=/docs/composite_calc.html target=_blank>Calculated Value</a>""" 1400.0 300.0 -300.0 """<a refstr=MESA_ET_AL__2023 href=https://ui.adsabs.harvard.edu/abs/2023arXiv230206213M/abstract target=ref>Mesa et al. 2023</a>""" 81.7699216 -11.9011752 26.8564 """F8 V""" 1.2 6130.0 1.25 4.4 1.9498445997580451 0.024 50.0 22.8 0.19 37.2061 6.854 6.332 "" "" 5.250200187062721 4.9555436951337475 4.926 """Imaging""" 2023 """<a refstr=MESA_ET_AL__2023 href=https://ui.adsabs.harvard.edu/abs/2023arXiv230206213M/abstract target=ref>Mesa et al. 2023</a>""" "" 0.0 1.5707963267948966 312.77460865938843 3.76395517910391 8.634757034155133 1.5707963267948966 0.3183098861837907 4.9562123302710805 5.103670752713818 4.923206719444535 4.918717623975888 5.136747706012429 4.9531434100750635 4.92439932327392 4.918487952045148 17.250382602189763 17.250385198154284 31.303947817856994 17.902610514926927 17.90261501408469 31.359095510027863 14.286947392695236 14.710827851433129 16.279172768028825 16.279173565383672 31.614354871787185 17.74521529603268 17.745208871773123 31.388715958532426 18.841237530722314 18.84124839775196 31.340276634571346 17.367465563946404 17.367468853981592 31.163776650665266 17.22150991807017 17.221512483351113 31.287984662649926 16.625999999999998 16.626001579539718 31.218985212091322 14.845159162630967 14.333151688347982 [0.07298421588585165,0.08535217277045574,0.19815328456822506,0.0120641066340487,0.004641872053719812,0.01118842034075507] "[""1SHORT"",""1MEDIUM"",""1LONG"",""2SHORT"",""2MEDIUM"",""2LONG""]" 0.19815328456822506 nan nan nan nan 0.19815328456822506 0.0120641066340487
+"""HR 8799 b""" """HR 8799""" 170000.0 68.0 "" 30.27 2000.0 1000.0 -600.0 """<a refstr=MAROIS_ET_AL__2008 href=https://ui.adsabs.harvard.edu/abs/2008Sci...322.1348M/abstract target=ref> Marois et al. 2008 </a>""" 13.0 1.0 -1.0 """<a refstr=MAROIS_ET_AL__2008 href=https://ui.adsabs.harvard.edu/abs/2008Sci...322.1348M/abstract target=ref> Marois et al. 2008 </a>""" 1200.0 "" "" """<a refstr=BONNEFOY_ET_AL__2016 href=https://ui.adsabs.harvard.edu/abs/2016A&A...587A..58B/abstract target=ref>Bonnefoy et al. 2016</a>""" 346.8701486 21.1340376 41.2441 """A5 V""" 1.5 7204.58 1.49 4.3 4.920395356814509 0.06 34.79 4.073850462525961 -0.47 24.2175 6.235 5.98 "" "" 5.414086175950423 5.260464391743156 5.24 """Imaging""" 2008 """<a refstr=MAROIS_ET_AL__2008 href=https://ui.adsabs.harvard.edu/abs/2008Sci...322.1348M/abstract target=ref> Marois et al. 2008 </a>""" "" 0.0 1.5707963267948966 1648.7206655012474 4.06429837301108 2.234332078270289 1.5707963267948966 0.3183098861837907 5.258375137826029 5.3377037676846495 5.24540909352716 5.240514058755368 5.359762461777303 5.2570902305576315 5.244839899019339 5.247276073777383 14.491765930535877 14.491766095842904 31.535348516849595 15.051305393281051 15.051305668018175 31.54332295668421 11.300648380776783 11.847178556914521 13.475081421213954 13.475081472169954 31.796403939620536 14.875925745118524 14.875903392584451 31.54623905392643 15.628657762530814 15.628658251489398 31.494788618631713 14.309217095169702 14.309217249953068 31.424217252218156 14.45698830849434 14.456988470461285 31.522733224575713 14.050000000000002 14.050000118085375 31.45882059082901 12.035368866968039 11.36225629551099 [896.0914968199872,656.4746807736145,537.9006118602526,118.84083184715287,39.79973897510108,71.96179029013662] "[""1SHORT"",""1MEDIUM"",""1LONG"",""2SHORT"",""2MEDIUM"",""2LONG""]" 896.0914968199872 nan nan nan nan 896.0914968199872 118.84083184715287
+"""HR 8799 e""" """HR 8799""" 20815.6 16.4 0.15 25.0 3178.3 2224.81 -1271.32 """<a refstr=GRAVITY_COLLABORATION_ET_AL__2019 href=https://ui.adsabs.harvard.edu/abs/2019A&A...623L..11G/abstract target=ref>Gravity Collaboration et al. 2019</a>""" 13.115 1.457 -1.233 """<a refstr=GRAVITY_COLLABORATION_ET_AL__2019 href=https://ui.adsabs.harvard.edu/abs/2019A&A...623L..11G/abstract target=ref>Gravity Collaboration et al. 2019</a>""" 1150.0 50.0 -50.0 """<a refstr=GRAVITY_COLLABORATION_ET_AL__2019 href=https://ui.adsabs.harvard.edu/abs/2019A&A...623L..11G/abstract target=ref>Gravity Collaboration et al. 2019</a>""" 346.8701486 21.1340376 41.2441 """A5""" 1.51 7400.0 1.49 4.0 5.407543229455809 0.03 34.79 -24.29347619627859 -0.5 24.2175 6.235 5.98 "" "" 5.3799151280491575 5.2619228905129765 5.24 """Imaging""" 2010 """<a refstr=MAROIS_ET_AL__2010 href=https://ui.adsabs.harvard.edu/abs/2010Natur.468.1080M/abstract target=ref> Marois et al. 2010 </a>""" "" 0.0 1.5707963267948966 397.63263109147726 4.257813380006265 3.8315665291105376 1.5707963267948966 0.3183098861837907 5.258215811944961 5.320420625949309 5.24422668350036 5.242269724057101 5.33865339345311 5.2572542530465345 5.243858685142213 5.2453697607858105 15.948337698143323 15.94834335267392 29.156659929378222 16.202589696333057 16.20259683724465 29.157519925896697 12.688360221902963 13.9069754364615 15.11701986639637 15.117021968416067 29.399739764690416 16.0947709011568 16.09472046235717 29.15393618606752 16.235044982853786 16.235052705726382 29.10491246825329 15.481259748447746 15.481263792208955 29.053608815538023 15.908696894624548 15.908702406424847 29.144776765066382 15.910000000000002 15.91000585436528 29.080614186117483 14.123333699801304 13.371737928944892 [0.5472267285444449,0.6621300262958062,0.8831960579804973,0.07771692061417189,0.0676437951677325,0.2033451961805175] "[""1SHORT"",""1MEDIUM"",""1LONG"",""2SHORT"",""2MEDIUM"",""2LONG""]" 0.8831960579804973 nan nan nan nan 0.8831960579804973 0.2033451961805175
+"""VHS J125601.92-125723.9 b""" """VHS J125601.92-125723.9""" 5800000.0 350.0 0.68 24.0 5085.25451 317.82841 -317.82841 """<a refstr=DUPUY_ET_AL__2023 href=https://ui.adsabs.harvard.edu/abs/2023MNRAS.519.1688D/abstract target=ref>Dupuy et al. 2023</a>""" 13.675 "" "" """<a refstr=DUPUY_ET_AL__2023 href=https://ui.adsabs.harvard.edu/abs/2023MNRAS.519.1688D/abstract target=ref>Dupuy et al. 2023</a>""" 1194.0 9.0 -9.0 """<a refstr=DUPUY_ET_AL__2023 href=https://ui.adsabs.harvard.edu/abs/2023MNRAS.519.1688D/abstract target=ref>Dupuy et al. 2023</a>""" 194.008964 -12.956031 12.7 """M7.5""" 0.07 2620.0 0.13190261465547087 5.05 0.0007244359600749898 0.14 5.09640099885285 -1.4 "" 78.8 "" 17.73 "" 13.318 10.975376464346345 10.305066677161605 10.044 """Imaging""" 2015 """<a refstr=GAUZA_ET_AL__2015 href=https://ui.adsabs.harvard.edu/abs/2015ApJ...804...96G/abstract target=ref>Gauza et al. 2015</a>""" "" 0.0 1.5707963267948966 27559.05511811024 4.425613105594548 0.18909474196089504 1.5707963267948966 0.3183098861837907 10.276617690944892 10.612949764295339 9.487554306547747 9.871861079874801 10.630269503315077 10.264741855649195 9.514525776813885 9.396636032681489 15.016561337558949 15.016561337564863 43.17642857055602 15.600741270143054 15.600741270150795 43.468366961732585 11.833602742211042 12.564526177155624 14.046623265722456 14.046623265725236 43.02597064062943 15.437522221377852 15.437498575963174 43.50520300050884 16.247556906963705 16.247556906975053 43.69946457142963 14.868724978097575 14.868724978103076 43.10684721394664 14.983181186862875 14.98318118686872 43.15568020141443 14.57 14.570000000005102 42.89019217510876 12.78601952207879 12.020796142624997 [18209.652449297842,38673.71864763999,27224.195205252086,4699.650687691102,2810.4081178369024,7213.745933857712] "[""1SHORT"",""1MEDIUM"",""1LONG"",""2SHORT"",""2MEDIUM"",""2LONG""]" 38673.71864763999 nan nan nan nan 38673.71864763999 7213.745933857712
+"""ROXs 42 B b""" """ROXs 42 B""" "" 157.0 0.58 128.55155514833237 2860.0 953.0 -953.0 """<a refstr=CURRIE_ET_AL__2014 href=https://ui.adsabs.harvard.edu/abs/2014ApJ...787..104C/abstract target=ref> Currie et al. 2014</a>""" 12.5 "" "" """<a refstr=CALCULATED_VALUE href=/docs/composite_calc.html target=_blank>Calculated Value</a>""" 1975.0 25.0 -25.0 """<a refstr=CURRIE_ET_AL__2014 href=https://ui.adsabs.harvard.edu/abs/2014ApJ...787..104C/abstract target=ref> Currie et al. 2014</a>""" 247.8125493 -24.545577 143.59 """M0""" 1.0 3433.0 1.34 37.48236394093419 0.16143585568264862 0.003 0.5306299753929267 1.13 "" 6.93678 16.065 14.661 "" "" 9.593042319027246 8.885821478938063 8.671 """Imaging""" 2013 """<a refstr=CURRIE_ET_AL__2014 href=https://ui.adsabs.harvard.edu/abs/2014ApJ...780L..30C/abstract target=ref> Currie et al. 2014 </a>""" "" 0.0 1.5707963267948966 1093.3909046590989 4.253701089073703 1.866955002926839 1.5707963267948966 0.3183098861837907 8.856111789467585 9.201595859656074 8.271883174260257 8.557402986297628 9.231574101629793 8.84578379980234 8.289227700076111 8.211752575215286 15.437542336174728 15.437542337246759 37.951335092099534 15.845198843757775 15.845198845037029 38.16711838687772 13.06527506282124 13.776673033174971 14.772414827694673 14.77241482817363 38.16098486284101 15.818798987809581 15.818755368790383 38.25105017076981 16.2069723179134 16.206972319498846 38.29590528089789 15.395772433661767 15.39577243484886 37.79887206580354 15.411288714600849 15.41128871566932 37.92869318197557 15.010000000000002 15.010000000878282 37.740225669842246 13.843817983585012 13.562514224716544 [46.83973746471796,94.6805401406163,4.073220730994631,0.0675425900285495,9.023758519710409,5.223332841708091] "[""1SHORT"",""1MEDIUM"",""1LONG"",""2SHORT"",""2MEDIUM"",""2LONG""]" 94.6805401406163 nan nan nan nan 94.6805401406163 9.023758519710409
+"""2M0437 b""" """2MASS J04372171+2651014""" "" 118.0 "" 148.02477695480871 1271.31363 317.82841 -317.82841 """<a refstr=GAIDOS_ET_AL__2021 href=https://ui.adsabs.harvard.edu/abs/2021MNRAS.tmp.2819G/abstract target=ref>Gaidos et al. 2021</a>""" 13.0 "" "" """<a refstr=CALCULATED_VALUE href=/docs/composite_calc.html target=_blank>Calculated Value</a>""" 1450.0 50.0 -50.0 """<a refstr=GAIDOS_ET_AL__2021 href=https://ui.adsabs.harvard.edu/abs/2021MNRAS.tmp.2819G/abstract target=ref>Gaidos et al. 2021</a>""" 69.3405531 26.8502997 128.484 """M V""" 0.17 3100.0 0.84 4.5 0.06854882264526617 2.5 22.54 17.1 0.01 7.75524 17.237 16.186 "" "" 11.317376464346342 10.647066677161604 10.386 """Imaging""" 2021 """<a refstr=GAIDOS_ET_AL__2021 href=https://ui.adsabs.harvard.edu/abs/2021MNRAS.tmp.2819G/abstract target=ref>Gaidos et al. 2021</a>""" "" 0.0 1.5707963267948966 918.4022913358862 3.8675210805178755 0.6053533680443458 1.5707963267948966 0.3183098861837907 10.61861769094489 10.954949764295336 9.829554306547745 10.2138610798748 10.972269503315076 10.606741855649194 9.856525776813884 9.738636032681487 17.834383618161393 17.834383619845827 39.85756057884832 18.48661343338427 18.486613435776228 40.129040607005024 14.87094614925888 15.376425906613333 16.863171986327103 16.863171987075212 39.76757398792269 18.329217503003765 18.329207293464663 40.17809269095792 19.42524681469582 19.4252468194435 40.32335470635515 17.95146727362624 17.951467275673135 39.76304009360012 17.80551090336838 17.805510905042652 39.83525545946123 17.21 17.210000001231258 39.573439727093124 15.507503977808302 15.0054335486535 [135.12547788482965,286.8870436688759,363.1224938989749,17.151166889284422,3.8998849204601957,9.22656271380373] "[""1SHORT"",""1MEDIUM"",""1LONG"",""2SHORT"",""2MEDIUM"",""2LONG""]" 363.1224938989749 nan nan nan nan 363.1224938989749 17.151166889284422
+"""kap And b""" """kap And""" "" 55.0 "" 160.23868158412154 4327.36 7323.224 -332.874 """<a refstr=BONNEFOY_ET_AL__2014 href=https://ui.adsabs.harvard.edu/abs/2014A%26A...562A.111B/abstract target=ref> Bonnefoy et al. 2014 </a>""" 12.3 "" "" """<a refstr=CALCULATED_VALUE href=/docs/composite_calc.html target=_blank>Calculated Value</a>""" 1900.0 100.0 -200.0 """<a refstr=BONNEFOY_ET_AL__2014 href=https://ui.adsabs.harvard.edu/abs/2014A%26A...562A.111B/abstract target=ref> Bonnefoy et al. 2014 </a>""" 355.1025974 44.3338511 50.0177 """B9 IV""" 2.6 10900.0 2.31 3.78 67.60829753919819 0.03 4.0088995920807635 -8.282782761787715 -0.36 19.9751 4.065 4.13791 "" "" 4.52528583433152 4.563193022718557 4.571 """Imaging""" 2012 """<a refstr=CARSON_ET_AL__2013 href=https://ui.adsabs.harvard.edu/abs/2013ApJ...763L..32C/abstract target=ref> Carson et al. 2013 </a>""" "" 0.0 1.5707963267948966 1099.6107377988194 4.447567885436229 2.194976079980311 1.5707963267948966 0.3183098861837907 4.5648799671388005 4.543213532762758 4.591516731934542 4.582053994517563 4.539804138783394 4.5655110145579005 4.590422119530487 4.5953402020737215 14.777066971664357 14.777067037853044 32.81441835899351 15.269619101047718 15.26961922753861 32.60378179986914 12.263396176823104 12.981406300126451 14.005048263005248 14.005048283018755 33.34105120020251 15.22219431356288 15.222181607770127 32.599776105569035 15.792897274104067 15.792897523661836 32.389280458635696 14.76273127681328 14.762731354473747 32.62654212863684 14.750807373664696 14.750807439152409 32.799718631170926 14.320000000000002 14.320000044480564 32.78888515043106 13.066160625679634 12.71965706440665 [6.458921025486525,6.944419009194884,4.103054199604072,0.2413704381097071,0.41859397338129667,0.22021288760323884] "[""1SHORT"",""1MEDIUM"",""1LONG"",""2SHORT"",""2MEDIUM"",""2LONG""]" 6.944419009194884 nan nan nan nan 6.944419009194884 0.41859397338129667
+"""GU Psc b""" """GU Psc""" "" 2000.0 "" 179.74997694259005 3591.3 540.3 -540.3 """<a refstr=NAUD_ET_AL__2014 href=https://ui.adsabs.harvard.edu/abs/2014ApJ...787....5N/abstract target=ref> Naud et al. 2014 </a>""" 14.179 1.289 -1.289 """<a refstr=NAUD_ET_AL__2014 href=https://ui.adsabs.harvard.edu/abs/2014ApJ...787....5N/abstract target=ref> Naud et al. 2014 </a>""" 1050.0 50.0 -50.0 """<a refstr=NAUD_ET_AL__2014 href=https://ui.adsabs.harvard.edu/abs/2014ApJ...787....5N/abstract target=ref> Naud et al. 2014 </a>""" 18.146485 17.0650029 47.5501 """M3""" 0.33 4031.81 0.45 4.78 0.025003453616964308 0.1 23.0 -1.6 0.1 21.0019 15.576 14.146 "" "" 10.255864702513529 9.489324347101117 9.345 """Imaging""" 2014 """<a refstr=NAUD_ET_AL__2014 href=https://ui.adsabs.harvard.edu/abs/2014ApJ...787....5N/abstract target=ref> Naud et al. 2014 </a>""" "" 0.0 1.5707963267948966 42060.899977076806 4.243115562459743 0.0016965837828741026 1.5707963267948966 0.3183098861837907 9.473628355528179 9.833937888647245 9.1709084966883 9.292970869324988 9.876736744047234 9.46331171184226 9.184188215241914 9.122864079527094 17.634884510190346 17.634884510209087 44.54230043172366 17.840772494880795 17.840772494897475 44.874426730121186 13.878398879195483 15.119058899412284 16.452738259946045 16.452738259952106 44.58578364037895 17.645416309194914 17.645378802783483 44.92271697289595 17.824751696435513 17.824751696447933 45.178645063169746 17.266810230931775 17.26681023094611 44.4648627838543 17.596635248147276 17.59663524816568 44.52369678700254 17.4 17.400000000017876 44.35858098726292 15.279976876400013 14.683489225048778 [765.2149254369139,2161.39388790796,1861.568544313365,221.40729086407586,118.55208478756106,297.2829129518535] "[""1SHORT"",""1MEDIUM"",""1LONG"",""2SHORT"",""2MEDIUM"",""2LONG""]" 2161.39388790796 nan nan nan nan 2161.39388790796 297.2829129518535
+"""TYC 8998-760-1 c""" """TYC 8998-760-1""" "" 320.0 "" 95.57663866483928 1906.98 317.83 -317.83 """<a refstr=BOHN_ET_AL__2020 href=https://ui.adsabs.harvard.edu/abs/2020ApJ...898L..16B/abstract target=ref>Bohn et al. 2020</a>""" 12.33 6.725 -3.363 """<a refstr=BOHN_ET_AL__2020 href=https://ui.adsabs.harvard.edu/abs/2020ApJ...898L..16B/abstract target=ref>Bohn et al. 2020</a>""" 1240.0 160.0 -170.0 """<a refstr=BOHN_ET_AL__2020 href=https://ui.adsabs.harvard.edu/abs/2020ApJ...898L..16B/abstract target=ref>Bohn et al. 2020</a>""" 201.3001096 -64.9391566 94.6177 """K3 IV""" 1.0 4573.0 0.95 4.29 0.4295364267648873 0.017 14.683808526038113 12.84 "" 10.54 11.958 11.124 "" "" 9.139827837241086 8.469639139929999 8.392 """Imaging""" 2020 """<a refstr=BOHN_ET_AL__2020 href=https://ui.adsabs.harvard.edu/abs/2020ApJ...898L..16B/abstract target=ref>Bohn et al. 2020</a>""" "" 0.0 1.5707963267948966 3382.031057613956 4.08957506705119 1.6618734708468659 1.5707963267948968 0.31830988618379064 8.471788958812947 8.784590474103775 8.358144418568827 8.379085102940182 8.833547019231752 8.463252532034781 8.367114268038677 8.32485613170968 18.541765977253238 18.541765979303246 40.351688090435744 19.101305548789043 19.101305551478514 40.616447657863205 15.350648283164324 15.764477224143139 17.5250813549549 17.525081355630295 40.54049629342258 18.925925859528835 18.925903276044792 40.668846469974355 19.678658131183045 19.67865813494974 40.82806871231604 18.359217131493768 18.35921713341341 40.24047783074317 18.506988351902677 18.506988353921624 40.3334860559933 18.1 18.100000001545716 40.21648799120122 15.919708689515346 15.34232456998181 [380.07201018539615,838.3608392808818,508.914836141926,101.6195540319077,66.52096245242015,163.33738087255242] "[""1SHORT"",""1MEDIUM"",""1LONG"",""2SHORT"",""2MEDIUM"",""2LONG""]" 838.3608392808818 nan nan nan nan 838.3608392808818 163.33738087255242
+"""COCONUTS-2 b""" """COCONUTS-2 A""" 402000000.0 7506.0 "" 78.58700992190113 2002.31896 476.74261 -603.87397 """<a refstr=ZHANG_ET_AL__2021 href=https://ui.adsabs.harvard.edu/abs/2021ApJ...916L..11Z/abstract target=ref>Zhang et al. 2021</a>""" 12.442 0.336 -0.336 """<a refstr=ZHANG_ET_AL__2021 href=https://ui.adsabs.harvard.edu/abs/2021ApJ...916L..11Z/abstract target=ref>Zhang et al. 2021</a>""" 434.0 9.0 -9.0 """<a refstr=ZHANG_ET_AL__2021 href=https://ui.adsabs.harvard.edu/abs/2021ApJ...916L..11Z/abstract target=ref>Zhang et al. 2021</a>""" 117.300914 -76.702696 10.8864 """M3 V""" 0.37 3406.0 0.39 4.83 0.018535316234148114 0.475 17.36955243532929 2.4193679729052278 0.0 91.8291 12.983 11.298 "" "" 7.501042319027247 6.793821478938062 6.579 """Imaging""" 2021 """<a refstr=ZHANG_ET_AL__2021 href=https://ui.adsabs.harvard.edu/abs/2021ApJ...916L..11Z/abstract target=ref>Zhang et al. 2021</a>""" "" 0.0 1.5707963267948966 689484.126984127 4.102907947671373 0.20664132262702536 1.5707963267948968 0.31830988618379064 6.764111789467584 7.109595859656075 6.179883174260258 6.465402986297629 7.139574101629794 6.753783799802342 6.197227700076111 6.119752575215286 20.607786532687552 20.607786532814572 45.43738864029904 20.23116833503026 20.231168335099532 45.719098526205826 14.125716705016451 14.22293549109267 17.075184966301862 17.07518496630735 45.31574499655771 19.149310309635876 19.14931411959533 45.74058532296228 19.826062842773254 19.826062842812007 45.94458274645777 20.057309107580153 20.057309107657566 45.42462353841981 20.564910555218944 20.56491055534255 45.42415854025399 20.50113518324465 20.501135183369303 45.35114589387569 14.687799867717304 13.363951834445494 [692.9151588402972,275.09239582235887,394.1483695943243,130.66622462709972,350.84404294251925,526.2122165014421] "[""1SHORT"",""1MEDIUM"",""1LONG"",""2SHORT"",""2MEDIUM"",""2LONG""]" 692.9151588402972 nan nan nan nan 692.9151588402972 526.2122165014421
+"""51 Eri b""" """51 Eri""" 11688.0 13.2 0.45 133.0 635.66 "" "" """<a refstr=MACINTOSH_ET_AL__2015 href=https://ui.adsabs.harvard.edu/abs/2015Sci...350...64M/abstract target=ref>Macintosh et al. 2015</a>""" 13.4 "" "" """<a refstr=CALCULATED_VALUE href=/docs/composite_calc.html target=_blank>Calculated Value</a>""" 700.0 "" "" """<a refstr=MACINTOSH_ET_AL__2015 href=https://ui.adsabs.harvard.edu/abs/2015Sci...350...64M/abstract target=ref>Macintosh et al. 2015</a>""" 69.4007424 -2.4738245 29.7575 """F0 IV""" 1.75 7295.0 1.49 4.31 7.079457843841379 0.02 65.19 17.3 -0.027 33.577 5.486 5.21149 "" 4.889 4.711086175950423 4.557464391743155 4.537 """Imaging""" 2015 """<a refstr=MACINTOSH_ET_AL__2015 href=https://ui.adsabs.harvard.edu/abs/2015Sci...350...64M/abstract target=ref>Macintosh et al. 2015</a>""" "" 0.0 1.5707963267948966 443.5856506763001 3.5401703687933757 7.935776090726318 1.5707963267948966 0.3183098861837907 4.5553751378260285 4.63470376768465 4.54240909352716 4.537514058755368 4.656762461777303 4.554090230557631 4.5418398990193385 4.544276073777382 19.187278819825625 19.187404881379166 29.025196012607218 19.218903850272703 19.21902798326046 29.073558694726085 14.45562261184045 14.327002090131804 17.289915514036487 17.28993411872977 29.205179329651468 18.797025237181217 18.79707949589908 29.081512867185452 19.048452807883113 19.04855881613205 29.074467459454034 18.87262737290769 18.872727689100813 28.9585607233806 19.14756290399045 19.14768535090811 29.017065283923436 18.79061726456979 18.79070809512187 28.984393594699167 14.555233633518867 13.76525128497512 [0.21637088233319196,0.3430512922534924,0.6378006306965714,0.029285111834909533,0.010527621857488383,0.021897833575074365] "[""1SHORT"",""1MEDIUM"",""1LONG"",""2SHORT"",""2MEDIUM"",""2LONG""]" 0.6378006306965714 nan nan nan nan 0.6378006306965714 0.029285111834909533
+"""1RXS J160929.1-210524 b""" """1RXS J160929.1-210524""" "" 330.0 "" 31.373416665613547 3000.0 300.0 -300.0 """<a refstr=LACHAPELLE_ET_AL__2015 href=https://ui.adsabs.harvard.edu/abs/2015ApJ...802...61L/abstract target=ref>Lachapelle et al. 2015</a>""" 18.647 "" "" """<a refstr=LAFRENIERE_ET_AL__2008 href=https://ui.adsabs.harvard.edu/abs/2008ApJ...689L.153L/abstract target=ref> Lafreniere et al. 2008 </a>""" 1700.0 100.0 -100.0 """<a refstr=LACHAPELLE_ET_AL__2015 href=https://ui.adsabs.harvard.edu/abs/2015ApJ...802...61L/abstract target=ref>Lachapelle et al. 2015</a>""" 242.3762343 -21.0831403 139.135 """K7 V""" 0.85 4060.0 1.31 4.0 0.42657951880159267 0.005 2.805988397204109 8.20368978765898 "" 7.15949 14.168 12.618 "" "" 9.866811150829744 9.042748881956948 8.916 """Imaging""" 2008 """<a refstr=LAFRENIERE_ET_AL__2008 href=https://ui.adsabs.harvard.edu/abs/2008ApJ...689L.153L/abstract target=ref> Lafreniere et al. 2008 </a>""" "" 0.0 1.5707963267948966 2371.7971754051823 3.9270583950340785 0.7911354440500052 1.5707963267948966 0.3183098861837907 9.035834626365732 9.414041514198933 8.808291060276476 8.898815688264403 9.464579310859909 9.024780685254003 8.821146636251218 8.761556372963598 16.757892371124118 16.757892371524257 40.34168180360243 17.425599303860224 17.425599304427543 40.63034044997277 13.816669666818397 14.711032930714191 15.656641611256067 15.656641611367128 40.63203705710269 17.235165830734264 17.235171449642767 40.71489322589575 18.465413883822976 18.465413885027488 40.8526996023675 16.930101731199404 16.930101731739974 40.18728416751132 16.733008557723128 16.733008558122446 40.31901572586947 16.15 16.15000000026481 40.181967175760896 14.805925092470204 14.424963881575634 [934.3710594311067,672.1333549140439,694.4401890197391,64.46722352404514,33.57710817450995,17.668946494468248] "[""1SHORT"",""1MEDIUM"",""1LONG"",""2SHORT"",""2MEDIUM"",""2LONG""]" 934.3710594311067 nan nan nan nan 934.3710594311067 64.46722352404514
+"""HD 106906 b""" """HD 106906""" "" 650.0 "" 112.07743251134104 3496.0 636.0 -636.0 """<a refstr=BAILEY_ET_AL__2014 href=https://ui.adsabs.harvard.edu/abs/2014ApJ...780L...4B/abstract target=ref> Bailey et al. 2014 </a>""" 12.4 "" "" """<a refstr=CALCULATED_VALUE href=/docs/composite_calc.html target=_blank>Calculated Value</a>""" 1800.0 100.0 -100.0 """<a refstr=BAILEY_ET_AL__2014 href=https://ui.adsabs.harvard.edu/abs/2014ApJ...780L...4B/abstract target=ref> Bailey et al. 2014 </a>""" 184.4713308 -55.9755805 103.029 """F5 V""" 1.5 6516.0 2.12 3.9 5.623413251903491 0.013 49.12 11.1 0.04 9.67737 8.237001 7.8 "" "" 6.936510570024634 6.710269094757981 6.683 """Imaging""" 2013 """<a refstr=BAILEY_ET_AL__2014 href=https://ui.adsabs.harvard.edu/abs/2014ApJ...780L...4B/abstract target=ref> Bailey et al. 2014 </a>""" "" 0.0 1.5707963267948966 6308.903318483146 4.347883135598668 1.330531284845373 1.5707963267948968 0.31830988618379064 6.708342917928808 6.823930120166527 6.678748574266129 6.67794387046511 6.8520451166278695 6.706088126422934 6.6790189974089476 6.6774993184622025 15.994092168326027 15.994092168702425 39.64428095874164 16.5751218886454 16.575121889307873 39.61150818444726 13.25738262328127 14.1444568708535 15.032919062875639 15.032919062979062 40.085666930120176 16.454162790709074 16.454160016572942 39.648935236956326 17.315895815806766 17.315895817237134 39.516587329457884 16.072850525052157 16.072850525527333 39.470024389420885 15.968612485549556 15.968612485922918 39.62760141238483 15.460000000000003 15.460000000243921 39.58120006065316 14.240857761235334 13.854368217889384 [52.13876885416955,106.60290912952286,80.64521948483363,9.769358137455177,17.30212483944635,15.338498426848812] "[""1SHORT"",""1MEDIUM"",""1LONG"",""2SHORT"",""2MEDIUM"",""2LONG""]" 106.60290912952286 nan nan nan nan 106.60290912952286 17.30212483944635
+"""HR 8799 d""" """HR 8799""" 37000.0 24.0 0.6 38.63 3000.0 1000.0 -1000.0 """<a refstr=MAROIS_ET_AL__2008 href=https://ui.adsabs.harvard.edu/abs/2008Sci...322.1348M/abstract target=ref> Marois et al. 2008 </a>""" 13.0 1.0 0.0 """<a refstr=MAROIS_ET_AL__2008 href=https://ui.adsabs.harvard.edu/abs/2008Sci...322.1348M/abstract target=ref> Marois et al. 2008 </a>""" 1300.0 "" "" """<a refstr=BONNEFOY_ET_AL__2016 href=https://ui.adsabs.harvard.edu/abs/2016A&A...587A..58B/abstract target=ref>Bonnefoy et al. 2016</a>""" 346.8701486 21.1340376 41.2441 """A5 V""" 1.5 7204.58 1.49 4.3 4.920395356814509 0.06 34.79 5.295492489745072 -0.47 24.2175 6.235 5.98 "" "" 5.414086175950423 5.260464391743156 5.24 """Imaging""" 2008 """<a refstr=MAROIS_ET_AL__2008 href=https://ui.adsabs.harvard.edu/abs/2008Sci...322.1348M/abstract target=ref> Marois et al. 2008 </a>""" "" 0.0 1.5707963267948966 581.9014113533814 4.240389632066761 4.662502743491369 1.5707963267948966 0.3183098861837907 5.258375137826029 5.3377037676846495 5.24540909352716 5.240514058755368 5.359762461777303 5.2570902305576315 5.244839899019339 5.247276073777383 13.651150728482147 13.651151593070999 28.898437881805897 14.26189275379395 14.261894278724283 28.89307930825181 10.644530217689871 10.942685206719663 12.6823983989372 12.68239867059064 29.18667131100403 14.101070029205635 14.101053465315655 28.89917739573439 15.008808837897295 15.008812051976946 28.83047965716642 13.583932232596796 13.583933141812906 28.77657568161526 13.617973182245425 13.61797403119658 28.885077646913707 13.11 13.110000562365727 28.82426396957429 11.10319661068912 10.50881630731123 [15.825536589398329,26.006378109051358,76.1430122781526,2.2470220822133395,0.5932591399756235,2.0933438918517453] "[""1SHORT"",""1MEDIUM"",""1LONG"",""2SHORT"",""2MEDIUM"",""2LONG""]" 76.1430122781526 nan nan nan nan 76.1430122781526 2.2470220822133395
+"""HD 203030 b""" """HD 203030""" "" 487.1 "" 103.36976460786809 3496.11248 1271.31363 -953.48522 """<a refstr=MILES_P_AACUTE_EZ_ET_AL__2017 href=https://ui.adsabs.harvard.edu/abs/2017AJ....154..262M/abstract target=ref>Miles-P&aacuteez et al. 2017</a>""" 14.46 0.673 -0.448 """<a refstr=MILES_P_AACUTE_EZ_ET_AL__2017 href=https://ui.adsabs.harvard.edu/abs/2017AJ....154..262M/abstract target=ref>Miles-P&aacuteez et al. 2017</a>""" 1040.0 50.0 -50.0 """<a refstr=MILES_P_AACUTE_EZ_ET_AL__2017 href=https://ui.adsabs.harvard.edu/abs/2017AJ....154..262M/abstract target=ref>Miles-P&aacuteez et al. 2017</a>""" 319.7432238 26.2305846 39.2503 """G8 V""" 0.94 5603.0 0.86 4.64 0.5929253245799998 0.1 5.62 -17.0 0.3 25.4488 9.09 8.45 "" "" 7.0980572493263105 6.696754614336532 6.653 """Imaging""" 2006 """<a refstr=METCHEV___HILLENBRAND_2006 href=https://ui.adsabs.harvard.edu/abs/2006ApJ...651.1166M/abstract target=ref> Metchev & Hillenbrand 2006 </a>""" "" 0.0 1.5707963267948966 12410.096228563856 4.214403892734232 1.280051836006117 1.5707963267948968 0.31830988618379064 6.697651020410255 6.894864188828821 6.639639912866917 6.641016957138943 6.93339419731892 6.693027680969119 6.64372633187477 6.624169991685575 16.444884509870075 16.44488451263112 37.9315107210191 16.65077249443143 16.65077249731951 38.08855860013561 12.688398881403224 13.929058900322174 15.262738261581596 15.26273826237414 38.10449027515488 16.45541630927791 16.45537880520552 38.11596522625729 16.634751696258764 16.63475169886997 38.18196088485456 16.07681023121644 16.076810233368146 37.83416532878432 16.406635247887277 16.406635250587716 37.91735956525493 16.21 16.210000002439912 37.83087643962741 14.089976877309901 13.493489225958669 [232.78479038963357,637.3880933890415,609.3585644923579,70.00418405914397,36.74434150398664,101.05474870431031] "[""1SHORT"",""1MEDIUM"",""1LONG"",""2SHORT"",""2MEDIUM"",""2LONG""]" 637.3880933890415 nan nan nan nan 637.3880933890415 101.05474870431031
+"""BD+60 1417 b""" """BD+60 1417""" "" 1662.0 "" 59.98401168070531 4767.4261 1589.14204 -1589.14204 """<a refstr=FAHERTY_ET_AL__2021 href=https://ui.adsabs.harvard.edu/abs/2021ApJ...923...48F/abstract target=ref>Faherty et al. 2021</a>""" 14.684 0.673 -0.673 """<a refstr=FAHERTY_ET_AL__2021 href=https://ui.adsabs.harvard.edu/abs/2021ApJ...923...48F/abstract target=ref>Faherty et al. 2021</a>""" 1303.0 74.0 -74.0 """<a refstr=FAHERTY_ET_AL__2021 href=https://ui.adsabs.harvard.edu/abs/2021ApJ...923...48F/abstract target=ref>Faherty et al. 2021</a>""" 190.8875453 60.0143636 44.9543 """K0""" 1.0 4993.0 0.8 4.55 2.269864851883822 0.1 11.0 -10.15 "" 22.2159 10.379 9.374 "" "" 7.896837655971743 7.348994660933722 7.288 """Imaging""" 2021 """<a refstr=FAHERTY_ET_AL__2021 href=https://ui.adsabs.harvard.edu/abs/2021ApJ...923...48F/abstract target=ref>Faherty et al. 2021</a>""" "" 0.0 1.5707963267948966 36970.87931521567 4.335750300056667 0.6371262571383429 1.5707963267948968 0.31830988618379064 7.351321967774068 7.612724859686182 7.264249188315778 7.275342931773688 7.657314407534233 7.344492586778272 7.271031979941901 7.238868142114327 16.168824275554798 16.16882427558423 42.585986237035726 16.78147589820938 16.781475898252523 42.78345057663803 13.230608136786419 13.503980070538281 15.292285703832057 15.292285703842657 42.81861295935308 16.651560199463283 16.651540475507957 42.82970990190739 17.551420567692954 17.55142056777086 42.91178298176051 16.124916190151843 16.124916190183498 42.46311986685066 16.13730414048613 16.137304140515184 42.56843437325902 15.645 15.645000000020232 42.46917261936447 13.66828457267137 13.063508868848865 [572.2167493286149,1549.7148292800252,1964.519873273318,223.51335761190103,63.010243146853,167.61067071854416] "[""1SHORT"",""1MEDIUM"",""1LONG"",""2SHORT"",""2MEDIUM"",""2LONG""]" 1964.519873273318 nan nan nan nan 1964.519873273318 223.51335761190103
