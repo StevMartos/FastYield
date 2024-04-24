@@ -74,14 +74,17 @@ config_data_MIRIMRS = {
                  "1LONG": GratingInfo(6.53, 7.65, (3610.+3100.)/2),
                  "2SHORT": GratingInfo(7.51, 8.77, (3110.+2990.)/2),
                  "2MEDIUM": GratingInfo(8.67, 10.13, (2750.+3170.)/2),
-                 "2LONG": GratingInfo(10.02, 11.70, (2860.+3300.)/2)},
-    'pixscale': {"1SHORT":0.13,"1MEDIUM":0.13,"1LONG":0.13,"2SHORT":0.170001,"2MEDIUM":0.170001,"2LONG":0.170001}, # en arcsec/px (avec dithering)
+                 "2LONG": GratingInfo(10.02, 11.70, (2860.+3300.)/2),
+                 "Channel1": GratingInfo(4.90, 7.65, 3500),
+                 "Channel2": GratingInfo(7.51, 11.70, 2900)},
+    'pixscale': {"1SHORT":0.13,"1MEDIUM":0.13,"1LONG":0.13,"2SHORT":0.170001,"2MEDIUM":0.170001,"2LONG":0.170001, "Channel1":0.13, "Channel2":0.170001}, # en arcsec/px (avec dithering)
     'pixscale0': 0.196, # en arcsec/px (sans dithering)
     'lambda_range': {"lambda_min": 4.90, "lambda_max": 11.70}, #pas plus car le spectre des planètes va jusqu'à 12 µm
     'spec': {"RON": 14.0*np.sqrt(8), "dark_current": 0.1,"FOV":5.2, "minDIT": 2.775/60, "maxDIT": 5*60/60, "saturation_e": 200000., "Q_eff": 1}, # en réalité Q_eff ~ 0.54 mais elle est déjà comprise dans les transmissions
     #'spec': {"RON": 14.0, "dark_current": 0.1,"FOV":5.2, "minDIT": 2.775/60, "maxDIT": 250/60, "saturation_e": 200000., "Q_eff": 1}, # en réalité Q_eff ~ 0.54 mais elle est déjà comprise dans les transmissions
     # en SLOW mode on a RON = 14 e- # e-, e-/s, arcsec, min, min, e-, e-/ph ;
 }
+
 
 config_data_NIRCam = {
     'name': "NIRCam",
