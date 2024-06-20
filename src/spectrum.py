@@ -1,42 +1,14 @@
-from src.config import *
-from src import throughput
-import numpy as np
-from scipy.optimize import curve_fit
-from scipy.signal import fftconvolve
-from scipy.interpolate import interp1d,interp2d
-from astropy import constants as const
-from astropy import units as u
-from astropy.io import fits
-from scipy.ndimage.filters import gaussian_filter
-from PyAstronomy import pyasl
-import matplotlib.pyplot as plt
-import matplotlib
-
-import pandas as pd
-import coronagraph as cg
-from astropy.convolution import Gaussian1DKernel
-from astropy.stats import sigma_clip
-import warnings
-import os
-import time
-import ssl
-import wget
-import lzma
-from scipy.special import comb
+from src.utils import *
 
 path_file = os.path.dirname(__file__)
 load_path = os.path.join(os.path.dirname(path_file), "sim_data/Spectra/")
 vega_path = os.path.join(os.path.dirname(path_file), "sim_data/Spectra/star_spectrum/VEGA_Fnu.fits")
 
-h=6.6260701e-34 # J.s
-c=2.9979246e8 # m/s
-kB=1.38065e-23 # J/K
-
 
 
 class Spectrum:
 
-    def __init__(self,wavelength,flux,R,T,lg=None,model=None,syst_rv=0,delta_rv=0,high_pass_flux=None):
+    def __init__(self,wavelength,flux,R,T,lg=None,model=None,star_rv=0,delta_rv=0,high_pass_flux=None):
         """
         Parameters
         ----------
@@ -55,7 +27,7 @@ class Spectrum:
         self.T = T
         self.lg = lg
         self.model = model  # model of the spectrum
-        self.syst_rv = syst_rv # radial velocity of the system (star)
+        self.star_rv = star_rv # radial velocity of the system (star)
         self.delta_rv = delta_rv # Doppler shift between the planet and the star
         self.high_pass_flux = high_pass_flux # high-pass filtered flux
         
@@ -114,7 +86,7 @@ class Spectrum:
         delta_lambda_band = wave_band - np.roll(wave_band, 1) ; delta_lambda_band[0] = delta_lambda_band[1]  # delta lambda en µm
         Rnew = np.nanmean(wave_band/(2*delta_lambda_band)) # calcul de la nouvelle résolution
         spectrum_band_flux = self.interpolate_wavelength(self.flux, self.wavelength, wave_band , renorm=False).flux # on réinterpole le flux (en densité) sur wave_band
-        spectrum_band = Spectrum(wave_band,spectrum_band_flux,Rnew,self.T,self.lg,self.model,syst_rv=self.syst_rv,delta_rv=self.delta_rv,high_pass_flux=self.high_pass_flux) # on définit le nouveau spectre comme étant un class Spectrum
+        spectrum_band = Spectrum(wave_band,spectrum_band_flux,Rnew,self.T,self.lg,self.model,star_rv=self.star_rv,delta_rv=self.delta_rv,high_pass_flux=self.high_pass_flux) # on définit le nouveau spectre comme étant un class Spectrum
         spectrum_band.flux = spectrum_band.flux*wave_band*1e-6/(h*c) # J/s/m²/µm => photons/s/m2/µm
         S = config_data["telescope"]["area"] # surface collectrice du télescope en m2
         spectrum_band.flux = spectrum_band.flux*S*delta_lambda_band*60 # en photons/min en fonction du canal spectral
@@ -161,9 +133,9 @@ class Spectrum:
             Rnew = np.nanmean(wavelength_output/(2*dwl)) # calcul de la nouvelle résolution
             flr = (cg.downbin_spec(self.flux, self.wavelength, wavelength_output, dlam=dwl)) # convolution de la courbe du flux avec la nouvelle résolution/largeur des bins (nouvel axe de lambda)    
         if renorm:
-            return Spectrum(wavelength_output, nbPhot*flr/np.nansum(flr), Rnew, self.T, lg=self.lg, model=self.model,syst_rv=self.syst_rv,delta_rv=self.delta_rv,high_pass_flux=self.high_pass_flux) # conserve le nb de photon
+            return Spectrum(wavelength_output, nbPhot*flr/np.nansum(flr), Rnew, self.T, lg=self.lg, model=self.model,star_rv=self.star_rv,delta_rv=self.delta_rv,high_pass_flux=self.high_pass_flux) # conserve le nb de photon
         else:
-            return Spectrum(wavelength_output, flr, Rnew, self.T, lg=self.lg, model=self.model,syst_rv=self.syst_rv,delta_rv=self.delta_rv,high_pass_flux=self.high_pass_flux) # ne conserve pas le nb de photons (pour la transmission et spectre en densitÃ©)
+            return Spectrum(wavelength_output, flr, Rnew, self.T, lg=self.lg, model=self.model,star_rv=self.star_rv,delta_rv=self.delta_rv,high_pass_flux=self.high_pass_flux) # ne conserve pas le nb de photons (pour la transmission et spectre en densitÃ©)
 
     #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
                 
@@ -187,15 +159,15 @@ class Spectrum:
         """
         valid = np.where((wavelength_input >= wavelength_output[0]) & (wavelength_input <= wavelength_output[-1])) # influx[valid] => retourne une array (plus petite) qui garde les valeurs du flux pour une longueur d'onde comprise entre wavelength_output[0] et wavelength_output[-1]
         nbPhot = np.nansum(influx[valid]) # nombre total de photon dans la gamme de longueur d'onde output (pour la renormalisation si renorm = True)
-        #f = interp1d(wavelength_input, influx, bounds_error=False, fill_value=np.nan) # créer une interpolation avec l'axe lambda décalé / le spectre décalé
         f = interp1d(wavelength_input, influx, bounds_error=False, fill_value=fill_value) # créer une interpolation avec l'axe lambda décalé / le spectre décalé
+        #f = interp1d(wavelength_input[~np.isnan(influx)], influx[~np.isnan(influx)], bounds_error=False, fill_value=fill_value) # créer une interpolation avec l'axe lambda décalé / le spectre décalé
         flux_interp = f(wavelength_output) # interpole les valeurs du flux sur le nouvel axe (wavelength_output)
         dwl = wavelength_output - np.roll(wavelength_output, 1) ; dwl[0] = dwl[1] # array de delta Lambda
         Rnew = np.nanmean(wavelength_output/(2*dwl)) # calcule de la nouvelle résolution
         if renorm:
-            spec = Spectrum(wavelength_output, nbPhot*flux_interp/np.nansum(flux_interp), Rnew, self.T,self.lg,self.model,syst_rv=self.syst_rv,delta_rv=self.delta_rv,high_pass_flux=self.high_pass_flux)
+            spec = Spectrum(wavelength_output, nbPhot*flux_interp/np.nansum(flux_interp), Rnew, self.T,self.lg,self.model,star_rv=self.star_rv,delta_rv=self.delta_rv,high_pass_flux=self.high_pass_flux)
         else :
-            spec = Spectrum(wavelength_output, flux_interp, Rnew, self.T,self.lg,self.model,syst_rv=self.syst_rv,delta_rv=self.delta_rv,high_pass_flux=self.high_pass_flux)
+            spec = Spectrum(wavelength_output, flux_interp, Rnew, self.T,self.lg,self.model,star_rv=self.star_rv,delta_rv=self.delta_rv,high_pass_flux=self.high_pass_flux)
         return spec
     
     #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -221,20 +193,20 @@ class Spectrum:
 
     #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
     
-    def broad(self, broad):
+    def broad(self, vsini):
         """
         Broadens spectrum lines as a function of rotation speed (in km/s)
 
         Parameters
         ----------
-        broad : float
+        vsini : float
             rotation speed (in km/s)
 
         Returns : class Spectrum
             broadened spectrum
         """
-        flux = pyasl.fastRotBroad(self.wavelength * 1e4, self.flux, 0.8, broad) # Pourquoi *1e4 ? (pour passer en Angstrom ?)
-        return Spectrum(self.wavelength, flux, self.R, self.T,self.lg,self.model,syst_rv=self.syst_rv,delta_rv=self.delta_rv,high_pass_flux=self.high_pass_flux) # pas besoin de "conserver le nb de photons" car c'est un effet intrinsèque (on ne change pas largeur des bins)
+        flux = pyasl.fastRotBroad(self.wavelength * 1e4, self.flux, epsilon=0.8, vsini=vsini) # Pourquoi *1e4 ? (pour passer en Angstrom ?)
+        return Spectrum(self.wavelength, flux, self.R, self.T,self.lg,self.model,star_rv=self.star_rv,delta_rv=self.delta_rv,high_pass_flux=self.high_pass_flux) # pas besoin de "conserver le nb de photons" car c'est un effet intrinsèque (on ne change pas largeur des bins)
 
     #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
     
@@ -288,7 +260,7 @@ class Spectrum:
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-def load_planet_spectrum(T, lg, model="BT-Settl", version="new", met=1, CO=0.5, load_path=load_path):
+def load_planet_spectrum(T, lg, model="BT-Settl", instru=None, load_path=load_path):
     """
     To read and retrieve planet spectra from models
 
@@ -335,8 +307,6 @@ def load_planet_spectrum(T, lg, model="BT-Settl", version="new", met=1, CO=0.5, 
         if str(T)[-2]!="0":
             str_T += "."+str(T)[-2]
         wave,flux = fits.getdata(load_path+'/planet_spectrum/'+model+"/lte"+str_T+"-"+str_lg+"-0.0a+0.0.BT-Settl.fits")
-        dwl = wave - np.roll(wave, 1) ; dwl[0] = dwl[1] ; R = np.nanmean(wave/(2*dwl))
-        spec = Spectrum(wave,flux,R,T,lg,"BT-Settl")
     
     elif model=="BT-Dusty":
         if T < 1400:
@@ -356,15 +326,22 @@ def load_planet_spectrum(T, lg, model="BT-Settl", version="new", met=1, CO=0.5, 
         if str(T)[-2]!="0":
             str_T += "."+str(T)[-2]
         wave,flux = fits.getdata(load_path+'/planet_spectrum/'+model+"/lte"+str_T+"-"+str_lg+"-0.0a+0.0.BT-Dusty.fits")
-        dwl = wave - np.roll(wave, 1) ; dwl[0] = dwl[1] ; dwl[dwl==0] = np.nan ; R = np.nanmean(wave/(2*dwl))
-        spec = Spectrum(wave,flux,R,T,lg,"BT-Dusty")
         
     elif model=="Exo-REM":
         if T < 400:
             print("Changing the input temperature to the minimal temperature : 400K.")
         elif T > 2000:
             print("Changing the input temperature to the maximal temperature : 2000K.")
-        if version == "old": # high res (mais commmence à 4 µm)
+        if instru is None or get_config_data(instru)["lambda_range"]["lambda_min"] < 4 : # low res
+            lg0 = np.arange(3.0, 5.5,0.5) # valeur possible # PUBLIC
+            idx = (np.abs(lg0 - lg)).argmin()
+            lg = lg0[idx]
+            T0 = np.arange(400,2050,50)
+            idx = (np.abs(T0 - T)).argmin()
+            T = T0[idx]
+            load_path += '/planet_spectrum/'+model+'/'
+            load_path += "spectra_YGP_"+str(T)+"K_logg"+str(float(lg))+"_met1.00_CO0.50.fits"
+        else : # high res (mais commmence à 4 µm) # NOT PUBLIC
             lg0 = np.array([3.5, 4.0]) # valeur possible
             idx = (np.abs(lg0 - lg)).argmin()
             lg = lg0[idx]
@@ -373,18 +350,7 @@ def load_planet_spectrum(T, lg, model="BT-Settl", version="new", met=1, CO=0.5, 
             T = T0[idx]
             load_path += '/planet_spectrum/'+model+'/lte-g' + str(float(lg)) + '/'
             load_path+="spectra_YGP_"+str(T)+"K_logg"+str(float(lg))+"_met1.00_CO0.50.fits"
-        elif version == "new": # low res
-            lg0 = np.arange(3.0, 5.5,0.5) # valeur possible
-            idx = (np.abs(lg0 - lg)).argmin()
-            lg = lg0[idx]
-            T0 = np.arange(400,2050,50)
-            idx = (np.abs(T0 - T)).argmin()
-            T = T0[idx]
-            load_path += '/planet_spectrum/'+model+'/'
-            load_path += "spectra_YGP_"+str(T)+"K_logg"+str(float(lg))+"_met1.00_CO0.50.fits"
         wave,flux = fits.getdata(load_path)
-        dwl = wave - np.roll(wave, 1) ; dwl[0] = dwl[1] ; R = np.nanmean(wave/(2*dwl))
-        spec = Spectrum(wave,flux,R,T,lg,"Exo-REM")
         
     elif model=="PICASO":
         if T < 200:
@@ -408,9 +374,7 @@ def load_planet_spectrum(T, lg, model="BT-Settl", version="new", met=1, CO=0.5, 
         idx = (np.abs(lg0 - lg)).argmin()
         lg=lg0[idx]
         wave,flux = fits.getdata(f"sim_data/Spectra/planet_spectrum/PICASO/thermal_gas_giant_{T}K_lg{lg}.fits")
-        dwl = wave - np.roll(wave, 1) ; dwl[0] = dwl[1] ; R = np.nanmean(wave/(2*dwl)) # calcule de la nouvelle résolution
-        spec = Spectrum(wave,flux,R,T,lg,"PICASO")
-    
+
     elif model=="Morley": # 2012 + 2014 avec nuage
         if T < 200:
             print("Changing the input temperature to the minimal temperature : 200K.")
@@ -430,9 +394,6 @@ def load_planet_spectrum(T, lg, model="BT-Settl", version="new", met=1, CO=0.5, 
         g = g0[idx]
         lg = lg0[idx]
         wave,flux = fits.getdata("sim_data/Spectra/planet_spectrum/Morley/sp_t"+str(T)+"g"+str(g)+".fits")
-        dwl = wave - np.roll(wave, 1) ; dwl[0] = dwl[1] # array de delta Lambda
-        R = np.nanmean(wave/(2*dwl)) # calcule de la nouvelle résolution
-        spec = Spectrum(wave,flux,R,T,lg,"Morley")
         
     elif model == "Saumon":
         if T < 400:
@@ -449,8 +410,6 @@ def load_planet_spectrum(T, lg, model="BT-Settl", version="new", met=1, CO=0.5, 
         g = g0[idx]
         lg = lg0[idx]
         wave , flux = fits.getdata("sim_data/Spectra/planet_spectrum/Saumon/sp_t"+str(T)+"g"+str(g)+"nc.fits")
-        dwl = wave - np.roll(wave, 1) ; dwl[0] = dwl[1] ; R = np.nanmean(wave/(2*dwl)) # calcule de la nouvelle résolution
-        spec = Spectrum(wave,flux,R,T,lg,"Saumon")
     
     elif model == "SONORA":
         if T < 200:
@@ -467,9 +426,36 @@ def load_planet_spectrum(T, lg, model="BT-Settl", version="new", met=1, CO=0.5, 
         g = g0[idx]
         lg = lg0[idx]
         wave , flux = fits.getdata("sim_data/Spectra/planet_spectrum/SONORA/sp_t"+str(T)+"g"+str(g)+"nc_m0.0.fits")
-        dwl = wave - np.roll(wave, 1) ; dwl[0] = dwl[1] ; R = np.nanmean(wave/(2*dwl)) # calcule de la nouvelle résolution
-        spec = Spectrum(wave,flux,R,T,lg,"Saumon")
         
+    elif model[:4] == "mol_" :
+        molecule = model[4:]
+        if T < 200:
+            print("Changing the input temperature to the minimal temperature : 200K.")
+        if T > 3000:
+            print("Changing the input temperature to the maximal temperature : 3000K.")
+        T0 = np.append(np.arange(200,1000,50),np.arange(1000,3100,100))
+        idx = (np.abs(T0 - T)).argmin()
+        T = T0[idx]
+        wave,flux = fits.getdata(load_path+"/planet_spectrum/molecular/"+molecule+"_T"+str(T)+"K.fits")
+        
+        
+    elif model=="Jupiter" or model=="Saturn" or model=="Uranus" or model=="Neptune":
+        wave , flux = fits.getdata("sim_data/Spectra/planet_spectrum/solar system/plnt_"+model+".fits")
+        if model=="Jupiter":
+            T = 88 ; lg = 3.4 # np.log10(24.79*100) # https://en.wikipedia.org/wiki/Jupiter
+        elif model=="Saturn":
+            T = 81  ; lg = 3.0 # np.log10(10.44*100) # https://en.wikipedia.org/wiki/Saturn
+        elif model=="Uranus":
+            T = 49  ; lg = 2.9 # np.log10(8.69*100) # https://en.wikipedia.org/wiki/Uranus
+        elif model=="Neptune":
+            T = 47  ; lg = 3.0 # np.log10(11.15*100) # https://en.wikipedia.org/wiki/Neptune
+        
+    else :
+        raise KeyError(model+" IS NOT A VALID THERMAL MODEL : BT-Settl, BT-Dusty, Exo-REM, PICASO, Morley, Saumon or SONORA")
+        
+    dwl = wave - np.roll(wave, 1) ; dwl[0] = dwl[1] # array de delta Lambda
+    R = np.nanmean(wave/(2*dwl)) # calcule de la nouvelle résolution
+    spec = Spectrum(wave,flux,R,T,lg,model)
     return spec # en J/s/m²/µm
 
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -612,7 +598,7 @@ def spectrum_instru(band0,R,config_data,mag,spectrum):
     spectrum.flux *= ratio # ajustement du spectre à la bonne magnitude
     spectrum_density = spectrum.interpolate_wavelength(spectrum.flux, spectrum.wavelength, wave_instru, renorm = False)        
     spectrum_instru = spectrum.set_nbphotons_min(config_data, wave_instru) # J/s/m²/µm => photons/min sur la gamme instrumentale
-    return spectrum_instru , spectrum_density
+    return spectrum_instru , spectrum_density # en ph/mn et J/s/m2/µm
 
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -669,28 +655,22 @@ def transmission(instru,wave_inter,band,tellurics,apodizer):
     transmission : 1d array (same size as wave_inter)
         total system transmission 
     """
-    if instru == "HARMONI" or instru == "ANDES" :
-        trans_telescope = throughput.telescope_throughput(wave_inter)
-        trans_instrumental = throughput.instrument_throughput(wave_inter, str(band))
-        trans_fprs = throughput.fprs_throughput(wave_inter)
-        apo_trans = config_data_HARMONI["apodizers"][str(apodizer)].transmission
-        trans = trans_telescope * trans_instrumental * trans_fprs * apo_trans
-    else :
-        wave, trans = fits.getdata("sim_data/Transmission/"+instru+"/Instrumental_transmission/transmission_" + band + ".fits") # transmission instrumentale de la bande considérée
-        f = interp1d(wave, trans, bounds_error=False, fill_value=np.nan)
-        trans = f(wave_inter) # transmission instrumentale de la bande considérée en fonction du canal spectral
-        if instru == "MIRIMRS":
-            trans *= fits.getheader("sim_data/PSF/star_center/PSF_MIRIMRS/PSF_"+band+".fits")['AC']
+    wave, trans = fits.getdata("sim_data/Transmission/"+instru+"/Instrumental_transmission/transmission_" + band + ".fits") # transmission instrumentale de la bande considérée
+    f = interp1d(wave, trans, bounds_error=False, fill_value=np.nan)
+    trans = f(wave_inter) # transmission instrumentale de la bande considérée en fonction du canal spectral
+    config_data = get_config_data(instru)
+    apo_trans = config_data["apodizers"][str(apodizer)].transmission
+    trans *= apo_trans
+    if instru == "MIRIMRS" or instru == "NIRSpec":
+        trans *= fits.getheader("sim_data/PSF/star_center/PSF_"+instru+"/PSF_"+band+"_NO_JQ_NO_SP.fits")['AC'] # aperture corrective factor
     if tellurics: # si on considère l'atmosphère terrestre 
-        sky_transmission_path = os.path.join("sim_data/Transmission/sky_transmission_airmass_1.fits")
+        sky_transmission_path = os.path.join("sim_data/Transmission/sky_transmission_airmass_1.0.fits")
         sky_trans = fits.getdata(sky_transmission_path)
-        trans_tell_band = Spectrum(sky_trans[0, :], sky_trans[1, :], 100000, None)
+        trans_tell_band = Spectrum(sky_trans[0, :], sky_trans[1, :], None, None)
         trans_tell_band = trans_tell_band.degrade_resolution(wave_inter, renorm=False).flux # transmission atmosphérique de la bande considérée en fonction du canal spectral
-    else:
-        trans_tell_band = 1
-    transmission = trans*trans_tell_band
-    transmission[transmission==0] = np.nan
-    return transmission
+        trans *= trans_tell_band
+    trans[trans<=0] = np.nan
+    return trans
 
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -722,52 +702,37 @@ def PSF_profile_fraction_separation(band,strehl,apodizer,coronagraph,instru,conf
     separation : 1d-array
         separation vector (in arcsec or mas)
     """
-    if instru=="HARMONI" or instru=="ERIS" or instru=="ANDES" : # observation depuis le sol 
+
+    if coronagraph is not None : # Profil de la PSF (stellaire) coronographique
+        file = "sim_data/PSF/star_"+star_pos+"/PSF_"+instru+"/PSF_"+band+"_"+coronagraph+"_"+strehl+"_"+apodizer+".fits"
+        fraction_PSF = fits.getheader("sim_data/PSF/star_center/PSF_"+instru+"/PSF_"+band+"_"+coronagraph+"_"+strehl+"_"+apodizer+".fits")['FC'] # transmission du flux stellaire à travers les masques
+    else :
         file = "sim_data/PSF/star_"+star_pos+"/PSF_"+instru+"/PSF_"+band+"_"+strehl+"_"+apodizer+".fits"
         fraction_PSF = fits.getheader("sim_data/PSF/star_center/PSF_"+instru+"/PSF_"+band+"_"+strehl+"_"+apodizer+".fits")['FC'] # fraction du flux dans une boîte de size_core²
-    elif instru=="MIRIMRS" or instru=="NIRCam" or instru=="NIRSpec" : # observation depuis l'espace
-        if coronagraph is not None : # Profil de la PSF (stellaire) coronographique
-            file = "sim_data/PSF/star_"+star_pos+"/PSF_"+instru+"/PSF_"+band+"_"+coronagraph+".fits"
-            fraction_PSF = fits.getheader("sim_data/PSF/star_center/PSF_"+instru+"/PSF_"+band+"_"+coronagraph+".fits")['FC'] # transmission du flux stellaire à travers les masques
-        else :
-            file = "sim_data/PSF/star_"+star_pos+"/PSF_"+instru+"/PSF_"+band+".fits"
-            fraction_PSF = fits.getheader("sim_data/PSF/star_center/PSF_"+instru+"/PSF_"+band+".fits")['FC'] # fraction du flux dans une boîte de size_core²
-    if instru=="MIRIMRS":
-        pixscale = config_data["pixscale"][band] # en arcsec/px (pixscale dithered)    
+    
+    if instru=="MIRIMRS" :
+        pxscale = config_data["pxscale"][band] # en arcsec/px (pxscale dithered)    
     else :
-        pixscale = config_data["spec"]["pixscale"] # en arcsec/px
+        pxscale = config_data["spec"]["pxscale"] # en arcsec/px
     FOV = config_data["spec"]["FOV"] # arcsec
     if sep_unit=="mas":
-        pixscale *= 1e3 ; FOV *= 1e3
+        pxscale *= 1e3 ; FOV *= 1e3 # in mas
     profile = fits.getdata(file) # en fraction/arcsec ou fraction/mas
-    #separation = np.arange(pixscale, FOV/2, pixscale) # en arcsec (/4 ne change pas le résultat mais rend la courbe plus "smooth")
-    separation = np.arange(pixscale, FOV/2, pixscale/4) # en arcsec (/4 ne change pas le résultat mais rend la courbe plus "smooth")
+    separation = np.arange(pxscale, FOV/2+pxscale/4, pxscale/4) # en arcsec ou mas (/4 ne change pas le résultat mais rend la courbe plus "smooth")
     f = interp1d(profile[0], profile[1], bounds_error=False, fill_value=np.nan)
     if instru=="MIRIMRS":
-        PSF_profile = f(separation) * config_data["pixscale0"] # pxscale non dithered
+        PSF_profile = f(separation) * config_data["pxscale0"] # pxscale non dithered
     else :
-        PSF_profile = f(separation) * pixscale
+        PSF_profile = f(separation) * pxscale
     return PSF_profile , fraction_PSF , separation
 
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-def smoothstep(x, Rc, N=15):
-    x_min = 0
-    x_max = 2*Rc
-    x = np.clip((x - x_min) / (x_max - x_min), 0, 1)
-    result = 0
-    for n in range(0, N + 1):
-         result += comb(N + n, n) * comb(2 * N + 1, N - n) * (-x) ** n
-    result *= x ** (N + 1)
-    result += result[::-1]
-    result = np.abs(result-1)
-    return result
-
-def filtered_flux(flux,R,Rc,used_filter):
+def filtered_flux(flux,R,Rc,used_filter="gaussian"):
+    flux_BF_valid = np.copy(flux)
     if Rc is None :
         flux_BF = 0
     else :
-        flux_BF_valid = np.copy(flux)
         if used_filter == "gaussian" :
             sigma = 2*R/(np.pi*Rc)*np.sqrt(np.log(2)/2)
             flux_BF = gaussian_filter(flux[~np.isnan(flux)],sigma=sigma)
@@ -779,9 +744,41 @@ def filtered_flux(flux,R,Rc,used_filter):
             res = ffreq*R*2
             fft *= smoothstep(res,Rc)
             flux_BF = np.real(np.fft.ifft(fft))
-        flux_BF_valid[~np.isnan(flux)] = flux_BF
+    flux_BF_valid[~np.isnan(flux)] = flux_BF
     flux_HF = flux - flux_BF_valid
     return flux_HF,flux_BF_valid
+
+
+
+def get_fraction_noise_filtered(wave,R,Rc,used_filter,empirical=False):
+    if Rc is None :
+        fn_HF = 1. ; fn_LF = 1.
+    else :
+        if empirical :
+            N = 1000 ; fn_HF = 0. ; fn_LF = 0.
+            for i in range(N):
+                n = np.random.normal(0,1,len(wave))
+                n_HF,n_LF = filtered_flux(n,R=R,Rc=Rc,used_filter=used_filter)
+                fn_HF += np.nansum(n_HF**2) / np.nansum(n**2) / N
+                fn_LF += np.nansum(n_LF**2) / np.nansum(n**2) / N
+        else :
+            ffreq = np.fft.fftfreq(len(wave)) ; res = ffreq*R*2
+            K = np.zeros_like(res) + 1.
+            K_LF = np.copy(K)
+            K_HF = np.copy(K)
+            if used_filter=="gaussian" :
+                sigma = 2*R/(np.pi*Rc)*np.sqrt(np.log(2)/2) 
+                K_LF *= np.abs( np.exp( - 2*np.pi**2 * (res/(2*R))**2 * sigma**2 ) )**2
+                K_HF *=  np.abs( 1 - np.exp( - 2*np.pi**2 * (res/(2*R))**2 * sigma**2 ) )**2
+            elif used_filter=="step" :
+                K_LF[np.abs(res)>Rc] = 0 
+                K_HF[np.abs(res)<Rc] = 0 
+            elif used_filter == "smoothstep" :
+                K_LF *= smoothstep(res,Rc)
+                K_HF *= (1-smoothstep(res,Rc))
+            fn_LF = np.nansum(K_LF)/np.nansum(K) # power fraction of the noise being filtered
+            fn_HF = np.nansum(K_HF)/np.nansum(K)
+    return fn_HF , fn_LF
 
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -840,7 +837,7 @@ def alpha_calc(planet_spectrum_inter,template,Rc,R,fraction_PSF,transmission,sep
 
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-def DIT_RON(instru,config_data,apodizer,PSF_profile,separation,star_spectrum_inter,time,min_DIT,max_DIT,trans,quantum_efficiency,RON,saturation_e,print_value=True):
+def DIT_RON(instru,config_data,apodizer,PSF_profile,separation,star_spectrum_inter,time,min_DIT,max_DIT,trans,quantum_efficiency,RON,saturation_e,input_DIT,print_value=True):
     """
     Gives DIT and effective reading noise
 
@@ -880,25 +877,23 @@ def DIT_RON(instru,config_data,apodizer,PSF_profile,separation,star_spectrum_int
     if instru == "NIRCam":
         max_flux_e = np.nanmax(PSF_profile) * np.nansum(star_spectrum_inter.flux) * trans * quantum_efficiency # nombre max d'e-/min en fonction du canal spectral dans la bande spectrale considérée
     else :
-        if apodizer is not None: # Pour HARMONI, le flux max n'est pas au centre de l'image à cause de l'apodiseur
-            sep_min = config_data_HARMONI["apodizers"][apodizer].sep # séparation où la PSF est maximale 
-        else :
-            sep_min = 0 
-        n = np.argmin(np.abs(separation - sep_min)) # donne l'index qui correspond à la séparation où la valeur de la PSF est maximale
-        max_flux_e = PSF_profile[n] * star_spectrum_inter.flux * trans * quantum_efficiency # nombre max d'e-/min en fonction du canal spectral dans la bande spectrale considérée  
-        
+        sep_min = config_data["apodizers"][apodizer].sep # séparation où la PSF commence
+        max_flux_e = np.nanmax(PSF_profile[separation>sep_min]) * star_spectrum_inter.flux * trans * quantum_efficiency # nombre max d'e-/min en fonction du canal spectral dans la bande spectrale considérée  
+
     saturating_DIT = saturation_e/np.nanmax(max_flux_e) # ici DIT = saturating DIT (en min)
     if print_value :
-        print(" Saturating DIT =", round(saturating_DIT,3), " minutes") #print("Saturating  DIT = ", DIT*60, " minutes")
+        print(" Saturating DIT =", round(saturating_DIT,3), " mn") #print("Saturating  DIT = ", DIT*60, " minutes")
     # Le max DIT est déterminée par la saturation ou bien par le "smearing" (le fait que le planète ne doit pas trop bouger pendant la pose)
     if saturating_DIT > max_DIT :
         DIT = max_DIT
     elif saturating_DIT < min_DIT :
         DIT = min_DIT
         if print_value:
-            print("Saturated detector even with the shortest integration time")
+            print(" Saturated detector even with the shortest integration time")
     else :
         DIT = saturating_DIT
+    if input_DIT is not None :
+        DIT = input_DIT
     if DIT > time :
         DIT = time
     # Mode de lecture en "rampe", on séquence la pose en plusieurs lectures non destructives afin de réduire le bruit de lecture (voir wiki average signal)
@@ -913,7 +908,7 @@ def DIT_RON(instru,config_data,apodizer,PSF_profile,separation,star_spectrum_int
     if instru == 'ERIS' and RON_eff < 7:
         RON_eff = 7
     if print_value :
-        print(" DIT =", round(DIT*60,2)," seconds / ", "RON =",round(RON_eff,3),"e-")
+        print(" DIT =", round(DIT*60,2),"s / ", "RON =",round(RON_eff,3),"e-")
     return DIT, RON_eff
 
 
@@ -926,98 +921,91 @@ def DIT_RON(instru,config_data,apodizer,PSF_profile,separation,star_spectrum_int
 #######################################################################################################################
 
 
-def systematic_profile(config_data,band,sigma,Rc,R,star_spectrum_instru,planet_spectrum_instru,wave_inter,size_core,star_pos,used_filter):
+def systematic_profile(config_data,band,trans,Rc,R,star_spectrum_instru,planet_spectrum_instru,wave_inter,size_core,used_filter,show_cos_theta_est=False,PCA=False):
+    
+    correction = "all_corrected"
+    #correction = "with_fringes_straylight"
+    star_pos = "center"
+
+    T_star_sim_arr = np.array([4000,6000,8000])
+    T_star_sim = T_star_sim_arr[np.abs(star_spectrum_instru.T-T_star_sim_arr).argmin()]
+    instru = config_data["name"] ; data = False ; warnings.simplefilter("ignore", category=RuntimeWarning)
+    planet_spectrum = Spectrum(planet_spectrum_instru.wavelength,planet_spectrum_instru.flux,planet_spectrum_instru.R,planet_spectrum_instru.T,planet_spectrum_instru.lg,planet_spectrum_instru.model)
     from src.molecular_mapping import crop, annular_mask, molecular_mapping_rv, stellar_high_filtering
-    if star_pos=="center":
-        file="data/MIRIMRS/MIRISim/star_center/star_center_s3d_"+band+"_all_corrected.fits"
-        #file="data/MIRIMRS/MIRISim/star_center/star_center_s3d_"+band+"_with_fringes_straylight.fits"
-    elif star_pos=="edge":
-        file="data/MIRIMRS/MIRISim/star_edge/star_edge_s3d_"+band+"_with_fringes.fits" 
-        file="data/MIRIMRS/MIRISim/star_edge/star_edge_s3d_"+band+"_all_corrected.fits"
-    
-    data = False
-    #file = 'data/MIRIMRS/MAST/HD159222_ch'+band[0]+'-shortmediumlong_s3d.fits' ; data = True
+    if instru=="MIRIMRS" :
+        file="data/MIRIMRS/MIRISim/star_"+star_pos+"/star_"+star_pos+"_T"+str(T_star_sim)+"K_mag7_s3d_"+band+"_"+correction ; sigma_cosmic = None
+        #file = 'data/MIRIMRS/MAST/HD 159222_ch'+band[0]+'-shortmediumlong_s3d' ; data = True ; sigma_cosmic = 3
+    elif instru=="NIRSpec":
+        file = 'data/NIRSpec/MAST/HD 163466_nirspec_'+band+'_s3d' ; data = True ; sigma_cosmic = 3
+    try :
+        if data : 
+            S_noiseless = fits.getdata("sim_data/Systematics/"+instru+"/star_"+star_pos+"/S_data_star_"+star_pos+"_s3d_"+band+"_"+correction+".fits") # in e-/mn
+            pxscale = fits.getheader("sim_data/Systematics/"+instru+"/star_"+star_pos+"/S_data_star_"+star_pos+"_s3d_"+band+"_"+correction+".fits")['pxscale']
+            wave = fits.getdata("sim_data/Systematics/"+instru+"/star_"+star_pos+"/wave_data_star_"+star_pos+"_s3d_"+band+"_"+correction+".fits")
+        else :
+            S_noiseless = fits.getdata("sim_data/Systematics/"+instru+"/star_"+star_pos+"/S_noiseless_star_"+star_pos+"_T"+str(T_star_sim)+"K_mag7_s3d_"+band+"_"+correction+".fits") # in e-/mn
+            pxscale = fits.getheader("sim_data/Systematics/"+instru+"/star_"+star_pos+"/S_noiseless_star_"+star_pos+"_T"+str(T_star_sim)+"K_mag7_s3d_"+band+"_"+correction+".fits")['pxscale']
+            wave = fits.getdata("sim_data/Systematics/"+instru+"/star_"+star_pos+"/wave_noiseless_star_"+star_pos+"_T"+str(T_star_sim)+"K_mag7_s3d_"+band+"_"+correction+".fits")
+    except :
+        file += ".fits"
+        S_noiseless,wave,pxscale,_,_,exposure_time,_ = open_data(instru,"sim",band,cosmic=data,sigma_cosmic=sigma_cosmic,crop_band=True,file=file,print_value=False)
+        S_noiseless /= exposure_time # en e-/mn
+        hdr = fits.Header() ; hdr['pxscale'] = pxscale
+        if data :
+            fits.writeto("sim_data/Systematics/"+instru+"/star_"+star_pos+"/S_data_star_"+star_pos+"_s3d_"+band+"_"+correction+".fits",S_noiseless,header=hdr,overwrite=True)
+            fits.writeto("sim_data/Systematics/"+instru+"/star_"+star_pos+"/wave_data_star_"+star_pos+"_s3d_"+band+"_"+correction+".fits",wave,overwrite=True)
+        else :
+            fits.writeto("sim_data/Systematics/"+instru+"/star_"+star_pos+"/S_noiseless_star_"+star_pos+"_T"+str(T_star_sim)+"K_mag7_s3d_"+band+"_"+correction+".fits",S_noiseless,header=hdr,overwrite=True)
+            fits.writeto("sim_data/Systematics/"+instru+"/star_"+star_pos+"/wave_noiseless_star_"+star_pos+"_T"+str(T_star_sim)+"K_mag7_s3d_"+band+"_"+correction+".fits",wave,overwrite=True)
 
-
-    f = fits.open(file)
-    S_noiseless = crop(f[1].data) # en MJy/str
-    hdr = f[1].header
-    delta_lambda = hdr['CDELT3']
-    wave = (np.arange(hdr['NAXIS3']) + hdr['CRPIX3'] - 1) * hdr['CDELT3'] + hdr['CRVAL3']
-    S_noiseless = S_noiseless[(wave>config_data['gratings'][band].lmin) & (wave<config_data['gratings'][band].lmax)]
-    wave = wave[(wave>config_data['gratings'][band].lmin) & (wave<config_data['gratings'][band].lmax)]
-    pixscale = hdr['CDELT1']*3600 # pixel scale in "/px
-    pxsteradian = hdr['PIXAR_SR'] # Nominal pixel area in steradians 
-    S_noiseless *= pxsteradian*1e6 # en Jy
-    S_noiseless *= 1e-26 # J/s/m²/Hz
-    for i in range(S_noiseless.shape[0]):
-        S_noiseless[i] *= c/((wave[i]*1e-6)**2)# J/s/m²/m
-    S_noiseless *= delta_lambda*1e-6 # J/s/m²
-    for i in range(S_noiseless.shape[0]):
-        S_noiseless[i] *= wave[i]*1e-6/(h*c) # photons/s/m²
-    S_noiseless *= config_data['telescope']['area'] # photons/s
-    wave_trans,trans = fits.getdata("sim_data/Transmission/MIRIMRS/Instrumental_transmission/transmission_"+band+".fits")
-    f = interp1d(wave_trans, trans, bounds_error=False, fill_value=np.nan) 
+    f = interp1d(wave_inter, trans, bounds_error=False, fill_value=np.nan)
     trans = f(wave)
-    for i in range(S_noiseless.shape[0]):
-        S_noiseless[i] *= trans[i] # e-/s
-    S_noiseless *= 60 # e-/mn
+
     NbChannel, NbLine, NbColumn = S_noiseless.shape # => donne (taille de l'axe lambda, " de l'axe y , " de l'axe x)
-    
     star_spectrum_inter = star_spectrum_instru.degrade_resolution(wave,renorm=True)
     star_flux = trans*star_spectrum_inter.flux # gammaS* en e-/mn
-    sep = np.zeros((int(round(config_data["spec"]["FOV"]/(2*pixscale)))+1))
+    total_flux = np.nansum(star_flux) # en e-/mn
+    sep = np.zeros((int(round(config_data["spec"]["FOV"]/(2*pxscale)))+1))
     sigma_syst_2 = np.zeros((len(sep),len(wave_inter))) # array 2D de taille 2x Nbline (ou Column) /2
     sigma_syst_prime_2 = np.zeros((len(sep)))
     M_HF = np.zeros((len(sep),len(wave_inter))) # array 2D de taille 2x Nbline (ou Column) /2
     input_flux = np.nansum(S_noiseless,(1,2)) # m_S* en e-/mn du cube simulé sans bruits
     
-    if not data and 1==1 : 
-        star_data = np.loadtxt('/home/martoss/mirisim/spectra/star_6000_mag7_J.txt',skiprows=1) ; spectrum = Spectrum(star_data[:,0],star_data[:,1],None,None) ; spectrum = spectrum.degrade_resolution(wave,renorm=False) ; spectrum = spectrum.set_nbphotons_min(config_data, wave) ; spectrum.flux *= trans # en e-/mn
+    if instru=="MIRIMRS" and not data and 1==1 : 
+        star_data = np.loadtxt('sim_data/Systematics/MIRIMRS/star_'+str(T_star_sim)+'_mag7_J.txt',skiprows=1) ; spectrum = Spectrum(star_data[:,0],star_data[:,1],None,None) ; spectrum = spectrum.degrade_resolution(wave,renorm=False) ; spectrum = spectrum.set_nbphotons_min(config_data, wave) ; spectrum.flux *= trans # en e-/mn
         input_flux = spectrum.flux*np.nanmean(input_flux)/np.nanmean(spectrum.flux) # S_star
-        
+    
     M_m_S = np.zeros_like(S_noiseless)+np.nan
     for i in range(NbChannel):
         M_m_S[i] = S_noiseless[i]/input_flux[i] * star_flux[i]
-    
     if Rc is not None :
-        S_res,_ = stellar_high_filtering(c=M_m_S,calculation="contrast",renorm_cube_res=False,R=R,Rc=Rc,used_filter=used_filter,print_value=False,cosmic=True,sigma_cosmic=6)
+        S_res,_ = stellar_high_filtering(c=M_m_S,renorm_cube_res=False,R=R,Rc=Rc,used_filter=used_filter,print_value=False,cosmic=data,sigma_cosmic=sigma_cosmic)
     else :
         S_res = M_m_S
-    s_res = np.zeros_like(S_res)+np.nan
+    s_res = np.zeros_like(S_res)+np.nan 
     for i in range(NbLine):
         for j in range(NbColumn): # pour chaque spaxel
             s_res[:,i,j] = np.nansum(S_res[:,i-size_core//2:i+size_core//2+1,j-size_core//2:j+size_core//2+1],axis=(1,2))
-    s_res[s_res==0]=np.nan ; S_res = s_res
-    CCF,_ = molecular_mapping_rv(instru=config_data["name"],band=band,cube_high_filtered=S_res,T=planet_spectrum_instru.T,lg=planet_spectrum_instru.lg,model=planet_spectrum_instru.model,wave=wave,trans=trans,calculation="contrast",R=R,Rc=Rc,used_filter=used_filter,broad=0,rv=planet_spectrum_instru.delta_rv,print_value=False)
+    s_res[s_res==0] = np.nan ; S_res = s_res
+    CCF,_ = molecular_mapping_rv(instru=instru,cube_high_filtered=S_res,T=planet_spectrum_instru.T,lg=planet_spectrum_instru.lg,model=planet_spectrum_instru.model,wave=wave,trans=trans,R=R,Rc=Rc,used_filter=used_filter,rv=planet_spectrum_instru.delta_rv,vsini=0,print_value=False,planet_spectrum=planet_spectrum)
     for r in range(1, len(sep)+1):
-        sep[r-1] = r*pixscale
-        ccf = np.copy(CCF)*annular_mask(r-1,r,size=(NbLine, NbColumn)) # anneau du cube M à la séparation r
+        sep[r-1] = r*pxscale
+        ccf = np.copy(CCF)*annular_mask(max(1,r-1),r,size=(NbLine, NbColumn)) # anneau du cube M à la séparation r
+        #ccf = np.copy(CCF)*annular_mask(max(1,r-1),r,size=(NbLine, NbColumn)) # anneau du cube M à la séparation r
         if not all(np.isnan(ccf.flatten())):
-            m_HF_S = np.copy(S_res)*annular_mask(r-1,r,size=(NbLine, NbColumn)) # anneau du cube M à la séparation r
-            f = interp1d(wave, np.nanvar(m_HF_S,axis=(1,2))/np.nansum(star_flux)**2, bounds_error=False, fill_value=np.nan)
-            sigma_syst_2[r-1,:] = f(wave_inter)
-            sigma_syst_prime_2[r-1] = np.nanvar(ccf)/np.nansum(star_flux)**2 # bruit systématique en e-/flux stellaire total 
-            f = interp1d(wave, S_res[:,NbLine//2+1-r,NbColumn//2+1-r]/star_flux, bounds_error=False, fill_value=np.nan)
-            M_HF[r-1,:] = f(wave_inter)
-    Mp = np.nanmean(M_m_S[:,NbLine//2-1:NbLine//2+2,NbColumn//2-1:NbColumn//2+2],axis=(1,2))/star_flux # car son somme le signal sur la FWHM
+            #m_HF_S = np.copy(S_res)*annular_mask(r-1,r,size=(NbLine, NbColumn)) # anneau du cube M à la séparation r
+            #f = interp1d(wave, np.nanvar(m_HF_S,axis=(1,2))/total_flux**2, bounds_error=False, fill_value=np.nan)
+            #sigma_syst_2[r-1,:] = f(wave_inter)
+            sigma_syst_prime_2[r-1] = np.nanvar(ccf)/total_flux**2 # bruit systématique en e-/flux stellaire total 
+            if show_cos_theta_est :
+                f = interp1d(wave, S_res[:,NbLine//2+1-r,NbColumn//2+1-r]/star_flux, bounds_error=False, fill_value=np.nan)
+                M_HF[r-1,:] = f(wave_inter)
+    Mp = np.nanmean(M_m_S[:,NbLine//2-size_core//2:NbLine//2+size_core//2+1,NbColumn//2-size_core//2:NbColumn//2+size_core//2+1],axis=(1,2))/star_flux # car on somme le signal sur la FWHM
     Mp /= np.nanmean(Mp)
     #Mp = fits.getdata("utils/Mp/Mp_"+band+"_"+str(planet_spectrum_instru.T)+"K.fits")
     f = interp1d(wave, Mp, bounds_error=False, fill_value=np.nan)
     Mp = f(wave_inter)
     #plt.figure() ; plt.plot(wave_inter,Mp) ; plt.title(f"{band}") ; plt.show()
-    
-    
-    #sig = np.zeros_like(sigma_syst_prime_2) + np.nan
-    #f = interp1d(wave, template, bounds_error=False, fill_value=np.nan)
-    #template = f(wave_inter)
-    #for i in range(len(sep)):
-        #sig[i] = np.nansum(sigma_syst_2[i,:]*template**2)
-    #plt.figure() ; plt.plot(sep,sigma_syst_prime_2) ; plt.plot(sep,sig) ; plt.yscale('log') ; plt.show()
-    #plt.figure() ; plt.plot(sep,sigma_syst_prime_2) ; plt.plot(sep,np.nanmean(sigma_syst_2,1)) ; plt.yscale('log') ; plt.show()
-    #sigma_syst_prime_2 = sig
-    
-    
     return sigma_syst_prime_2,sigma_syst_2,sep,M_HF,Mp,wave
 
 
@@ -1247,14 +1235,13 @@ def get_picasso_thermal(name_planet="HR 8799 b"):
             lg0 = np.array([3.0,3.5,4.0,4.5,5.0])
         for lg in lg0 :
             k += 1
-            
             planet_table[idx]["PlanetTeq"] = T * planet_table[idx]["PlanetTeq"].unit # 
             planet_table[idx]["PlanetLogg"] = lg * planet_table[idx]["PlanetLogg"].unit # 
             simulate_picaso_spectrum("HARMONI",planet_table[idx],spectrum_contributions="thermal",opacity=opacity,plot=False,save=True)
             print(round(100*(k+1)/177,2),"%")
             
 def get_picasso_albedo(name_planet="HR 8799 b"):
-    from src.FastYield import load_archive_table,planet_index
+    from src.FastYield import load_planet_table,planet_index
     picaso,jdi=import_picaso()
     wvrng = [0.6,6]
     # opacity file to load
@@ -1263,7 +1250,7 @@ def get_picasso_albedo(name_planet="HR 8799 b"):
     dbname = os.path.join(opacity_folder,dbname)
     # molecules, pt_pairs = opa.molecular_avail(dbname) ; print("\n molecules considérées : \n ", molecules)
     opacity = jdi.opannection(filename_db=dbname,wave_range=wvrng)
-    planet_table = load_archive_table("Archive_Pull_for_FastCurves.ecsv")
+    planet_table = load_planet_table("Archive_Pull_for_FastCurves.ecsv")
     idx = planet_index(planet_table,name_planet)
     T0 = np.append(np.arange(500,1000,50),np.arange(1000,3100,100))
     T0 = np.append([200,220,240,260,280,300,320,340,360,380,400,450],T0)
@@ -1286,23 +1273,24 @@ def get_picasso_albedo(name_planet="HR 8799 b"):
             simulate_picaso_spectrum("HARMONI",planet_table[idx],spectrum_contributions="reflected",opacity=opacity,plot=False,save=True)
             print(round(100*(k+1)/177,2),"%")
             
-def load_albedo(T,lg):
-    T0 = np.append(np.arange(500,1000,50),np.arange(1000,3100,100))
-    T0 = np.append([200,220,240,260,280,300,320,340,360,380,400,450],T0)
-    idx = (np.abs(T0 - T)).argmin()
-    T=T0[idx]
-    if T < 260 :
-        lg0 = np.array([4.0])
-    elif T == 260 :
-        lg0 = np.array([3.5])
-    elif T <= 300 :
-        lg0 = np.array([3.0,3.5])
-    elif T < 500 :
-        lg0 = np.array([2.5,3.0,3.5])
-    else :
-        lg0 = np.array([3.0,3.5,4.0,4.5,5.0])
-    idx = (np.abs(T0 - lg)).argmin()
-    lg=lg0[idx]
+def load_albedo(T,lg,grid=True):
+    if grid : 
+        T0 = np.append(np.arange(500,1000,50),np.arange(1000,3100,100))
+        T0 = np.append([200,220,240,260,280,300,320,340,360,380,400,450],T0)
+        idx = (np.abs(T0 - T)).argmin()
+        T=T0[idx]
+        if T < 260 :
+            lg0 = np.array([4.0])
+        elif T == 260 :
+            lg0 = np.array([3.5])
+        elif T <= 300 :
+            lg0 = np.array([3.0,3.5])
+        elif T < 500 :
+            lg0 = np.array([2.5,3.0,3.5])
+        else :
+            lg0 = np.array([3.0,3.5,4.0,4.5,5.0])
+        idx = (np.abs(T0 - lg)).argmin()
+        lg=lg0[idx]
     wave,albedo = fits.getdata(f"sim_data/Spectra/planet_spectrum/albedo/albedo_gas_giant_{T}K_lg{lg}.fits")
     dwl = wave - np.roll(wave, 1) ; dwl[0] = dwl[1] # array de delta Lambda
     R = np.nanmean(wave/(2*dwl)) # calcule de la nouvelle résolution
@@ -1340,45 +1328,66 @@ def thermal_reflected_spectrum(planet,instru=None,thermal_model="BT-Settl",refle
     
     star_spectrum = load_star_spectrum(float(planet["StarTeff"].value),float(planet["StarLogg"].value))
     star_spectrum = star_spectrum.interpolate_wavelength(star_spectrum.flux, star_spectrum.wavelength, wave, renorm = False)
-    
     star_spectrum.flux *= np.nanmean(vega_spectrum.flux[(wave>lmin_K)&(wave<lmax_K)])*10**(-0.4*float(planet["StarKmag"])) / np.nanmean(star_spectrum.flux[(wave>lmin_K) & (wave<lmax_K)])
-
+    if float(planet["StarVsini"].value) != 0:
+        star_spectrum = star_spectrum.broad(float(planet["StarVsini"].value))
+    
     if thermal_model != "None":
         planet_thermal = load_planet_spectrum(float(planet["PlanetTeq"].value),float(planet["PlanetLogg"].value),model=thermal_model)
         planet_thermal = planet_thermal.interpolate_wavelength(planet_thermal.flux, planet_thermal.wavelength, wave, renorm = False)
         planet_thermal.flux *= float((planet['PlanetRadius']/planet['Distance']).decompose()**2)
+        #planet_thermal.flux = np.nan_to_num(planet_thermal.flux)
     elif thermal_model == "None":
         planet_thermal = Spectrum(wave,np.zeros_like(wave),star_spectrum.R,float(planet["PlanetTeq"].value),float(planet["PlanetLogg"].value),thermal_model)
 
     albedo = load_albedo(planet_thermal.T,planet_thermal.lg)
-    albedo = albedo.interpolate_wavelength(albedo.flux, albedo.wavelength, wave, renorm = False)
+    albedo_geo = np.nanmean(albedo.flux)
     if reflected_model == "PICASO":
+        albedo = albedo.interpolate_wavelength(albedo.flux, albedo.wavelength, wave, renorm = False)
         planet_reflected = star_spectrum.flux * albedo.flux * planet["g_alpha"] * (planet['PlanetRadius']/planet['SMA']).decompose()**2
     elif reflected_model == "flat":
-        planet_reflected = star_spectrum.flux * np.nanmean(albedo.flux) * planet["g_alpha"] * (planet['PlanetRadius']/planet['SMA']).decompose()**2
+        planet_reflected = star_spectrum.flux * albedo_geo * planet["g_alpha"] * (planet['PlanetRadius']/planet['SMA']).decompose()**2
     elif reflected_model == "tellurics":
-        wave_tell,tell = fits.getdata("sim_data/Transmission/sky_transmission_airmass_2_5.fits")
+        wave_tell,tell = fits.getdata("sim_data/Transmission/sky_transmission_airmass_2.5.fits")
         f = interp1d(wave_tell,tell,bounds_error=False,fill_value=np.nan)
-        tell = f(wave)
-        planet_reflected = star_spectrum.flux * np.nanmean(albedo.flux)/np.nanmean(tell)*tell * planet["g_alpha"] * (planet['PlanetRadius']/planet['SMA']).decompose()**2
+        albedo_tell = albedo_geo/np.nanmean(tell) * f(wave)
+        planet_reflected = star_spectrum.flux * albedo_tell * planet["g_alpha"] * (planet['PlanetRadius']/planet['SMA']).decompose()**2
     elif reflected_model == "None":
         planet_reflected = np.zeros_like(wave)*u.dimensionless_unscaled
-    planet_reflected = Spectrum(wave,np.array(planet_reflected.value),max(star_spectrum.R,albedo.R),albedo.T,float(planet["PlanetLogg"].value),reflected_model)
+    else :
+        raise KeyError(reflected_model+" IS NOT A VALID REFLECTED MODEL : tellurics, flat, PICASO or None")
+    planet_reflected = Spectrum(wave,np.nan_to_num(np.array(planet_reflected.value)),max(star_spectrum.R,albedo.R),albedo.T,float(planet["PlanetLogg"].value),reflected_model)
     
     planet_spectrum = Spectrum(wave,planet_thermal.flux+planet_reflected.flux,max(planet_thermal.R,planet_reflected.R),planet_thermal.T,planet_thermal.lg,thermal_model+"+"+reflected_model)
     
-    if in_im_mag and planet["DiscoveryMethod"]=="Imaging" :
+    if float(planet["PlanetVsini"].value) != 0 :
+        planet_thermal = planet_thermal.broad(float(planet["PlanetVsini"].value))
+        planet_reflected = planet_reflected.broad(float(planet["PlanetVsini"].value))
+        planet_spectrum = planet_spectrum.broad(float(planet["PlanetVsini"].value))
+        
+    if float(planet["StarRadialVelocity"].value) != 0 :
+        star_spectrum = star_spectrum.doppler_shift(float(planet["StarRadialVelocity"].value))
+        star_spectrum.star_rv = float(planet["StarRadialVelocity"].value)
+    
+    if float(planet["StarRadialVelocity"].value) != 0 or float(planet["DeltaRadialVelocity"].value) != 0 :
+        planet_thermal = planet_thermal.doppler_shift(float(planet["StarRadialVelocity"].value)+float(planet["DeltaRadialVelocity"].value))
+        planet_reflected = planet_reflected.doppler_shift(float(planet["StarRadialVelocity"].value)+float(planet["DeltaRadialVelocity"].value))
+        planet_spectrum = planet_spectrum.doppler_shift(float(planet["StarRadialVelocity"].value)+float(planet["DeltaRadialVelocity"].value))
+        planet_thermal.delta_rv = float(planet["DeltaRadialVelocity"].value)
+        planet_reflected.delta_rv = float(planet["DeltaRadialVelocity"].value)
+        planet_spectrum.delta_rv = float(planet["DeltaRadialVelocity"].value)
+
+    if in_im_mag and planet["DiscoveryMethod"]=="Imaging" and thermal_model != "None": # Pour injecter les magnitudes connues de planète détectée par imagerie directe
         if not np.isnan(planet["PlanetKmag(thermal+reflected)"]) : # On connait déjà leur magnitude par définition
             ratio = np.nanmean(vega_spectrum.flux[(vega_spectrum.wavelength>lmin_K)&(vega_spectrum.wavelength<lmax_K)])*10**(-0.4*float(planet["PlanetKmag(thermal+reflected)"])) / np.nanmean(planet_spectrum.flux[(planet_spectrum.wavelength>lmin_K) & (planet_spectrum.wavelength<lmax_K)])
             planet_spectrum.flux = np.copy(planet_spectrum.flux) * ratio
             planet_thermal.flux = np.copy(planet_thermal.flux) * ratio
             planet_reflected.flux = np.copy(planet_reflected.flux) * ratio
 
-        
     if show : 
         lmin = lmin_K ; lmax = lmax_K ; band0 = "K"
         mag_p_total = -2.5*np.log10(np.mean(planet_spectrum.flux[(wave>lmin)&(wave<lmax)])/np.nanmean(vega_spectrum.flux[(wave>lmin) & (wave<lmax)]))
-        plt.figure() ; plt.xlabel("wavelength (in µm)",fontsize=14) ; plt.ylabel(f"flux (in J/s/m²/µm)",fontsize=14) ; plt.yscale('log') ; plt.title(f"The different spectrum contributions \n for {planet['PlanetName']} at {round(float(planet_spectrum.T))}K (on the same spectral resolution)",fontsize=16)
+        plt.figure(dpi=300) ; plt.xlabel("wavelength (in µm)",fontsize=14) ; plt.ylabel(f"flux (in J/s/m²/µm)",fontsize=14) ; plt.yscale('log') ; plt.title(f"The different spectrum contributions \n for {planet['PlanetName']} at {round(float(planet_spectrum.T))}K (on the same spectral resolution)",fontsize=16)
         if thermal_model!="None" and reflected_model!="None":
             plt.plot(wave,planet_spectrum.flux,'g',label=f"thermal+reflected ({planet_spectrum.model}), mag("+band0+f") = {round(mag_p_total,2)}")
         if thermal_model != "None":

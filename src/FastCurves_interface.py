@@ -1,7 +1,6 @@
 from tkinter import *
 from tkinter import ttk
 from ttkwidgets.autocomplete import AutocompleteEntry
-from src.FastCurves import *
 from src.FastYield import *
 
 
@@ -394,7 +393,7 @@ def FastCurves_interface():
     #-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
     
     # ON RECUPERE LES VARIABLES
-    instrument = instrument.get()
+    instru = instrument.get()
     calculation = calculation.get()
     coronagraph = coronagraph.get()
     if coronagraph == "None":
@@ -417,16 +416,7 @@ def FastCurves_interface():
     if name_planet=="" or name_planet=="None" or name_planet=="none" or name_planet=="None " or name_planet=="none " or name_planet=="NONE" or name_planet=="NONE ":
         name_planet = None
     if start_FC.get() :
-        print("You have chosen the instrument : "+instrument)
-        if instrument=="HARMONI":
-            harmoni(calculation,T_planet,lg_planet,mag_star,band0,T_star,lg_star,exposure_time,apodizer=apodizer,strehl=strehl,model="BT-Settl",mag_planet=mag_planet,separation_planet=separation_planet ,name_planet=name_planet,plot_mag=plot_mag,return_SNR_planet=False)
-        elif instrument=="ERIS":
-            eris(calculation,T_planet,lg_planet,mag_star,band0,T_star,lg_star,exposure_time,model="BT-Settl",mag_planet=mag_planet,separation_planet=separation_planet ,name_planet=name_planet,plot_mag=plot_mag,return_SNR_planet=False)
-        elif instrument=="MIRIMRS":
-            mirimrs(calculation,T_planet,lg_planet,mag_star,band0,T_star,lg_star,exposure_time,model="BT-Settl",mag_planet=mag_planet,separation_planet=separation_planet ,name_planet=name_planet,channel=channel,plot_mag=plot_mag,return_SNR_planet=False)
-        elif instrument=="NIRCam":
-            nircam(calculation,T_planet,lg_planet,mag_star,band0,T_star,lg_star,exposure_time,model="BT-Settl",mag_planet=mag_planet,separation_planet=separation_planet ,name_planet=name_planet,plot_mag=plot_mag,return_SNR_planet=False)    
-            
-        
+        FastCurves(instru=instru,calculation=calculation,T_planet=T_planet,lg_planet=lg_planet,mag_star=mag_star,band0=band0,T_star=T_star,lg_star=lg_star,exposure_time=exposure_time,apodizer=apodizer,strehl=strehl,model="BT-Settl",mag_planet=mag_planet,separation_planet=separation_planet ,name_planet=name_planet,plot_mag=plot_mag,return_SNR_planet=False)
+
     
     
