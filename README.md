@@ -2,18 +2,58 @@
 
 Python package for exoplanet detection and performance estimation using the molecular mapping technique. FastYield is an update of [FastCurves](https://github.com/ABidot/FastCurves). FastCurves can estimate detection limits related to various instrument parameters (PSF profiles, transmission, detector characteristics, etc.) and planet characteristics (magnitude, temperature, gravity, albedo, etc.). FastCurves shows promise as an ETC for predicting IFS performance when using molecular mapping (stellar halo subtraction with spectral high-pass filtering and cross-correlation technique) as a post-processing method for efficient speckle removal. FastYield extends FastCurves by applying it to an archival or synthetic planet table to estimate the yield performance that an instrument can achieve. For more information, see [Bidot et al. 2024](https://www.aanda.org/articles/aa/pdf/2024/02/aa46185-23.pdf) or Martos et al. (in prep.).
 
-## Instruments considered :
+## Instruments considered:
 
-### Molecular mapping: 
-* ELT/HARMONI
-* ELT/ANDES
-* VLT/ERIS
-* JWST/MIRI/MRS
-* JWST/NIRSpec/IFU
+* ELT/HARMONI (molecular mapping)
+* ELT/ANDES (molecular mapping)
+* VLT/ERIS (molecular mapping)
+* JWST/MIRI/MRS (molecular mapping)
+* JWST/NIRSpec/IFU (molecular mapping)
+* JWST/NIRCam (ADI+RDI)
 
-### ADI+RDI:
-* JWST/NIRCam
+## Add an instrument:
 
-## Download the spectra
+If you would like to add your instruments, please send an e-mail to [steven.martos@univ-grenoble-alpes.fr](steven.martos@univ-grenoble-alpes.fr) with the following data:
 
-To run SNR or contrast calculations, you will need planetary spectra (BT-Settl, Exo-REM and PICASO) and stellar spectra (BT-NextGen) [here](https://filesender.renater.fr/?s=download&token=ba931d28-dde5-4eb7-838d-32416934f072).
+* spectral range and resolution for each band
+* total system transmission for each band
+* representative PSF (2D image or 3D cube) for each band 
+* expected background flux
+* expected read-out noise (in electron/pixel)
+* dark current (in electron/s/pixel)
+* effective spatial resolution (in arcsec/pixel)
+
+## Download the spectra:
+
+To perform SNR or contrast calculations, you'll need planetary spectra (BT-Settl, Exo-REM and PICASO) and stellar spectra (BT-NextGen) downloadable [here](https://filesender.renater.fr/?s=download&token=ba931d28-dde5-4eb7-838d-32416934f072). Once downloaded, just put the "Spectra" file in "sim_data".
+
+## Prerequisites:
+
+You will also need the following packages:
+
+* [PyAstronomy](https://github.com/sczesla/PyAstronomy)
+```
+pip install PyAstronomy
+```
+* [astropy](https://github.com/astropy/astropy)
+```
+pip install astropy
+```
+* [pandas](https://github.com/pandas-dev/pandas)
+```
+pip install pandas
+```
+* [coronagraph](https://github.com/jlustigy/coronagraph)
+```
+pip install coronagraph
+```
+* [statsmodels](https://github.com/statsmodels/statsmodels)
+```
+pip install statsmodels
+```
+
+
+
+
+
+
