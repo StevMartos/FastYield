@@ -73,14 +73,11 @@ def molecular_mapping_rv(instru,cube_high_filtered,T,lg,model,wave,trans,R,Rc,us
         template,_ = filtered_flux(planet_shift.flux,R,Rc,used_filter)
         template *= trans 
         if pca is not None : # soustraction des modes de PCA au template
+            template0 = np.copy(template)
             n_comp_sub = pca.n_components
             for nk in range(n_comp_sub): 
-                template -= np.nansum(template*pca.components_[nk])*pca.components_[nk]
-            # if Rc is not None :
-            #     plt.figure()
-            #     plt.plot(template)
-            #     plt.title(f"{n_comp_sub}")
-            #     plt.show()
+                template -= np.nansum(template0*pca.components_[nk])*pca.components_[nk]
+        template /= np.sqrt(np.nansum(template**2)) # on normalise le template à 1
         for i in range(NbLine):
             for j in range(NbColumn): # pour chaque spaxel
                 if not all(np.isnan(cube_high_filtered[:,i,j])): # on ignore les NaN
@@ -94,9 +91,9 @@ def molecular_mapping_rv(instru,cube_high_filtered,T,lg,model,wave,trans,R,Rc,us
                     CCF[k,i,j] = np.nansum(d*t) # correlation entre les données et le template
     CCF[CCF==0]=np.nan
     if len(rv)==1:
-        return CCF[0],t
+        return CCF[0],template
     else :
-        return CCF,rv,t
+        return CCF,rv,template
 
 
 
@@ -107,6 +104,13 @@ def correlation_rv(instru,sd_HF,wave,trans,T,lg,model,R,Rc,used_filter,show=True
         sg = sigma_clip(planet_spectrum_BF,sigma=1)
         planet_spectrum.flux[~sg.mask] = np.nan
     planet_spectrum.crop(0.98*wave[0],1.02*wave[-1])
+    dl = planet_spectrum.wavelength - np.roll(planet_spectrum.wavelength, 1) ; dl[0] = dl[1] # array de delta Lambda
+    Rold = np.nanmax(planet_spectrum.wavelength/(2*dl))
+    if Rold > 200000 : 
+        Rold = 200000
+    dl = np.nanmean(planet_spectrum.wavelength/(2*Rold)) # np.nanmin(dl) # 2*R => Nyquist samplé (Shannon)
+    wave_inter = np.arange(0.98*wave[0],1.02*wave[-1],dl)
+    planet_pectrum = planet_spectrum.interpolate_wavelength(planet_spectrum.flux, planet_spectrum.wavelength, wave_inter, renorm=False)
     if vsini > 0:
         planet_spectrum = planet_spectrum.broad(vsini)
     planet_spectrum = planet_spectrum.degrade_resolution(wave,renorm=False)
@@ -115,7 +119,7 @@ def correlation_rv(instru,sd_HF,wave,trans,T,lg,model,R,Rc,used_filter,show=True
     if rv is None :
         rv = np.linspace(-50,50,201)
         if large_rv :
-            rv = np.linspace(-200,200,401)
+            rv = np.linspace(-2000,2000,401)
     cos_theta = np.zeros_like(rv)
     for i in range(len(rv)) :
         d = np.copy(sd_HF)
@@ -131,49 +135,10 @@ def correlation_rv(instru,sd_HF,wave,trans,T,lg,model,R,Rc,used_filter,show=True
         t[t==0] = np.nan
         d[np.isnan(t)] = np.nan
         cos_theta[i] = np.nansum(d*t) / (np.sqrt(np.nansum(d**2)*np.nansum(t**2)))
-
     cos_theta[np.isnan(cos_theta)] = 0.
     if show :     
         plt.figure(dpi=300) ; plt.plot(wave,d/np.sqrt(np.nansum(d**2)),'r',label="data")  ; plt.plot(wave,t/np.sqrt(np.nansum(t**2)),'b',label="template") ; plt.xlabel("wavelength (in µm)") ; plt.ylabel("high-pass flux (normalized)") ; plt.legend() ; plt.title(f"High-pass filtered data and {model} template flux, \n with $T_p$={T}K, R={int(R)} and $R_c$={Rc}") ; plt.show()
     return cos_theta , rv
-
-
-
-def correlation_vsini(instru,sd_HF,wave,trans,T,lg,model,R,Rc,used_filter,show=True,rv=None,pca=None):
-    planet_spectrum = load_planet_spectrum(T,lg,model=model,instru=instru)
-    if model[:4] == "mol_" and Rc is not None:
-        _,planet_spectrum_BF = filtered_flux(planet_spectrum.flux,R=planet_spectrum.R,Rc=Rc,used_filter=used_filter)
-        sg = sigma_clip(planet_spectrum_BF,sigma=1)
-        planet_spectrum.flux[~sg.mask] = np.nan
-    planet_spectrum.crop(0.98*wave[0],1.02*wave[-1])
-    if rv != 0:
-        planet_spectrum = planet_spectrum.doppler_shift(rv)
-    planet_spectrum = planet_spectrum.degrade_resolution(wave,renorm=False)
-    if model[:4] != "mol_" :
-        planet_spectrum.flux *= wave
-    vsini = np.linspace(0.1,100,100)
-    cos_theta = np.zeros_like(vsini)
-    for i in range(len(vsini)) :
-        d = np.copy(sd_HF)
-        if vsini[i] > 0 :
-            planet_broad = planet_spectrum.broad(vsini[i]) # en ph/mn
-        else :
-            planet_broad = Spectrum(wave,planet_spectrum.flux,R,T)
-        t,_ = filtered_flux(planet_broad.flux,R,Rc,used_filter)
-        t *= trans
-        if pca is not None : # soustraction des modes de PCA au template
-            n_comp_sub = pca.n_components
-            for nk in range(n_comp_sub): 
-                t -= np.nan_to_num(np.nansum(t*pca.components_[nk])*pca.components_[nk])
-        d[d==0] = np.nan
-        t[np.isnan(d)] = np.nan
-        t[t==0] = np.nan
-        d[np.isnan(t)] = np.nan
-        cos_theta[i] = np.nansum(d*t) / (np.sqrt(np.nansum(d**2)*np.nansum(t**2)))
-    cos_theta[np.isnan(cos_theta)] = 0.
-    if show :     
-        plt.figure(dpi=300) ; plt.plot(wave,d/np.sqrt(np.nansum(d**2)),'r',label="data")  ; plt.plot(wave,t/np.sqrt(np.nansum(t**2)),'b',label="template") ; plt.xlabel("wavelength (in µm)") ; plt.ylabel("high-pass flux (normalized)") ; plt.legend() ; plt.title(f"High-pass filtered data and {model} template flux, \n with $T_p$={T}K, R={int(R)} and $R_c$={Rc}") ; plt.show()
-    return cos_theta , vsini
 
 
 

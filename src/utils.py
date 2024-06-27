@@ -17,9 +17,9 @@ from astropy.stats import sigma_clip
 import warnings
 import os
 import time
-import ssl
-import wget
-import lzma
+# import ssl
+# import wget
+# import lzma
 import statsmodels.api as sm
 warnings.filterwarnings('ignore', category=UserWarning, append=True)
 
@@ -268,30 +268,32 @@ def open_data(instru,target_name,band,crop_band=True,cosmic=False,sigma_cosmic=5
 
 def PCA_subtraction(Sres, n_comp_sub,y0=None,x0=None,size_core=None,PCA_annular=False,PCA_mask=False,scree_plot=False,PCA_plots=False,wave=None,R=None):
     if n_comp_sub != 0 :
-        NbChannel, NbColumn, NbLine = Sres.shape
         from sklearn.decomposition import PCA
+        NbChannel, NbColumn, NbLine = Sres.shape
         pca = PCA(n_components=n_comp_sub)
-        X_mask = np.copy(Sres)
+        Sres_wo_planet = np.copy(Sres)
         if y0 is not None and x0 is not None : 
             if PCA_annular :
                 planet_sep = int(round(np.sqrt((y0-NbLine//2)**2+(x0-NbColumn//2)**2)))
-                X_mask *= annular_mask(max(1,planet_sep-size_core-1),planet_sep+size_core,value=np.nan,size=(NbLine,NbColumn))
+                Sres_wo_planet *= annular_mask(max(1,planet_sep-size_core-1),planet_sep+size_core,value=np.nan,size=(NbLine,NbColumn))
             if PCA_mask :
-                X_mask[:,y0-1:y0+2,x0-1:x0+2] = np.nan 
-        X_mask = np.reshape(X_mask, (NbChannel, NbColumn * NbLine)).transpose()
-        X_mask[np.isnan(X_mask)] = 0
-        X_r = pca.fit_transform(X_mask)
-        X_restored = pca.inverse_transform(X_r)
-        X = np.reshape(Sres, (NbChannel, NbColumn * NbLine)).transpose()
-        X[np.isnan(X)] = 0
-        X_sub = (X - X_restored).transpose()
-        X_sub = np.reshape(X_sub, (NbChannel, NbColumn, NbLine))
-        X_sub[X_sub == 0] = np.nan
-        if y0 is not None and x0 is not None and PCA_mask :
-            for k in range(n_comp_sub):     
-                for i in range(-1,2):
-                    for j in range(-1,2) :
-                        X_sub[:, y0+i, x0+j] -= np.nan_to_num(np.nansum(X_sub[:, y0+i, x0+i]*pca.components_[k])*pca.components_[k])
+                Sres_wo_planet[:,y0-1:y0+2,x0-1:x0+2] = np.nan 
+        Sres_wo_planet = np.reshape(Sres_wo_planet, (NbChannel, NbColumn * NbLine)).transpose()
+        Sres_wo_planet[np.isnan(Sres_wo_planet)] = 0
+        Sres = np.reshape(np.copy(Sres), (NbChannel, NbColumn * NbLine)).transpose()
+        Sres[np.isnan(Sres)] = 0
+        
+        # from sklearn.preprocessing import StandardScaler # ca ne sert à rien de standardiser les données ?
+        # scaler = StandardScaler()
+        # Sres_wo_planet = scaler.fit_transform(Sres_wo_planet)
+        # Sres = scaler.transform(Sres)
+
+        pca.fit(Sres_wo_planet)
+        X = pca.transform(Sres)
+        X = pca.inverse_transform(X)
+        Sres_sub = (Sres - X).transpose()
+        Sres_sub = np.reshape(Sres_sub, (NbChannel, NbColumn, NbLine))
+        Sres_sub[Sres_sub == 0] = np.nan
         
         if PCA_plots :
             Nk = 4 # nb de modes à plot
@@ -319,7 +321,7 @@ def PCA_subtraction(Sres, n_comp_sub,y0=None,x0=None,size_core=None,PCA_annular=
         if scree_plot :
             X = np.reshape(Sres, (NbChannel, NbColumn * NbLine)).transpose()
             X[np.isnan(X)] = 0
-            # Effectuer l'ACP
+            # Effectuer la
             pca = PCA(n_components=n_comp_sub)
             pca.fit_transform(X)
             # Obtenir les valeurs propres
@@ -337,9 +339,9 @@ def PCA_subtraction(Sres, n_comp_sub,y0=None,x0=None,size_core=None,PCA_annular=
             plt.grid(True)
             plt.show()
     elif n_comp_sub == 0:
-        X_sub = np.copy(Sres)
+        Sres_sub = np.copy(Sres)
         pca = None
-    return np.copy(X_sub) , pca
+    return Sres_sub, pca
 
 
 
