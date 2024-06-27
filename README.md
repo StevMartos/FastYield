@@ -28,11 +28,13 @@ If you would like to add your instruments, please send an e-mail to [steven.mart
 * dark current (in electron/s/pixel)
 * effective spatial resolution (in arcsec/pixel)
 
-## Download the spectra:
+## Prerequisites:
+
+### Download the spectra:
 
 To perform SNR or contrast calculations, you'll need planetary spectra (BT-Settl, Exo-REM and PICASO) and stellar spectra (BT-NextGen) downloadable [here](https://filesender.renater.fr/?s=download&token=ba931d28-dde5-4eb7-838d-32416934f072). Once downloaded, just put the "Spectra" file in "sim_data".
 
-## Prerequisites:
+### Download the packages:
 
 You will also need the following packages:
 
