@@ -3,17 +3,9 @@ import numpy as np
 
 
 
-"""
-File that stores hardwired data for use in HARMONI
-pipeline. Data stored in dictionary format
-with keywords.
-"""
-
-
-
 def get_config_data(instrument_name):
     """
-    Get the parameters of an instrument
+    Get the specifications of an instrument
 
     Parameters
     ----------
@@ -44,36 +36,42 @@ config_data_HARMONI = {
     'type': "IFU",
     'base': "ground",
     'sep_unit': "mas",
-    'telescope': {"diameter": 37, "area": 980.}, # all-glass diameter in m, including central hole, secondary and spider obscuration in m^2, K, Armazones coord.
-    'gratings': {
-                 "HK": GratingInfo(1.450, 2.450, 3355.),
-                 "H": GratingInfo(1.435, 1.815, 7104.),
-                 "H_high": GratingInfo(1.538, 1.678, 17385.),
-                 "K": GratingInfo(1.951, 2.469, 7104.),
-                 "K1_high": GratingInfo(2.017, 2.20, 17385.),
-                 "K2_high": GratingInfo(2.199, 2.40, 17385.)},
-    'lambda_range': {"lambda_min":1.434, "lambda_max": 2.470}, #HARMONI
+    'telescope': {"diameter": 38.452, "area": 980.}, # all-glass diameter in m, including central hole, secondary and spider obscuration in m^2, K, Armazones coord.
+    'gratings': {"J": GratingInfo(1.046, 1.324, 7555),
+                 "H": GratingInfo(1.435, 1.815, 7555),
+                 "H_high": GratingInfo(1.538, 1.678, 17385),
+                 "HK": GratingInfo(1.450, 2.450, 3355),
+                 "K": GratingInfo(1.951, 2.469, 7555),
+                 "K1_high": GratingInfo(2.017, 2.20, 17385),
+                 "K2_high": GratingInfo(2.199, 2.40, 17385)},
+    'lambda_range': {"lambda_min":1.046, "lambda_max": 2.470}, #HARMONI
     'size_core': 3, # taille du coté de la boite correspondant à la FWHM
     'apodizers': {"SP1": ApodizerInfo(0.45, 70), "SP2": ApodizerInfo(0.35, 100), "SP3": ApodizerInfo(0.53, 50), "SP4": ApodizerInfo(0.59, 30), "NO_SP": ApodizerInfo(0.84, 50) , "SP_Prox": ApodizerInfo(0.7623, 30)}, # (transmission, iwa)     
     #'apodizers': {"SP1": ApodizerInfo(0.45, 30), "SP2": ApodizerInfo(0.35, 30), "SP3": ApodizerInfo(0.53, 30), "SP4": ApodizerInfo(0.59, 30), "NO_SP": ApodizerInfo(0.84, 30), "SP_Prox": ApodizerInfo(0.7615, 30)}, # (transmission, iwa)
     'strehl': {"JQ1", "JQ2", "MED"},
     'spec': {"RON": 10.0, "dark_current": 0.0053, "FOV": 0.8, "pxscale": 0.004, "minDIT": 0.026, "maxDIT": 1, "saturation_e": 40000., "Q_eff": 1.},
+    #'spec': {"RON": 10.0, "dark_current": 0.0053, "FOV": 0.8, "pxscale": 800/206/1000, "minDIT": 0.026, "maxDIT": 1, "saturation_e": 40000., "Q_eff": 1.},
     # e-, e-/s,arcsec,arcsec/px,min,min, e-/ph;
 }
 
 config_data_ANDES = {
     'name': "ANDES",
-    'type': "IFU",
+    'type': "IFU_fiber",
     'base': "ground",
     'sep_unit': "mas",
-    'telescope': {"diameter": 37, "area": 980.}, # all-glass diameter in m, including central hole, secondary and spider obscuration in m^2, K, Armazones coord.
-    'gratings': {"YJH_HR": GratingInfo(0.95, 1.8, 100000),
-                 "YJH_UHR": GratingInfo(0.95, 1.8, 150000),},
+    'telescope': {"diameter": 38.452, "area": 980.}, # all-glass diameter in m, including central hole, secondary and spider obscuration in m^2, K, Armazones coord.
+    'gratings': {"YJH_HR_5mas": GratingInfo(0.95, 1.8, 100000),
+                 "YJH_UHR_5mas": GratingInfo(0.95, 1.8, 150000),
+                 "YJH_HR_10mas": GratingInfo(0.95, 1.8, 100000),
+                 "YJH_UHR_10mas": GratingInfo(0.95, 1.8, 150000),},
     'lambda_range': {"lambda_min":0.95, "lambda_max": 1.8}, #ANDES
-    'size_core': 3, # taille du coté de la boite correspondant à la FWHM
+    'pxscale': {"YJH_HR_5mas":0.005,"YJH_UHR_5mas":0.005,"YJH_HR_10mas":0.010,"YJH_UHR_10mas":0.010,}, # in arcsec/px 
+    'size_core': 1, # 1 fiber on the planet
+    'FOV_fiber': 10, # nb of fiber/spaxel across the FOV (the FOV is then given by FOV_fiber*pxscale)
+    'pixel_detector_projection': 10, # nb of pixels on which the fiber's signal is projected along the direction perpendicular to spectral dispersion
     'apodizers': {"NO_SP": ApodizerInfo(1, 0)},
-    'strehl': {"JQ1", "JQ2", "MED"},
-    'spec': {"RON": 4.5, "dark_current": 0.0053, "FOV": 0.05, "pxscale":0.01, "minDIT": 0.026, "maxDIT": 1, "saturation_e": 40000., "Q_eff": 1.},
+    'strehl': {"MED"},
+    'spec': {"RON": 4.5, "dark_current": 0.0053, "minDIT": 0.026, "maxDIT": 1, "saturation_e": 40000., "Q_eff": 1.},
     # e-, e-/s,arcsec,arcsec/px,min,min, e-/ph;
 }
 
@@ -108,6 +106,7 @@ config_data_ERIS = {
     'spec': {"RON": 12.0, "dark_current": 0.1, "FOV": 0.8, "pxscale": 0.025, "minDIT": 0.026, "maxDIT": 2, "saturation_e": 40000., "Q_eff": 0.85},
     # e-, e-/s, arcsec, arcsec/px, min, min, e-, e-/ph;
 }
+
 
 
 
@@ -151,8 +150,8 @@ config_data_NIRCam = {
     'lambda_range': {"lambda_min": 2.35, "lambda_max": 5.19}, #pas plus car le spectre des planètes va jusqu'à 12 µm
     'size_core': 1, # taille du coté de la boite correspondant à la FWHM
     'apodizers': {"NO_SP": ApodizerInfo(1, 0)},
-    'spec': {"RON": 13.25, "dark_current": 34.2/1000, "FOV":10, "pxscale":  0.063, "minDIT": 20.155/60, "maxDIT": 5, "saturation_e": 83300, "Q_eff": 1}, # en réalité Q_eff ~ 0.54 mais elle est déjà comprise dans les transmissions
-    # e-, e-/s, arcsec, arcsec/px, min, min, e-, e-/ph ;
+    'spec': {"RON": 13.17*np.sqrt(2), "dark_current": 34.2/1000, "FOV":10, "pxscale":  0.063, "minDIT": 20.155/60, "maxDIT": 5, "saturation_e": 62000, "Q_eff": 1}, # en réalité Q_eff ~ 0.54 mais elle est déjà comprise dans les transmissions
+    # e-, e-/s, arcsec, arcsec/px, min, min, e-, e-/ph ; # https://jwst-docs.stsci.edu/jwst-near-infrared-camera/nircam-instrumentation/nircam-detector-overview/nircam-detector-performance#gsc.tab=0
     'lambda_pivot': {"F250M": 2.503, 
                      "F300M": 2.996,
                      "F410M": 4.092, 

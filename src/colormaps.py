@@ -112,7 +112,7 @@ def colormap_bandwidth_resolution(T_planet, T_star, lg_planet=4.0,lg_star=4.0, d
     for plot in plots:
         plt.figure(dpi=300) ; plt.yscale('log') ; plt.xlabel("central wavelength range $\lambda_0$ (in µm)",fontsize=14) ; plt.ylabel("instrumental resolution $R_{inst}$" , fontsize=14) ; plt.ylim([R[0], R[-1]]) ; plt.xlim(lmin,lmax)
         if plot=="SNR":
-            plt.contour(lambda_0, R, 100*SNR, linewidths=0.333, colors='k') ; plt.pcolormesh(lambda_0, R, 100*SNR, cmap=plt.get_cmap('rainbow'), vmin=0, vmax=100)
+            plt.contour(lambda_0, R, 100*SNR, linewidths=0.333, colors='k') ; plt.pcolormesh(lambda_0, R, 100*SNR, cmap=plt.plt.get_cmap('rainbow'), vmin=0, vmax=100)
             cbar = plt.colorbar() ; cbar.set_label('$GAIN_{S/N}$ (in %)', fontsize=14, labelpad=20, rotation=270)
             if tellurics :
                 if spectrum_contributions=="thermal":
@@ -132,7 +132,7 @@ def colormap_bandwidth_resolution(T_planet, T_star, lg_planet=4.0,lg_star=4.0, d
                         plt.title(f"S/N fluctuations (without tellurics absoprtion)\n in {spectrum_contributions} light with {model} albedo,\n $T_*$={T_star}K, $\Delta$$v_r$={delta_rv}km/s and "+r"$N_{\lambda}$="+f"{Npx}",fontsize=14,pad=14)
             filename = f"colormaps_bandwidth_resolution/Colormap_bandwidth_resolution_SNR_{instru}_{spectrum_contributions}_{model}_Rc{Rc}_Tp{planet.T}K_Ts{T_star}K_drv{delta_rv}kms_broad{vsini_planet}kms_Npx{Npx}"
         elif plot=="lost_signal" :
-            plt.contour(lambda_0, R, 100*lost_signal, linewidths=0.5,colors='k') ; plt.pcolormesh(lambda_0, R, 100*lost_signal, cmap=plt.get_cmap('rainbow_r'), vmin=0, vmax=100)
+            plt.contour(lambda_0, R, 100*lost_signal, linewidths=0.5,colors='k') ; plt.pcolormesh(lambda_0, R, 100*lost_signal, cmap=plt.plt.get_cmap('rainbow_r'), vmin=0, vmax=100)
             cbar = plt.colorbar() ; cbar.set_label(r'lost signal $\beta/\alpha$ (in %)', fontsize=14, labelpad=20, rotation=270)
             if tellurics :
                 plt.title(f"Lost signal fluctuations (with tellurics absoprtion)\n in {spectrum_contributions} light with {model} model, $T_p$={planet.T}K,\n $T_*$={T_star}K, $\Delta$$v_r$={delta_rv}km/s and "+r"$N_{\lambda}$="+f"{Npx}",fontsize=14,pad=14)
@@ -270,7 +270,7 @@ def colormap_bandwidth_Tp(instru,T_star,lg_planet=4.0,lg_star=4.0, delta_rv=25, 
     for plot in plots :
         plt.figure(dpi=300) ; plt.xlabel("central wavelength range $\lambda_0$ (in µm)",fontsize=14) ; plt.ylabel("planet's temperature (in K)" , fontsize=14) ; plt.ylim([Tp[0], Tp[-1]]) ; plt.xlim(lmin,lmax)
         if plot=="SNR":
-            plt.pcolormesh(lambda_0, Tp, 100*SNR,cmap=plt.get_cmap('rainbow'), vmin=0, vmax=100)
+            plt.pcolormesh(lambda_0, Tp, 100*SNR,cmap=plt.plt.get_cmap('rainbow'), vmin=0, vmax=100)
             cbar = plt.colorbar() ; cbar.set_label('$GAIN_{S/N}$ (in %)', fontsize=14, labelpad=20, rotation=270)
             if tellurics :
                 plt.title(f"S/N fluctuations for {instru} (with tellurics absorption)\n in {spectrum_contributions} light with {model} models, $T_*$={T_star}K, $\Delta$$v_r$={delta_rv}km/s\n $R_c$={Rc}, R={R} and $N_\lambda$={Npx} ",fontsize=14,pad=14)
@@ -278,7 +278,7 @@ def colormap_bandwidth_Tp(instru,T_star,lg_planet=4.0,lg_star=4.0, delta_rv=25, 
                 plt.title(f"S/N fluctuations for {instru} (without tellurics absorption)\n in {spectrum_contributions} light with {model} models, $T_*$={T_star}K, $\Delta$$v_r$={delta_rv}km/s\n $R_c$={Rc}, R={R} and $N_\lambda$={Npx} ",fontsize=14,pad=14)
             filename = f"colormaps_bandwidth_Tp/Colormap_bandwitdth_Tp_SNR_{instru}_{spectrum_contributions}_{model}_Rc{Rc}_Ts{T_star}K_drv{delta_rv}kms_broad{vsini_planet}kms_Npx{Npx}"
         elif plot=="lost_signal":
-            plt.pcolormesh(lambda_0, Tp, 100*lost_signal,cmap=plt.get_cmap('rainbow_r'), vmin=0, vmax=100)
+            plt.pcolormesh(lambda_0, Tp, 100*lost_signal,cmap=plt.plt.get_cmap('rainbow_r'), vmin=0, vmax=100)
             cbar = plt.colorbar() ; cbar.set_label(r'lost signal $\beta/\alpha$ (in %)', fontsize=14, labelpad=20, rotation=270)
             if tellurics :
                 plt.title(f"Lost signal fluctuations for {instru} (with tellurics absorption)\n in {spectrum_contributions} light with {model} models, $T_*$={T_star}K, $\Delta$$v_r$={delta_rv}km/s\n $R_c$={Rc}, R={R} and $N_\lambda$={Npx} ",fontsize=14,pad=14)
@@ -378,7 +378,7 @@ def colormap_rv(T_planet, T_star, lg_planet=4.0, lg_star=4.0,
     for plot in plots :
         plt.figure(dpi=300) ; plt.xlabel("delta radial velocity (in km/s)",fontsize=14) ; plt.ylabel("star radial velocity (in km/s)" , fontsize=14)
         if plot=="SNR":
-            plt.contour(delta_rv, star_rv, 100*SNR, linewidths=0.333, colors='k') ; plt.pcolormesh(delta_rv, star_rv, 100*SNR,cmap=plt.get_cmap('rainbow'))
+            plt.contour(delta_rv, star_rv, 100*SNR, linewidths=0.333, colors='k') ; plt.pcolormesh(delta_rv, star_rv, 100*SNR,cmap=plt.plt.get_cmap('rainbow'))
             if tellurics :
                 if spectrum_contributions=="thermal":
                     plt.title(f"S/N fluctuations for {instru} (with tellurics absorption)\n on {band} band (R={int(round(R,2))}) in {spectrum_contributions} light with {model} model,\n $T_p$={T_planet}K and $T_*$={T_star}K",fontsize=14,pad=14)
@@ -398,7 +398,7 @@ def colormap_rv(T_planet, T_star, lg_planet=4.0, lg_star=4.0,
             cbar = plt.colorbar() ; cbar.set_label('$GAIN_{S/N}$ (in %)', fontsize=14, labelpad=20, rotation=270)
             filename = f"colormaps_rv/Colormap_rv_SNR_{instru}_{spectrum_contributions}_{model}_Rc{Rc}_Tp{T_planet}K_Ts{T_star}K"
         elif plot=="lost_signal":
-            plt.contour(delta_rv, star_rv, 100*lost_signal, linewidths=0.333, colors='k') ; plt.pcolormesh(delta_rv, star_rv, 100*lost_signal,cmap=plt.get_cmap('rainbow_r'))
+            plt.contour(delta_rv, star_rv, 100*lost_signal, linewidths=0.333, colors='k') ; plt.pcolormesh(delta_rv, star_rv, 100*lost_signal,cmap=plt.plt.get_cmap('rainbow_r'))
             if tellurics :
                 plt.title(f"Lost signal fluctuations for {instru} (with tellurics absorption)\n on {band} band (R={int(round(R,-2))}) in {spectrum_contributions} light\n with {model} model, $R_c$={Rc}, $T_p$={T_planet}K and $T_*$={T_star}K",fontsize=14)
             else :
@@ -497,7 +497,7 @@ def colormap_vsini(T_planet,T_star,lg_planet=4.0,lg_star=4.0, delta_rv=3,
     for plot in plots:
         plt.figure(dpi=300) ; plt.xlabel("planet Vsini (in km/s)",fontsize=14) ; plt.ylabel("star Vsini (in km/s)" , fontsize=14)
         if plot=="SNR":
-            plt.contour(vsini_planet, vsini_star, 100*SNR, linewidths=0.333, colors='k') ; plt.pcolormesh(vsini_planet, vsini_star, 100*SNR,cmap=plt.get_cmap('rainbow'))
+            plt.contour(vsini_planet, vsini_star, 100*SNR, linewidths=0.333, colors='k') ; plt.pcolormesh(vsini_planet, vsini_star, 100*SNR,cmap=plt.plt.get_cmap('rainbow'))
             if tellurics :
                 plt.title(f"S/N fluctuations for {instru} (with tellurics absorption)\n on {band} band (R={int(round(R,-2))}) in {spectrum_contributions} light\n with {model} model, $R_c$={Rc}, $T_p$={T_planet}K and $T_*$={T_star}K",fontsize=14,pad=14)
             else :
@@ -505,7 +505,7 @@ def colormap_vsini(T_planet,T_star,lg_planet=4.0,lg_star=4.0, delta_rv=3,
             cbar = plt.colorbar() ; cbar.set_label('$GAIN_{S/N}$ (in %)', fontsize=14, labelpad=20, rotation=270)
             filename = f"colormaps_vsini/Colormap_vsini_SNR_{instru}_{spectrum_contributions}_{model}_Rc{Rc}_Tp{T_planet}K_Ts{T_star}K"
         elif plot=="lost_signal":
-            plt.contour(vsini_planet, vsini_star, 100*lost_signal, linewidths=0.333, colors='k') ; plt.pcolormesh(vsini_planet, vsini_star, 100*lost_signal,cmap=plt.get_cmap('rainbow_r'))
+            plt.contour(vsini_planet, vsini_star, 100*lost_signal, linewidths=0.333, colors='k') ; plt.pcolormesh(vsini_planet, vsini_star, 100*lost_signal,cmap=plt.plt.get_cmap('rainbow_r'))
             if tellurics :
                 plt.title(f"Lost signal fluctuations for {instru} (with tellurics absorption)\n on {band} band (R={int(round(R,-2))}) in {spectrum_contributions} light\n with {model} model, $R_c$={Rc}, $T_p$={T_planet}K and $T_*$={T_star}K",fontsize=14,pad=14)
             else :
@@ -585,7 +585,7 @@ def colormap_maxsep_phase(instru="HARMONI",band="H",inc=90):
     
     plt.figure(dpi=300) ; plt.xlabel(f"maximum elongation (in {sep_unit})",fontsize=14) ; plt.ylabel("phase (in rad)" , fontsize=14)
     plt.contour(maxsep, phase, 100*SNR, linewidths=0.333, colors='k')
-    plt.pcolormesh(maxsep, phase, 100*SNR,cmap=plt.get_cmap('rainbow'))
+    plt.pcolormesh(maxsep, phase, 100*SNR,cmap=plt.plt.get_cmap('rainbow'))
     plt.title(f"S/N fluctuations for {instru} on {band}-band\n for planets in reflected light with inc = {int(round(inc))}°",fontsize=14,pad=14)
     cbar = plt.colorbar() ; cbar.set_label('$GAIN_{S/N}$ (in %)', fontsize=14, labelpad=20, rotation=270)
     filename = f"colormaps_maxsep_phase/Colormap_maxsep_phase_SNR_{instru}_{band}_reflected_inc{inc}"

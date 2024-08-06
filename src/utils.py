@@ -41,16 +41,17 @@ def lorentzian(x,x0,L):
 def chi2(x,x0,L):
     return L/(2*np.pi) * 1 / (L**2/4 + (x-x0)**2)
 
-def smoothstep(x, Rc, N=10):
-    x_min = 0
-    x_max = 2*Rc
+def smoothstep(x, Rc=None, N=10, x_min=None, x_max=None, filtering=True):
+    if filtering :
+        x_min = 0 ; x_max = 2*Rc
     x = np.clip((x - x_min) / (x_max - x_min), 0, 1)
     result = 0
     for n in range(0, N + 1):
          result += comb(N + n, n) * comb(2 * N + 1, N - n) * (-x) ** n
     result *= x ** (N + 1)
-    result += result[::-1]
-    result = np.abs(result-1)
+    if filtering :
+        result += result[::-1]
+        result = np.abs(result-1)
     return result
 
 
@@ -90,7 +91,8 @@ def crop(data,Y0=None,X0=None,R_crop=None):
         B = np.zeros((2*R_crop,2*R_crop)) + np.nan
         for i in range(A.shape[0]):
             for j in range(A.shape[1]):
-                B[R_crop-Y0+i,R_crop-X0+j] = data[i,j]
+                if  R_crop-Y0+i < 2*R_crop and R_crop-X0+j < 2*R_crop :
+                    B[R_crop-Y0+i,R_crop-X0+j] = data[i,j]
     return B
 
 def crop_both(data1,data2,Y0=None,X0=None,R_crop=None):
@@ -114,15 +116,17 @@ def crop_both(data1,data2,Y0=None,X0=None,R_crop=None):
         C = np.zeros((data1.shape[0],2*R_crop,2*R_crop)) + np.nan
         for i in range(A.shape[0]):
             for j in range(A.shape[1]):
-                B[:,R_crop-Y0+i,R_crop-X0+j] = data1[:,i,j]
-                C[:,R_crop-Y0+i,R_crop-X0+j] = data2[:,i,j]
+                if  R_crop-Y0+i < 2*R_crop and R_crop-X0+j < 2*R_crop :
+                    B[:,R_crop-Y0+i,R_crop-X0+j] = data1[:,i,j]
+                    C[:,R_crop-Y0+i,R_crop-X0+j] = data2[:,i,j]
     elif data1.ndim == 2 :
         B = np.zeros((2*R_crop,2*R_crop)) + np.nan
         C = np.zeros((2*R_crop,2*R_crop)) + np.nan
         for i in range(A.shape[0]):
             for j in range(A.shape[1]):
-                B[R_crop-Y0+i,R_crop-X0+j] = data1[i,j]
-                c[R_crop-Y0+i,R_crop-X0+j] = data2[i,j]
+                if  R_crop-Y0+i < 2*R_crop and R_crop-X0+j < 2*R_crop :
+                    B[R_crop-Y0+i,R_crop-X0+j] = data1[i,j]
+                    c[R_crop-Y0+i,R_crop-X0+j] = data2[i,j]
     return B,C
     
 def dither(cube,factor=10):
@@ -135,40 +139,48 @@ def dither(cube,factor=10):
 
 
 
-def PSF_profile_ratio(PSF, pxscale, size_core, sep_unit="arcsec"):
+def PSF_profile_ratio(PSF, pxscale, size_core, show=True):
     NbLine, NbColumn = PSF.shape # => donne (taille de l'axe lambda, " de l'axe y , " de l'axe x)
     y0, x0 = NbLine // 2, NbColumn // 2
     PSF_core = PSF[y0-size_core//2:y0+size_core//2+1,x0-size_core//2:x0+size_core//2+1]
-    plt.figure() ; plt.imshow(PSF_core) ; plt.show()
+    if show :
+        plt.figure(dpi=300) ; plt.imshow(PSF_core) ; plt.show()
     PSF_flux = np.nansum(PSF)
-    print(' pxscale =', round(pxscale,4), f" {sep_unit}/px => size core = ", PSF_core.shape[0] , "px")
     fraction_core = np.nansum(PSF_core) / PSF_flux
-    profile = np.zeros((2,max(y0,x0))) # array 2D de taille 2x Nbline (ou Column) /2
-    for R in range(1, max(y0+1, x0+1)):
-        profile[0, R - 1] = R * pxscale
-        profile[1, R - 1] = np.nanmean(PSF * annular_mask(max(1,R-1), R, size=(NbLine, NbColumn))) / PSF_flux
-    profile[1, :] /= pxscale
+    profile = np.zeros((2,max(y0,x0)+1)) # array 2D de taille 2x Nbline (ou Column) /2
+    for R in range(max(y0, x0)+1):
+        profile[0, R] = R * pxscale
+        if R==0:
+            profile[1, R] = np.nanmean(PSF * annular_mask(0, 0, size=(NbLine, NbColumn))) / PSF_flux
+        else:
+            profile[1, R] = np.nanmean(PSF * annular_mask(max(1,R-1), R, size=(NbLine, NbColumn))) / PSF_flux
+    profile[1, :] /= pxscale**2
     return profile, fraction_core
 
-def register_PSF_ratio(instru, profile, fraction_core, aper_corr, band, star_pos, strehl, apodizer):
+def register_PSF_ratio(instru, profile, fraction_core, aper_corr, band, strehl, apodizer, coronagraph=None):
     hdr = fits.Header()
     hdr['FC'] = fraction_core
     hdr['AC'] = aper_corr
-    fits.writeto("sim_data/PSF/star_"+star_pos+"/PSF_"+instru+"/PSF_"+band+"_"+strehl+"_"+apodizer+".fits", profile, header=hdr,overwrite=True)
+    if coronagraph is None:
+        fits.writeto("sim_data/PSF/PSF_"+instru+"/PSF_"+band+"_"+strehl+"_"+apodizer+".fits", profile, header=hdr,overwrite=True)
+    else:
+        fits.writeto("sim_data/PSF/PSF_"+instru+"/PSF_"+band+"_"+coronagraph+"_"+strehl+"_"+apodizer+".fits", profile, header=hdr,overwrite=True)
 
 
 
 
-def qqplot(map_w):
+def qqplot(map_w,show=True):
     list_corr_w = map_w.reshape(map_w.shape) # annular mask CCF = map_w
     list_c_w = list_corr_w[np.isnan(list_corr_w)!=1] # filtrage nan
     # create Q-Q plot with 45-degree line added to plot
     list_cn_w = (list_c_w-np.mean(list_c_w))/np.std(list_c_w) #loi normale centrée (std=1)
     sm.qqplot(list_cn_w, line='45') ; plt.xlim(-5,5) ; plt.ylim(-5,5)
     plt.title('Q-Q plots of the CCF', fontsize = 14) ; plt.ylabel("sample quantiles", fontsize = 14) ; plt.xlabel("theoritical quantiles", fontsize = 14) ; plt.grid(True) ; plt.show()
-
+    
+    
+    
 def qqplot2(map1,map2,band,target_name):
-    plt.figure()
+    plt.figure(dpi=300)
     ax = plt.gca()
     map1 = map1[~np.isnan(map1)] # filtrage nan
     map1 = (map1-np.mean(map1))/np.std(map1) #loi normale centrée (std=1)
@@ -182,7 +194,7 @@ def qqplot2(map1,map2,band,target_name):
 
 
 
-def open_data(instru,target_name,band,crop_band=True,cosmic=False,sigma_cosmic=5,file=None,X0=None,Y0=None,R_crop=None,print_value=True):
+def open_jwst_data(instru,target_name,band,crop_band=True,cosmic=False,sigma_cosmic=5,file=None,X0=None,Y0=None,R_crop=None,print_value=True):
     config_data = get_config_data(instru)
     if file is None :
         if instru=="MIRIMRS" : 
@@ -226,7 +238,7 @@ def open_data(instru,target_name,band,crop_band=True,cosmic=False,sigma_cosmic=5
         cube = cube[(wave>config_data['gratings'][band].lmin) & (wave<config_data['gratings'][band].lmax)]
         err = err[(wave>config_data['gratings'][band].lmin) & (wave<config_data['gratings'][band].lmax)]
         wave = wave[(wave>config_data['gratings'][band].lmin) & (wave<config_data['gratings'][band].lmax)]
-        wave_trans,trans=fits.getdata("sim_data/Transmission/"+instru+"/Instrumental_transmission/transmission_"+band+".fits")
+        wave_trans,trans=fits.getdata("sim_data/Transmission/"+instru+"/transmission_"+band+".fits")
         f = interp1d(wave_trans, trans, bounds_error=False, fill_value=0) 
         trans = f(wave)
         for i in range(cube.shape[0]):
@@ -259,14 +271,15 @@ def open_data(instru,target_name,band,crop_band=True,cosmic=False,sigma_cosmic=5
             print(" TITLE :", hdr0["TITLE"])
         except : 
             pass
-        dl = wave - np.roll(wave, 1) ; dl[0] = dl[1] # array de delta Lambda
-        R = np.nanmean(wave/(2*dl)) # calcule de la nouvelle résolution
+        dwl = wave - np.roll(wave, 1) ; dwl[0] = dwl[1] ; dwl[dwl==0] = np.nanmean(dwl) # delta lambda array
+        R = np.nanmean(wave/(2*dwl)) # calculating the resolution
         print(' R = ', round(R))        
+    
     return cube,wave,pxscale,err,trans,exposure_time,DIT
 
 
 
-def PCA_subtraction(Sres, n_comp_sub,y0=None,x0=None,size_core=None,PCA_annular=False,PCA_mask=False,scree_plot=False,PCA_plots=False,wave=None,R=None):
+def PCA_subtraction(Sres, n_comp_sub,y0=None,x0=None,size_core=None,PCA_annular=False,PCA_mask=False,scree_plot=False,PCA_plots=False,wave=None,R=None,pxscale=None):
     if n_comp_sub != 0 :
         from sklearn.decomposition import PCA
         NbChannel, NbColumn, NbLine = Sres.shape
@@ -277,47 +290,65 @@ def PCA_subtraction(Sres, n_comp_sub,y0=None,x0=None,size_core=None,PCA_annular=
                 planet_sep = int(round(np.sqrt((y0-NbLine//2)**2+(x0-NbColumn//2)**2)))
                 Sres_wo_planet *= annular_mask(max(1,planet_sep-size_core-1),planet_sep+size_core,value=np.nan,size=(NbLine,NbColumn))
             if PCA_mask :
-                Sres_wo_planet[:,y0-1:y0+2,x0-1:x0+2] = np.nan 
+                Sres_wo_planet[:,y0-size_core//2:y0+size_core//2+1,x0-size_core//2:x0+size_core//2+10] = np.nan 
         Sres_wo_planet = np.reshape(Sres_wo_planet, (NbChannel, NbColumn * NbLine)).transpose()
         Sres_wo_planet[np.isnan(Sres_wo_planet)] = 0
-        Sres = np.reshape(np.copy(Sres), (NbChannel, NbColumn * NbLine)).transpose()
-        Sres[np.isnan(Sres)] = 0
-        
-        # from sklearn.preprocessing import StandardScaler # ca ne sert à rien de standardiser les données ?
-        # scaler = StandardScaler()
-        # Sres_wo_planet = scaler.fit_transform(Sres_wo_planet)
-        # Sres = scaler.transform(Sres)
-
         pca.fit(Sres_wo_planet)
-        X = pca.transform(Sres)
+        Sres_sub = np.reshape(np.copy(Sres), (NbChannel, NbColumn * NbLine)).transpose()
+        Sres_sub[np.isnan(Sres_sub)] = 0
+        X = pca.transform(Sres_sub)
         X = pca.inverse_transform(X)
-        Sres_sub = (Sres - X).transpose()
+        Sres_sub = (Sres_sub - X).transpose()
         Sres_sub = np.reshape(Sres_sub, (NbChannel, NbColumn, NbLine))
         Sres_sub[Sres_sub == 0] = np.nan
         
         if PCA_plots :
             Nk = 4 # nb de modes à plot
-            plt.figure() ; plt.title(f"{Nk} first modes of the PCA") ; cmap = get_cmap("Spectral", Nk) ; plt.xlabel("wavelength (in µm)") ; plt.ylabel("flux (normalized)")
-            for k in range(0,Nk):
-                plt.plot(wave,pca.components_[k],c=cmap(k),label=f"$n_k$ = {k+1}")
-            plt.legend() ; plt.show()
             from src.spectrum import Spectrum
-            plt.figure() ; plt.title(f"PSD of the {Nk} first modes of the PCA") ; cmap = get_cmap("Spectral", Nk) ; plt.xlabel("wavelength (in µm)") ; plt.ylabel("PSD")
+            cmap = get_cmap("Spectral", Nk)
+            fig, ax = plt.subplots(Nk, 3, figsize=(16, Nk*3), sharex='col', sharey='col', layout="constrained", gridspec_kw={'wspace': 0.05,'hspace':0}, dpi=300)
             for k in range(0,Nk):
-                m_HF_spectrum = Spectrum(wave, pca.components_[k], R, None)
-                res,psd = m_HF_spectrum.plot_psd(smooth=1, color='b',show=False,ret=True)
-                plt.plot(res,psd,c=cmap(k),label=f"$n_k$ = {k+1}")
-            plt.legend() ; plt.xscale('log') ; plt.yscale('log') ; plt.show()
-            # for k in range(0,Nk):
-            #     CCF = np.zeros((Sres.shape[1],Sres.shape[2]))
-            #     for i in range(Sres.shape[1]):
-            #         for j in range(Sres.shape[2]):
-            #             CCF[i,j] = np.nan_to_num(np.nansum(Sres[:,i,j]*pca.components_[k]))/np.sqrt(np.nansum(Sres[:,i,j]**2))
-            #     plt.figure()
-            #     plt.imshow(CCF)
-            #     cbar = plt.colorbar() ; cbar.set_label(r"cos $\theta_{est}$", fontsize=14, labelpad=20, rotation=270)
-            #     plt.show()
                 
+                pca_comp = pca.components_[k]
+                pca_comp[pca_comp==0] = np.nan
+                
+                ax[k,0].plot(wave,pca_comp,c=cmap(k),label=f"$n_k$ = {k+1}")
+                ax[k,0].legend(fontsize=14,loc="upper center")
+                if k==Nk-1:
+                    ax[k,0].set_xlim(wave[0],wave[-1])
+                    ax[k,0].set_xlabel("wavelength (in µm)",fontsize=14)
+                ax[k,0].set_ylabel("modulation (normalized)",fontsize=14)
+                ax[k,0].grid(True)
+                
+                m_HF_spectrum = Spectrum(wave, pca_comp, R, None)
+                m_HF_spectrum.wavelength = m_HF_spectrum.wavelength[~np.isnan(m_HF_spectrum.flux)]
+                m_HF_spectrum.flux = m_HF_spectrum.flux[~np.isnan(m_HF_spectrum.flux)]
+                res, psd = m_HF_spectrum.get_psd(smooth=1)
+                ax[k,1].plot(res,psd,c=cmap(k))
+                if k==Nk-1:
+                    ax[k,1].set_xlim(10,R)
+                    ax[k,1].set_xlabel("resolution",fontsize=14)
+                    ax[k,1].set_xscale('log')
+                    ax[k,1].set_yscale('log')
+                ax[k,1].set_ylabel("PSD",fontsize=14)
+                ax[k,1].grid(True)
+                
+                CCF = np.zeros((Sres.shape[1],Sres.shape[2]))
+                for i in range(Sres.shape[1]):
+                    for j in range(Sres.shape[2]):
+                        CCF[i,j] = np.nan_to_num(np.nansum(Sres[:,i,j]*pca_comp))/np.sqrt(np.nansum(Sres[:,i,j]**2))
+                cax = ax[k,2].imshow(CCF,extent=[-(CCF.shape[0]+1)//2*pxscale,(CCF.shape[0])//2*pxscale,-(CCF.shape[1]-2)//2*pxscale,(CCF.shape[1])//2*pxscale],zorder=3)
+                cbar = fig.colorbar(cax, ax=ax[k,2], orientation='vertical',shrink=0.8) ; cbar.set_label("correlation", fontsize=14, labelpad=20, rotation=270)
+                if k==Nk-1:
+                    
+                    #ax[k,2].set_xlim(-3,3)
+                    #ax[k,2].set_ylim(-3,3)
+                    ax[k,2].set_xlabel('x offset (in ")',fontsize=14)
+                ax[k,2].set_ylabel('y offset (in ")',fontsize=14)
+                ax[k,2].grid(True)
+            plt.show()
+            
+            
         if scree_plot :
             X = np.reshape(Sres, (NbChannel, NbColumn * NbLine)).transpose()
             X[np.isnan(X)] = 0
@@ -371,6 +402,12 @@ def model_T_lg_array(model):
 
 
 
+
+
+
+
+
+
 def propagate_coordinates_at_epoch(targetname, date, verbose=True):
     from astroquery.simbad import Simbad
     from astropy.coordinates import SkyCoord,Distance
@@ -406,8 +443,6 @@ def propagate_coordinates_at_epoch(targetname, date, verbose=True):
         print(f"Coordinates at J2000:  {target_coord_j2000.icrs.to_string('hmsdms')}")
         print(f"Coordinates at {date}:  {host_coord_at_date.icrs.to_string('hmsdms')}")
     return host_coord_at_date
-
-
 
 def get_coordinates_arrays(filename) :
     """ Determine the relative coordinates in the focal plane relative to the target.
