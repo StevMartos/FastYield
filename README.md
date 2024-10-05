@@ -71,7 +71,3 @@ pip install ttkwidgets
 ```
 pip install pyvo
 ```
-* [pyvo](https://github.com/astropy/pyvo)
-```
-pip install pyvo
-```
