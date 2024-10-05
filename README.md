@@ -63,3 +63,15 @@ pip install coronagraph
 ```
 pip install statsmodels
 ```
+* [ttkwidgets](https://github.com/TkinterEP/ttkwidgets)
+```
+pip install ttkwidgets
+```
+* [pyvo](https://github.com/astropy/pyvo)
+```
+pip install pyvo
+```
+* [pyvo](https://github.com/astropy/pyvo)
+```
+pip install pyvo
+```
