@@ -37,7 +37,7 @@ If you would like to add your instruments, please send an e-mail to [steven.mart
 
 ### Download the spectra:
 
-To perform SNR or contrast calculations, you'll need planetary spectra (BT-Settl, Exo-REM and PICASO) and stellar spectra (BT-NextGen) downloadable [here](https://filesender.renater.fr/?s=download&token=04938e89-9c2e-49b4-a1c8-f1a2a717e982). Once downloaded, just put the "Spectra" file in "sim_data".
+To perform SNR or contrast calculations, you'll need planetary spectra (BT-Settl, Exo-REM and PICASO) and stellar spectra (BT-NextGen) downloadable [here](https://filesender.renater.fr/?s=download&token=73f4408b-3f2c-4021-a4e7-d4812edc3005). Once downloaded, just put the "Spectra" file in "sim_data".
 
 ### Download the packages:
 
