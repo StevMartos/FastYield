@@ -2,43 +2,86 @@ from src.config import * # + numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
 from matplotlib.cm import get_cmap
+from multiprocessing import Pool, cpu_count
 import matplotlib
-from scipy.interpolate import interp1d,interp2d
-from scipy.ndimage.filters import gaussian_filter
+from scipy.interpolate import interp1d, interp2d, RegularGridInterpolator
+from scipy.ndimage.filters import gaussian_filter, gaussian_filter1d
 from scipy.special import comb
 from PyAstronomy import pyasl
 import pandas as pd
 import coronagraph as cg
-from astropy.io import fits,ascii
+from astropy.io import fits, ascii
 from astropy import constants as const
 from astropy import units as u
 from astropy.convolution import Gaussian1DKernel
 from astropy.stats import sigma_clip
+from astropy.utils.masked.core import Masked
+from astropy.units import Quantity
+from astropy.coordinates import EarthLocation, AltAz, get_body, SkyCoord
+from astropy.time import Time
+from astropy.modeling import models, fitting
 import warnings
 import os
 import time
-# import ssl
-# import wget
-# import lzma
 import statsmodels.api as sm
+from tqdm import tqdm
+import emcee
+from itertools import combinations
+
 warnings.filterwarnings('ignore', category=UserWarning, append=True)
 
 h = 6.6260701e-34 # J.s
 c = 2.9979246e8 # m/s
 kB = 1.38065e-23 # J/K
+rad2arcsec = 180/np.pi*3600 # arcsec / rad
 
 
 
-def gaussian(x,mu,sig):
+
+def instru_thermal_background(temperature, emissivity, wavelengths_um):
+    """
+    Calcule le flux thermique en ph/s/µm/arcsec².
+
+    Parameters:
+        temperature (float): Température du télescope (K).
+        emissivity (float): Émissivité du télescope.
+        wavelengths_um (array): Longueurs d'onde (µm).
+    
+    Returns:
+        flux_photon (array): Flux thermique en ph/s/µm/arcsec².
+    """
+    wavelengths_m = wavelengths_um * 1e-6  # Conversion µm -> m
+    B_lambda = (2 * h * c**2) / (wavelengths_m**5) / (np.exp((h * c) / (wavelengths_m * kB * temperature)) - 1)  # W/m²/m/sr
+    # Conversion en ph/s/µm/sr
+    energy_per_photon = (h * c) / wavelengths_m
+    B_lambda_ph = B_lambda / energy_per_photon * 1e-6  # ph/s/m²/µm/sr
+    # Conversion sr -> arcsec²
+    sr_to_arcsec2 = 4.25e10
+    flux = emissivity * B_lambda_ph / sr_to_arcsec2  # ph/s/µm/arcsec²
+    return flux
+
+
+
+def linear_interpolate(y1, y2, x1, x2, x):
+    """Interpolate between y1 and y2 given x1 and x2, targeting x"""
+    if x2 == x1:
+        raise KeyError("Error: x1==x2 = ", x1)
+    a = (y2 - y1) / (x2 - x1)
+    b = y1 - a * x1
+    return a * x + b
+
+
+
+def gaussian(x, mu, sig):
     return 1./(np.sqrt(2.*np.pi)*sig)*np.exp(-np.power((x - mu)/sig, 2.)/2)
 
-def gaussian0(x,sig):
+def gaussian0(x, sig):
     return 1./(np.sqrt(2.*np.pi)*sig)*np.exp(-np.power((x)/sig, 2.)/2)
 
-def lorentzian(x,x0,L):
+def lorentzian(x, x0, L):
     return L/(2*np.pi) * 1 / (L**2/4 + (x-x0)**2)
 
-def chi2(x,x0,L):
+def chi2(x, x0, L):
     return L/(2*np.pi) * 1 / (L**2/4 + (x-x0)**2)
 
 def smoothstep(x, Rc=None, N=10, x_min=None, x_max=None, filtering=True):
@@ -56,6 +99,56 @@ def smoothstep(x, Rc=None, N=10, x_min=None, x_max=None, filtering=True):
 
 
 
+def get_logL(flux_observed, flux_model, sigma_l, method="classic"): # see https://github.com/exoAtmospheres/ForMoSA/blob/activ_dev/ForMoSA/nested_sampling/nested_logL_functions.py
+    N = len(flux_observed[(~np.isnan(flux_observed))&(~np.isnan(flux_model))&(~np.isnan(sigma_l))])    
+    p = 4 # nb de paramètres : T, lg, Vsini, rv
+    if method=="classic":
+        R = np.nansum( flux_observed*flux_model/sigma_l**2 ) / np.nansum( flux_model**2/sigma_l**2 )
+        chi2 = np.nansum(((flux_observed - R*flux_model) / sigma_l )**2)
+        logL = - chi2 / 2
+    if method=="classic_bis": # same thing as the CCF but weighted with the noise
+        flux_observed = flux_observed / np.sqrt(np.nansum(flux_observed**2/sigma_l**2))
+        flux_model = flux_model / np.sqrt(np.nansum(flux_model**2/sigma_l**2))
+        chi2 = np.nansum(((flux_observed - flux_model) / sigma_l )**2)
+        logL = - chi2 / 2
+    elif method=="extended":
+        R = np.nansum( flux_observed*flux_model/sigma_l**2 ) / np.nansum( flux_model**2/sigma_l**2 )
+        chi2 = np.nansum(((flux_observed - R*flux_model) / sigma_l )**2)
+        s2 = 1/N * chi2
+        logL = - (chi2 / (2*s2) + N/2 * np.log(2*np.pi*s2) + 1/2 * np.log(np.nansum(sigma_l**2)))
+    elif method=="extended_bis":
+        flux_observed = flux_observed / np.sqrt(np.nansum(flux_observed**2/sigma_l**2))
+        flux_model = flux_model / np.sqrt(np.nansum(flux_model**2/sigma_l**2))
+        chi2 = np.nansum(((flux_observed - flux_model) / sigma_l )**2)
+        s2 = 1/N * chi2
+        logL = - (chi2 / (2*s2) + N/2 * np.log(2*np.pi*s2) + 1/2 * np.log(np.nansum(sigma_l**2)))
+    elif method=="Brogi":
+        flux_observed = flux_observed / np.sqrt(np.nansum(flux_observed**2))
+        flux_model = flux_model / np.sqrt(np.nansum(flux_model**2))
+        Sf2 = 1/N * np.nansum(flux_observed**2)
+        Sg2 = 1/N * np.nansum(flux_model**2)
+        R = 1/N * np.nansum(flux_observed * flux_model)
+        logL = -N/2 * np.log(Sf2 - 2*R + Sg2)
+    elif method=="Zucker":
+        flux_observed = flux_observed / np.sqrt(np.nansum(flux_observed**2))
+        flux_model = flux_model / np.sqrt(np.nansum(flux_model**2))
+        Sf2 = 1/N * np.nansum(flux_observed**2)
+        Sg2 = 1/N * np.nansum(flux_model**2)
+        R = 1/N * np.nansum(flux_observed * flux_model)
+        C2 = (R**2)/(Sf2 * Sg2)
+        logL = -N/2 * np.log(1-C2)
+    elif method=="custom":
+        flux_observed = flux_observed / np.sqrt(np.nansum(flux_observed**2))
+        flux_model = flux_model / np.sqrt(np.nansum(flux_model**2))
+        Sf2 = 1/N * np.nansum(flux_observed**2)
+        Sg2 = 1/N * np.nansum(flux_model**2)
+        R = 1/N * np.nansum(flux_observed * flux_model)
+        sigma2_weight = 1/(1/N * np.nansum(1/sigma_l**2))
+        logL = -N/(2*sigma2_weight) * (Sf2 + Sg2 - 2*R)
+    return logL
+
+
+
 def annular_mask(R_int, R_ext, size, value=np.nan): 
     mask = np.zeros(size) + value
     i0, j0 = size[0]//2, size[1]//2
@@ -65,95 +158,156 @@ def annular_mask(R_int, R_ext, size, value=np.nan):
                 mask[i, j] = 1
     return mask
 
-def crop(data,Y0=None,X0=None,R_crop=None):
+def crop(data, Y0=None, X0=None, R_crop=None, return_center=False):
     if data.ndim == 3 :
         cube = np.copy(data)
-        cube[np.isnan(cube)] = 0
-        A = np.nanmedian(cube,axis=0)
+        A = np.nanmedian(cube, axis=0)
     elif data.ndim == 2 :
         A = np.copy(data)
-    maxvalue = np.nanmax(A)
-    if Y0 is None and X0 is None :
-        for i in range(A.shape[0]):
-            for j in range(A.shape[1]):
-                if A[i,j]==maxvalue:
-                    Y0 = i ; X0 = j
+    A = np.nan_to_num(A)
+    Y0, X0 = np.unravel_index(np.argmax(A, axis=None), A.shape)
     if R_crop is None :
-        R_crop = max(A.shape[0]-Y0,A.shape[1]-X0,Y0,X0)
-    #print("X0 = ",X0 , " / Y0 = ",Y0, " / R_crop = ",R_crop)
+        R_crop = max(A.shape[0]-Y0, A.shape[1]-X0, Y0, X0)
+    #print("X0 = ", X0, " / Y0 = ", Y0, " / R_crop = ", R_crop)
     if data.ndim == 3 :
-        B = np.zeros((data.shape[0],2*R_crop,2*R_crop)) + np.nan
+        B = np.zeros((data.shape[0], 2*R_crop+1, 2*R_crop+1)) + np.nan
         for i in range(A.shape[0]):
             for j in range(A.shape[1]):
-                if  R_crop-Y0+i < 2*R_crop and R_crop-X0+j < 2*R_crop :
-                    B[:,R_crop-Y0+i,R_crop-X0+j] = data[:,i,j]
+                if  0 <= R_crop-Y0+i <= 2*R_crop and 0 <= R_crop-X0+j <= 2*R_crop :
+                    B[:, R_crop-Y0+i, R_crop-X0+j] = data[:, i, j]
+        while np.isnan(B[:, 0, :]).all() and np.isnan(B[:, -1, :]).all() and np.isnan(B[:, :, 0]).all() and np.isnan(B[:, :, -1]).all(): # crop the edges if they are all nan
+            B = B[:, 1:-1, 1:-1]
     elif data.ndim == 2 :
-        B = np.zeros((2*R_crop,2*R_crop)) + np.nan
+        B = np.zeros((2*R_crop+1, 2*R_crop+1)) + np.nan
         for i in range(A.shape[0]):
             for j in range(A.shape[1]):
-                if  R_crop-Y0+i < 2*R_crop and R_crop-X0+j < 2*R_crop :
-                    B[R_crop-Y0+i,R_crop-X0+j] = data[i,j]
+                if  0 <= R_crop-Y0+i <= 2*R_crop and 0 <= R_crop-X0+j <= 2*R_crop :
+                    B[R_crop-Y0+i, R_crop-X0+j] = data[i, j]
+        while np.isnan(B[0, :]).all() and np.isnan(B[-1, :]).all() and np.isnan(B[:, 0]).all() and np.isnan(B[:, -1]).all():
+            B = B[1:-1, 1:-1]
+    if return_center:
+        return B, Y0, X0
+    else:
+        return B
+
+def crop_complex(data, Y0=None, X0=None, R_crop=None):
+    if data.ndim == 3 :
+        cube = np.copy(data)
+        A = np.nanmedian(cube, axis=0)
+    elif data.ndim == 2 :
+        A = np.copy(data)
+    A = np.nan_to_num(A)
+    Y0, X0 = np.unravel_index(np.argmax(A, axis=None), A.shape)
+    if R_crop is None :
+        R_crop = max(A.shape[0]-Y0, A.shape[1]-X0, Y0, X0)
+    #print("X0 = ", X0, " / Y0 = ", Y0, " / R_crop = ", R_crop)
+    if data.ndim == 3 :
+        B = np.zeros((data.shape[0], 2*R_crop+1, 2*R_crop+1), dtype=complex) + np.nan
+        for i in range(A.shape[0]):
+            for j in range(A.shape[1]):
+                if  0 <= R_crop-Y0+i <= 2*R_crop and 0 <= R_crop-X0+j <= 2*R_crop :
+                    B[:, R_crop-Y0+i, R_crop-X0+j] = data[:, i, j]
+        while np.isnan(B[:, 0, :]).all() and np.isnan(B[:, -1, :]).all() and np.isnan(B[:, :, 0]).all() and np.isnan(B[:, :, -1]).all(): # crop the edges if they are all nan
+            B = B[:, 1:-1, 1:-1]
+    elif data.ndim == 2 :
+        B = np.zeros((2*R_crop+1, 2*R_crop+1), dtype=complex) + np.nan
+        for i in range(A.shape[0]):
+            for j in range(A.shape[1]):
+                if  0 <= R_crop-Y0+i <= 2*R_crop and 0 <= R_crop-X0+j <= 2*R_crop :
+                    B[R_crop-Y0+i, R_crop-X0+j] = data[i, j]
+        while np.isnan(B[0, :]).all() and np.isnan(B[-1, :]).all() and np.isnan(B[:, 0]).all() and np.isnan(B[:, -1]).all():
+            B = B[1:-1, 1:-1]
     return B
 
-def crop_both(data1,data2,Y0=None,X0=None,R_crop=None):
+def crop_both(data1, data2, Y0=None, X0=None, R_crop=None):
     if data1.ndim == 3 :
         cube = np.copy(data1)
         cube[np.isnan(cube)] = 0
-        A = np.nanmedian(cube,axis=0)
+        A = np.nanmedian(cube, axis=0)
     elif data1.ndim == 2 :
         A = np.copy(data1)
-    maxvalue = np.nanmax(A)
-    if Y0 is None and X0 is None :
-        for i in range(A.shape[0]):
-            for j in range(A.shape[1]):
-                if A[i,j]==maxvalue:
-                    Y0 = i ; X0 = j
+    A = np.nan_to_num(A)
+    Y0, X0 = np.unravel_index(np.argmax(A, axis=None), A.shape)
     if R_crop is None:
-        R_crop = max(A.shape[0]-Y0,A.shape[1]-X0,Y0,X0)
-    #print("X0 = ",X0 , " / Y0 = ",Y0, " / R_crop = ",R_crop)
+        R_crop = max(A.shape[0]-Y0, A.shape[1]-X0, Y0, X0)
+    #print("X0 = ", X0, " / Y0 = ", Y0, " / R_crop = ", R_crop)
     if data1.ndim == 3 :
-        B = np.zeros((data1.shape[0],2*R_crop,2*R_crop)) + np.nan
-        C = np.zeros((data1.shape[0],2*R_crop,2*R_crop)) + np.nan
+        B = np.zeros((data1.shape[0], 2*R_crop+1, 2*R_crop+1)) + np.nan
+        C = np.zeros((data1.shape[0], 2*R_crop+1, 2*R_crop+1)) + np.nan
         for i in range(A.shape[0]):
             for j in range(A.shape[1]):
-                if  R_crop-Y0+i < 2*R_crop and R_crop-X0+j < 2*R_crop :
-                    B[:,R_crop-Y0+i,R_crop-X0+j] = data1[:,i,j]
-                    C[:,R_crop-Y0+i,R_crop-X0+j] = data2[:,i,j]
+                if  0 <= R_crop-Y0+i <= 2*R_crop and 0 <= R_crop-X0+j <= 2*R_crop :
+                    B[:, R_crop-Y0+i, R_crop-X0+j] = data1[:, i, j]
+                    C[:, R_crop-Y0+i, R_crop-X0+j] = data2[:, i, j]
+        while np.isnan(B[:, 0, :]).all() and np.isnan(B[:, -1, :]).all() and np.isnan(B[:, :, 0]).all() and np.isnan(B[:, :, -1]).all():
+            B = B[:, 1:-1, 1:-1]
+        while np.isnan(C[:, 0, :]).all() and np.isnan(C[:, -1, :]).all() and np.isnan(C[:, :, 0]).all() and np.isnan(C[:, :, -1]).all():
+            C = C[:, 1:-1, 1:-1]
     elif data1.ndim == 2 :
-        B = np.zeros((2*R_crop,2*R_crop)) + np.nan
-        C = np.zeros((2*R_crop,2*R_crop)) + np.nan
+        B = np.zeros((2*R_crop+1, 2*R_crop+1)) + np.nan
+        C = np.zeros((2*R_crop+1, 2*R_crop+1)) + np.nan
         for i in range(A.shape[0]):
             for j in range(A.shape[1]):
-                if  R_crop-Y0+i < 2*R_crop and R_crop-X0+j < 2*R_crop :
-                    B[R_crop-Y0+i,R_crop-X0+j] = data1[i,j]
-                    c[R_crop-Y0+i,R_crop-X0+j] = data2[i,j]
-    return B,C
-    
-def dither(cube,factor=10):
-    size = cube.shape
-    cube_dither=np.zeros((int(size[0]*factor),int(size[1]*factor)))
-    for i in range(size[0]):    
-        for j in range(size[1]):
-            cube_dither[int(i*factor):int((i+1)*factor),int(j*factor):int((j+1)*factor)]=cube[i,j]
+                if  0 <= R_crop-Y0+i <= 2*R_crop and 0 <= R_crop-X0+j <= 2*R_crop :
+                    B[R_crop-Y0+i, R_crop-X0+j] = data1[i, j]
+                    c[R_crop-Y0+i, R_crop-X0+j] = data2[i, j]
+        while np.isnan(B[0, :]).all() and np.isnan(B[-1, :]).all() and np.isnan(B[:, 0]).all() and np.isnan(B[:, -1]).all():
+            B = B[1:-1, 1:-1]
+        while np.isnan(C[0, :]).all() and np.isnan(C[-1, :]).all() and np.isnan(C[:, 0]).all() and np.isnan(C[:, -1]).all():
+            C = C[1:-1, 1:-1]
+    return B, C
+
+def dither(cube, factor=10):
+    NbChannel, NbLine, NbColumn = cube.shape
+    cube_dither = np.zeros((NbChannel, int(NbLine*factor), int(NbColumn*factor)))
+    for l in range(NbChannel):
+        for i in range(NbLine):    
+            for j in range(NbColumn):
+                cube_dither[l, int(i*factor):int((i+1)*factor), int(j*factor):int((j+1)*factor)] = cube[l, i, j]
     return cube_dither
 
 
 
+def correlation_PSF(cube_M, CCF):
+    idx_PSF_centroid = np.unravel_index(np.nanargmax(PSF, axis=None), PSF.shape)    
+    i_PSF_centroid = idx_PSF_centroid[0] ; j_PSF_centroid = idx_PSF_centroid[1]
+    PSF_shift = np.copy(PSF)*0
+    CCF_conv = np.copy(CCF)*np.nan
+    for i_shift in range(CCF_conv.shape[0]):
+        for j_shift in range(CCF_conv.shape[1]): 
+            if not np.isnan(CCF[i_shift, j_shift]):
+                for i in range(PSF_shift.shape[0]):
+                    for j in range(PSF_shift.shape[1]):
+                        if i+i_PSF_centroid-i_shift>=0 and j+j_PSF_centroid-j_shift>=0 and i+i_PSF_centroid-i_shift<PSF_shift.shape[0] and j+j_PSF_centroid-j_shift<PSF_shift.shape[1]:
+                            PSF_shift[i, j] = PSF[i+i_PSF_centroid-i_shift, j+j_PSF_centroid-j_shift]
+                        else:
+                            PSF_shift[i, j] = np.nan
+                #plt.figure() ; plt.imshow(PSF_shift, extent=[-(cube.shape[2]+1)//2*pxscale, (cube.shape[2]+1)//2*pxscale, -(cube.shape[2]+1)//2*pxscale, (cube.shape[2]+1)//2*pxscale]) ; plt.title(f'MIRIMRS PSF of {target_name} \n on {band}', fontsize=14) ; plt.ylabel('y offset (in ")', fontsize=14) ; plt.xlabel('x offset (in ")', fontsize=14) ; plt.show()
+                #plt.figure() ; plt.imshow(CCF, extent=[-(cube.shape[2]+1)//2*pxscale, (cube.shape[2]+1)//2*pxscale, -(cube.shape[2]+1)//2*pxscale, (cube.shape[2]+1)//2*pxscale]) ; plt.title(f'MIRIMRS PSF of {target_name} \n on {band}', fontsize=14) ; plt.ylabel('y offset (in ")', fontsize=14) ; plt.xlabel('x offset (in ")', fontsize=14) ; plt.show()
+                CCF_conv[i_shift, j_shift] = np.nansum(PSF_shift*CCF)
+    return CCF_conv
+
+
+
 def PSF_profile_ratio(PSF, pxscale, size_core, show=True):
-    NbLine, NbColumn = PSF.shape # => donne (taille de l'axe lambda, " de l'axe y , " de l'axe x)
+    NbLine, NbColumn = PSF.shape # => donne (taille de l'axe lambda, " de l'axe y, " de l'axe x)
     y0, x0 = NbLine // 2, NbColumn // 2
-    PSF_core = PSF[y0-size_core//2:y0+size_core//2+1,x0-size_core//2:x0+size_core//2+1]
+    if size_core==1:
+        PSF_core = PSF[y0, x0]
+    else:
+        PSF_core = PSF[y0-size_core//2:y0+size_core//2+1, x0-size_core//2:x0+size_core//2+1]
     if show :
         plt.figure(dpi=300) ; plt.imshow(PSF_core) ; plt.show()
     PSF_flux = np.nansum(PSF)
     fraction_core = np.nansum(PSF_core) / PSF_flux
-    profile = np.zeros((2,max(y0,x0)+1)) # array 2D de taille 2x Nbline (ou Column) /2
+    profile = np.zeros((2, max(y0, x0)+1)) # array 2D de taille 2x Nbline (ou Column) /2
     for R in range(max(y0, x0)+1):
         profile[0, R] = R * pxscale
         if R==0:
             profile[1, R] = np.nanmean(PSF * annular_mask(0, 0, size=(NbLine, NbColumn))) / PSF_flux
         else:
-            profile[1, R] = np.nanmean(PSF * annular_mask(max(1,R-1), R, size=(NbLine, NbColumn))) / PSF_flux
+            profile[1, R] = np.nanmean(PSF * annular_mask(max(1, R-1), R, size=(NbLine, NbColumn))) / PSF_flux
+    
     profile[1, :] /= pxscale**2
     return profile, fraction_core
 
@@ -162,39 +316,50 @@ def register_PSF_ratio(instru, profile, fraction_core, aper_corr, band, strehl, 
     hdr['FC'] = fraction_core
     hdr['AC'] = aper_corr
     if coronagraph is None:
-        fits.writeto("sim_data/PSF/PSF_"+instru+"/PSF_"+band+"_"+strehl+"_"+apodizer+".fits", profile, header=hdr,overwrite=True)
+        fits.writeto("sim_data/PSF/PSF_"+instru+"/PSF_"+band+"_"+strehl+"_"+apodizer+".fits", profile, header=hdr, overwrite=True)
     else:
-        fits.writeto("sim_data/PSF/PSF_"+instru+"/PSF_"+band+"_"+coronagraph+"_"+strehl+"_"+apodizer+".fits", profile, header=hdr,overwrite=True)
+        fits.writeto("sim_data/PSF/PSF_"+instru+"/PSF_"+band+"_"+coronagraph+"_"+strehl+"_"+apodizer+".fits", profile, header=hdr, overwrite=True)
 
 
 
-
-def qqplot(map_w,show=True):
+def qqplot(map_w, show=True):
     list_corr_w = map_w.reshape(map_w.shape) # annular mask CCF = map_w
     list_c_w = list_corr_w[np.isnan(list_corr_w)!=1] # filtrage nan
     # create Q-Q plot with 45-degree line added to plot
     list_cn_w = (list_c_w-np.mean(list_c_w))/np.std(list_c_w) #loi normale centrée (std=1)
-    sm.qqplot(list_cn_w, line='45') ; plt.xlim(-5,5) ; plt.ylim(-5,5)
+    plt.figure(dpi=300) ; ax = plt.gca()
+    sm.qqplot(list_cn_w, ax=ax, line='45')
     plt.title('Q-Q plots of the CCF', fontsize = 14) ; plt.ylabel("sample quantiles", fontsize = 14) ; plt.xlabel("theoritical quantiles", fontsize = 14) ; plt.grid(True) ; plt.show()
     
-    
-    
-def qqplot2(map1,map2,band,target_name):
-    plt.figure(dpi=300)
-    ax = plt.gca()
+def qqplot2(map1, map2, band, target_name):
+    plt.figure(dpi=300) ; ax = plt.gca()
     map1 = map1[~np.isnan(map1)] # filtrage nan
     map1 = (map1-np.mean(map1))/np.std(map1) #loi normale centrée (std=1)
-    sm.qqplot(map1,ax=ax,marker='o', markerfacecolor='b', markeredgecolor='b', alpha=1,label='below 1"')
+    sm.qqplot(map1, ax=ax, marker='o', markerfacecolor='b', markeredgecolor='b', alpha=1, label='below 1"')
     map2 = map2[~np.isnan(map2)] # filtrage nan
     map2 = (map2-np.mean(map2))/np.std(map2) #loi normale centrée (std=1)
-    sm.qqplot(map2,ax=ax,marker='o', markerfacecolor='r', markeredgecolor='r', alpha=1,label='above 1"')
+    sm.qqplot(map2, ax=ax, marker='o', markerfacecolor='r', markeredgecolor='r', alpha=1, label='above 1"')
     sm.qqline(ax=ax, line='45', fmt='k')
+    plt.legend()
+    plt.title(f'Q-Q plots of the CCF of {target_name} on {band}', fontsize = 14) ; plt.ylabel("sample quantiles", fontsize = 14) ; plt.xlabel("theoritical quantiles", fontsize = 14) ; plt.grid(True) ; plt.show()
+
+def qqplot2_hirise(CCF_signal, CCF_bkgd, band, target_name):
+    plt.figure(dpi=300) ; ax = plt.gca()
+    CCF_signal = CCF_signal[~np.isnan(CCF_signal)] # filtrage nan
+    CCF_signal = (CCF_signal-np.mean(CCF_signal))/np.std(CCF_signal) #loi normale centrée (std=1)
+    plt.plot([], [], 'o', c="gray", alpha=0.5, label='noise')
+    for i in range(len(CCF_bkgd)):
+        map_bkgd = CCF_bkgd[i][~np.isnan(CCF_bkgd[i])] # filtrage nan
+        map_bkgd = (map_bkgd-np.mean(map_bkgd))/np.std(map_bkgd) # loi normale centrée (normalisée => std=1)
+        sm.qqplot(map_bkgd, ax=ax, markerfacecolor='gray', markeredgecolor='gray', alpha=0.1)
+    sm.qqline(ax=ax, line='45', fmt='k')
+    sm.qqplot(CCF_signal, ax=ax, alpha=1, label='planet')
     plt.legend()
     plt.title(f'Q-Q plots of the CCF of {target_name} on {band}', fontsize = 14) ; plt.ylabel("sample quantiles", fontsize = 14) ; plt.xlabel("theoritical quantiles", fontsize = 14) ; plt.grid(True) ; plt.show()
 
 
 
-def open_jwst_data(instru,target_name,band,crop_band=True,cosmic=False,sigma_cosmic=5,file=None,X0=None,Y0=None,R_crop=None,print_value=True):
+def extract_jwst_data(instru, target_name, band, crop_band=True, cosmic=False, sigma_cosmic=5, file=None, X0=None, Y0=None, R_crop=None, verbose=True):
     config_data = get_config_data(instru)
     if file is None :
         if instru=="MIRIMRS" : 
@@ -223,6 +388,7 @@ def open_jwst_data(instru,target_name,band,crop_band=True,cosmic=False,sigma_cos
     pxscale = hdr['CDELT1']*3600 # data pixel scale in "/px
     step = hdr['CDELT3'] # delta_lambda in µm
     cube = f[1].data # en MJy/Steradian (densité "angulaire" de flux mesurée dans chaque pixel)
+    NbChannel, NbLine, NbColumn = cube.shape
     err = f[2].data # erreur sur le flux en MJy/Sr
     wave = (np.arange(hdr['NAXIS3'])+hdr['CRPIX3']-1)*hdr['CDELT3']+hdr['CRVAL3'] # axe de longueur d'onde des données en µm
     area = config_data['telescope']['area'] # aire collectrice m²
@@ -238,35 +404,46 @@ def open_jwst_data(instru,target_name,band,crop_band=True,cosmic=False,sigma_cos
         cube = cube[(wave>config_data['gratings'][band].lmin) & (wave<config_data['gratings'][band].lmax)]
         err = err[(wave>config_data['gratings'][band].lmin) & (wave<config_data['gratings'][band].lmax)]
         wave = wave[(wave>config_data['gratings'][band].lmin) & (wave<config_data['gratings'][band].lmax)]
-        wave_trans,trans=fits.getdata("sim_data/Transmission/"+instru+"/transmission_"+band+".fits")
-        f = interp1d(wave_trans, trans, bounds_error=False, fill_value=0) 
-        trans = f(wave)
+        from src.signal_noise_estimate import transmission
+        trans = transmission(instru, wave, band, tellurics=False, apodizer="NO_SP") / fits.getheader("sim_data/PSF/PSF_"+instru+"/PSF_"+band+"_NO_JQ_NO_SP.fits")['AC'] # AC is obviously already taken into account
         for i in range(cube.shape[0]):
             cube[i] *= trans[i] ; err[i] *= trans[i] # e-/s/pixel
     else :
         trans = 1
     cube *= exposure_time*60 ; err *= exposure_time*60 # e-/pixel or ph/pixel
-    cube,err = crop_both(cube,err,X0=X0,Y0=Y0,R_crop=R_crop) # on met l'étoile au centre du cube
+    cube, err = crop_both(cube, err, X0=X0, Y0=Y0, R_crop=R_crop) # on met l'étoile au centre du cube
     cube[cube==0] = np.nan ; err[err==0] = np.nan
     if cosmic :
         NbChannel, NbLine, NbColumn = cube.shape
-        Y = np.reshape(cube,(NbChannel, NbLine*NbColumn))
-        Z = np.reshape(err,(NbChannel, NbLine*NbColumn))
+        Y = np.reshape(cube, (NbChannel, NbLine*NbColumn))
+        Z = np.reshape(err, (NbChannel, NbLine*NbColumn))
         for k in range(Y.shape[1]):
-            if not all(np.isnan(Y[:,k])):
-                sg = sigma_clip(Y[:,k],sigma=sigma_cosmic)
-                Y[:,k] = np.array(np.ma.masked_array(Y[:,k],mask=sg.mask).filled(np.nan))
-                Z[:,k] = np.array(np.ma.masked_array(Z[:,k],mask=sg.mask).filled(np.nan))
-                sg = sigma_clip(Z[:,k],sigma=sigma_cosmic)
-                Y[:,k] = np.array(np.ma.masked_array(Y[:,k],mask=sg.mask).filled(np.nan))
-                Z[:,k] = np.array(np.ma.masked_array(Z[:,k],mask=sg.mask).filled(np.nan))
+            if not all(np.isnan(Y[:, k])):
+                sg = sigma_clip(Y[:, k], sigma=sigma_cosmic)
+                Y[:, k] = np.array(np.ma.masked_array(Y[:, k], mask=sg.mask).filled(np.nan))
+                Z[:, k] = np.array(np.ma.masked_array(Z[:, k], mask=sg.mask).filled(np.nan))
+                sg = sigma_clip(Z[:, k], sigma=sigma_cosmic)
+                Y[:, k] = np.array(np.ma.masked_array(Y[:, k], mask=sg.mask).filled(np.nan))
+                Z[:, k] = np.array(np.ma.masked_array(Z[:, k], mask=sg.mask).filled(np.nan))
         cube = Y.reshape((NbChannel, NbLine, NbColumn))
         err = Z.reshape((NbChannel, NbLine, NbColumn))
-    if print_value :
-        print("\n exposure time = ",round(exposure_time,3), "mn and DIT = ", round(DIT*60,3) , 's') 
-        print(' target name =', target_name, " / pixelscale =",round(pxscale,3),' "/px')
+    
+    degrade_resolution = False # Crash test (does not seems better with it)
+    if degrade_resolution:
+        degrated_cube = np.copy(cube)
+        from src.spectrum import Spectrum
+        for i in range(NbLine):
+            for j in range(NbColumn):
+                if not (np.isnan(cube[:, i, j]).all()):
+                    degrated_cube[:, i, j] = Spectrum(wave, cube[:, i, j], None, None).degrade_resolution(wave, renorm=False).flux
+        degrated_cube[np.isnan(degrated_cube)] = cube[np.isnan(degrated_cube)]
+        cube = degrated_cube
+
+    if verbose :
+        print("\n exposure time = ", round(exposure_time, 3), "mn and DIT = ", round(DIT*60, 3), 's') 
+        print(' target name =', target_name, " / pixelscale =", round(pxscale, 3), ' "/px')
         if instru=="MIRIMRS":
-            print(" DATE :",hdr0["DATE-OBS"])
+            print(" DATE :", hdr0["DATE-OBS"])
         try :
             print(" TITLE :", hdr0["TITLE"])
         except : 
@@ -275,11 +452,412 @@ def open_jwst_data(instru,target_name,band,crop_band=True,cosmic=False,sigma_cos
         R = np.nanmean(wave/(2*dwl)) # calculating the resolution
         print(' R = ', round(R))        
     
-    return cube,wave,pxscale,err,trans,exposure_time,DIT
+    return cube, wave, pxscale, err, trans, exposure_time, DIT
 
 
 
-def PCA_subtraction(Sres, n_comp_sub,y0=None,x0=None,size_core=None,PCA_annular=False,PCA_mask=False,scree_plot=False,PCA_plots=False,wave=None,R=None,pxscale=None):
+def extract_vipa_data(instru, target_name, gain, label_fiber, degrade_resolution=True, R=70000, Rc=100, filter_type="gaussian", wave_input=None, only_high_pass=False):
+    from src.spectrum import Spectrum, filtered_flux
+    wave, trans, sigma_trans = fits.getdata("data/"+instru+"/VIPA_Final_Spectrum_"+target_name+"_Flat_gain_"+str(gain)+"_fiber_"+label_fiber+".fits")
+    wave, flux, sigma_flux = fits.getdata("data/"+instru+"/VIPA_Final_Spectrum_"+target_name+"_gain_"+str(gain)+"_fiber_"+label_fiber+".fits")
+    wave *= 1e-3 # nm => µm
+    f = fits.open("data/"+instru+"/VIPA_Final_Spectrum_"+target_name+"_gain_"+str(gain)+"_fiber_"+label_fiber+".fits")
+    header = f[0].header
+    exposure_time = header["INTTIME"]
+    try:
+        RON = 12 # e-/px/read
+        dl_y = 0.008 * 1e-3 # ~ 0.008 nm
+        dl = np.nanmean(np.diff(wave))
+        Npx_y = dl / dl_y # = taille équivalente en pixel d'un canal spectral
+        k = 4.8 # each spectral channel are added from ~ 4.8 different orders
+        Npx_x = 2.5 # ~ 2.5px taille en px effective sur laquelle est intégrée horizontalement le signal (FWHM)
+        NbCDS = fits.open("data/"+instru+"/VIPA_Final_Spectrum_"+target_name+"_gain_"+str(gain)+"_fiber_"+label_fiber+".fits")[0].header["NBCDS"]
+        noise_photon = np.sqrt(flux)
+        noise_RON = np.sqrt( k * Npx_y * Npx_x * 2*NbCDS * (1 + header["INTTIME"]/header["DARK INTTIME"]) * RON**2) # image + dark = 2x plus de RON / CDS = 2x plus de RON
+        sigma_analytical = np.sqrt(noise_photon**2 + noise_RON**2)
+        sigma_empirical = sigma_flux
+        print("MEAN FINAL ERROR = ", np.nanmean((sigma_empirical / sigma_analytical)))
+        plt.figure(dpi=300)
+        plt.plot(wave, noise_photon, label='photon noise')
+        plt.plot(wave, noise_RON * np.ones(len(wave)), label='RON')
+        plt.plot(wave, sigma_analytical, label='total noise (photon + RON)')    
+        plt.plot(wave, gaussian_filter(sigma_empirical, sigma=100), label='measured noise')
+        plt.xlabel("Wavelength")
+        plt.ylabel("Noise")
+        plt.legend()
+        plt.show()
+    except:
+        print("PLEASE DEFINE FOR RAMPS")
+    # EXTRACTING FIBER'S SIGNALS
+    sigma_trans *= 0.02/np.nanmean(trans) # normalizing the transmission (TO REMOVE)
+    trans *= 0.02/np.nanmean(trans)
+    
+    if only_high_pass:
+        sigma = flux / trans * np.sqrt((sigma_flux / flux) ** 2 + (sigma_trans / trans) ** 2)
+        flux = flux / trans        
+    # Interpolation of the data
+    trans = Spectrum(wave, trans, None, None)
+    flux = Spectrum(wave, flux, None, None)
+    sigma = Spectrum(wave, sigma, None, None)
+    norm_sigma = np.sqrt(np.nansum(sigma.flux**2))
+    if degrade_resolution:
+        if wave_input is None:
+            dl = (wave[0] + wave[-1])/2 / (2*R) 
+            wave = np.arange(wave[0], wave[-1]+dl, dl)
+        else:
+            wave = wave_input
+        trans = trans.degrade_resolution(wave, renorm=False).flux
+        flux = flux.degrade_resolution(wave, renorm=True).flux
+        sigma = sigma.degrade_resolution(wave, renorm=False).flux
+    else:
+        if wave_input is None:
+            dl = 0.008 * 1e-3 # ~ 0.008 nm = mean spectral channel along the orders
+            wave = np.arange(wave[0], wave[-1]+dl, dl)
+        else:
+            dl = np.nanmedian(np.diff(wave_input))
+            wave = wave_input
+        R = np.nanmean(wave/(2*dl))
+        trans = trans.interpolate_wavelength(wave, renorm=False).flux
+        flux = flux.interpolate_wavelength(wave, renorm=True).flux
+        sigma = sigma.interpolate_wavelength(wave, renorm=False).flux
+    sigma *= norm_sigma/np.sqrt(np.nansum(sigma**2))
+    # MM post-processing
+    if only_high_pass:
+        #trans = 1
+        flux_HF = trans * filtered_flux(flux, R=R, Rc=Rc, filter_type=filter_type)[0]
+        sigma *= trans
+    return wave, flux, flux_HF, sigma, trans, R
+
+
+
+
+
+def extract_hirise_data(target_name, interpolate, degrade_resolution, R, Rc, filter_type, order_by_order, outliers, sigma_outliers, only_high_pass=False, cut_fringes=False, Rmin=None, Rmax=None, weight=True, mask_nan_values=False, wave_input=None, verbose=True): # OPENING DATA AND DEGRADATING THE RESOLUTION (if wanted)
+    from src.spectrum import Spectrum, filtered_flux
+    GAIN = np.nanmean([1/2.28, 1/2.19, 1/2.00]) # in e-/ADU
+
+    # OPENING DATA AND DEGRADATING THE RESOLUTION (if wanted)
+    file = "data/HiRISE/"+target_name+".fits"
+    f = fits.open(file) ; hdr = f[0].header ; T_star = hdr["HIERARCH STAR TEFF"] ; lg_star = hdr["HIERARCH STAR LOGG"] ; rv_star = hdr["HIERARCH STAR RV"]
+    t_exp_comp = hdr["HIERARCH COMP DIT"]*hdr["HIERARCH COMP NEXP"]
+    t_exp_star = hdr["HIERARCH STAR DIT"]*hdr["HIERARCH STAR NEXP"]
+    if verbose:
+        print("OBSERVATION DATE: ", mjd_to_date(hdr["MJD-OBS"]))
+        print(f" star t_exp = {round(t_exp_star/60)} mn")
+        print(f" comp t_exp = {round(t_exp_comp/60)} mn")
+    wave0 = f[1].data["wave"]*1e-3 ; lmin = wave0[0] ; lmax = wave0[-1] # in µm
+    star_flux0 = f[1].data["star_signal"]*GAIN*hdr["HIERARCH STAR DIT"]*hdr["HIERARCH STAR NEXP"] # ADU/s => total e-
+    star_weight0 = f[1].data["star_weight"]
+    sigma_l_star_detector0 = f[1].data["star_noise"]*GAIN*t_exp_star ; sigma_l_star_detector0[sigma_l_star_detector0==0] = np.nan # in e-
+    planet_flux0 = f[1].data["companion_signal"]*GAIN*t_exp_comp # in e-
+    planet_weight0 = f[1].data["companion_weight"]
+    sigma_l_planet_detector0 = f[1].data["companion_noise"]*GAIN*t_exp_comp ; sigma_l_planet_detector0[sigma_l_planet_detector0==0] = np.nan # in e-
+    trans0 = f[1].data["response"] # 
+    dwl0 = wave0 - np.roll(wave0, 1) ; dwl0[0] = dwl0[1] ; dwl0[dwl0==0] = np.nanmedian(dwl0) # delta lambda array
+    R0 = np.nanmedian(wave0/(2*dwl0)) # calculating the resolution => assuming a Nyquist sampling
+    dl0 = np.nanmedian(dwl0)
+    nan_values0 = np.isnan(star_flux0)|np.isnan(planet_flux0)|np.isnan(trans0) # missing regions
+    #nan_values0 = np.zeros((len(wave0))) + False
+    if order_by_order: # flagging the orders for "order_by_order"
+        lmin_orders = np.array([]) ; lmax_orders = np.array([])
+        for i in range(len(wave0)):
+            if dwl0[i] > 1000*dl0:
+                lmin_orders = np.append(lmin_orders, wave0[i-1]) ; lmax_orders = np.append(lmax_orders, wave0[i])
+    
+    # (first) OUTLIERS FILTERING (if wanted)
+    if outliers:
+        planet_flux0_HF, _ = filtered_flux(planet_flux0, R=R0, Rc=Rc, filter_type=filter_type)
+        sg = sigma_clip(planet_flux0_HF, sigma=2*sigma_outliers) ; planet_flux0 = np.array(np.ma.masked_array(planet_flux0, mask=sg.mask).filled(np.nan))
+        star_flux0_HF, _ = filtered_flux(star_flux0, R=R0, Rc=Rc, filter_type=filter_type)
+        sg = sigma_clip(star_flux0_HF, sigma=2*sigma_outliers) ; star_flux0 = np.array(np.ma.masked_array(star_flux0, mask=sg.mask).filled(np.nan))
+        trans0_HF, _ = filtered_flux(trans0, R=R0, Rc=Rc, filter_type=filter_type)
+        sg = sigma_clip(trans0_HF, sigma=2*sigma_outliers) ; trans0 = np.array(np.ma.masked_array(trans0, mask=sg.mask).filled(np.nan))
+
+    # For the flux renormalization (conservation needed) at the end 
+    norm_star_flux0 = np.nansum(star_flux0) ; norm_sigma_l_star_detector0 = np.sqrt(np.nansum(sigma_l_star_detector0**2)) ; norm_planet_flux0 = np.nansum(planet_flux0) ; norm_sigma_l_planet_detector0 = np.sqrt(np.nansum(sigma_l_planet_detector0**2))
+    
+    # Interpolation of the data (should not really degrate the data) (if wanted)
+    if interpolate: # in order to have a regular wavelength axis
+        if wave_input is not None and not degrade_resolution:
+            wave = wave_input
+        else:
+            wave = np.arange(0.98*lmin, 1.02*lmax+dl0, dl0) # constant and regular wavelength array : 0.01 µm ~ doppler shift at few thousands of km/s
+        f = interp1d(wave0[~np.isnan(star_flux0)], star_flux0[~np.isnan(star_flux0)], bounds_error=False, fill_value=np.nan) 
+        star_flux0 = f(wave)
+        f = interp1d(wave0[~np.isnan(star_weight0)], star_weight0[~np.isnan(star_weight0)], bounds_error=False, fill_value=np.nan) 
+        star_weight0 = f(wave)
+        f = interp1d(wave0[~np.isnan(sigma_l_star_detector0)], sigma_l_star_detector0[~np.isnan(sigma_l_star_detector0)], bounds_error=False, fill_value=np.nan) 
+        sigma_l_star_detector0 = f(wave)
+        f = interp1d(wave0[~np.isnan(planet_flux0)], planet_flux0[~np.isnan(planet_flux0)], bounds_error=False, fill_value=np.nan) 
+        planet_flux0 = f(wave)
+        f = interp1d(wave0[~np.isnan(planet_weight0)], planet_weight0[~np.isnan(planet_weight0)], bounds_error=False, fill_value=np.nan) 
+        planet_weight0 = f(wave)
+        f = interp1d(wave0[~np.isnan(sigma_l_planet_detector0)], sigma_l_planet_detector0[~np.isnan(sigma_l_planet_detector0)], bounds_error=False, fill_value=np.nan) 
+        sigma_l_planet_detector0 = f(wave)
+        f = interp1d(wave0[~np.isnan(trans0)], trans0[~np.isnan(trans0)], bounds_error=False, fill_value=np.nan) 
+        trans0 = f(wave)
+        f = interp1d(wave0, nan_values0, bounds_error=False, fill_value=np.nan) 
+        nan_values0 = f(wave) != 0
+        wave0 = wave
+    
+    # Artificially degrating the data to an arbitrary resolution R (if wanted)
+    if degrade_resolution:
+        dl = np.nanmedian(wave0/(2*R)) # 2*R => Nyquist sampling (Shannon)
+        if wave_input is not None:
+            wave = wave_input
+        else:
+            wave = np.arange(0.98*lmin, 1.02*lmax+dl, dl) # new wavelength array (with degrated resolution)
+        star_flux = Spectrum(wave0, star_flux0, R0, None) ; star_flux = star_flux.degrade_resolution(wave, renorm=True).flux
+        star_weight = Spectrum(wave0, star_weight0, R0, None) ; star_weight = star_weight.degrade_resolution(wave, renorm=False).flux
+        sigma_l_star_detector = Spectrum(wave0, sigma_l_star_detector0, R0, None) ; sigma_l_star_detector = sigma_l_star_detector.degrade_resolution(wave, renorm=True).flux
+        planet_flux = Spectrum(wave0, planet_flux0, R0, None) ; planet_flux = planet_flux.degrade_resolution(wave, renorm=True).flux
+        planet_weight = Spectrum(wave0, planet_weight0, R0, None) ; planet_weight = planet_weight.degrade_resolution(wave, renorm=False).flux
+        sigma_l_planet_detector = Spectrum(wave0, sigma_l_planet_detector0, R0, None) ; sigma_l_planet_detector = sigma_l_planet_detector.degrade_resolution(wave, renorm=True).flux
+        trans = Spectrum(wave0, trans0, R0, None) ; trans = trans.degrade_resolution(wave, renorm=False).flux
+        f = interp1d(wave0, nan_values0, bounds_error=False, fill_value=np.nan) 
+        nan_values = f(wave) != 0
+    else: # otherwise, takes the raw data
+        R = R0 ; wave = wave0 ; dl = dl0 ; star_flux = star_flux0 ; star_weight = star_weight0 ; sigma_l_star_detector = sigma_l_star_detector0 ; planet_flux = planet_flux0 ; planet_weight = planet_weight0 ; sigma_l_planet_detector = sigma_l_planet_detector0 ; trans = trans0 ; nan_values = nan_values0
+
+    # MOLECULAR MAPPING POST-PROCESSING FILTERING METHOD 
+    if order_by_order: # order by order processing (if wanted)
+        star_flux_HF = np.zeros_like(wave) + np.nan ; star_flux_LF = np.zeros_like(wave) + np.nan
+        planet_flux_HF = np.zeros_like(wave) + np.nan ; planet_flux_LF = np.zeros_like(wave) + np.nan
+        for i in range(len(lmin_orders)+1): 
+            if i==0:
+                sf_HF, sf_LF = filtered_flux(star_flux[wave<lmin_orders[i]], R=R, Rc=Rc, filter_type=filter_type)
+                star_flux_HF[wave<lmin_orders[i]] = sf_HF ; star_flux_LF[wave<lmin_orders[i]] = sf_LF
+                pf_HF, pf_LF = filtered_flux(planet_flux[wave<lmin_orders[i]], R=R, Rc=Rc, filter_type=filter_type)
+                planet_flux_HF[wave<lmin_orders[i]] = pf_HF ; planet_flux_LF[wave<lmin_orders[i]] = pf_LF
+            elif i==len(lmin_orders):
+                sf_HF, sf_LF = filtered_flux(star_flux[wave>lmax_orders[i-1]], R=R, Rc=Rc, filter_type=filter_type)
+                star_flux_HF[wave>lmax_orders[i-1]] = sf_HF ; star_flux_LF[wave>lmax_orders[i-1]] = sf_LF
+                pf_HF, pf_LF = filtered_flux(planet_flux[wave>lmax_orders[i-1]], R=R, Rc=Rc, filter_type=filter_type)
+                planet_flux_HF[wave>lmax_orders[i-1]] = pf_HF ; planet_flux_LF[wave>lmax_orders[i-1]] = pf_LF
+            else:
+                sf_HF, sf_LF = filtered_flux(star_flux[(wave<lmin_orders[i])&(wave>lmax_orders[i-1])], R=R, Rc=Rc, filter_type=filter_type)
+                star_flux_HF[(wave<lmin_orders[i])&(wave>lmax_orders[i-1])] = sf_HF ; star_flux_LF[(wave<lmin_orders[i])&(wave>lmax_orders[i-1])] = sf_LF
+                pf_HF, pf_LF = filtered_flux(planet_flux[(wave<lmin_orders[i])&(wave>lmax_orders[i-1])], R=R, Rc=Rc, filter_type=filter_type)
+                planet_flux_HF[(wave<lmin_orders[i])&(wave>lmax_orders[i-1])] = pf_HF ; planet_flux_LF[(wave<lmin_orders[i])&(wave>lmax_orders[i-1])] = pf_LF
+    else:
+        # Handling LF filtering edge effects due to the gaps bewteen the orders
+        star_flux_HF, star_flux_LF = filtered_flux(star_flux, R=R, Rc=Rc, filter_type=filter_type)
+        planet_flux_HF, planet_flux_LF = filtered_flux(planet_flux, R=R, Rc=Rc, filter_type=filter_type)
+        _, trans_LF = filtered_flux(trans, R=R, Rc=Rc, filter_type=filter_type)
+        f = interp1d(wave[~nan_values], star_flux_LF[~nan_values], bounds_error=False, fill_value=np.nan) 
+        star_flux_LF = f(wave)
+        f = interp1d(wave[~nan_values], planet_flux_LF[~nan_values], bounds_error=False, fill_value=np.nan) 
+        planet_flux_LF = f(wave)
+        f = interp1d(wave[~nan_values], trans_LF[~nan_values], bounds_error=False, fill_value=np.nan) 
+        trans_LF = f(wave)
+        NV = keep_true_chunks(nan_values, N=0.005/np.nanmean(np.diff(wave))) # 0.005 µm ~ size of the gap between orders
+        star_flux[NV] = star_flux_LF[NV]
+        planet_flux[NV] = planet_flux_LF[NV]
+        trans[NV] = trans_LF[NV]
+        # HF / LF calculations
+        star_flux_HF, star_flux_LF = filtered_flux(star_flux, R=R, Rc=Rc, filter_type=filter_type)
+        planet_flux_HF, planet_flux_LF = filtered_flux(planet_flux, R=R, Rc=Rc, filter_type=filter_type)
+    if verbose and 1==0:
+        plt.figure(dpi=300) ; plt.title("Companion's signal") ; plt.plot(wave, planet_flux, "r", label="LF+HF") ; plt.plot(wave, planet_flux_LF, "g", label="LF") ; plt.plot(wave, planet_flux_HF, "b", label="HF") ; plt.plot(wave, filtered_flux(planet_flux_HF, R=R, Rc=Rc, filter_type=filter_type)[1], "k", label="[HF]_LF") ; plt.xlabel("wavelength [µm]") ; plt.ylabel("flux") ; plt.grid(True) ; plt.legend() ; plt.show()
+        plt.figure(dpi=300); plt.title("Star's signal") ; plt.plot(wave, star_flux, "r", label="LF+HF") ; plt.plot(wave, star_flux_LF, "g", label="LF") ; plt.plot(wave, star_flux_HF, "b", label="HF") ; plt.plot(wave, filtered_flux(star_flux_HF, R=R, Rc=Rc, filter_type=filter_type)[1], "k", label="[HF]_LF") ; plt.xlabel("wavelength [µm]") ; plt.ylabel("flux") ; plt.grid(True) ; plt.legend() ; plt.show()
+    if only_high_pass: # only apply a high pass filter to the data (no stellar subtraction) (if wanted)
+        planet_flux_HF, planet_flux_LF = filtered_flux(planet_flux/trans, R=R, Rc=Rc, filter_type=filter_type)
+        d_planet = trans*planet_flux_HF
+    else: # standard molecular mapping post-processing
+        d_planet = planet_flux - star_flux * planet_flux_LF / star_flux_LF # high pass planet spectrum extracted = trans*[Sp]_HF
+    sf_HF, sf_LF = filtered_flux(star_flux/trans, R=R, Rc=Rc, filter_type=filter_type) ; d_star = trans*sf_HF # Considered as noise / background flux
+    
+    # Removing the flagged nan values (if wanted)
+    if mask_nan_values:
+        star_flux[nan_values] = np.nan ; star_flux_LF[nan_values] = np.nan ; star_flux_HF[nan_values] = np.nan ; star_weight[nan_values] = np.nan ; d_planet[nan_values] = np.nan ; sigma_l_planet_detector[nan_values] = np.nan
+        planet_flux[nan_values] = np.nan ; planet_flux_LF[nan_values] = np.nan ; planet_flux_HF[nan_values] = np.nan ; planet_weight[nan_values] = np.nan ; d_star[nan_values] = np.nan  ; sigma_l_star_detector[nan_values] = np.nan
+        trans[nan_values] = np.nan
+        
+    # Renormalization (flux and noise conservation)
+    d_star *= norm_star_flux0/np.nansum(star_flux) ; star_flux_LF *= norm_star_flux0/np.nansum(star_flux) ; star_flux_HF *= norm_star_flux0/np.nansum(star_flux) ; star_flux *= norm_star_flux0/np.nansum(star_flux)
+    sigma_l_star_detector *= norm_sigma_l_star_detector0/np.sqrt(np.nansum(sigma_l_star_detector**2)) # for the noise, this is the power (total variance) that is conserved
+    d_planet *= norm_planet_flux0/np.nansum(planet_flux) ; planet_flux_LF *= norm_planet_flux0/np.nansum(planet_flux) ; planet_flux_HF *= norm_planet_flux0/np.nansum(planet_flux) ; planet_flux *= norm_planet_flux0/np.nansum(planet_flux)
+    sigma_l_planet_detector *= norm_sigma_l_planet_detector0/np.sqrt(np.nansum(sigma_l_planet_detector**2)) # for the noise, this is the power (total variance) that is conserved
+    
+    # (second final) OUTLIERS FILTERING (if wanted)
+    if outliers: 
+        sg = sigma_clip(d_star, sigma=sigma_outliers) ; d_star = np.array(np.ma.masked_array(d_star, mask=sg.mask).filled(np.nan))
+        sg = sigma_clip(sigma_l_star_detector, sigma=sigma_outliers) ; sigma_l_star_detector = np.array(np.ma.masked_array(sigma_l_star_detector, mask=sg.mask).filled(np.nan))
+        sg = sigma_clip(d_planet, sigma=sigma_outliers) ; d_planet = np.array(np.ma.masked_array(d_planet, mask=sg.mask).filled(np.nan))
+        sg = sigma_clip(sigma_l_planet_detector, sigma=sigma_outliers) ; sigma_l_planet_detector = np.array(np.ma.masked_array(sigma_l_planet_detector, mask=sg.mask).filled(np.nan))
+
+    # ESTIMATION OF THE PLANET's STD
+    #plt.figure(dpi=300) ; plt.plot(wave, planet_flux, 'gray', label=r"$S$") ; plt.plot(wave, planet_flux_LF, 'k', label=r"$[S]_{LF}$") ; plt.plot(wave, sigma_l_planet_detector, 'g', label=r"$\sigma_{RON}$") ; plt.plot(wave, np.sqrt(planet_flux_LF + sigma_l_planet_detector**2), label=r"$\sigma_{total}$") ; plt.plot(wave, np.sqrt(planet_flux_LF), 'r', label=r"$\sigma_{\gamma}$") ; plt.legend() ; plt.yscale('log') ; plt.xlabel('wavelength (in µm)') ; plt.ylabel("signal (in e-)") ; plt.show()    
+    if 1==1:
+        if "beta_Pic_c" in target_name:
+            corr_sigma = 2.
+        else:
+            corr_sigma = 1
+    else:
+        corr_sigma = 1
+    
+    # planet window = 4 px ; star_window = 5
+    sigma_l_planet = corr_sigma * np.sqrt( planet_flux + 4*sigma_l_planet_detector**2 + (star_flux + 5*sigma_l_star_detector**2) * (planet_flux_LF/star_flux_LF)**2 ) # poisson photon noise + detector noise
+    
+    if weight:
+        planet_weight *= star_weight
+    else:
+        planet_weight = None
+        
+    if cut_fringes: # filter fringes frequencies
+        if "fiber" not in target_name:
+            d_planet = cut_spectral_frequencies(input_flux=d_planet, R=R, Rmin=Rmin, Rmax=Rmax, show=verbose, target_name=target_name, force_new_calc=True)
+        else:
+            d_planet = cut_spectral_frequencies(input_flux=d_planet, R=R, Rmin=Rmin, Rmax=Rmax, show=False, target_name=target_name[:-7], force_new_calc=False)
+
+    # FILTERING THE RESIDUALS LOW FREQUENCIES (R<Rc): S/N seems slightly better with it
+    # d_planet = cut_spectral_frequencies(input_flux=d_planet, R=R, Rmin=0, Rmax=Rc, filter_type="step")
+    # d_star = cut_spectral_frequencies(input_flux=d_star, R=R, Rmin=0, Rmax=Rc, filter_type="step")
+    d_planet -= np.nanmedian(d_planet)
+    d_star -= np.nanmedian(d_star)
+        
+    return wave, star_flux, d_star, planet_flux, d_planet, trans, R, sigma_l_planet, planet_weight, T_star, lg_star, rv_star
+
+
+
+
+
+
+
+def cut_spectral_frequencies(input_flux, R, Rmin, Rmax, filter_type='empirical', show=False, target_name=None, force_new_calc=False):
+    """
+    Removes spectral fringes from the input flux by setting specific frequency components to zero or applying a smoother filter.
+
+    Parameters:
+    input_flux (array-like): The flux values to be filtered, which may contain NaN values.
+    R (float): The spectral resolution of the data.
+    Rmin (float): The lower bound of the fringe domain in resolution units.
+    Rmax (float): The upper bound of the fringe domain in resolution units.
+    filter_type (str): The type of smoother filter to apply, either 'gaussian', 'step' or 'empirical'.
+    data (bool): In order to estimate the empirical filter response profile from data.
+
+    Returns:
+    array-like: The filtered flux with spectral fringes removed or smoothed.
+    """
+    # Ensure there are no NaN values in the input flux
+    valid_data = ~np.isnan(input_flux)
+    # Perform FFT on the valid part of the input flux
+    fft_values = np.fft.fft(input_flux[valid_data])
+    frequencies = np.fft.fftfreq(len(input_flux[valid_data]))
+    # Convert frequencies to resolution scale
+    res_values = frequencies * R * 2
+    if filter_type == 'gaussian': # Apply a Gaussian filter to smoothly reduce the amplitudes in the fringe domain
+        sigma = (Rmax - Rmin) / (2 * np.sqrt(2 * np.log(2)))  # assuming FWHM = Rmax - Rmin
+        n = 1 # Control the sharpness of the filter, n > 1 for super-gaussian
+        gaussian_filter = (1 - np.exp(-0.5 * ((res_values - (Rmin + Rmax) / 2) / sigma) ** (2*n))) / 2 + (1 - np.exp(-0.5 * ((res_values + (Rmin + Rmax) / 2) / sigma) ** (2*n))) / 2
+        filter_response = gaussian_filter
+    elif filter_type == 'step': # Apply a window filter for a sharp cutoff of the fringe domain
+        step_filter = np.ones_like(res_values)
+        step_filter[(Rmax > np.abs(res_values)) & (np.abs(res_values) > Rmin)] = 0
+        filter_response = step_filter
+    elif filter_type == 'empirical': 
+        try : # Opening existing filter response profile
+            if force_new_calc:
+                raise ValueError("force_new_calc = True")
+            empirical_res_values, empirical_filter_response = fits.getdata(f"utils/{target_name}_empirical_filter_response.fits")
+            f = interp1d(empirical_res_values, empirical_filter_response, bounds_error=False, fill_value="extrapolate")
+            filter_response = f(res_values)
+        except Exception as e: # Calculating empirical filter response profile (needs to be done once on data!!! and not on models)
+            print(f"empirical cut_spectral_frequencies(): {e}")
+            # Calcul de la PSD des données
+            psd_values = np.abs(fft_values)**2
+            # Lissage de la PSD des données
+            psd_values_LF = gaussian_filter1d(psd_values, sigma=100)
+            # Interpolation de la PSD en masquant le pic des franges
+            psd_values_LF_interp = np.copy(psd_values_LF)
+            psd_values_LF_interp[(Rmax > np.abs(res_values)) & (np.abs(res_values) > Rmin)] = np.nan
+            f = interp1d(res_values[~np.isnan(psd_values_LF_interp)], psd_values_LF_interp[~np.isnan(psd_values_LF_interp)], bounds_error=False, fill_value=np.nan)
+            psd_values_LF_interp = f(res_values)
+            # Calcul de la forme du pic des franges (psd_values_LF = PSD lissée avec le pic et psd_values_LF_interp PSD lissée sans le pic)
+            peak = np.abs(psd_values_LF - psd_values_LF_interp)
+            # Normalisation du pic (on s'intéresse uniquement à la forme)
+            peak /= np.nanmax(peak)
+            # Lissage de la forme du pic trouvé (semble mieux marcher), sigma=400 est une valeur qui fonctionne bien pour les données de Beta Pic c, mais il faudra surement modifier cette valeur pour d'autres données
+            if target_name=="beta_Pic_c":
+                sigma = 666
+            elif target_name=="51_Eri_b":
+                sigma = 1000
+            filter_response = gaussian_filter1d(1 - peak, sigma=sigma)
+            # Sauvegarde du profil trouvé
+            empirical_filter_response = np.zeros((2, len(filter_response)))
+            empirical_filter_response[0] = res_values ; empirical_filter_response[1] = filter_response
+            fits.writeto(f"utils/{target_name}_empirical_filter_response.fits", empirical_filter_response, overwrite=True)
+            plt.figure(dpi=300)
+            plt.plot(np.fft.fftshift(res_values), np.fft.fftshift(psd_values), label="PSD des données")
+            plt.plot(np.fft.fftshift(res_values), np.fft.fftshift(psd_values_LF), label="PSD lissée (avec le pic)")
+            plt.plot(np.fft.fftshift(res_values), np.fft.fftshift(psd_values_LF_interp), label="PSD lissée (sans le pic)")
+            plt.plot(np.fft.fftshift(res_values), np.fft.fftshift(np.abs(psd_values_LF - psd_values_LF_interp)), label="Estimation du pic")
+            plt.plot(np.fft.fftshift(res_values), np.fft.fftshift(filter_response), label="normalisation, lissage et inversion du pic")
+            plt.xscale('log')
+            plt.yscale('log')
+            plt.legend()
+            plt.xlabel("resolution")
+            plt.ylabel("PSD")
+            plt.show()
+    else:
+        raise ValueError("Invalid filter_type. Use 'gaussian', 'lorentzian', or 'step'.")
+    if show: # Plot the filter and the effect on FFT values
+        plt.figure(dpi=300)
+        plt.plot(np.fft.fftshift(res_values), abs(np.fft.fftshift(fft_values))**2, label='Original PSD')
+        plt.plot(np.fft.fftshift(res_values), abs(np.fft.fftshift(filter_response))**2, label=f'{filter_type.capitalize()} Filter Response')
+        plt.plot(np.fft.fftshift(res_values), abs(np.fft.fftshift(fft_values * filter_response))**2, label='Filtered PSD')
+        plt.xscale('log') ; plt.yscale('log')
+        plt.xlabel("resolution") ; plt.ylabel("PSD")
+        plt.legend()
+        plt.show()
+    fft_values *= filter_response
+    filtered_flux = np.copy(input_flux)
+    filtered_flux[valid_data] = np.real(np.fft.ifft(fft_values))
+    return filtered_flux
+
+
+
+
+
+def keep_true_chunks(nan_values, N):
+    # Convertir nan_values en une array numpy (si ce n'est pas déjà fait)
+    nan_values = np.array(nan_values)
+    # Initialisation des listes pour stocker les indices des débuts et fins de séquences de True
+    start_indices = []
+    end_indices = []
+    # Parcourir l'array pour identifier les séquences de True
+    in_chunk = False
+    for i in range(len(nan_values)):
+        if nan_values[i] and not in_chunk:
+            # Début d'une nouvelle séquence de True
+            in_chunk = True
+            start_idx = i
+        elif not nan_values[i] and in_chunk:
+            # Fin de la séquence en cours
+            in_chunk = False
+            if i - start_idx >= N:
+                start_indices.append(start_idx)
+                end_indices.append(i)
+    # Pour la dernière séquence si elle continue jusqu'à la fin de l'array
+    if in_chunk and (len(nan_values) - start_idx >= N):
+        start_indices.append(start_idx)
+        end_indices.append(len(nan_values))
+    # Créer une nouvelle array ne contenant que les chunks de True de longueur >= N
+    filtered_nan_values = np.zeros_like(nan_values, dtype=bool)
+    for start, end in zip(start_indices, end_indices):
+        filtered_nan_values[start:end] = True
+    return filtered_nan_values
+
+
+
+
+
+
+
+
+
+
+def PCA_subtraction(Sres, n_comp_sub, y0=None, x0=None, size_core=None, PCA_annular=False, PCA_mask=False, scree_plot=False, PCA_plots=False, wave=None, R=None, pxscale=None):
     if n_comp_sub != 0 :
         from sklearn.decomposition import PCA
         NbChannel, NbColumn, NbLine = Sres.shape
@@ -288,9 +866,9 @@ def PCA_subtraction(Sres, n_comp_sub,y0=None,x0=None,size_core=None,PCA_annular=
         if y0 is not None and x0 is not None : 
             if PCA_annular :
                 planet_sep = int(round(np.sqrt((y0-NbLine//2)**2+(x0-NbColumn//2)**2)))
-                Sres_wo_planet *= annular_mask(max(1,planet_sep-size_core-1),planet_sep+size_core,value=np.nan,size=(NbLine,NbColumn))
+                Sres_wo_planet *= annular_mask(max(1, planet_sep-size_core-1), planet_sep+size_core, value=np.nan, size=(NbLine, NbColumn))
             if PCA_mask :
-                Sres_wo_planet[:,y0-size_core//2:y0+size_core//2+1,x0-size_core//2:x0+size_core//2+10] = np.nan 
+                Sres_wo_planet[:, y0-size_core//2:y0+size_core//2+1, x0-size_core//2:x0+size_core//2+10] = np.nan 
         Sres_wo_planet = np.reshape(Sres_wo_planet, (NbChannel, NbColumn * NbLine)).transpose()
         Sres_wo_planet[np.isnan(Sres_wo_planet)] = 0
         pca.fit(Sres_wo_planet)
@@ -303,51 +881,51 @@ def PCA_subtraction(Sres, n_comp_sub,y0=None,x0=None,size_core=None,PCA_annular=
         Sres_sub[Sres_sub == 0] = np.nan
         
         if PCA_plots :
-            Nk = 4 # nb de modes à plot
+            Nk =  min(n_comp_sub, 5) # nb de modes à plot
             from src.spectrum import Spectrum
             cmap = get_cmap("Spectral", Nk)
-            fig, ax = plt.subplots(Nk, 3, figsize=(16, Nk*3), sharex='col', sharey='col', layout="constrained", gridspec_kw={'wspace': 0.05,'hspace':0}, dpi=300)
-            for k in range(0,Nk):
+            fig, ax = plt.subplots(Nk, 3, figsize=(16, Nk*3), sharex='col', sharey='col', layout="constrained", gridspec_kw={'wspace': 0.05, 'hspace':0}, dpi=300)
+            for k in range(0, Nk):
                 
                 pca_comp = pca.components_[k]
                 pca_comp[pca_comp==0] = np.nan
                 
-                ax[k,0].plot(wave,pca_comp,c=cmap(k),label=f"$n_k$ = {k+1}")
-                ax[k,0].legend(fontsize=14,loc="upper center")
+                ax[k, 0].plot(wave, pca_comp, c=cmap(k), label=f"$n_k$ = {k+1}")
+                ax[k, 0].legend(fontsize=14, loc="upper center")
                 if k==Nk-1:
-                    ax[k,0].set_xlim(wave[0],wave[-1])
-                    ax[k,0].set_xlabel("wavelength (in µm)",fontsize=14)
-                ax[k,0].set_ylabel("modulation (normalized)",fontsize=14)
-                ax[k,0].grid(True)
+                    ax[k, 0].set_xlim(wave[0], wave[-1])
+                    ax[k, 0].set_xlabel("wavelength (in µm)", fontsize=14)
+                ax[k, 0].set_ylabel("modulation (normalized)", fontsize=14)
+                ax[k, 0].grid(True)
                 
                 m_HF_spectrum = Spectrum(wave, pca_comp, R, None)
                 m_HF_spectrum.wavelength = m_HF_spectrum.wavelength[~np.isnan(m_HF_spectrum.flux)]
                 m_HF_spectrum.flux = m_HF_spectrum.flux[~np.isnan(m_HF_spectrum.flux)]
-                res, psd = m_HF_spectrum.get_psd(smooth=1)
-                ax[k,1].plot(res,psd,c=cmap(k))
+                res, psd = m_HF_spectrum.get_psd(smooth=0)
+                ax[k, 1].plot(res, psd, c=cmap(k))
                 if k==Nk-1:
-                    ax[k,1].set_xlim(10,R)
-                    ax[k,1].set_xlabel("resolution",fontsize=14)
-                    ax[k,1].set_xscale('log')
-                    ax[k,1].set_yscale('log')
-                ax[k,1].set_ylabel("PSD",fontsize=14)
-                ax[k,1].grid(True)
+                    ax[k, 1].set_xlim(10, R)
+                    ax[k, 1].set_xlabel("resolution", fontsize=14)
+                    ax[k, 1].set_xscale('log')
+                    ax[k, 1].set_yscale('log')
+                ax[k, 1].set_ylabel("PSD", fontsize=14)
+                ax[k, 1].grid(True)
                 
-                CCF = np.zeros((Sres.shape[1],Sres.shape[2]))
+                CCF = np.zeros((Sres.shape[1], Sres.shape[2])) + np.nan
                 for i in range(Sres.shape[1]):
                     for j in range(Sres.shape[2]):
-                        CCF[i,j] = np.nan_to_num(np.nansum(Sres[:,i,j]*pca_comp))/np.sqrt(np.nansum(Sres[:,i,j]**2))
-                cax = ax[k,2].imshow(CCF,extent=[-(CCF.shape[0]+1)//2*pxscale,(CCF.shape[0])//2*pxscale,-(CCF.shape[1]-2)//2*pxscale,(CCF.shape[1])//2*pxscale],zorder=3)
-                cbar = fig.colorbar(cax, ax=ax[k,2], orientation='vertical',shrink=0.8) ; cbar.set_label("correlation", fontsize=14, labelpad=20, rotation=270)
+                        if not (np.isnan(Sres[:, i, j])).all():
+                            CCF[i, j] = np.nan_to_num(np.nansum(Sres[:, i, j]*pca_comp))/np.sqrt(np.nansum(Sres[:, i, j]**2))
+                cax = ax[k, 2].imshow(CCF, extent=[-(CCF.shape[0]+1)//2*pxscale, (CCF.shape[0])//2*pxscale, -(CCF.shape[1]-2)//2*pxscale, (CCF.shape[1])//2*pxscale], zorder=3)
+                cbar = fig.colorbar(cax, ax=ax[k, 2], orientation='vertical', shrink=0.8) ; cbar.set_label("correlation", fontsize=14, labelpad=20, rotation=270)
                 if k==Nk-1:
                     
-                    #ax[k,2].set_xlim(-3,3)
-                    #ax[k,2].set_ylim(-3,3)
-                    ax[k,2].set_xlabel('x offset (in ")',fontsize=14)
-                ax[k,2].set_ylabel('y offset (in ")',fontsize=14)
-                ax[k,2].grid(True)
+                    #ax[k, 2].set_xlim(-3, 3)
+                    #ax[k, 2].set_ylim(-3, 3)
+                    ax[k, 2].set_xlabel('x offset (in ")', fontsize=14)
+                ax[k, 2].set_ylabel('y offset (in ")', fontsize=14)
+                ax[k, 2].grid(True)
             plt.show()
-            
             
         if scree_plot :
             X = np.reshape(Sres, (NbChannel, NbColumn * NbLine)).transpose()
@@ -357,7 +935,7 @@ def PCA_subtraction(Sres, n_comp_sub,y0=None,x0=None,size_core=None,PCA_annular=
             pca.fit_transform(X)
             # Obtenir les valeurs propres
             eigenvalues = pca.explained_variance_
-            # Calculer laproportion de variance expliquée par chaque composante
+            # Calculer la proportion de variance expliquée par chaque composante
             explained_variance_ratio = pca.explained_variance_ratio_
             # Tracer le scree plot
             plt.figure(figsize=(8, 6))
@@ -376,41 +954,75 @@ def PCA_subtraction(Sres, n_comp_sub,y0=None,x0=None,size_core=None,PCA_annular=
 
 
 
-def model_T_lg_array(model):
-    if model=="Exo-REM":
-        lg = np.array([3.5,4.0])
-        T = np.arange(500,2100,100) # K
-    elif model=="BT-Settl" or model=="PICASO":
-        lg = np.array([3.0,3.5,4.0,4.5,5.0])
-        T = np.append(np.arange(500,1050,50),np.arange(1000,3100,100))
-    elif model=="Morley":
-        lg = np.array([4,4.5,5,5.5])
-        T = np.arange(500,1400,100) # K
-    elif model=="SONORA":
-        lg = np.array([3,3.5,4,4.5,5,5.5])
-        T = np.arange(500,2500,100)
-    elif model=="BT-Dusty":
-        lg = np.array([4.5,5])
-        T = np.arange(1400,3100,100)
-    elif model=="Saumon":
-        lg = np.array([3,3.5,4,4.5,5])
-        T = np.arange(400,1250,50)
-    elif model[:4] == "mol_" :
-        lg = np.array(["H2O","CO2","O3","N2O","CO","CH4","O2","NO","SO2","NO2","NH3"])
-        T = np.append(np.arange(400,1050,50),np.arange(1000,3100,100))
-    return T , lg
+def fit_PSF_FWHM(instru, PSF, wave, pxscale, sep_unit="arcsec", PSF_fit_model="gaussian"):
+    NbLine, NbColumn = PSF.shape
+    PSF = PSF / np.nanmax(PSF)  # Normalisation de la PSF
+    D = get_config_data(instru)["telescope"]["diameter"]  # diameter  in m
+    lambda0 = (wave[0] + wave[-1]) / 2 * 1e-6  # wavelength in m
+    if sep_unit == "mas":     # Calcul de la FWHM théorique en fonction de l'unité d'angle
+        FWHM_ang = lambda0 / D * rad2arcsec * 1000  # FWHM en mas
+    elif sep_unit == "arcsec":
+        FWHM_ang = lambda0 / D * rad2arcsec  # FWHM en arcsec
+    else:
+        raise ValueError(f"{sep_unit} units unknown. Use 'mas' or 'arcsec'.")
+    FWHM_px = FWHM_ang / pxscale  # FWHM en pixels
+    y, x = np.mgrid[:NbLine, :NbColumn] # Génération de la grille pour le fit
+    amp = np.nanmax(PSF)  # Amplitude maximale de la PSF
+    y0, x0 = np.unravel_index(np.argmax(np.nan_to_num(PSF)), PSF.shape)  # Position initiale
+    fitter = fitting.LevMarLSQFitter() # Choix du modèle de PSF pour le fit
+    if PSF_fit_model == "moffat":
+        model = models.Moffat2D(amplitude=amp, x_0=x0, y_0=y0, gamma=2.5, alpha=1.5)
+    elif PSF_fit_model == "gaussian":
+        sigma_x = FWHM_px / (2 * np.sqrt(2 * np.log(2)))  # Conversion FWHM -> sigma
+        sigma_y = sigma_x
+        model = models.Gaussian2D(amplitude=amp, x_mean=x0, y_mean=y0, x_stddev=sigma_x, y_stddev=sigma_y)
+    elif PSF_fit_model == "airy":
+        model = models.AiryDisk2D(amplitude=amp, x_0=x0, y_0=y0, radius=1.22 * FWHM_px)
+    else:
+        raise ValueError(f"{PSF_fit_model} model unknown. Use 'moffat', 'gaussian' or 'airy'.")
+    best_fit = fitter(model, x, y, z=np.nan_to_num(PSF)) # Fit de la PSF
+    psf_residual = best_fit(x, y) - PSF # Résidus entre le fit et les données
+    if PSF_fit_model == "moffat": # Calcul de la FWHM en pixels
+        FWHM_fit_px = best_fit.gamma.value * 2  # FWHM en pixels pour Moffat
+    elif PSF_fit_model == "gaussian":
+        FWHM_fit_px = np.mean([best_fit.x_stddev.value, best_fit.y_stddev.value]) * (2 * np.sqrt(2 * np.log(2)))
+    elif PSF_fit_model == "airy":
+        FWHM_fit_px = best_fit.radius.value / 1.22
+    FWHM_fit_ang = FWHM_fit_px * pxscale  # Conversion FWHM en unités angulaires (mas ou arcsec)
+    r = np.linspace(-NbLine/2, NbLine/2, NbLine) * pxscale # Affichage des résultats
+    print(f"FWHM DL PSF size: {round(FWHM_ang, 2)} {sep_unit}")
+    print(f"FWHM DL PSF size: {round(FWHM_px, 2)} px")
+    print(f"FWHM data PSF size (from {PSF_fit_model} fit): {round(FWHM_fit_ang, 2)} {sep_unit}")
+    print(f"FWHM data PSF size (from {PSF_fit_model} fit): {round(FWHM_fit_px, 2)} px")
+    plt.figure(dpi=300) # Visualisation du fit
+    plt.plot(r, best_fit(x, y)[NbLine // 2], 'b', label=f"{PSF_fit_model} fit")
+    plt.plot(r, PSF[NbLine // 2], 'r', label='data PSF')
+    plt.legend() ; plt.yscale('log') ; plt.grid(True) ; plt.xlabel(f'x offset (in {sep_unit})') ; plt.ylabel("Intensity (in raw contrast)") ; plt.ylim(np.nanmin(PSF[NbLine // 2]), 2*np.nanmax(PSF[NbLine // 2])) ; plt.show()
+    return FWHM_fit_ang, FWHM_fit_px, psf_residual
 
 
 
 
 
 
+
+
+
+
+
+
+
+
+def mjd_to_date(mjd):
+    t = Time(mjd, format='mjd')
+    date_str = t.datetime.strftime("%d/%m/%Y")
+    return date_str
 
 
 
 def propagate_coordinates_at_epoch(targetname, date, verbose=True):
     from astroquery.simbad import Simbad
-    from astropy.coordinates import SkyCoord,Distance
+    from astropy.coordinates import SkyCoord, Distance
     from astropy.time import Time
     """Get coordinates at an epoch for some target, taking into account proper motions.
     Retrieves the SIMBAD coordinates, applies proper motion, returns the result as an
@@ -434,7 +1046,7 @@ def propagate_coordinates_at_epoch(targetname, date, verbose=True):
     pm_dec = result_table["PMDEC"][0]
     plx = result_table["PLX_VALUE"][0]
     # Create a SkyCoord object with the coordinates and proper motion
-    target_coord_j2000 = SkyCoord(ra, dec, unit=(u.hourangle, u.deg),pm_ra_cosdec=pm_ra * u.mas / u.year,pm_dec=pm_dec * u.mas / u.year,distance=Distance(parallax=plx * u.mas),frame='icrs', obstime='J2000.0')
+    target_coord_j2000 = SkyCoord(ra, dec, unit=(u.hourangle, u.deg), pm_ra_cosdec=pm_ra * u.mas / u.year, pm_dec=pm_dec * u.mas / u.year, distance=Distance(parallax=plx * u.mas), frame='icrs', obstime='J2000.0')
     # Convert the desired date to an astropy Time object
     t = Time(date)
     # Calculate the updated SkyCoord object for the desired date
@@ -460,10 +1072,10 @@ def get_coordinates_arrays(filename) :
         from : https://github.com/jruffio/breads/blob/main/breads/instruments/jwstnirspec_cal.py#L338
         """
     try :
-        wavelen_array = fits.getdata(filename.replace(".fits","_wavelen_array.fits")) # µm
-        dra_as_array = fits.getdata(filename.replace(".fits","_dra_as_array.fits")) # arcsec
-        ddec_as_array = fits.getdata(filename.replace(".fits","_ddec_as_array.fits")) # arcsec
-        area2d = fits.getdata(filename.replace(".fits","_area2d.fits")) # arcsec^2
+        wavelen_array = fits.getdata(filename.replace(".fits", "_wavelen_array.fits")) # µm
+        dra_as_array = fits.getdata(filename.replace(".fits", "_dra_as_array.fits")) # arcsec
+        ddec_as_array = fits.getdata(filename.replace(".fits", "_ddec_as_array.fits")) # arcsec
+        area2d = fits.getdata(filename.replace(".fits", "_area2d.fits")) # arcsec^2
     except :
         import jwst.datamodels, jwst.assign_wcs
         from jwst.photom.photom import DataSet
@@ -476,7 +1088,7 @@ def get_coordinates_arrays(filename) :
         calfile = jwst.datamodels.open(hdulist) #save time opening by passing the already opened file
         photom_dataset = DataSet(calfile)
         ## Determine pixel areas for each pixel, retrieved from a CRDS reference file
-        area_fname = hdr0["R_AREA"].replace("crds://", os.path.join("/home/martoss/crds_cache", "references", "jwst","nirspec") + os.path.sep)
+        area_fname = hdr0["R_AREA"].replace("crds://", os.path.join("/home/martoss/crds_cache", "references", "jwst", "nirspec") + os.path.sep)
         # Load the pixel area table for the IFU slices
         area_model = jwst.datamodels.open(area_fname)
         area_data = area_model.area_table
@@ -494,7 +1106,7 @@ def get_coordinates_arrays(filename) :
                     xmax = int(np.round(wcses[i].bounding_box.intervals[0][1]))
                     ymin = max(int(np.round(wcses[i].bounding_box.intervals[1][0])), 0)
                     ymax = int(np.round(wcses[i].bounding_box.intervals[1][1]))
-                    # print(xmax, xmin,ymax, ymin,ymax - ymin,xmax - xmin)
+                    # print(xmax, xmin, ymax, ymin, ymax - ymin, xmax - xmin)
                     x = np.arange(xmin, xmax)
                     x = x.reshape(1, x.shape[0]) * np.ones((ymax - ymin, 1))
                     y = np.arange(ymin, ymax)
@@ -507,17 +1119,11 @@ def get_coordinates_arrays(filename) :
                     wavelen_array[ymin:ymax, xmin:xmax] = speccoord
         dra_as_array = (ra_array - host_ra_deg) * 3600 * np.cos(np.radians(dec_array)) # in arcsec
         ddec_as_array = (dec_array - host_dec_deg) * 3600 # in arcsec
-        fits.writeto(filename.replace(".fits","_wavelen_array.fits"),wavelen_array,overwrite=True)
-        fits.writeto(filename.replace(".fits","_dra_as_array.fits"),dra_as_array,overwrite=True)
-        fits.writeto(filename.replace(".fits","_ddec_as_array.fits"),ddec_as_array,overwrite=True)
-        fits.writeto(filename.replace(".fits","_area2d.fits"),area2d,overwrite=True)
+        fits.writeto(filename.replace(".fits", "_wavelen_array.fits"), wavelen_array, overwrite=True)
+        fits.writeto(filename.replace(".fits", "_dra_as_array.fits"), dra_as_array, overwrite=True)
+        fits.writeto(filename.replace(".fits", "_ddec_as_array.fits"), ddec_as_array, overwrite=True)
+        fits.writeto(filename.replace(".fits", "_area2d.fits"), area2d, overwrite=True)
     return wavelen_array, dra_as_array, ddec_as_array, area2d
-
-
-
-
-
-
 
 
 
