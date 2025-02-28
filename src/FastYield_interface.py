@@ -145,7 +145,6 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
             if self.instru == "HARMONI":
                 self.strehl = "JQ1"
             elif self.instru == "ANDES" or self.instru=="VIPAPYRUS" or self.instru=="HiRISE":
-                print("jehrikzhrezhrhjherhi")
                 self.strehl = "MED"
             elif self.instru == "ERIS":
                 self.strehl = "JQ0"
@@ -401,7 +400,6 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
                 self.planet_table = load_planet_table(self.table+"_Pull_"+self.instru+"_"+self.apodizer+"_"+self.strehl+"_with_systematics_"+self.model+".ecsv")
         else:
             self.planet_table = load_planet_table(self.table+"_Pull_"+self.instru+"_"+self.apodizer+"_"+self.strehl+"_without_systematics_"+self.model+".ecsv")
-        print(self.table+"_Pull_"+self.instru+"_"+self.apodizer+"_"+self.strehl+"_without_systematics_"+self.model+".ecsv")
         # Filtrage les planètes non-visibles depuis le site d'observation
         if self.config_data["base"]=="ground":
             self.get_coords()
@@ -616,7 +614,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         self.calculation = "corner plot"
         self.FastCurves_calculation()
     def FastCurves_calculation(self):
-        planet_spectrum, planet_thermal, planet_reflected, star_spectrum = thermal_reflected_spectrum(self.planet, self.instru, thermal_model=self.thermal_model, reflected_model=self.reflected_model, wave=None, vega_spectrum=None, show=True)
+        planet_spectrum, planet_thermal, planet_reflected, star_spectrum = thermal_reflected_spectrum(self.planet, self.instru, thermal_model=self.thermal_model, reflected_model=self.reflected_model, wave_instru=None, wave_K=None, vega_spectrum_K=None, show=True)
         if self.spectrum_contributions == "thermal": 
             planet_spectrum = planet_thermal
         elif self.spectrum_contributions == "reflected":
@@ -629,7 +627,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
                 planet_spectrum.model = "BT-Settl"
             else:
                 planet_spectrum.model = self.thermal_model
-            if self.band == "INSTRU":
+            if self.band == "INSTRU": # picking the band with the highest S/N
                 snr_max = 0 ; band_only = None
                 for band in self.config_data["gratings"]:
                     snr = np.copy(np.sqrt(self.exposure_time.get()/self.planet['DIT_'+band]) * self.planet['signal_'+band] / np.sqrt( self.planet['sigma_non-syst_'+band]**2 + (self.exposure_time.get()/self.planet['DIT_'+band])*self.planet['sigma_syst_'+band]**2 ))
@@ -638,9 +636,9 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
             else:
                 band_only = self.band
             try:
-                FastCurves(instru=self.instru, band_only=band_only, calculation=self.calculation, T_planet=float(self.planet["PlanetTeq"].value), lg_planet=float(self.planet["PlanetLogg"].value), mag_star=mag_s, band0=band0, T_star=float(self.planet["StarTeff"].value), lg_star=float(self.planet["StarLogg"].value), exposure_time=self.exposure_time.get(), model=self.model, mag_planet=mag_p, separation_planet=float(self.planet["AngSep"].value/1000), planet_name=self.planet["PlanetName"], systematic=self.systematics, PCA=self.PCA, show_plot=True, verbose=True, star_spectrum=star_spectrum, planet_spectrum=planet_spectrum, apodizer=self.apodizer, strehl=self.strehl)
-            except:
-                print("The S/N ({round(self.SNR[self.planet_index])}) is sufficiently high for the precision of the parameter estimation to be limited by systematic effects rather than fundamental noise")
+                FastCurves(instru=self.instru, band_only=band_only, calculation=self.calculation, T_planet=float(self.planet["PlanetTeq"].value), lg_planet=float(self.planet["PlanetLogg"].value), mag_star=mag_s, band0=band0, T_star=float(self.planet["StarTeff"].value), lg_star=float(self.planet["StarLogg"].value), exposure_time=self.exposure_time.get(), model=planet_spectrum.model, mag_planet=mag_p, separation_planet=float(self.planet["AngSep"].value/1000), planet_name=self.planet["PlanetName"], systematic=self.systematics, PCA=self.PCA, show_plot=True, verbose=True, star_spectrum=star_spectrum, planet_spectrum=planet_spectrum, apodizer=self.apodizer, strehl=self.strehl)
+            except Exception as e:
+                print(f"The S/N ({round(self.SNR[self.planet_index])}) is sufficiently high for the precision of the parameter estimation to be likely limited by systematic effects rather than fundamental noises.")
         else:
             if self.band == "INSTRU":
                 band_only = None 

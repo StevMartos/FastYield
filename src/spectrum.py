@@ -141,9 +141,9 @@ class Spectrum:
         
         dwl      = self.wavelength[valid] - np.roll(self.wavelength[valid], 1) ; dwl[0] = dwl[1] ; dwl[dwl == 0] = np.nanmean(dwl) # delta lambda array
         R_old    = np.nanmean(self.wavelength[valid]/(2*dwl))   # old Resolution (assuming Nyquist sampling)
-        R_interp = np.nanmax(self.wavelength[valid]/(2*dwl)) # interpolation Resolution (need to be the max res to avoid nan with cg.downvin)
-        if R_interp > 1e6: # fixing the upper limit of resolution in order to speeds up the calculation (it also need to be high enough for instruments with very high resolution)
-            R_interp = 1e6
+        R_interp = np.nanmax(self.wavelength[valid]/(2*dwl)) # interpolation Resolution (need to be the max res to avoid nan with cg.downbin)
+        if R_interp > 300_000: # fixing the upper limit of resolution in order to speeds up the calculation (it also need to be high enough for instruments with very high resolution)
+            R_interp = 300_000
         dl        = np.nanmean(self.wavelength[valid]/(2*R_interp)) 
         wave_band = np.arange(0.98*wave_output[0], 1.02*wave_output[-1], dl) # constant and linear input wavelength array
         flr       = self.interpolate_wavelength(wave_band, renorm=renorm).flux # reinterpolate the flux on wave_band
@@ -258,7 +258,6 @@ class Spectrum:
                 flux = f(self.wavelength) # pas besoin de "conserver le nb de photons" car c'est un effet intrinsèque (on ne change pas largeur des bins)
             spec_vsini       = self.copy()
             spec_vsini.flux  = flux
-            spec_vsini.vsini = vsini
         elif vsini < 0 :
             raise KeyError("Vsini can not be negative.")
         elif vsini == 0:
@@ -561,8 +560,8 @@ def load_spectrum(T, lg, model, instru=None, load_path=load_path):
         else:
             raise KeyError(model+" IS NOT A VALID THERMAL MODEL: BT-NextGen, BT-Settl, BT-Dusty, Exo-REM, PICASO, Morley, Saumon or SONORA.")
             
-        dwl = wave - np.roll(wave, 1) ; dwl[0] = dwl[1] ; dwl[dwl == 0] = np.nanmean(dwl) # delta lambda array
-        R = np.nanmean(wave/(2*dwl)) # calculating the resolution of the raw spectrum
+        dwl  = wave - np.roll(wave, 1) ; dwl[0] = dwl[1] ; dwl[dwl == 0] = np.nanmean(dwl) # delta lambda array
+        R    = np.nanmean(wave/(2*dwl)) # calculating the resolution of the raw spectrum
         spec = Spectrum(wave, flux, R, T, lg, model)
         return spec # in J/s/m²/µm
     except:
@@ -941,7 +940,7 @@ def get_fraction_noise_filtered(wave, R, Rc, filter_type, empirical=False):
 
 
 
-def thermal_reflected_spectrum(planet, instru=None, thermal_model="BT-Settl", reflected_model="PICASO", wave=None, vega_spectrum=None, show=True, in_im_mag=True):
+def thermal_reflected_spectrum(planet, instru=None, thermal_model="BT-Settl", reflected_model="PICASO", wave_instru=None, wave_K=None, vega_spectrum_K=None, show=True, in_im_mag=True):
     """
     Compute a thermal and reflected contributions for a given planet for FastYield table
 
@@ -955,61 +954,89 @@ def thermal_reflected_spectrum(planet, instru=None, thermal_model="BT-Settl", re
         thermal contribution model. The default is "BT-Settl".
     reflected_model: str, optional
         reflected contribution model. The default is "PICASO".
-    wave: 1d-array, optional
+    wave_instru: 1d-array, optional
         wavelength array on which the spectra will be calculated. The default is None.
+    wave_K: 1d-array, optional
+        wavelength array on which the magnitudes in K-band will be computed. The default is None.
     vega_spectrum: class Spectrum, optional
-        vega spectrum. The default is None. If None, it will be retrieved
+        vega spectrum on K-band. The default is None. If None, it will be retrieved
     show: bool, optional
         To plots the spectra contributions. The default is True.
     in_im_mag: bool, optional
         To renormalize the imaged planets in the K-band by the measured one. The default is True.
     """
-    lmin_K = 1.951 ; lmax_K = 2.469 # K-band
+    
     if thermal_model == "None" and reflected_model == "None":
         raise KeyError("PLEASE DEFINE A MODEL FOR THE THERMAL OR THE REFLECTED COMPONENT !")
-    if wave is None and instru is not None: # in case a wavelength array is not input, create one
+    
+    # K-band
+    if wave_K is None:
+        lmin_K = 1.951
+        lmax_K = 2.469
+        R_K    = 10_000 # only for photometric purposes (does not need more resolution)
+        dl_K   = ((lmin_K+lmax_K)/2)/(2*R_K)
+        wave_K = np.arange(lmin_K, lmax_K, dl_K)
+
+    # instru-band
+    if wave_instru is None and instru is not None: # in case a wavelength array is not input, create one
         config_data = get_config_data(instru)
         lmin_instru = config_data["lambda_range"]["lambda_min"] # in µm
         lmax_instru = config_data["lambda_range"]["lambda_max"] # in µm
-        R = 200000 # abritrary resolution (needs to be high enough)
-        dl_instru = ((max(lmax_K, lmax_instru)+min(lmin_K, lmin_instru))/2)/(2*R)
-        wave = np.arange(0.98*min(lmin_K, lmin_instru), 1.02*max(lmax_K, lmax_instru), dl_instru)
-    if vega_spectrum is None: # in case a vega spectrum is not input, create one
-        vega_spectrum = load_vega_spectrum()
-        vega_spectrum = vega_spectrum.interpolate_wavelength(wave, renorm = False)
-    
-    star_spectrum = load_star_spectrum(float(planet["StarTeff"].value), float(planet["StarLogg"].value)) # load the star spectrum
-    star_spectrum = star_spectrum.interpolate_wavelength(wave, renorm = False) # interpolating it to the wavelength array
-    star_spectrum.flux *= np.nanmean(vega_spectrum.flux[(wave>lmin_K)&(wave<lmax_K)])*10**(-0.4*float(planet["StarKmag"])) / np.nanmean(star_spectrum.flux[(wave>lmin_K) & (wave<lmax_K)]) # renormalizing the star spectrum to the correct magnitude
-    star_spectrum = star_spectrum.broad(float(planet["StarVsini"].value))
-    
-    if thermal_model!="None": # load, reinterpolates and renormalizes the thermal contribution of the planet spectrum
-        planet_thermal = load_planet_spectrum(float(planet["PlanetTeq"].value), float(planet["PlanetLogg"].value), model=thermal_model, interpolated_spectrum=True)
-        planet_thermal = planet_thermal.interpolate_wavelength(wave, renorm = False)
-        planet_thermal.flux *= float((planet['PlanetRadius']/planet['Distance']).decompose()**2) # scaling factor
-    elif thermal_model == "None":
-        planet_thermal = Spectrum(wave, np.zeros_like(wave), star_spectrum.R, float(planet["PlanetTeq"].value), float(planet["PlanetLogg"].value), thermal_model)
+        R_instru    = 300_000 # abritrary resolution (needs to be high enough)
+        dl_instru   = ((lmin_instru+lmax_instru)/2)/(2*R_instru)
+        wave_instru  = np.arange(0.98*lmin_instru, 1.02*lmax_instru, dl_instru)
+        
+    if vega_spectrum_K is None: # in case a vega spectrum is not input, create one
+        vega_spectrum   = load_vega_spectrum()
+        vega_spectrum_K = vega_spectrum.interpolate_wavelength(wave_K, renorm = False)
+                
+    star_spectrum         = load_star_spectrum(float(planet["StarTeff"].value), float(planet["StarLogg"].value)) # load the star spectrum
+    star_spectrum_K       = star_spectrum.interpolate_wavelength(wave_K, renorm = False)                         # interpolating it to the wavelength array
+    star_spectrum         = star_spectrum.interpolate_wavelength(wave_instru, renorm = False)                    # interpolating it to the wavelength array
+    star_spectrum         = star_spectrum.broad(float(planet["StarVsini"].value))
+    ratio_star            = np.nanmean(vega_spectrum_K.flux)*10**(-0.4*float(planet["StarKmag"])) / np.nanmean(star_spectrum_K.flux) # renormalizing the star spectrum to the correct magnitude
+    star_spectrum.flux   *= ratio_star
+    star_spectrum_K.flux *= ratio_star
 
-    albedo = load_albedo(planet_thermal.T, planet_thermal.lg)
+    if thermal_model != "None": # load, reinterpolates and renormalizes the thermal contribution of the planet spectrum
+        planet_thermal         = load_planet_spectrum(float(planet["PlanetTeq"].value), float(planet["PlanetLogg"].value), model=thermal_model, interpolated_spectrum=True)
+        planet_thermal_K       = planet_thermal.interpolate_wavelength(wave_K, renorm = False)
+        planet_thermal         = planet_thermal.interpolate_wavelength(wave_instru, renorm = False)
+        planet_scaling_factor  = float((planet['PlanetRadius']/planet['Distance']).decompose()**2)
+        planet_thermal.flux   *= planet_scaling_factor
+        planet_thermal_K.flux *= planet_scaling_factor
+
+    elif thermal_model == "None":
+        planet_thermal = Spectrum(wave_instru, np.zeros_like(wave_instru), star_spectrum.R, float(planet["PlanetTeq"].value), float(planet["PlanetLogg"].value), thermal_model)
+
+    albedo     = load_albedo(planet_thermal.T, planet_thermal.lg)
     albedo_geo = np.nanmean(albedo.flux) # mean value of the geometric albedo given by PICASO
     if reflected_model == "PICASO": # see Eq.(1) of Lovis et al. (2017): https://arxiv.org/pdf/1609.03082
-        albedo = albedo.interpolate_wavelength(wave, renorm = False)
-        planet_reflected = star_spectrum.flux * albedo.flux * planet["g_alpha"] * (planet['PlanetRadius']/planet['SMA']).decompose()**2
+        albedo_K           = albedo.interpolate_wavelength(wave_K, renorm = False)
+        planet_reflected_K = star_spectrum_K.flux * albedo_K.flux * planet["g_alpha"] * (planet['PlanetRadius']/planet['SMA']).decompose()**2
+        albedo             = albedo.interpolate_wavelength(wave_instru, renorm = False)
+        planet_reflected   = star_spectrum.flux * albedo.flux * planet["g_alpha"] * (planet['PlanetRadius']/planet['SMA']).decompose()**2
     elif reflected_model == "flat":
-        planet_reflected = star_spectrum.flux * albedo_geo * planet["g_alpha"] * (planet['PlanetRadius']/planet['SMA']).decompose()**2
+        planet_reflected_K = star_spectrum_K.flux * albedo_geo * planet["g_alpha"] * (planet['PlanetRadius']/planet['SMA']).decompose()**2
+        planet_reflected   = star_spectrum.flux * albedo_geo * planet["g_alpha"] * (planet['PlanetRadius']/planet['SMA']).decompose()**2
     elif reflected_model == "tellurics":
-        wave_tell, tell = fits.getdata("sim_data/Transmission/sky_transmission_airmass_2.5.fits")
-        f = interp1d(wave_tell, tell, bounds_error=False, fill_value=np.nan)
-        albedo_tell = albedo_geo/np.nanmean(tell) * f(wave)
-        planet_reflected = star_spectrum.flux * albedo_tell * planet["g_alpha"] * (planet['PlanetRadius']/planet['SMA']).decompose()**2
+        wave_tell, tell  = fits.getdata("sim_data/Transmission/sky_transmission_airmass_2.5.fits")
+        f                  = interp1d(wave_tell, tell, bounds_error=False, fill_value=np.nan)
+        albedo_tell_K      = albedo_geo/np.nanmean(tell) * f(wave_K)
+        planet_reflected_K = star_spectrum_K.flux * albedo_tell_K * planet["g_alpha"] * (planet['PlanetRadius']/planet['SMA']).decompose()**2
+        albedo_tell        = albedo_geo/np.nanmean(tell) * f(wave_instru)
+        planet_reflected   = star_spectrum.flux * albedo_tell * planet["g_alpha"] * (planet['PlanetRadius']/planet['SMA']).decompose()**2
     elif reflected_model == "None":
-        planet_reflected = np.zeros_like(wave)*u.dimensionless_unscaled
+        planet_reflected   = np.zeros_like(wave_instru)*u.dimensionless_unscaled
+        planet_reflected_K = np.zeros_like(wave_K)*u.dimensionless_unscaled
     else:
         raise KeyError(reflected_model+" IS NOT A VALID REFLECTED MODEL: tellurics, flat, PICASO or None")
-    planet_reflected = Spectrum(wave, np.nan_to_num(np.array(planet_reflected.value)), max(star_spectrum.R, albedo.R), albedo.T, float(planet["PlanetLogg"].value), reflected_model)
+    planet_reflected   = Spectrum(wave_instru, np.nan_to_num(np.array(planet_reflected.value)), max(star_spectrum.R, albedo.R), albedo.T, float(planet["PlanetLogg"].value), reflected_model)
+    planet_reflected_K = Spectrum(wave_K, np.nan_to_num(np.array(planet_reflected_K.value)), max(star_spectrum_K.R, albedo_K.R), albedo_K.T, float(planet["PlanetLogg"].value), reflected_model)
     
-    planet_spectrum = Spectrum(wave, planet_thermal.flux+planet_reflected.flux, max(planet_thermal.R, planet_reflected.R), planet_thermal.T, planet_thermal.lg, thermal_model+"+"+reflected_model)
-    
+    planet_spectrum   = Spectrum(wave_instru, planet_thermal.flux+planet_reflected.flux, max(planet_thermal.R, planet_reflected.R), planet_thermal.T, planet_thermal.lg, thermal_model+"+"+reflected_model)
+    planet_spectrum_K = Spectrum(wave_K, planet_thermal_K.flux+planet_reflected_K.flux, max(planet_thermal_K.R, planet_reflected_K.R), planet_thermal_K.T, planet_thermal_K.lg, thermal_model+"+"+reflected_model)
+
     # broadening the planet spectrum
     if thermal_model!="None":
         planet_thermal = planet_thermal.broad(float(planet["PlanetVsini"].value))
@@ -1022,33 +1049,44 @@ def thermal_reflected_spectrum(planet, instru=None, thermal_model="BT-Settl", re
     
     # Doppler shifting the planet spectrum
     if thermal_model!="None":
-        planet_thermal = planet_thermal.doppler_shift(float(planet["PlanetRadialVelocity"].value))
+        planet_thermal   = planet_thermal.doppler_shift(float(planet["PlanetRadialVelocity"].value))
     if reflected_model!="None":
         planet_reflected = planet_reflected.doppler_shift(float(planet["PlanetRadialVelocity"].value))
     planet_spectrum = planet_spectrum.doppler_shift(float(planet["PlanetRadialVelocity"].value))
 
     if in_im_mag and planet["DiscoveryMethod"] == "Imaging" and thermal_model != "None": # To inject the known magnitudes of planets detected by direct imaging
         if not np.isnan(planet["PlanetKmag(thermal+reflected)"]): # the magnitude is already known by definition => renormalization in K-band
-            ratio = np.nanmean(vega_spectrum.flux[(vega_spectrum.wavelength>lmin_K)&(vega_spectrum.wavelength<lmax_K)])*10**(-0.4*float(planet["PlanetKmag(thermal+reflected)"])) / np.nanmean(planet_spectrum.flux[(planet_spectrum.wavelength>lmin_K) & (planet_spectrum.wavelength<lmax_K)])
-            planet_spectrum.flux = np.copy(planet_spectrum.flux) * ratio
-            planet_thermal.flux = np.copy(planet_thermal.flux) * ratio
+            ratio                 = np.nanmean(vega_spectrum_K.flux)*10**(-0.4*float(planet["PlanetKmag(thermal+reflected)"])) / np.nanmean(planet_spectrum.flux)
+            planet_spectrum.flux  = np.copy(planet_spectrum.flux) * ratio
+            planet_thermal.flux   = np.copy(planet_thermal.flux) * ratio
             planet_reflected.flux = np.copy(planet_reflected.flux) * ratio
 
-    if show: # plotting the contributions
-        lmin = lmin_K ; lmax = lmax_K ; band0 = "K"
-        mag_p_total = -2.5*np.log10(np.mean(planet_spectrum.flux[(wave>lmin)&(wave<lmax)])/np.nanmean(vega_spectrum.flux[(wave>lmin) & (wave<lmax)]))
-        plt.figure(dpi=300) ; plt.xlabel("wavelength [µm]", fontsize=14) ; plt.ylabel(f"flux (in J/s/m²/µm)", fontsize=14) ; plt.yscale('log') ; plt.title(f"The different spectrum contributions \n for {planet['PlanetName']} at {round(float(planet_spectrum.T))}K (on the same spectral resolution)", fontsize=16)
-        plt.plot(wave, planet_spectrum.flux, 'g', label=f"thermal+reflected ({planet_spectrum.model}), mag("+band0+f") = {round(mag_p_total, 2)}")
-        if thermal_model!="None":
-            mag_p_thermal = -2.5*np.log10(np.mean(planet_thermal.flux[(wave>lmin)&(wave<lmax)])/np.nanmean(vega_spectrum.flux[(wave>lmin) & (wave<lmax)])) 
-            plt.plot(wave, planet_thermal.flux, 'r', label=f"thermal ({thermal_model}), mag("+band0+f") = {round(mag_p_thermal, 2)}")
-        if reflected_model!="None":
-            mag_p_reflected = -2.5*np.log10(np.mean(planet_reflected.flux[(wave>(lmin))&(wave<(lmax))])/np.nanmean(vega_spectrum.flux[(wave>(lmin))&(wave<(lmax))]))
-            plt.plot(wave, planet_reflected.flux, 'b', label=f"reflected ({reflected_model}+BT-NextGen), mag("+band0+f") = {round(mag_p_reflected, 2)}")
-        if np.nanmin(wave) < lmin_K:
-            plt.axvspan(lmin_K, lmax_K, color='k', alpha=0.5, lw=0, label="K-band")
-        plt.ylim(np.nanmin(planet_spectrum.flux)/10,np.nanmax(planet_spectrum.flux)*10) ; plt.legend() ; plt.show()
-    
+    # plotting the contributions
+    if show:
+        lmin_K      = 1.951
+        lmax_K      = 2.469
+        band0       = "K"
+        mag_p_total = -2.5 * np.log10(np.mean(planet_spectrum_K.flux) / np.nanmean(vega_spectrum_K.flux))
+        plt.figure(figsize=(8, 6), dpi=300)
+        plt.xlabel("Wavelength [µm]", fontsize=16)
+        plt.ylabel("Flux [J/s/m²/µm]", fontsize=16)
+        plt.yscale('log')
+        plt.title(f"Spectrum Contributions for {planet['PlanetName']} \n"f"at {round(float(planet_spectrum.T))}K", fontsize=18, pad=15)    
+        plt.plot(wave_instru, planet_spectrum.flux, 'g', lw=2.5, label=f"Thermal+Reflected ({planet_spectrum.model}), mag({band0}) = {round(mag_p_total, 2)}")
+        if thermal_model != "None":
+            mag_p_thermal = -2.5 * np.log10(np.mean(planet_thermal_K.flux) / np.nanmean(vega_spectrum_K.flux))
+            plt.plot(wave_instru, planet_thermal.flux, 'r', lw=2.5, linestyle='dashed', label=f"Thermal ({thermal_model}), mag({band0}) = {round(mag_p_thermal, 2)}")
+        if reflected_model != "None":
+            mag_p_reflected = -2.5 * np.log10(np.mean(planet_reflected_K.flux) / np.nanmean(vega_spectrum_K.flux))
+            plt.plot(wave_instru, planet_reflected.flux, 'b', lw=2.5, linestyle='dotted', label=f"Reflected ({reflected_model}+BT-NextGen), mag({band0}) = {round(mag_p_reflected, 2)}")    
+        if np.nanmax(wave_instru) > lmin_K and np.nanmin(wave_instru) < lmax_K:
+            plt.axvspan(lmin_K, lmax_K, color='gray', alpha=0.3, lw=0, label="K-band")    
+        plt.ylim(np.nanmin(planet_spectrum.flux) / 10, np.nanmax(planet_spectrum.flux) * 10)
+        plt.legend(fontsize=12, loc='best', frameon=True, facecolor='white', framealpha=0.8)
+        plt.grid(True, which="both", linestyle="--", linewidth=0.5, alpha=0.7)
+        plt.tight_layout()
+        plt.show()
+
     return planet_spectrum, planet_thermal, planet_reflected, star_spectrum
 
 

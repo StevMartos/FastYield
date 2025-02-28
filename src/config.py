@@ -263,8 +263,8 @@ config_data_VIPAPYRUS = {
 
 
 
-config_data_list = [config_data_HARMONI, config_data_ANDES, config_data_ERIS, config_data_MIRIMRS, config_data_NIRCam, config_data_NIRSpec, config_data_HiRISE]
-instru_name_list = ["HARMONI", "ANDES", "ERIS", "MIRIMRS", "NIRCam", "NIRSpec", "HiRISE"]
+config_data_list = [config_data_HARMONI, config_data_ANDES, config_data_ERIS, config_data_MIRIMRS, config_data_NIRCam, config_data_NIRSpec, config_data_HiRISE, config_data_VIPAPYRUS]
+instru_name_list = ["HARMONI", "ANDES", "ERIS", "MIRIMRS", "NIRCam", "NIRSpec", "HiRISE", "VIPAPYRUS"]
 
 
 

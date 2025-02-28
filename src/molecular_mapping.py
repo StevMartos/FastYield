@@ -940,9 +940,9 @@ def get_template(instru, wave, model, T_planet, lg_planet, vsini_planet, rv_plan
         template.crop(0.98*wave[0], 1.02*wave[-1])
         dl = template.wavelength - np.roll(template.wavelength, 1) ; dl[0] = dl[1] # delta lambda array
         Rold = np.nanmax(template.wavelength/(2*dl))
-        Rold = max(Rold, 10*R)
-        if Rold > 200000: # takes too much time otherwise (limiting then the resolution to 200 000 => does not seem to change anything)
-            Rold = 200000
+        Rold = max(Rold, 2*R)
+        if Rold > 300_000: # takes too much time otherwise (limiting then the resolution to 200 000 => does not seem to change anything)
+            Rold = 300_000
         dl = np.nanmean(template.wavelength/(2*Rold)) # np.nanmin(dl) # 2*R => Nyquist sampling (Shannon)
         wave_inter = np.arange(0.98*wave[0], 1.02*wave[-1], dl) # regularly sampled template
     template = template.interpolate_wavelength(wave_inter, renorm=False)
@@ -958,43 +958,63 @@ def get_template(instru, wave, model, T_planet, lg_planet, vsini_planet, rv_plan
 
 # CALCULATING d_planet_sim
 def get_d_planet_sim(d_planet, wave, trans, model, T_planet, lg_planet, vsini_planet, rv_planet, R, Rc, filter_type, degrade_resolution, stellar_component, pca=None, star_flux=None, instru=None, epsilon=0.8, fastbroad=True, cut_fringes=False, Rmin=None, Rmax=None, target_name=None, corner_plot=False, wave_inter=None):
+    """
+    Compute the simulated planetary spectrum after high-pass filtering and optional corrections.
+    """
+    # Generate planetary template
     planet = get_template(instru=instru, wave=wave, model=model, T_planet=T_planet, lg_planet=lg_planet, vsini_planet=vsini_planet, rv_planet=rv_planet, R=R, Rc=Rc, filter_type=filter_type, epsilon=epsilon, fastbroad=fastbroad, wave_inter=wave_inter)
+    
+    # Degrade resolution if required
     if degrade_resolution:
-        planet = planet.degrade_resolution(wave, renorm=False) # degrating the planet to the instrumental resolution
+        planet = planet.degrade_resolution(wave, renorm=False)
     else:
-        planet = planet.interpolate_wavelength(wave, renorm=False) # degrating the planet to the instrumental resolution
-    planet_HF, planet_LF = filtered_flux(planet.flux, R, Rc, filter_type) # high pass filtering
-    template = trans * planet_HF 
+        planet = planet.interpolate_wavelength(wave, renorm=False)
+    
+    # High-pass filtering
+    planet_HF, planet_LF = filtered_flux(planet.flux, R, Rc, filter_type)
+    template             = trans * planet_HF
+    
+    # Stellar component correction
     if stellar_component and Rc is not None:
         if star_flux is None:
             raise KeyError("star_flux is not defined for the stellar component!")
-        f = interp1d(wave[~np.isnan(star_flux / trans)], (star_flux / trans)[~np.isnan(star_flux / trans)], bounds_error=False, fill_value=np.nan)
+        f  = interp1d(wave[~np.isnan(star_flux / trans)], (star_flux / trans)[~np.isnan(star_flux / trans)], bounds_error=False, fill_value=np.nan)
         sf = f(wave)
-        if instru == "HiRISE": # Handle filtering edge effects due to gaps between orders
-            _, star_LF = filtered_flux(sf, R, Rc, filter_type)
-            nan_values = keep_true_chunks(np.isnan(d_planet), N=0.005 / np.nanmean(np.diff(wave)))
-            f = interp1d(wave[~nan_values], star_LF[~nan_values], bounds_error=False, fill_value=np.nan)
+        if instru == "HiRISE": # Handling filtering edge effects due to the gaps bewteen the orders
+            _, star_LF     = filtered_flux(sf, R, Rc, filter_type)
+            nan_values     = keep_true_chunks(np.isnan(d_planet), N=0.005 / np.nanmean(np.diff(wave)))
+            f              = interp1d(wave[~nan_values], star_LF[~nan_values], bounds_error=False, fill_value=np.nan)
             sf[nan_values] = f(wave[nan_values])
         star_HF, star_LF = filtered_flux(sf, R, Rc, filter_type)
-        template += - trans * star_HF * planet_LF/star_LF
-    if pca is not None: # Subtract PCA components (if required)
+        template        += -trans * star_HF * planet_LF / star_LF
+    
+    # PCA component subtraction
+    if pca is not None:
         template0 = np.copy(template)
-        n_comp_sub = pca.n_components
-        for nk in range(n_comp_sub):
+        for nk in range(pca.n_components):
             template -= np.nan_to_num(np.nansum(template0 * pca.components_[nk]) * pca.components_[nk])
-    if cut_fringes: # filter fringes frequencies
+    
+    # Filtering fringes frequencies
+    if cut_fringes:
         template = cut_spectral_frequencies(template, R, Rmin, Rmax, target_name=target_name)
-    template[np.isnan(d_planet)] = np.nan 
-    template /= np.sqrt(np.nansum(template**2)) # normalizing
+    
+    # Normalize and prepare output
+    template[np.isnan(d_planet)] = np.nan
+    template /= np.sqrt(np.nansum(template**2))
     d_planet_sim = np.copy(template)
-    res_d_planet, psd_d_planet = calc_psd(wave, d_planet, R, smooth=0)
+    
+    # Compute power spectral density (PSD)
+    res_d_planet, psd_d_planet         = calc_psd(wave, d_planet, R, smooth=0)
     res_d_planet_sim, psd_d_planet_sim = calc_psd(wave, d_planet_sim, R, smooth=0)
+    
+    # Compute ratio for normalization
     if corner_plot:
-        ratio = np.nansum(d_planet*template) / np.sqrt(np.nansum(d_planet_sim**2))  # assuming cos_p = 1
+        ratio = np.nansum(d_planet * template) / np.sqrt(np.nansum(d_planet_sim**2)) # assuming cos_p = 1
         #ratio = np.sqrt(np.nansum(psd_d_planet[(res_d_planet>Rc)&(res_d_planet<R/10)]) / np.nansum(psd_d_planet_sim[(res_d_planet_sim>Rc)&(res_d_planet_sim<R/10)]))
     else:
-        ratio = np.sqrt(np.nansum(psd_d_planet[(res_d_planet>Rc)&(res_d_planet<R/10)]) / np.nansum(psd_d_planet_sim[(res_d_planet_sim>Rc)&(res_d_planet_sim<R/10)]))
+        ratio = np.sqrt(np.nansum(psd_d_planet[(res_d_planet > Rc) & (res_d_planet < R / 10)]) / np.nansum(psd_d_planet_sim[(res_d_planet_sim > Rc) & (res_d_planet_sim < R / 10)]))
     d_planet_sim *= ratio
+    
     return d_planet_sim
 
 
@@ -1004,14 +1024,96 @@ def get_d_planet_sim(d_planet, wave, trans, model, T_planet, lg_planet, vsini_pl
 
 
 def parameters_estimation(instru, band, target_name, wave, d_planet, star_flux, trans, R, Rc, filter_type, model, logL=False, method_logL="classic", sigma_l=None, weight=None, pca=None, precise_estimate=False, SNR_estimate=False, T_planet=None, lg_planet=None, vsini_planet=None, rv_planet=None, T_arr=None, lg_arr=None, vsini_arr=None, rv_arr=None, SNR_CCF=None, show=True, verbose=True, stellar_component=True, degrade_resolution=True, force_new_est=False, d_planet_sim=False, save=True, fastcurves=False, exposure_time=None, star_HF=None, star_LF=None, wave_inter=None):
+    """
+    Estimates astrophysical parameters based on cross-correlation analysis.
+
+    Parameters:
+        instru : str
+            Name of the instrument.
+        band : str
+            Spectral band used for observation.
+        target_name : str
+            Name of the observed target.
+        wave : numpy.ndarray
+            Wavelength grid.
+        d_planet : numpy.ndarray
+            Observed planetary spectrum.
+        star_flux : numpy.ndarray
+            Stellar flux.
+        trans : numpy.ndarray
+            Transmission function.
+        R : float
+            Spectral resolution.
+        Rc : float
+            Calibration spectral resolution.
+        filter_type : str
+            Type of filtering applied.
+        model : str
+            Atmospheric model used.
+        logL : bool, optional
+            Whether to compute log-likelihood. Default is False.
+        method_logL : str, optional
+            Log-likelihood computation method. Default is "classic".
+        sigma_l : float, optional
+            Noise level.
+        weight : numpy.ndarray, optional
+            Weight function for the likelihood computation.
+        pca : bool, optional
+            Whether to use PCA for noise reduction.
+        precise_estimate : bool, optional
+            Whether to perform a precise estimate. Default is False.
+        SNR_estimate : bool, optional
+            Whether to compute the signal-to-noise ratio. Default is False.
+        T_planet, lg_planet, vsini_planet, rv_planet : float, optional
+            True planetary parameters (temperature, log gravity, rotational velocity, radial velocity).
+        T_arr, lg_arr, vsini_arr, rv_arr : numpy.ndarray, optional
+            Grids of parameters.
+        SNR_CCF : numpy.ndarray, optional
+            Cross-correlation function's signal-to-noise ratio.
+        show : bool, optional
+            Whether to display results. Default is True.
+        verbose : bool, optional
+            Whether to print logs. Default is True.
+        stellar_component : bool, optional
+            Whether to include the stellar component. Default is True.
+        degrade_resolution : bool, optional
+            Whether to degrade resolution for calculations. Default is True.
+        force_new_est : bool, optional
+            Whether to force new calculations. Default is False.
+        d_planet_sim : bool, optional
+            Whether to simulate a theoretical planetary spectrum. Default is False.
+        save : bool, optional
+            Whether to save results to disk. Default is True.
+        fastcurves : bool, optional
+            Whether to use FastCurves for fast parameter estimation. Default is False.
+        exposure_time : float, optional
+            Exposure time in minutes. Default is None.
+        star_HF, star_LF : numpy.ndarray, optional
+            High-frequency and low-frequency stellar components.
+        wave_inter : numpy.ndarray, optional
+            Intermediate wavelength grid.
+
+    Returns:
+        T_arr, lg_arr, vsini_arr, rv_arr : numpy.ndarray
+            Parameter grids.
+        corr_4D, SNR_4D, logL_4D, logL_4D_sim : numpy.ndarray
+            Computed correlation, SNR, and log-likelihood cubes.
+    """
+    
     epsilon=0.8 ; fastbroad=True
-    try: # Opening existing estimations
-        if force_new_est: # forcing new calculations
+    
+    # Attempt to load existing parameter estimations
+    try:
+        if force_new_est:  # If forcing new calculations
             raise ValueError("force_new_est = True")
+        
+        # Load parameter grids
         T_arr     = fits.getdata(f"utils/parameters estimation/parameters_estimation_T_arr_{instru}_{band}_{target_name}_R{R}_Rc{Rc}_{model}_precise_estimate_{precise_estimate}_stellar_component_{stellar_component}.fits")
         lg_arr    = fits.getdata(f"utils/parameters estimation/parameters_estimation_lg_arr_{instru}_{band}_{target_name}_R{R}_Rc{Rc}_{model}_precise_estimate_{precise_estimate}_stellar_component_{stellar_component}.fits")
         vsini_arr = fits.getdata(f"utils/parameters estimation/parameters_estimation_vsini_arr_{instru}_{band}_{target_name}_R{R}_Rc{Rc}_{model}_precise_estimate_{precise_estimate}_stellar_component_{stellar_component}.fits")
         rv_arr    = fits.getdata(f"utils/parameters estimation/parameters_estimation_rv_arr_{instru}_{band}_{target_name}_R{R}_Rc{Rc}_{model}_precise_estimate_{precise_estimate}_stellar_component_{stellar_component}.fits")
+        
+        # Load computed matrices
         if SNR_estimate:
             SNR_4D = fits.getdata(f"utils/parameters estimation/parameters_estimation_SNR_4D_{instru}_{band}_{target_name}_R{R}_Rc{Rc}_{model}_precise_estimate_{precise_estimate}_stellar_component_{stellar_component}.fits")
             corr_4D = None ; logL_4D = None ; logL_4D_sim = None
@@ -1028,14 +1130,18 @@ def parameters_estimation(instru, band, target_name, wave, d_planet, star_flux, 
             SNR_4D = None
         if verbose:
             print("Loading existing parameters calculations...")
-    except Exception as e: # Calculating new estimations
+            
+    # Compute new estimations if files are missing or forced update
+    except Exception as e:
         if verbose and not fastcurves:
             print(f"New parameters estimation: {e}")
-        DT = 100 ; Dlg = 1 ; Dvsini = 20 ; Drv = 20 # for precise estimates
+            
+        # Initialize parameter grids if not provided
         if T_arr is None or lg_arr is None or vsini_arr is None or rv_arr is None:
-            if SNR_estimate:
+            if SNR_estimate: # for S/N estimations
                 T_arr, lg_arr = get_model_grid(model)
                 if precise_estimate:
+                    DT = 100 ; Dlg = 1 ; Dvsini = 20 ; Drv = 20 # for precise estimates
                     T_arr     = np.linspace(max(500, T_planet-DT/2), min(3000, T_planet+DT/2), int(DT/10)).astype(np.float32)
                     lg_arr    = np.linspace(max(3, lg_planet-Dlg/2), min(5, lg_planet+Dlg/2), int(Dlg/0.1)).astype(np.float32)
                     rv_arr    = np.append(np.linspace(-1000, rv_planet-3*Drv/4, 100), np.append(np.linspace(rv_planet-Drv/2, rv_planet+Drv/2, int(Drv/0.5)), np.linspace(rv_planet+3*Drv/4, 1000, 100)))
@@ -1043,10 +1149,10 @@ def parameters_estimation(instru, band, target_name, wave, d_planet, star_flux, 
                 else:
                     rv_arr = np.append(np.linspace(-1000, rv_planet-3*Drv/4, 50), np.append(np.linspace(rv_planet-Drv/2, rv_planet+Drv/2, int(Drv/1)), np.linspace(rv_planet+3*Drv/4, 1000, 50)))
                     if R > 20000:
-                        vsini_arr = np.arange(0, 80, 5).astype(np.float32) # dvsini = 0.5 km/s
+                        vsini_arr = np.arange(0, 80, 5).astype(np.float32) 
                     else:
                         vsini_arr = np.array([vsini_planet])
-            else:
+            else: # For correlation and logL
                 if precise_estimate:
                     N = 20
                 elif R < 20000:
@@ -1062,14 +1168,16 @@ def parameters_estimation(instru, band, target_name, wave, d_planet, star_flux, 
                 if "mol_" in model:
                     lg_arr = np.array([0])
                 else:    
-                    np.linspace(max(lg_arr[0], lg_planet-Dlg/2), min(lg_arr[-1], lg_planet + Dlg/2), N+1).astype(np.float32) # dvsini = 0.5 km/s
+                    lg_arr = np.linspace(max(lg_arr[0], lg_planet-Dlg/2), min(lg_arr[-1], lg_planet + Dlg/2), N+1).astype(np.float32) # dvsini = 0.5 km/s
                 if R > 20000:
                     vsini_arr = np.linspace(max(0, vsini_planet-Dvsini/2), min(80, vsini_planet + Dvsini/2), N+1).astype(np.float32) # dvsini = 0.5 km/s
                 else:
                     vsini_arr = np.array([vsini_planet])
                 rv_arr = np.linspace(rv_planet-Drv/2, rv_planet+Drv/2, N+1).astype(np.float32) # drv = 0.5 km/s
-        if star_HF is None and star_LF is None:
-            if stellar_component and Rc is not None:
+        
+        # Calculating the high and low frequency content of the star if necessary and if missing 
+        if stellar_component and Rc is not None:
+            if star_HF is None and star_LF is None:
                 if star_flux is None:
                     raise KeyError("star_flux is not defined for the stellar component !")
                 f = interp1d(wave[~np.isnan(star_flux/trans)], (star_flux/trans)[~np.isnan(star_flux/trans)], bounds_error=False, fill_value=np.nan) 
@@ -1080,23 +1188,27 @@ def parameters_estimation(instru, band, target_name, wave, d_planet, star_flux, 
                     f = interp1d(wave[~nan_values], star_LF[~nan_values], bounds_error=False, fill_value=np.nan) 
                     sf[nan_values] = f(wave[nan_values])
                 star_HF, star_LF = filtered_flux(sf, R, Rc, filter_type) # high pass filtering
-        if d_planet_sim and logL: # CALCULATING d_planet_sim (theoritical data we should have w/o noise)
+        
+        # CALCULATING d_planet_sim (theoritical data we should have w/o noise) (if wanted)
+        if d_planet_sim and logL:
             d_planet_sim = get_d_planet_sim(d_planet=d_planet, wave=wave, trans=trans, model=model, T_planet=T_planet, lg_planet=lg_planet, vsini_planet=vsini_planet, rv_planet=rv_planet, R=R, Rc=Rc, filter_type=filter_type, degrade_resolution=degrade_resolution, stellar_component=stellar_component, pca=pca, star_flux=star_flux, instru=instru, epsilon=epsilon, fastbroad=fastbroad, target_name=target_name, corner_plot=True, wave_inter=wave_inter)
         else:
             d_planet_sim = None
+            
+        # Compute likelihood, correlation and S/N matrices in parallel
         corr_4D     = np.zeros((len(T_arr), len(lg_arr), len(vsini_arr), len(rv_arr)), dtype=np.float32)
         SNR_4D      = np.zeros((len(T_arr), len(lg_arr), len(vsini_arr), len(rv_arr)), dtype=np.float32)
         logL_4D     = np.zeros((len(T_arr), len(lg_arr), len(vsini_arr), len(rv_arr)), dtype=np.float32)
         logL_4D_sim = np.zeros((len(T_arr), len(lg_arr), len(vsini_arr), len(rv_arr)), dtype=np.float32)
-        from numba import njit, prange
-        from multiprocessing import Pool, cpu_count
-        with Pool(processes=cpu_count()) as pool: # Utilisation de multiprocessing pour paralléliser les combinaisons i, j
+        with Pool(processes=cpu_count()) as pool: 
             results = list(tqdm(pool.imap(process_parameters_estimation, [(i, j, T_arr, lg_arr, vsini_arr, rv_arr, d_planet, weight, pca, model, instru, wave, trans, epsilon, fastbroad, R, Rc, filter_type, sigma_l, logL, method_logL, star_HF, star_LF, SNR_estimate, rv_planet, stellar_component, degrade_resolution, d_planet_sim, wave_inter) for i in range(len(T_arr)) for j in range(len(lg_arr))]), total=len(T_arr)*len(lg_arr), disable=not verbose, desc="Parameters estimation"))
-            for (i, j, corr_2D, SNR_2D, logL_2D, logL_2D_sim) in results: # Remplissage des matrices 5D avec les résultats
+            for (i, j, corr_2D, SNR_2D, logL_2D, logL_2D_sim) in results:
                 corr_4D[i, j, :, :]     = corr_2D
                 SNR_4D[i, j, :, :]      = SNR_2D
                 logL_4D[i, j, :, :]     = logL_2D
                 logL_4D_sim[i, j, :, :] = logL_2D_sim
+                
+        # Saving data (if wanted)
         if save:
             fits.writeto(f"utils/parameters estimation/parameters_estimation_T_arr_{instru}_{band}_{target_name}_R{R}_Rc{Rc}_{model}_precise_estimate_{precise_estimate}_stellar_component_{stellar_component}.fits", T_arr, overwrite=True)
             if "mol_" not in model:
@@ -1111,7 +1223,8 @@ def parameters_estimation(instru, band, target_name, wave, d_planet, star_flux, 
                     fits.writeto(f"utils/parameters estimation/parameters_estimation_logL_4D_{method_logL}_{instru}_{band}_R{R}_Rc{Rc}_{target_name}_{model}_precise_estimate_{precise_estimate}_stellar_component_{stellar_component}.fits", logL_4D, overwrite=True)
                     if d_planet_sim is not None:
                         fits.writeto(f"utils/parameters estimation/parameters_estimation_logL_4D_sim_{method_logL}_{instru}_{band}_R{R}_Rc{Rc}_{target_name}_{model}_precise_estimate_{precise_estimate}_stellar_component_{stellar_component}.fits", logL_4D_sim, overwrite=True)         
-        
+    
+    # Show 2D (T, lg) matrices (if wanted and if possible)
     if show and len(T_arr) > 2 and len(lg_arr) > 2:
         if SNR_estimate:
             idx_max_SNR = np.unravel_index(np.argmax(SNR_4D[:, :, :, (rv_arr>-50)&(rv_arr<50)], axis=None), SNR_4D[:, :, :, (rv_arr>-50)&(rv_arr<50)].shape)
@@ -1178,11 +1291,12 @@ def parameters_estimation(instru, band, target_name, wave, d_planet, star_flux, 
         if d_planet_sim is not None:
             p_4D_sim = np.exp(logL_4D_sim - np.nanmax(logL_4D_sim))
             custom_corner_plot(p_4D_sim, T_arr, lg_arr, vsini_arr, rv_arr, target_name, band, instru, model, R, Rc, sim=True, exposure_time=exposure_time)
-        
-        if fastcurves:
-            p_4D = np.exp(logL_4D - np.nanmax(logL_4D))
-            custom_corner_plot(p_4D, T_arr, lg_arr, vsini_arr, rv_arr, target_name, band, instru, model, R, Rc, sim=False, exposure_time=exposure_time)
-        
+    
+    # FastCurves estiamtion
+    if fastcurves:
+        p_4D = np.exp(logL_4D - np.nanmax(logL_4D))
+        custom_corner_plot(p_4D, T_arr, lg_arr, vsini_arr, rv_arr, target_name, band, instru, model, R, Rc, sim=False, exposure_time=exposure_time)
+
     return T_arr, lg_arr, vsini_arr, rv_arr, corr_4D, SNR_4D, logL_4D, logL_4D_sim
 
 

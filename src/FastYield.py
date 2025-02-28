@@ -20,21 +20,9 @@ path_file = os.path.dirname(__file__)
 archive_path = os.path.join(os.path.dirname(path_file), "sim_data/Archive_table/")
 simulated_path = os.path.join(os.path.dirname(path_file), "sim_data/Simulated_table/")
 
-class Universe():
-    '''
-    A universe class that includes
-    Inherited from EXOSIMS? TBD
-    Properties:
-    planets    - A planet table that holds all the planet properties [Astropy table]. It has the following columns:
-    '''
-    def __init__(self):
-        pass 
     
-class ExoArchive_Universe(Universe):
-    '''
-    A child class of Universe that is adapted to create a universe from known NASA Exoplanet Archive Data
-    Uses the pyVO package to read in known exoplanets
-    '''
+class ExoArchive_Universe():
+    
     def __init__(self, table_filename):
         super(ExoArchive_Universe, self).__init__()
         self.filename = table_filename
@@ -63,9 +51,9 @@ class ExoArchive_Universe(Universe):
         self._ThC1  = 0.21
         self._ThC2  =-0.20
         # Define Constraints
-        self._ThMlow = 15            # [M_earth] Lower bound of applicability
+        self._ThMlow = 15                 # [M_earth] Lower bound of applicability
         self._ThMhi  = 12*self.MJUP2EARTH # [M_earth] Upper bound of applicability
-        self._ThThi  = 1000          # [K] Temperature bound of applicability
+        self._ThThi  = 1000               # [K] Temperature bound of applicability
         
     def Load_ExoArchive_Universe(self, composite_table=True, force_new_pull=False, fill_empties=True):
         '''
@@ -117,7 +105,7 @@ class ExoArchive_Universe(Universe):
                            "StarRadius", "StarLogg", "StarLum", "StarAge", "StarVsini", "StarRadialVelocity", 
                            "StarZ", "StarParallax", "StarBMag", "StarVmag", "StarRmag", "StarImag", 
                            "StarJmag", "StarHmag", "StarKmag", "DiscoveryMethod"]
-        import os
+            
         if os.path.isfile(self.filename) and not force_new_pull: #-- Load/Pull data depending on provided filename
             print("%s already exists:\n    we'll attempt to read this file as an astropy QTable"%self.filename) # Existing filename was provided so let's try use that
             NArx_table = QTable.read(self.filename, format='ascii.ecsv')
@@ -128,88 +116,96 @@ class ExoArchive_Universe(Universe):
                 err3 = " Expected '{}' table but found '{}' table.".format(err1, err2)
                 err4 = ' Consider setting force_new_pull=True.'
                 raise ValueError(err0+err3+err4)
+        
         else: # New filename was provided or a new pull was explicitly requested. Pull new data
             if not force_new_pull:
                 print("%s does not exist:\n    we'll pull new data from the archive and save it to this filename"%self.filename)
             else:
                 print("%s may or may not exist:\n    force_new_pull=True so we'll pull new data regardless and overwrite as needed"%self.filename) 
-            import pyvo as vo # Import pyVO package used to query the Exoplanet Archive
             NArx_service = vo.dal.TAPService("https://exoplanetarchive.ipac.caltech.edu/TAP") # Create a "service" which can be used to access the archive TAP server
-            tab2pull = "pscomppars" if composite_table else "ps where default_flag=1" # Create a "query" string formatted per the TAP specifications # 'select': specify which columns to pull # 'from': specify which table to pull # 'where': (optional) specify parameters to be met when choosing what to pull # Add where flag for ps to only pull the best row for each planet
-            query = "select "+col2pull+" from "+tab2pull
-            NArx_res = NArx_service.search(query) # Pull the data and convert to astropy masked QTable
-            NArx_table = QTable(NArx_res.to_table())
+            tab2pull     = "pscomppars" if composite_table else "ps where default_flag=1" # Create a "query" string formatted per the TAP specifications # 'select': specify which columns to pull # 'from': specify which table to pull # 'where': (optional) specify parameters to be met when choosing what to pull # Add where flag for ps to only pull the best row for each planet
+            query        = "select "+col2pull+" from "+tab2pull
+            NArx_res     = NArx_service.search(query) # Pull the data and convert to astropy masked QTable
+            NArx_table   = QTable(NArx_res.to_table())
             NArx_table.meta['isPSCOMPPARS'] = composite_table # Add a flag to the table metadata to denote what kind of table it was: This'll prevent trying to read the table as the wrong type later
+            
+            # Correcting units
+            unit_corrections = {
+                "Earth Mass":     u.M_earth,
+                "Earth Radius":   u.R_earth,
+                "Solar mass":     u.M_sun,
+                "Solar Radius":   u.R_sun,
+                "days":           u.day,
+                "log(Solar)":     u.dex(u.solLum),
+                "log10(cm/s**2)": u.dex(u.cm/(u.s**2)),
+                "pl_bmasseerr1":  u.M_earth,
+                "pl_bmasseerr2":  u.M_earth,
+                "sy_disterr1":    u.pc,
+                "sy_disterr2":    u.pc,
+                "pl_orbsmax":     u.AU,
+            }
+            for col in NArx_table.colnames:
+                current_unit = NArx_table[col].unit
+                if current_unit is not None and str(current_unit) in unit_corrections:
+                    new_unit        = unit_corrections[str(current_unit)]
+                    NArx_table[col] = NArx_table[col].value * new_unit
+                elif current_unit is None and str(col) in unit_corrections:
+                    new_unit        = unit_corrections[str(col)]
+                    NArx_table[col] = NArx_table[col].value * new_unit
+            
             NArx_table.write(self.filename, format='ascii.ecsv', overwrite=force_new_pull) # Save raw table for future use 
             NArx_table = QTable.read(self.filename, format='ascii.ecsv') # Read table back in to ensure that formatting from a fresh pull matches: the formatting from an old pull (as done when filename exists)
+        
         NArx_table.rename_columns(col2pull.split(', '), colNewNames) #-- Rename columns to psisim-expected names
         for col in NArx_table.colnames: #-- Change fill value from default 1e20 to np.nan
             if isinstance(NArx_table[col], MaskedColumn) and isinstance(NArx_table[col].fill_value, (int, float)):
                 NArx_table[col].fill_value = np.nan # Only change numeric fill values to nan
-        NArx_table.add_columns([MaskedColumn(length=len(NArx_table), mask=True, fill_value=np.nan)]*3, names=['Flux Ratio', 'ProjAU', 'Phase']) #-- Add new columns for values not easily available or computable from table # TODO: for now, these are masked but we should find a good way to populate them
-        # Apply astropy units
-        NArx_table['SMA'] = np.array(NArx_table['SMA'].value) ; NArx_table['SMA'][NArx_table['SMA']==0] = np.nan
-        NArx_table['SMA'] = Masked(Quantity(np.ma.masked_array(NArx_table['SMA'], mask=np.isnan(NArx_table['SMA'])), unit=u.AU)) ; NArx_table['SMA'].mask = np.isnan(NArx_table['SMA'])
-        NArx_table['Inc'] = NArx_table['Inc'].value * u.deg
-        NArx_table['Period'] = NArx_table['Period'].value * u.day
-        NArx_table['PlanetMass'] = NArx_table['PlanetMass'].value * u.earthMass
-        NArx_table['+DeltaPlanetMass'] = NArx_table['+DeltaPlanetMass'].value * u.earthMass
-        NArx_table['-DeltaPlanetMass'] = NArx_table['-DeltaPlanetMass'].value * u.earthMass
-        NArx_table['PlanetRadius'] = NArx_table['PlanetRadius'].value * u.earthRad
-        NArx_table['+DeltaPlanetRadius'] = NArx_table['+DeltaPlanetRadius'].value * u.earthRad
-        NArx_table['-DeltaPlanetRadius'] = NArx_table['-DeltaPlanetRadius'].value * u.earthRad
-        NArx_table['PlanetTeq'] = NArx_table['PlanetTeq'].value * u.K
-        NArx_table['+DeltaPlanetTeq'] = NArx_table['+DeltaPlanetTeq'].value * u.K
-        NArx_table['-DeltaPlanetTeq'] = NArx_table['-DeltaPlanetTeq'].value * u.K
-        NArx_table['RA'] = NArx_table['RA'].value * u.deg
-        NArx_table['Dec'] = NArx_table['Dec'].value * u.deg
-        NArx_table['Distance'] = NArx_table['Distance'].value * u.pc
-        NArx_table['+DeltaDistance'] = NArx_table['+DeltaDistance'].value * u.pc
-        NArx_table['-DeltaDistance'] = NArx_table['-DeltaDistance'].value * u.pc
-        NArx_table['StarMass'] = NArx_table['StarMass'].value * u.solMass
-        NArx_table['StarRadius'] = NArx_table['StarRadius'].value * u.solRad
-        NArx_table['StarTeff'] = NArx_table['StarTeff'].value  * u.K
-        NArx_table['StarLogg'] = NArx_table['StarLogg'].value * u.dex(u.cm/(u.s**2))
-        NArx_table['StarLum'] = NArx_table['StarLum'].value * u.solLum
-        NArx_table['StarAge'] = NArx_table['StarAge'].value * u.Gyr
-        NArx_table['StarVsini'] = NArx_table['StarVsini'].value * u.km/u.s
-        NArx_table['StarRadialVelocity'] = NArx_table['StarRadialVelocity'].value * u.km/u.s
-        NArx_table['StarParallax'] = NArx_table['StarParallax'].value * u.mas
+        NArx_table.add_columns([MaskedColumn(length=len(NArx_table), mask=True, fill_value=np.nan)]*2, names=['ProjAU', 'Phase']) #-- Add new columns for values not easily available or computable from table 
         NArx_table['ProjAU'] = NArx_table['ProjAU'].value * u.AU
-        NArx_table['Phase'] = NArx_table['Phase'].value * u.rad
-        if fill_empties: #-- Compute missing planet columns
+        NArx_table['Phase']  = NArx_table['Phase'].value * u.rad
+        NArx_table['SMA']    = np.array(NArx_table['SMA'].value) ; NArx_table['SMA'][NArx_table['SMA']==0] = np.nan
+        NArx_table['SMA']    = Masked(Quantity(np.ma.masked_array(NArx_table['SMA'], mask=np.isnan(NArx_table['SMA'])), unit=u.AU)) ; NArx_table['SMA'].mask = np.isnan(NArx_table['SMA'])
+        
+        # Compute missing planet columns
+        if fill_empties:
             if not composite_table: # Compute missing masses and radii using mass-radius relations
-                masses = np.array(NArx_table['PlanetMass'].filled(fill_value=0.0)) # NOTE: composite table already has radius-mass approximation so we'll # only repeat them if we don't pull that table
-                radii = np.array(NArx_table['PlanetRadius'].filled(fill_value=0.0)) # Convert masked columns to ndarrays with 0's instead of mask # as needed by the approximate_... functions
-                eqtemps = np.array(NArx_table['PlanetTeq'].filled(fill_value=0.0))
-                radii = self.approximate_radii(masses, radii, eqtemps) # Perform approximations
-                masses = self.approximate_masses(masses, radii, eqtemps)
+                masses   = np.array(NArx_table['PlanetMass'].filled(fill_value=0.0)) # NOTE: composite table already has radius-mass approximation so we'll # only repeat them if we don't pull that table
+                radii    = np.array(NArx_table['PlanetRadius'].filled(fill_value=0.0)) # Convert masked columns to ndarrays with 0's instead of mask # as needed by the approximate_... functions
+                eqtemps  = np.array(NArx_table['PlanetTeq'].filled(fill_value=0.0))
+                radii    = self.approximate_radii(masses, radii, eqtemps) # Perform approximations
+                masses   = self.approximate_masses(masses, radii, eqtemps)
                 rad_mask = (radii != 0.)  # Create masks for non-zero values (0's are values where data was missing)
                 mss_mask = (masses != 0.)
                 rad_mask = NArx_table['PlanetRadius'].mask & rad_mask # Create mask to only missing values in NArx_table with valid values
                 mss_mask = NArx_table['PlanetMass'].mask & mss_mask
                 NArx_table['PlanetRadius'][rad_mask] = radii[rad_mask]*NArx_table['PlanetRadius'].unit # Place results back in the table
-                NArx_table['PlanetMass'][mss_mask] = masses[mss_mask]*NArx_table['PlanetMass'].unit
-            NArx_table['AngSep'] = (NArx_table['SMA']/NArx_table['Distance']).value * 1e3 * u.mas # Angular separation in mas
-            grav = const.G * (NArx_table['PlanetMass'].filled(fill_value=np.nan)) / (NArx_table['PlanetRadius'].filled(fill_value=np.nan))**2 # Planet logg
+                NArx_table['PlanetMass'][mss_mask]   = masses[mss_mask]*NArx_table['PlanetMass'].unit
+            
+            # Angular separation in mas
+            NArx_table['AngSep'] = (NArx_table['SMA']/NArx_table['Distance']).value * 1e3 * u.mas
+            
+            # Planet logg
+            grav = const.G * (NArx_table['PlanetMass'].filled(fill_value=np.nan)) / (NArx_table['PlanetRadius'].filled(fill_value=np.nan))**2
             NArx_table['PlanetLogg'] = np.ma.log10(MaskedColumn(np.ma.masked_invalid(grav.cgs.value), fill_value=np.nan)) # logg cgs
             NArx_table['PlanetLogg'] = Masked(Quantity(np.ma.masked_array(np.array(NArx_table['PlanetLogg'].value), mask=NArx_table['PlanetLogg'].mask))) # logg cgs
             NArx_table['PlanetLogg'] = NArx_table['PlanetLogg'].value * u.dex(u.cm/(u.s**2))
+            
+            # Star Luminosity
             host_MVs = NArx_table['StarVmag'].value - 5*np.ma.log10(NArx_table['Distance'].value/10)  # absolute v mag
-            host_lum = -(host_MVs-4.83)/2.5 # log10(L/Lsun)
-            NArx_table['StarLum'] = NArx_table['StarLum'].value
+            host_lum = -(host_MVs-4.83)/2.5 * u.dex(u.solLum) # log10(L/Lsun)
             NArx_table['StarLum'][NArx_table['StarLum'].mask] = host_lum[NArx_table['StarLum'].mask]
-            host_rad = (5800/NArx_table['StarTeff'])**2 *np.ma.sqrt(10**NArx_table['StarLum'])   # Rsun
+            
+            # Star Radius
+            host_rad = (5800/NArx_table['StarTeff'])**2 *np.ma.sqrt(10**NArx_table['StarLum'].value)   # Rsun
             NArx_table['StarRadius'][NArx_table['StarRadius'].mask] = host_rad[NArx_table['StarRadius'].mask].value * u.solRad
+            
+            # Star logg
             host_grav = const.G * (NArx_table['StarMass'].filled(fill_value=np.nan)*u.solMass) / (NArx_table['StarRadius'].filled(fill_value=np.nan)*u.solRad)**2
             host_logg = np.ma.log10(np.ma.masked_invalid(host_grav.cgs.value))  # logg cgs
-            NArx_table['StarLogg'][NArx_table['StarLogg'].mask] = host_logg[NArx_table['StarLogg'].mask]  * u.dex(u.cm/(u.s**2))
+            NArx_table['StarLogg'][NArx_table['StarLogg'].mask] = host_logg[NArx_table['StarLogg'].mask] * u.dex(u.cm/(u.s**2))
         else:
             NArx_table.add_columns([MaskedColumn(length=len(NArx_table), mask=True, fill_value=np.nan)]*2, names=['AngSep', 'PlanetLogg']) # Create fully masked columns for AngSep and PlanetLogg
-        if fill_empties: #-- Deal with units (conversions and Quantity multiplications)
-            NArx_table['StarLum'] = 10**NArx_table['StarLum']   # L/Lsun # Set host luminosity to L/Lsun from log10(L/Lsun)
-        else:
-            NArx_table['StarLum'] = 10**NArx_table['StarLum'].value    # L/Lsun
+        NArx_table['StarLum'] = 10**NArx_table['StarLum'].value * u.solLum # L/Lsun
         for col in NArx_table.colnames: # Make sure all number fill_values are np.nan after the column manipulations
             if isinstance(NArx_table[col], MaskedColumn) and isinstance(NArx_table[col].fill_value, (int, float)):
                 NArx_table[col].fill_value = np.nan # Only change numeric fill values to nan
@@ -359,34 +355,33 @@ def inject_known_values(planet_table):
     planet_table['StarRadialVelocity'][planet_table["PlanetName"] == "Proxima Cen b"] = - 22.2 * planet_table["StarRadialVelocity"].unit # https://arxiv.org/pdf/1611.03495
     return planet_table
 
-def inject_dace_values(planet_table):
-    # https://dace-query.readthedocs.io/en/latest/output_format.html
+def inject_dace_values(planet_table): # https://dace-query.readthedocs.io/en/latest/output_format.html
     from dace_query.exoplanet import Exoplanet
     from astropy.table import Table
     planet_table_dace = Exoplanet.query_database(output_format='astropy_table')
     for planet in planet_table_dace:
         if planet["planet_name"] in planet_table["PlanetName"]:
             idx = planet_index(planet_table, planet["planet_name"])
-            planet_table[idx]["Distance"] = planet["distance"] * planet_table[idx]["Distance"].unit
-            planet_table[idx]["+DeltaDistance"] = planet["distance_upper"] * planet_table[idx]["Distance"].unit
-            planet_table[idx]["-DeltaDistance"] = -planet["distance_lower"] * planet_table[idx]["Distance"].unit
-            planet_table[idx]["Ecc"] = -planet["ecc"]
-            planet_table[idx]["Inc"] = planet["inclination"] * planet_table[idx]["Inc"].unit
-            planet_table[idx]["Period"] = planet["period"] * planet_table[idx]["Period"].unit
-            planet_table[idx]["PlanetMass"] = (planet["planet_mass"] * u.Mjup).to(planet_table[idx]["PlanetMass"].unit)
-            planet_table[idx]["+DeltaPlanetMass"] = (planet["planet_mass_upper"] * u.Mjup).to(planet_table[idx]["PlanetMass"].unit)
-            planet_table[idx]["-DeltaPlanetMass"] = - (planet["planet_mass_lower"] * u.Mjup).to(planet_table[idx]["PlanetMass"].unit)
-            planet_table[idx]["PlanetRadius"] = (planet["planet_radius"] * u.Rjup).to(planet_table[idx]["PlanetRadius"].unit)
+            planet_table[idx]["Distance"]           = planet["distance"] * planet_table[idx]["Distance"].unit
+            planet_table[idx]["+DeltaDistance"]     = planet["distance_upper"] * planet_table[idx]["Distance"].unit
+            planet_table[idx]["-DeltaDistance"]     = -planet["distance_lower"] * planet_table[idx]["Distance"].unit
+            planet_table[idx]["Ecc"]                = -planet["ecc"]
+            planet_table[idx]["Inc"]                = planet["inclination"] * planet_table[idx]["Inc"].unit
+            planet_table[idx]["Period"]             = planet["period"] * planet_table[idx]["Period"].unit
+            planet_table[idx]["PlanetMass"]         = (planet["planet_mass"] * u.Mjup).to(planet_table[idx]["PlanetMass"].unit)
+            planet_table[idx]["+DeltaPlanetMass"]   = (planet["planet_mass_upper"] * u.Mjup).to(planet_table[idx]["PlanetMass"].unit)
+            planet_table[idx]["-DeltaPlanetMass"]   = - (planet["planet_mass_lower"] * u.Mjup).to(planet_table[idx]["PlanetMass"].unit)
+            planet_table[idx]["PlanetRadius"]       = (planet["planet_radius"] * u.Rjup).to(planet_table[idx]["PlanetRadius"].unit)
             planet_table[idx]["+DeltaPlanetRadius"] = (planet["planet_radius_upper"] * u.Rjup).to(planet_table[idx]["PlanetRadius"].unit)
             planet_table[idx]["-DeltaPlanetRadius"] = - (planet["planet_radius_lower"] * u.Rjup).to(planet_table[idx]["PlanetRadius"].unit)
             planet_table[idx]["StarRadialVelocity"] = planet["radial_velocity"] * planet_table[idx]["StarRadialVelocity"].unit        
-            planet_table[idx]["SMA"] = planet["semi_major_axis"] * planet_table[idx]["SMA"].unit
-            planet_table[idx]["StarAge"] = planet["stellar_age"] * planet_table[idx]["StarAge"].unit
-            planet_table[idx]["StarTeff"] = planet["stellar_eff_temp"] * planet_table[idx]["StarTeff"].unit
-            planet_table[idx]["StarMass"] = planet["stellar_mass"] * planet_table[idx]["StarMass"].unit
-            planet_table[idx]["StarRadius"] = planet["stellar_radius"] * planet_table[idx]["StarRadius"].unit
-            planet_table[idx]["StarVsini"] = planet["stellar_rotational_velocity"] * planet_table[idx]["StarVsini"].unit
-            planet_table[idx]["StarLogg"] = planet["stellar_surface_gravity"] * planet_table[idx]["StarLogg"].unit
+            planet_table[idx]["SMA"]                = planet["semi_major_axis"] * planet_table[idx]["SMA"].unit
+            planet_table[idx]["StarAge"]            = planet["stellar_age"] * planet_table[idx]["StarAge"].unit
+            planet_table[idx]["StarTeff"]           = planet["stellar_eff_temp"] * planet_table[idx]["StarTeff"].unit
+            planet_table[idx]["StarMass"]           = planet["stellar_mass"] * planet_table[idx]["StarMass"].unit
+            planet_table[idx]["StarRadius"]         = planet["stellar_radius"] * planet_table[idx]["StarRadius"].unit
+            planet_table[idx]["StarVsini"]          = planet["stellar_rotational_velocity"] * planet_table[idx]["StarVsini"].unit
+            planet_table[idx]["StarLogg"]           = planet["stellar_surface_gravity"] * planet_table[idx]["StarLogg"].unit
     return planet_table
 
 def get_missing_k_mags(): # Missing values for K-band mag of Direct Imaging planets
@@ -433,12 +428,10 @@ def planet_index(planet_table, planet_name, TAP=True):
 
 
 def get_closest_planet(planet_table, T_planet, lg_planet): # permet de trouver la planète ayant les paramètres les plus proches de T et lg
-    diff_T = (planet_table["PlanetTeq"].value-T)/T
-    diff_lg = (planet_table["PlanetLogg"].value-lg)/lg
+    diff_T   = (planet_table["PlanetTeq"].value-T)/T
+    diff_lg  = (planet_table["PlanetLogg"].value-lg)/lg
     distance = np.sqrt(diff_T**2+diff_lg**2)
-    idx = np.argmin(distance)
-    print(planet_table[idx]["PlanetTeq"])
-    print(planet_table[idx]["PlanetLogg"])
+    idx      = np.argmin(distance)
     return idx
 
 
@@ -460,24 +453,33 @@ def create_archive_planet_table():
     To create an exoplanet archive table
     """
     archive_table_filename = archive_path+"Archive_Pull_raw.ecsv" # Filename in which to save raw exoplanet archive table
-    uni = ExoArchive_Universe(archive_table_filename) # Instantiate universe object
+    uni                    = ExoArchive_Universe(archive_table_filename) # Instantiate universe object
     uni.Load_ExoArchive_Universe(force_new_pull=True)  # Pull and populate the planet table
     planet_table_raw = uni.planets
     planet_table_raw.write(archive_path+"Archive_Pull_raw.ecsv", format='ascii.ecsv', overwrite=True)
     planet_table = load_planet_table("Archive_Pull_raw.ecsv")
+    
     # injecting DACE values
     planet_table = inject_dace_values(planet_table)
+    
+    # Detection method masks
+    im_mask = planet_table["DiscoveryMethod"] == "Imaging"
+    rv_mask = planet_table["DiscoveryMethod"] == "Radial Velocity"
+    tr_mask = planet_table["DiscoveryMethod"] == "Transit"
+    ot_mask = (planet_table["DiscoveryMethod"]!="Imaging") & (planet_table["DiscoveryMethod"]!="Radial Velocity") & (planet_table["DiscoveryMethod"]!="Transit")
+    
     # Estimate planet Teq when missing (except for direct imaged planets) => equilibrium temperature
-    ptq_mask = np.logical_not(get_mask(planet_table, "PlanetTeq")) # gives the valid (existing) values of the planet's temperature
-    im_mask = planet_table["DiscoveryMethod"] == "Imaging" ; rv_mask = planet_table["DiscoveryMethod"] == "Radial Velocity" ; tr_mask = planet_table["DiscoveryMethod"] == "Transit" ; ot_mask = (planet_table["DiscoveryMethod"]!="Imaging") & (planet_table["DiscoveryMethod"]!="Radial Velocity") & (planet_table["DiscoveryMethod"]!="Transit")
-    nb_missing_Tp = len(planet_table["PlanetTeq"][(~ptq_mask) & (~im_mask)]) # nb of missing temperatures (except direct imaged planets)
-    planet_teq = (planet_table['StarRadius']/(planet_table['SMA'])).decompose()**(1/2) * planet_table['StarTeff'].value *u.K
-    planet_table["PlanetTeq"][(~ptq_mask) & (~im_mask)] = planet_teq[(~ptq_mask) & (~im_mask)] # estimates missing temperatures, except for planets detected by direct imaging, where the temperature would be greatly underestimated (hot young planets)
+    ptq_mask                                               = np.logical_not(get_mask(planet_table, "PlanetTeq")) # gives the valid (existing) values of the planet's temperature
+    nb_missing_Tp                                          = len(planet_table["PlanetTeq"][(~ptq_mask) & (~im_mask)]) # nb of missing temperatures (except direct imaged planets)
+    planet_teq                                             = (planet_table['StarRadius']/(planet_table['SMA'])).decompose()**(1/2) * planet_table['StarTeff'].value *u.K
+    planet_table["PlanetTeq"][(~ptq_mask) & (~im_mask)]    = planet_teq[(~ptq_mask) & (~im_mask)] # estimates missing temperatures, except for planets detected by direct imaging, where the temperature would be greatly underestimated (hot young planets)
     planet_table["PlanetTeqRef"][(~ptq_mask) & (~im_mask)] = "thermal equilibrium estimation" # estimates missing temperatures, except for planets detected by direct imaging, where the temperature would be greatly underestimated (hot young planets)
+    
     # Since the radius is not important for direct imaged planets (renormalization with K-band measured magnitude), zeros values are replaced by an arbitrary value
     prd_mask = np.logical_not(get_mask(planet_table, "PlanetRadius")) # gives the valid (existing) values of the planet's radius
     planet_table["PlanetRadius"][(~prd_mask) & im_mask] = np.nanmean(planet_table['PlanetRadius'][im_mask].value) * planet_table["PlanetRadius"].unit
     planet_table["PlanetRadiusRef"][(~prd_mask) & im_mask] = "mean value filled"
+    
     # Fill missing lg values with mean values according to the detection method (since this is not a critical parameter, it is an acceptable approximation)
     slg_mask = np.logical_not(get_mask(planet_table, "StarLogg"))
     planet_table['StarLogg'][~slg_mask & im_mask] = np.nanmean(planet_table['StarLogg'][im_mask].value) * planet_table['StarLogg'].unit
@@ -489,6 +491,7 @@ def create_archive_planet_table():
     planet_table['PlanetLogg'][~plg_mask & rv_mask] = np.nanmean(planet_table['PlanetLogg'][rv_mask].value) * planet_table['PlanetLogg'].unit
     planet_table['PlanetLogg'][~plg_mask & tr_mask] = np.nanmean(planet_table['PlanetLogg'][tr_mask].value) * planet_table['PlanetLogg'].unit
     planet_table['PlanetLogg'][~plg_mask & ot_mask] = np.nanmean(planet_table['PlanetLogg'][ot_mask].value) * planet_table['PlanetLogg'].unit
+    
     # Create masks for missing entries for contrast calculation
     stq_mask = np.logical_not(get_mask(planet_table, "StarTeff"))
     ptq_mask = np.logical_not(get_mask(planet_table, "PlanetTeq"))
@@ -497,60 +500,67 @@ def create_archive_planet_table():
     dis_mask = np.logical_not(get_mask(planet_table, "Distance"))
     sma_mask = np.logical_not(get_mask(planet_table, "SMA"))
     planet_table = planet_table[stq_mask & ptq_mask & stk_mask & prd_mask & dis_mask & sma_mask]
+    
     # Assumes planets are at their maximum elongation (phi = pi/2)
     planet_table["Phase"] = np.pi/2 * planet_table["Phase"].unit
-    print('\n Estimating the temperature for: ', nb_missing_Tp, "planets")
-    print('\n Nb of planets for which the SNR value can be obtained: %d'%len(planet_table[np.logical_not(get_mask(planet_table, "AngSep"))]))
+
     # Fixing the minimum planets temperature
-    min_Tp = 200 * u.K # fixing minimum temperature for the planets (the one of the BT-Settl, Morley and SONORA spectra)
+    min_Tp                                                         = 200 * u.K # fixing minimum temperature for the planets (the one of the BT-Settl, Morley and SONORA spectra)
     planet_table["PlanetTeq"][planet_table["PlanetTeq"] < min_Tp ] = min_Tp
+    
     # Fixing the maximum planets temperature
-    max_Tp = 3000 * u.K # fixing maximum temperature for the planets
+    max_Tp                                                         = 3000 * u.K # fixing maximum temperature for the planets
     planet_table["PlanetTeq"][planet_table["PlanetTeq"] > max_Tp ] = max_Tp
+    
     # Fixing the maximum planets mass
-    max_Mp = 10000 * u.Mearth # otherwise it can be considered as a star 
+    max_Mp                                                           = 10000 * u.Mearth # otherwise it can be considered as a star 
     planet_table["PlanetMass"][planet_table["PlanetMass"] > max_Mp ] = max_Mp
+    
     # Randomly draw radial velocities of the stars according to a normal distribution when they are missing
-    srv_mask = get_mask(planet_table, "StarRadialVelocity")
+    srv_mask                                     = get_mask(planet_table, "StarRadialVelocity")
     planet_table["StarRadialVelocity"][srv_mask] = np.random.normal(np.nanmean(np.array(planet_table["StarRadialVelocity"][~srv_mask].value)), np.nanstd(np.array(planet_table["StarRadialVelocity"][~srv_mask].value)), len(planet_table["StarRadialVelocity"][srv_mask])) * planet_table["StarRadialVelocity"].unit
+    
     # Simulating random star Vsini values (depending on the type of stars) when the values are missing
-    st_mask = np.logical_not(get_mask(planet_table, "StarTeff"))
+    st_mask   = np.logical_not(get_mask(planet_table, "StarTeff"))
     svsi_mask = get_mask(planet_table, "StarVsini")
-    planet_table["StarVsini"][svsi_mask & st_mask & (planet_table["StarTeff"] <= 3500 * u.K)] = np.random.normal(1, 0.5, size=len(planet_table["StarVsini"][svsi_mask & st_mask & (planet_table["StarTeff"] <= 3500 * u.K)])) * u.km / u.s # Cool stars (Teff <= 3500 K): mu = 1 km/s, sigma = 0.5 km/s (M-dwarfs, Newton et al. 2017)
-    planet_table["StarVsini"][svsi_mask & st_mask & (3500 * u.K < planet_table["StarTeff"]) & (planet_table["StarTeff"] <= 6000 * u.K)] = np.random.normal(3, 1, size=len(planet_table["StarVsini"][svsi_mask & st_mask & (3500 * u.K < planet_table["StarTeff"]) & (planet_table["StarTeff"] <= 6000 * u.K)])) * u.km / u.s # Solar-type stars (3500 K < Teff <= 6000 K): mu = 3 km/s, sigma = 1 km/s (G and K-type stars, Nielsen et al. 2013)
+    planet_table["StarVsini"][svsi_mask & st_mask & (planet_table["StarTeff"] <= 3500 * u.K)]                                            = np.random.normal(1, 0.5, size=len(planet_table["StarVsini"][svsi_mask & st_mask & (planet_table["StarTeff"] <= 3500 * u.K)])) * u.km / u.s # Cool stars (Teff <= 3500 K): mu = 1 km/s, sigma = 0.5 km/s (M-dwarfs, Newton et al. 2017)
+    planet_table["StarVsini"][svsi_mask & st_mask & (3500 * u.K < planet_table["StarTeff"]) & (planet_table["StarTeff"] <= 6000 * u.K)]  = np.random.normal(3, 1, size=len(planet_table["StarVsini"][svsi_mask & st_mask & (3500 * u.K < planet_table["StarTeff"]) & (planet_table["StarTeff"] <= 6000 * u.K)])) * u.km / u.s # Solar-type stars (3500 K < Teff <= 6000 K): mu = 3 km/s, sigma = 1 km/s (G and K-type stars, Nielsen et al. 2013)
     planet_table["StarVsini"][svsi_mask & st_mask & (6000 * u.K < planet_table["StarTeff"]) & (planet_table["StarTeff"] <= 10000 * u.K)] = np.random.normal(10, 4, size=len(planet_table["StarVsini"][svsi_mask & st_mask & (6000 * u.K < planet_table["StarTeff"]) & (planet_table["StarTeff"] <= 10000 * u.K)])) * u.km / u.s # Hot stars (6000 K < Teff <= 10000 K): mu = 10 km/s, sigma = 4 km/s (F-type stars, Royer et al. 2007)
-    planet_table["StarVsini"][svsi_mask & st_mask & (10000 * u.K < planet_table["StarTeff"])] = np.random.normal(50, 15, size=len(planet_table["StarVsini"][svsi_mask & st_mask & (10000 * u.K < planet_table["StarTeff"])])) * u.km / u.s # Very hot stars (Teff > 10000 K): mu = 50 km/s, sigma = 15 km/s (O, B, and A-type stars, Zorec & Royer 2012)
+    planet_table["StarVsini"][svsi_mask & st_mask & (10000 * u.K < planet_table["StarTeff"])]                                            = np.random.normal(50, 15, size=len(planet_table["StarVsini"][svsi_mask & st_mask & (10000 * u.K < planet_table["StarTeff"])])) * u.km / u.s # Very hot stars (Teff > 10000 K): mu = 50 km/s, sigma = 15 km/s (O, B, and A-type stars, Zorec & Royer 2012)
     planet_table["StarVsini"][planet_table["StarVsini"] < 0] = 0.
+    
     # Simulating random planet Vsini values (depending on the type of planets)
     planet_table["PlanetVsini"] = 0 * planet_table["StarVsini"]
-    pm_mask = np.logical_not(get_mask(planet_table, "PlanetMass"))
-    planet_table["PlanetVsini"][pm_mask & (planet_table["PlanetMass"]<=5*u.Mearth)] = np.random.normal(2, 1, size=len(planet_table["PlanetVsini"][pm_mask&(planet_table["PlanetMass"]<=5*u.Mearth)])) * u.km / u.s # Earths-like : mu = 2 km/s, sigma = 1 km/s (McQuillan, A., Mazeh, T., & Aigrain, S. (2013). MNRAS, 432, 1203.)
-    planet_table["PlanetVsini"][pm_mask & (5*u.Mearth<planet_table["PlanetMass"]) & (planet_table["PlanetMass"]<=20*u.Mearth)] = np.random.normal(5, 2, size=len(planet_table["PlanetVsini"][pm_mask&(5*u.Mearth<planet_table["PlanetMass"])&(planet_table["PlanetMass"]<=20*u.Mearth)])) * u.km / u.s # Super-Earths : mu = 5 km/s, sigma = 2 km/s (Dai, F., et al. (2016). ApJ, 823, 115.)
-    planet_table["PlanetVsini"][pm_mask & (20*u.Mearth<planet_table["PlanetMass"]) & (planet_table["PlanetMass"]<=100*u.Mearth)] = np.random.normal(12, 5, size=len(planet_table["PlanetVsini"][pm_mask&(20*u.Mearth<planet_table["PlanetMass"])&(planet_table["PlanetMass"]<=100*u.Mearth)])) * u.km / u.s # Neptunes-like : mu = 12 km/s, sigma = 5 km/s (Snellen, I.A.G., et al. (2014). Nature, 509, 63-65.)
+    pm_mask                     = np.logical_not(get_mask(planet_table, "PlanetMass"))
+    planet_table["PlanetVsini"][pm_mask & (planet_table["PlanetMass"]<=5*u.Mearth)]                                               = np.random.normal(2, 1, size=len(planet_table["PlanetVsini"][pm_mask&(planet_table["PlanetMass"]<=5*u.Mearth)])) * u.km / u.s # Earths-like : mu = 2 km/s, sigma = 1 km/s (McQuillan, A., Mazeh, T., & Aigrain, S. (2013). MNRAS, 432, 1203.)
+    planet_table["PlanetVsini"][pm_mask & (5*u.Mearth<planet_table["PlanetMass"]) & (planet_table["PlanetMass"]<=20*u.Mearth)]    = np.random.normal(5, 2, size=len(planet_table["PlanetVsini"][pm_mask&(5*u.Mearth<planet_table["PlanetMass"])&(planet_table["PlanetMass"]<=20*u.Mearth)])) * u.km / u.s # Super-Earths : mu = 5 km/s, sigma = 2 km/s (Dai, F., et al. (2016). ApJ, 823, 115.)
+    planet_table["PlanetVsini"][pm_mask & (20*u.Mearth<planet_table["PlanetMass"]) & (planet_table["PlanetMass"]<=100*u.Mearth)]  = np.random.normal(12, 5, size=len(planet_table["PlanetVsini"][pm_mask&(20*u.Mearth<planet_table["PlanetMass"])&(planet_table["PlanetMass"]<=100*u.Mearth)])) * u.km / u.s # Neptunes-like : mu = 12 km/s, sigma = 5 km/s (Snellen, I.A.G., et al. (2014). Nature, 509, 63-65.)
     planet_table["PlanetVsini"][pm_mask & (100*u.Mearth<planet_table["PlanetMass"]) & (planet_table["PlanetMass"]<=300*u.Mearth)] = np.random.normal(25, 10, size=len(planet_table["PlanetVsini"][pm_mask&(100*u.Mearth<planet_table["PlanetMass"])&(planet_table["PlanetMass"]<=300*u.Mearth)])) * u.km / u.s # Jupiter-like : mu = 25 km/s, sigma = 10 km/s (Bryan, M.L., et al. (2018). AJ, 156, 142.)
-    planet_table["PlanetVsini"][pm_mask & (300*u.Mearth<planet_table["PlanetMass"])] = np.random.normal(40, 15, size=len(planet_table["PlanetVsini"][pm_mask&(300*u.Mearth<planet_table["PlanetMass"])])) * u.km / u.s # Super-Jupiters : mu = 40 km/s, sigma = 15 km/s (Snellen, I.A.G., et al. (2010). Nature, 465, 1049-1051.)
+    planet_table["PlanetVsini"][pm_mask & (300*u.Mearth<planet_table["PlanetMass"])]                                              = np.random.normal(40, 15, size=len(planet_table["PlanetVsini"][pm_mask&(300*u.Mearth<planet_table["PlanetMass"])])) * u.km / u.s # Super-Jupiters : mu = 40 km/s, sigma = 15 km/s (Snellen, I.A.G., et al. (2010). Nature, 465, 1049-1051.)
     planet_table["PlanetVsini"][planet_table["PlanetVsini"]<0] = 0.
+    
     # Randomly drawing inclinations when they are missing (actually setting inc = 90°, in order to have the most optimistic cases when the Inc are missing)
-    inc_mask = get_mask(planet_table, "Inc") ; im_mask = planet_table["DiscoveryMethod"] == "Imaging" ; rv_mask = planet_table["DiscoveryMethod"] == "Radial Velocity" ; tr_mask = planet_table["DiscoveryMethod"] == "Transit" ; ot_mask = (planet_table["DiscoveryMethod"]!="Imaging") & (planet_table["DiscoveryMethod"]!="Radial Velocity") & (planet_table["DiscoveryMethod"]!="Transit")
+    inc_mask                      = get_mask(planet_table, "Inc")
     planet_table["Inc"][inc_mask] = 90 * planet_table["Inc"].unit
-    # planet_table["Inc"][inc_mask & im_mask] = np.random.normal(np.nanmean(np.array(planet_table["Inc"][(~inc_mask)&(im_mask)].value)), np.nanstd(np.array(planet_table["Inc"][(~inc_mask)&(im_mask)].value)), len(planet_table["Inc"][inc_mask & im_mask])) * planet_table["Inc"].unit
-    # planet_table["Inc"][inc_mask & im_mask & ((planet_table["Inc"].value<0) | (planet_table["Inc"].value>180))] = np.nanmean(np.array(planet_table["Inc"][(~inc_mask)&(im_mask)].value)) * planet_table["Inc"].unit
-    # planet_table["Inc"][inc_mask & rv_mask] = np.random.normal(np.nanmean(np.array(planet_table["Inc"][(~inc_mask)&(rv_mask)].value)), np.nanstd(np.array(planet_table["Inc"][(~inc_mask)&(rv_mask)].value)), len(planet_table["Inc"][inc_mask & rv_mask])) * planet_table["Inc"].unit
-    # planet_table["Inc"][inc_mask & rv_mask & ((planet_table["Inc"].value<0) | (planet_table["Inc"].value>180))] = np.nanmean(np.array(planet_table["Inc"][(~inc_mask)&(rv_mask)].value)) * planet_table["Inc"].unit
-    # planet_table["Inc"][inc_mask & tr_mask] = np.random.normal(np.nanmean(np.array(planet_table["Inc"][(~inc_mask)&(tr_mask)].value)), np.nanstd(np.array(planet_table["Inc"][(~inc_mask)&(tr_mask)].value)), len(planet_table["Inc"][inc_mask & tr_mask])) * planet_table["Inc"].unit
-    # planet_table["Inc"][inc_mask & tr_mask & ((planet_table["Inc"].value<0) | (planet_table["Inc"].value>180))] = np.nanmean(np.array(planet_table["Inc"][(~inc_mask)&(tr_mask)].value)) * planet_table["Inc"].unit    
-    # planet_table["Inc"][inc_mask & ot_mask] = np.random.normal(np.nanmean(np.array(planet_table["Inc"][(~inc_mask)&(ot_mask)].value)), np.nanstd(np.array(planet_table["Inc"][(~inc_mask)&(ot_mask)].value)), len(planet_table["Inc"][inc_mask & ot_mask])) * planet_table["Inc"].unit
-    # planet_table["Inc"][inc_mask & ot_mask & ((planet_table["Inc"].value<0) | (planet_table["Inc"].value>180))] = np.nanmean(np.array(planet_table["Inc"][(~inc_mask)&(ot_mask)].value)) * planet_table["Inc"].unit    
-    i = np.array(planet_table["Inc"].value) * np.pi/180
+    i                             = np.array(planet_table["Inc"].value) * np.pi/180
+    
     # Estimates the Doppler shift between planet and star, assuming it is the orbital (circular) velocity * sin(i) (STILL WITH THE ASSUMPTION THAT ALL THE PLANETS ARE ON THEIR MAX ELONGATION)
-    planet_table['DeltaRadialVelocity'] = np.sqrt(const.G*(planet_table["StarMass"]+planet_table["PlanetMass"])/planet_table["SMA"]).decompose().to(u.km/u.s) * np.sin(i)
-    drv_mask = get_mask(planet_table, "DeltaRadialVelocity")
+    planet_table['DeltaRadialVelocity']           = np.sqrt(const.G*(planet_table["StarMass"]+planet_table["PlanetMass"])/planet_table["SMA"]).decompose().to(u.km/u.s) * np.sin(i)
+    drv_mask                                      = get_mask(planet_table, "DeltaRadialVelocity")
     planet_table["DeltaRadialVelocity"][drv_mask] = np.random.normal(np.nanmean(np.array(planet_table["DeltaRadialVelocity"].value)), np.nanstd(np.array(planet_table["DeltaRadialVelocity"].value)), len(planet_table["DeltaRadialVelocity"][drv_mask])) * planet_table["DeltaRadialVelocity"].unit
-    planet_table["PlanetRadialVelocity"] = planet_table["StarRadialVelocity"] + planet_table["DeltaRadialVelocity"]
+    planet_table["PlanetRadialVelocity"]          = planet_table["StarRadialVelocity"] + planet_table["DeltaRadialVelocity"]
+    
     # Calcuting phase functions
-    planet_table["alpha"] = np.arccos(-np.sin(i)*np.cos(np.array(planet_table["Phase"].value)))
+    planet_table["alpha"]   = np.arccos(-np.sin(i)*np.cos(np.array(planet_table["Phase"].value)))
     planet_table["g_alpha"] = (np.sin(planet_table["alpha"])+(np.pi-planet_table["alpha"])*np.cos(planet_table["alpha"]))/np.pi # fonction de phase de Lambert
+    
+    # Saving the table
     planet_table.write(archive_path+"Archive_Pull.ecsv", format='ascii.ecsv', overwrite=True)
+    
+    # prints
+    print('\n Estimating the temperature for: ', nb_missing_Tp, "planets")
+    print('\n Nb of planets for which the SNR value can be obtained: %d'%len(planet_table[np.logical_not(get_mask(planet_table, "AngSep"))]))
+    
 
 
 
@@ -612,14 +622,14 @@ def create_simulated_planet_table():
     host_Vmags = np.array([su.TargetList.Vmag[i] for i in su.plan2star])
     host_Kmags = np.array([su.TargetList.Kmag[i] for i in su.plan2star]) * u.mag
     # guess the radius and gravity from Vmag and Teff. This is of questionable reliability
-    host_MVs = host_Vmags - 5 * np.log10(distances.value/10) # absolute V mag
-    host_lums = 10**(-(host_MVs-4.83)/2.5) # L/Lsun
+    host_MVs   = host_Vmags - 5 * np.log10(distances.value/10) # absolute V mag
+    host_lums  = 10**(-(host_MVs-4.83)/2.5) # L/Lsun
     host_radii = (5800/host_teff.value)**2 * np.sqrt(host_lums) * u.solRad# Rsun
     host_gravs = const.G * host_mass/(host_radii**2)
-    host_logg = np.log10(host_gravs.to(u.cm/u.s**2).value) * u.dex(u.cm/(u.s**2))# logg cgs
-    teq = su.PlanetPhysicalModel.calc_Teff(host_lums, smas, su.p)
+    host_logg  = np.log10(host_gravs.to(u.cm/u.s**2).value) * u.dex(u.cm/(u.s**2))# logg cgs
+    teq      = su.PlanetPhysicalModel.calc_Teff(host_lums, smas, su.p)
     all_data = [star_names, ras, decs, distances, flux_ratios, angseps, projaus, phase, smas, eccs, incs, planet_names, planet_types, masses, radii, teq, logg, spts, host_mass, host_teff, host_radii, host_logg, host_Kmags]
-    labels = ["StarName", "RA", "Dec", "Distance", "Flux Ratio", "AngSep", "ProjAU", "Phase", "SMA", "Ecc", "Inc", "PlanetName", "PlanetType", "PlanetMass", "PlanetRadius", "PlanetTeq", "PlanetLogg", "StarSpT", "StarMass", "StarTeff", "StarRadius", "StarLogg", "StarKmag"]
+    labels   = ["StarName", "RA", "Dec", "Distance", "Flux Ratio", "AngSep", "ProjAU", "Phase", "SMA", "Ecc", "Inc", "PlanetName", "PlanetType", "PlanetMass", "PlanetRadius", "PlanetTeq", "PlanetLogg", "StarSpT", "StarMass", "StarTeff", "StarRadius", "StarLogg", "StarKmag"]
     planet_table = QTable(all_data, names=labels)
     slg_mask = np.logical_not(np.isnan(planet_table['StarLogg']))
     stq_mask = np.logical_not(np.isnan(planet_table['StarTeff']))
@@ -644,9 +654,11 @@ def create_fastcurves_table(table="Archive"): # take ~ 3 minutes for Archive and
     """
     warnings.filterwarnings('ignore', category=UserWarning, append=True)
     time1 = time.time()
+    
     if table == "Archive":
         create_archive_planet_table()
         planet_table = load_planet_table("Archive_Pull.ecsv")
+        
     elif table == "Simulated":
         create_simulated_planet_table()
         planet_table = load_planet_table("Simulated_Pull_raw.ecsv")        
@@ -668,6 +680,8 @@ def create_fastcurves_table(table="Archive"): # take ~ 3 minutes for Archive and
         plt.scatter(planet_table["SMA"], planet_table["PlanetRadius"], c='r', alpha=0.333, zorder=10)
         plt.show()
     print('\n Total nb of planets considered: %d'%len(planet_table))
+    
+    # creating magnitudes columns
     for instru in config_data_list:
         planet_table['StarINSTRUmag('+instru["name"]+')'] = np.full((len(planet_table), ), np.nan)
         planet_table['PlanetINSTRUmag('+instru["name"]+')(thermal+reflected)'] = np.full((len(planet_table), ), np.nan)
@@ -677,38 +691,54 @@ def create_fastcurves_table(table="Archive"): # take ~ 3 minutes for Archive and
         if band == "K":
             planet_table['StarKmag'] = planet_table['StarKmag'].value
         else:
-            planet_table['Star'+band+'mag'] = np.full((len(planet_table), ), np.nan)
+            planet_table['Star'+band+'mag']                  = np.full((len(planet_table), ), np.nan)
         planet_table['Planet'+band+'mag(thermal+reflected)'] = np.full((len(planet_table), ), np.nan)
-        planet_table['Planet'+band+'mag(thermal)'] = np.full((len(planet_table), ), np.nan)
-        planet_table['Planet'+band+'mag(reflected)'] = np.full((len(planet_table), ), np.nan)
-    if table == "Archive": # enters the known K-band magnitudes of planets detected by direct imaging
+        planet_table['Planet'+band+'mag(thermal)']           = np.full((len(planet_table), ), np.nan)
+        planet_table['Planet'+band+'mag(reflected)']         = np.full((len(planet_table), ), np.nan)
+    
+    # enters the known K-band magnitudes of planets detected by direct imaging
+    if table == "Archive":
         planet_table = inject_known_values(planet_table)
+        
+    # Getting all instrus limits
+    LMIN = 1 ; LMAX = 1 # µm
     for instru in config_data_list:
         globals()["lmin_"+instru["name"]] = get_config_data(instru["name"])["lambda_range"]["lambda_min"]
         globals()["lmax_"+instru["name"]] = get_config_data(instru["name"])["lambda_range"]["lambda_max"]
-    wave = np.arange(0.1, 30, 1e-2)
-    vega_spectrum = load_vega_spectrum()
-    vega_spectrum = vega_spectrum.interpolate_wavelength(wave, renorm = False)
-    with Pool(processes=cpu_count()//4) as pool: # Utilisation de multiprocessing pour paralléliser les combinaisons i, j
-        results = list(tqdm(pool.imap(process_fastcurves_table, [(idx, make_table_serializable(planet_table[idx]), wave, vega_spectrum) for idx in range(len(planet_table))]), total=len(planet_table), desc="Estimating magnitudes..."))
-        for (idx, planet_spectrum, planet_thermal, planet_reflected, star_spectrum) in results: # Remplissage des matrices 5D avec les résultats
+        if LMIN > get_config_data(instru["name"])["lambda_range"]["lambda_min"]:
+            LMIN = get_config_data(instru["name"])["lambda_range"]["lambda_min"]
+        if LMAX < get_config_data(instru["name"])["lambda_range"]["lambda_max"]:
+            LMAX = get_config_data(instru["name"])["lambda_range"]["lambda_max"]
+    
+    # defining bands and vega spectrum
+    wave_instru     = np.arange(LMIN, LMAX, 1e-2)
+    wave_K          = wave_instru[(wave_instru>=lmin_K)&(wave_instru<=lmax_K)]
+    vega_spectrum   = load_vega_spectrum()
+    vega_spectrum_K = vega_spectrum.interpolate_wavelength(wave_K, renorm = False)
+    vega_spectrum   = vega_spectrum.interpolate_wavelength(wave_instru, renorm = False)
+    
+    # spectra estimations
+    with Pool(processes=cpu_count()//2) as pool: 
+        results = list(tqdm(pool.imap(process_fastcurves_table, [(idx, make_table_serializable(planet_table[idx]), wave_instru, wave_K, vega_spectrum_K) for idx in range(len(planet_table))]), total=len(planet_table), desc="Estimating magnitudes..."))
+        for (idx, planet_spectrum, planet_thermal, planet_reflected, star_spectrum) in results:
             for instru in config_data_list:
-                planet_table[idx]['StarINSTRUmag('+instru["name"]+')'] = -2.5*np.log10(np.nanmean(star_spectrum.flux[(wave>globals()["lmin_"+instru["name"]])&(wave<globals()["lmax_"+instru["name"]])])/np.nanmean(vega_spectrum.flux[(wave>globals()["lmin_"+instru["name"]]) & (wave<globals()["lmax_"+instru["name"]])]))
-                planet_table[idx]['PlanetINSTRUmag('+instru["name"]+')(thermal+reflected)'] = -2.5*np.log10(np.nanmean(planet_spectrum.flux[(wave>globals()["lmin_"+instru["name"]])&(wave<globals()["lmax_"+instru["name"]])])/np.nanmean(vega_spectrum.flux[(wave>globals()["lmin_"+instru["name"]]) & (wave<globals()["lmax_"+instru["name"]])]))
-                planet_table[idx]['PlanetINSTRUmag('+instru["name"]+')(thermal)'] = -2.5*np.log10(np.nanmean(planet_thermal.flux[(wave>globals()["lmin_"+instru["name"]])&(wave<globals()["lmax_"+instru["name"]])])/np.nanmean(vega_spectrum.flux[(wave>globals()["lmin_"+instru["name"]]) & (wave<globals()["lmax_"+instru["name"]])]))
+                planet_table[idx]['StarINSTRUmag('+instru["name"]+')']                      = -2.5*np.log10(np.nanmean(star_spectrum.flux[(wave_instru>globals()["lmin_"+instru["name"]])&(wave_instru<globals()["lmax_"+instru["name"]])])/np.nanmean(vega_spectrum.flux[(wave_instru>globals()["lmin_"+instru["name"]]) & (wave_instru<globals()["lmax_"+instru["name"]])]))
+                planet_table[idx]['PlanetINSTRUmag('+instru["name"]+')(thermal+reflected)'] = -2.5*np.log10(np.nanmean(planet_spectrum.flux[(wave_instru>globals()["lmin_"+instru["name"]])&(wave_instru<globals()["lmax_"+instru["name"]])])/np.nanmean(vega_spectrum.flux[(wave_instru>globals()["lmin_"+instru["name"]]) & (wave_instru<globals()["lmax_"+instru["name"]])]))
+                planet_table[idx]['PlanetINSTRUmag('+instru["name"]+')(thermal)']           = -2.5*np.log10(np.nanmean(planet_thermal.flux[(wave_instru>globals()["lmin_"+instru["name"]])&(wave_instru<globals()["lmax_"+instru["name"]])])/np.nanmean(vega_spectrum.flux[(wave_instru>globals()["lmin_"+instru["name"]]) & (wave_instru<globals()["lmax_"+instru["name"]])]))
                 if globals()["lmin_"+instru["name"]] < 6: # above 6 µm, we neglect the reflected contribution
-                    planet_table[idx]['PlanetINSTRUmag('+instru["name"]+')(reflected)'] = -2.5*np.log10(np.nanmean(planet_reflected.flux[(wave>globals()["lmin_"+instru["name"]])&(wave<globals()["lmax_"+instru["name"]])])/np.nanmean(vega_spectrum.flux[(wave>globals()["lmin_"+instru["name"]]) & (wave<globals()["lmax_"+instru["name"]])]))
+                    planet_table[idx]['PlanetINSTRUmag('+instru["name"]+')(reflected)'] = -2.5*np.log10(np.nanmean(planet_reflected.flux[(wave_instru>globals()["lmin_"+instru["name"]])&(wave_instru<globals()["lmax_"+instru["name"]])])/np.nanmean(vega_spectrum.flux[(wave_instru>globals()["lmin_"+instru["name"]]) & (wave_instru<globals()["lmax_"+instru["name"]])]))
             for band in bands:
                 if band != "K":
-                    planet_table[idx]['Star'+band+'mag'] = -2.5*np.log10(np.nanmean(star_spectrum.flux[(wave>globals()["lmin_"+band])&(wave<globals()["lmax_"+band])])/np.nanmean(vega_spectrum.flux[(wave>globals()["lmin_"+band]) & (wave<globals()["lmax_"+band])]))
-                planet_table[idx]['Planet'+band+'mag(thermal+reflected)'] = -2.5*np.log10(np.nanmean(planet_spectrum.flux[(wave>globals()["lmin_"+band])&(wave<globals()["lmax_"+band])])/np.nanmean(vega_spectrum.flux[(wave>globals()["lmin_"+band]) & (wave<globals()["lmax_"+band])]))
-                planet_table[idx]['Planet'+band+'mag(thermal)'] = -2.5*np.log10(np.nanmean(planet_thermal.flux[(wave>globals()["lmin_"+band])&(wave<globals()["lmax_"+band])])/np.nanmean(vega_spectrum.flux[(wave>globals()["lmin_"+band]) & (wave<globals()["lmax_"+band])])) 
+                    planet_table[idx]['Star'+band+'mag']                  = -2.5*np.log10(np.nanmean(star_spectrum.flux[(wave_instru>globals()["lmin_"+band])&(wave_instru<globals()["lmax_"+band])])/np.nanmean(vega_spectrum.flux[(wave_instru>globals()["lmin_"+band]) & (wave_instru<globals()["lmax_"+band])]))
+                planet_table[idx]['Planet'+band+'mag(thermal+reflected)'] = -2.5*np.log10(np.nanmean(planet_spectrum.flux[(wave_instru>globals()["lmin_"+band])&(wave_instru<globals()["lmax_"+band])])/np.nanmean(vega_spectrum.flux[(wave_instru>globals()["lmin_"+band]) & (wave_instru<globals()["lmax_"+band])]))
+                planet_table[idx]['Planet'+band+'mag(thermal)']           = -2.5*np.log10(np.nanmean(planet_thermal.flux[(wave_instru>globals()["lmin_"+band])&(wave_instru<globals()["lmax_"+band])])/np.nanmean(vega_spectrum.flux[(wave_instru>globals()["lmin_"+band]) & (wave_instru<globals()["lmax_"+band])])) 
                 if globals()["lmin_"+band] < 6:
-                    planet_table[idx]['Planet'+band+'mag(reflected)'] = -2.5*np.log10(np.nanmean(planet_reflected.flux[(wave>globals()["lmin_"+band])&(wave<globals()["lmax_"+band])])/np.nanmean(vega_spectrum.flux[(wave>globals()["lmin_"+band]) & (wave<globals()["lmax_"+band])])) 
+                    planet_table[idx]['Planet'+band+'mag(reflected)'] = -2.5*np.log10(np.nanmean(planet_reflected.flux[(wave_instru>globals()["lmin_"+band])&(wave_instru<globals()["lmax_"+band])])/np.nanmean(vega_spectrum.flux[(wave_instru>globals()["lmin_"+band]) & (wave_instru<globals()["lmax_"+band])])) 
             # print("\n", planet_table[idx]["PlanetName"], ": ")
             # print(" mag(K)_p_total = ", round(planet_table[idx]['PlanetKmag(thermal+reflected)'], 1))
             # print(" mag(K)_p_thermal = ", round(planet_table[idx]['PlanetKmag(thermal)'], 1))
             # print(" mag(K)_p_reflected = ", round(planet_table[idx]['PlanetKmag(reflected)'], 1))
+            
     print('\n Nb of planets for FastCurves calculations: %d'%len(planet_table))
     print('\n Generating the table took {0:.3f} s'.format(time.time()-time1))
     if table == "Archive":
@@ -717,10 +747,9 @@ def create_fastcurves_table(table="Archive"): # take ~ 3 minutes for Archive and
         planet_table.write(simulated_path+"Simulated_Pull_for_FastCurves.ecsv", format='ascii.ecsv', overwrite=True)
 
 def process_fastcurves_table(args):
-    idx, planet, wave, vega_spectrum = args
-    planet_spectrum, planet_thermal, planet_reflected, star_spectrum = thermal_reflected_spectrum(planet, instru=None, thermal_model="BT-Settl", reflected_model="PICASO", wave=wave, vega_spectrum=vega_spectrum, show=False)
+    idx, planet, wave_instru, wave_K, vega_spectrum_K = args
+    planet_spectrum, planet_thermal, planet_reflected, star_spectrum = thermal_reflected_spectrum(planet, instru=None, thermal_model="BT-Settl", reflected_model="PICASO", wave_instru=wave_instru, wave_K=wave_K, vega_spectrum_K=vega_spectrum_K, show=False)
     return idx, planet_spectrum, planet_thermal, planet_reflected, star_spectrum
-
 
 
 def make_table_serializable(table):
@@ -733,7 +762,7 @@ def make_table_serializable(table):
             try:
                 serializable_data[col_name] = np.array(column_data)  # Convertir en tableau NumPy
             except Exception as e:
-                print(f"Erreur lors de la conversion de la colonne {col_name}: {e}")
+                print(f"Error when converting {col_name}: {e}")
                 serializable_data[col_name] = None  # Ou gérer comme vous le souhaitez
     return serializable_data
 
@@ -802,13 +831,23 @@ def calculate_SNR_table(instru, table="Archive", thermal_model="None", reflected
         planet_table['sigma_non-syst_'+band] = np.full((len(planet_table), ), np.nan)
         planet_table['sigma_syst_'+band] = np.full((len(planet_table), ), np.nan)
         planet_table['DIT_'+band] = np.full((len(planet_table), ), np.nan)
-
-    lmin_instru = get_config_data(instru)["lambda_range"]["lambda_min"] ; lmax_instru = get_config_data(instru)["lambda_range"]["lambda_max"]
-    R = 200000 # approximately the max resolution of BT-Settl and BT-NextGen spectra (needs to be high enought to not degrade the spectral content for instrument with very high spectral resolution, but needs to be low enough to make rapid computations)
-    delta_lamb_instru = ((max(lmax_K, lmax_instru)+min(lmin_K, lmin_instru))/2)/(2*R) # 2*R => Nyquist sampling (Shannon)
-    wave = np.arange(0.98*min(lmin_K, lmin_instru), 1.02*max(lmax_K, lmax_instru), delta_lamb_instru)
-    vega_spectrum = load_vega_spectrum()
-    vega_spectrum = vega_spectrum.interpolate_wavelength(wave, renorm = False)
+    
+    # K-band    
+    R_K    = 10_000 # only for photometric purposes (does not need more resolution)
+    dl_K   = ((lmin_K+lmax_K)/2)/(2*R_K)
+    wave_K = np.arange(lmin_K, lmax_K, dl_K)
+    
+    # instru-band    
+    lmin_instru = config_data["lambda_range"]["lambda_min"] # in µm
+    lmax_instru = config_data["lambda_range"]["lambda_max"] # in µm
+    R_instru    = 300_000 # abritrary resolution (needs to be high enough)
+    dl_instru   = ((lmin_instru+lmax_instru)/2)/(2*R_instru)
+    wave_instru = np.arange(0.98*lmin_instru, 1.02*lmax_instru, dl_instru)
+    
+    # vega spectrum on K-band and instru-band
+    vega_spectrum   = load_vega_spectrum()
+    vega_spectrum_K = vega_spectrum.interpolate_wavelength(wave_K, renorm = False)
+    vega_spectrum   = vega_spectrum.interpolate_wavelength(wave_instru, renorm = False)
     
     if systematic:
         if PCA:
@@ -819,47 +858,47 @@ def calculate_SNR_table(instru, table="Archive", thermal_model="None", reflected
         print("\n "+instru+" ("+apodizer+" & "+strehl+") without systematics ("+thermal_model+" & "+reflected_model+")")
     band0 = "instru"
     
-    if PCA: # if PCA, no multiprocessing (otherwise it crashes ???)
+    if PCA: # if PCA, no multiprocessing (otherwise it crashes ?)
         for idx in tqdm(range(len(planet_table))):
-            args = (idx, planet_table[idx]["StarINSTRUmag("+instru+")"], make_table_serializable(planet_table[idx]), instru, thermal_model, reflected_model, spectrum_contributions, wave, vega_spectrum, lmin_instru, lmax_instru, band0, exposure_time, name_model, systematic, apodizer, strehl, PCA, PCA_mask, Nc)
+            args = (idx, planet_table[idx]["StarINSTRUmag("+instru+")"], make_table_serializable(planet_table[idx]), instru, thermal_model, reflected_model, spectrum_contributions, wave_instru, wave_K, vega_spectrum, vega_spectrum_K, lmin_instru, lmax_instru, band0, exposure_time, name_model, systematic, apodizer, strehl, PCA, PCA_mask, Nc)
             idx, planet_spectrum, planet_thermal, planet_reflected, star_spectrum, mag_p, name_band, SNR_planet, signal_planet, sigma_ns_planet, sigma_s_planet, DIT_band = process_SNR_table(args)
             # Recalculates the magnitude in case the thermal model is no longer BT-Settl or the reflected model is no longer PICASO (the mag changes with regards to the raw archive table with the estimated magnbitudes)
             planet_table[idx]['PlanetINSTRUmag('+instru+')('+spectrum_contributions+')'] = mag_p
             for band in bands:
                 if lmin_instru < globals()["lmin_"+band] and globals()["lmax_"+band] < lmax_instru:
-                    planet_table[idx]['Planet'+band+'mag('+spectrum_contributions+')'] = -2.5*np.log10(np.nanmean(planet_spectrum.flux[(wave>globals()["lmin_"+band])&(wave<globals()["lmax_"+band])])/np.nanmean(vega_spectrum.flux[(vega_spectrum.wavelength>globals()["lmin_"+band]) & (vega_spectrum.wavelength<globals()["lmax_"+band])]))
-            SNR = np.sqrt(exposure_time/DIT_band) * signal_planet / np.sqrt( sigma_ns_planet**2 + (exposure_time/DIT_band)*sigma_s_planet**2 )
+                    planet_table[idx]['Planet'+band+'mag('+spectrum_contributions+')'] = -2.5*np.log10(np.nanmean(planet_spectrum.flux[(wave_instru>globals()["lmin_"+band])&(wave_instru<globals()["lmax_"+band])])/np.nanmean(vega_spectrum.flux[(wave_instru>globals()["lmin_"+band]) & (wave_instru<globals()["lmax_"+band])]))
+            SNR     = np.sqrt(exposure_time/DIT_band) * signal_planet / np.sqrt( sigma_ns_planet**2 + (exposure_time/DIT_band)*sigma_s_planet**2 )
             idx_max = SNR.argmax()
-            planet_table[idx]['signal_INSTRU'] = signal_planet[idx_max]
+            planet_table[idx]['signal_INSTRU']         = signal_planet[idx_max]
             planet_table[idx]['sigma_non-syst_INSTRU'] = sigma_ns_planet[idx_max]
-            planet_table[idx]['sigma_syst_INSTRU'] = sigma_s_planet[idx_max]
-            planet_table[idx]['DIT_INSTRU'] = DIT_band[idx_max]
+            planet_table[idx]['sigma_syst_INSTRU']     = sigma_s_planet[idx_max]
+            planet_table[idx]['DIT_INSTRU']            = DIT_band[idx_max]
             for nb, band in enumerate(name_band):
-                planet_table[idx]['signal_'+band] = signal_planet[nb]
+                planet_table[idx]['signal_'+band]         = signal_planet[nb]
                 planet_table[idx]['sigma_non-syst_'+band] = sigma_ns_planet[nb]
-                planet_table[idx]['sigma_syst_'+band] = sigma_s_planet[nb]
-                planet_table[idx]['DIT_'+band] = DIT_band[nb]
+                planet_table[idx]['sigma_syst_'+band]     = sigma_s_planet[nb]
+                planet_table[idx]['DIT_'+band]            = DIT_band[nb]
     
     else: # if no PCA, uses multiprocessing
         with Pool(processes=cpu_count()//2) as pool: # Utilisation de multiprocessing pour paralléliser les combinaisons i, j
-            results = list(tqdm(pool.imap(process_SNR_table, [(idx, planet_table[idx]["StarINSTRUmag("+instru+")"], make_table_serializable(planet_table[idx]), instru, thermal_model, reflected_model, spectrum_contributions, wave, vega_spectrum, lmin_instru, lmax_instru, band0, exposure_time, name_model, systematic, apodizer, strehl, PCA, PCA_mask, Nc) for idx in range(len(planet_table))]), total=len(planet_table)))
+            results = list(tqdm(pool.imap(process_SNR_table, [(idx, planet_table[idx]["StarINSTRUmag("+instru+")"], make_table_serializable(planet_table[idx]), instru, thermal_model, reflected_model, spectrum_contributions, wave_instru, wave_K, vega_spectrum, vega_spectrum_K, lmin_instru, lmax_instru, band0, exposure_time, name_model, systematic, apodizer, strehl, PCA, PCA_mask, Nc) for idx in range(len(planet_table))]), total=len(planet_table)))
             for (idx, planet_spectrum, planet_thermal, planet_reflected, star_spectrum, mag_p, name_band, SNR_planet, signal_planet, sigma_ns_planet, sigma_s_planet, DIT_band) in results:
                 # Recalculates the magnitude in case the thermal model is no longer BT-Settl or the reflected model is no longer PICASO (the mag changes with regards to the raw archive table with the estimated magnbitudes)
                 planet_table[idx]['PlanetINSTRUmag('+instru+')('+spectrum_contributions+')'] = mag_p
                 for band in bands:
                     if lmin_instru < globals()["lmin_"+band] and globals()["lmax_"+band] < lmax_instru:
-                        planet_table[idx]['Planet'+band+'mag('+spectrum_contributions+')'] = -2.5*np.log10(np.nanmean(planet_spectrum.flux[(wave>globals()["lmin_"+band])&(wave<globals()["lmax_"+band])])/np.nanmean(vega_spectrum.flux[(vega_spectrum.wavelength>globals()["lmin_"+band]) & (vega_spectrum.wavelength<globals()["lmax_"+band])]))
-                SNR = np.sqrt(exposure_time/DIT_band) * signal_planet / np.sqrt( sigma_ns_planet**2 + (exposure_time/DIT_band)*sigma_s_planet**2 )
+                        planet_table[idx]['Planet'+band+'mag('+spectrum_contributions+')'] = -2.5*np.log10(np.nanmean(planet_spectrum.flux[(wave_instru>globals()["lmin_"+band])&(wave_instru<globals()["lmax_"+band])])/np.nanmean(vega_spectrum.flux[(wave_instru>globals()["lmin_"+band]) & (wave_instru<globals()["lmax_"+band])]))
+                SNR     = np.sqrt(exposure_time/DIT_band) * signal_planet / np.sqrt( sigma_ns_planet**2 + (exposure_time/DIT_band)*sigma_s_planet**2 )
                 idx_max = SNR.argmax()
-                planet_table[idx]['signal_INSTRU'] = signal_planet[idx_max]
+                planet_table[idx]['signal_INSTRU']         = signal_planet[idx_max]
                 planet_table[idx]['sigma_non-syst_INSTRU'] = sigma_ns_planet[idx_max]
-                planet_table[idx]['sigma_syst_INSTRU'] = sigma_s_planet[idx_max]
-                planet_table[idx]['DIT_INSTRU'] = DIT_band[idx_max]
+                planet_table[idx]['sigma_syst_INSTRU']     = sigma_s_planet[idx_max]
+                planet_table[idx]['DIT_INSTRU']            = DIT_band[idx_max]
                 for nb, band in enumerate(name_band):
-                    planet_table[idx]['signal_'+band] = signal_planet[nb]
+                    planet_table[idx]['signal_'+band]         = signal_planet[nb]
                     planet_table[idx]['sigma_non-syst_'+band] = sigma_ns_planet[nb]
-                    planet_table[idx]['sigma_syst_'+band] = sigma_s_planet[nb]
-                    planet_table[idx]['DIT_'+band] = DIT_band[nb]
+                    planet_table[idx]['sigma_syst_'+band]     = sigma_s_planet[nb]
+                    planet_table[idx]['DIT_'+band]            = DIT_band[nb]
         
     print('\n Calculating SNR took {0:.3f} s'.format(time.time()-time1))
     if systematic:
@@ -871,15 +910,14 @@ def calculate_SNR_table(instru, table="Archive", thermal_model="None", reflected
         planet_table.write(path+table+"_Pull_"+instru+"_"+apodizer+"_"+strehl+"_without_systematics_"+name_model+".ecsv", format='ascii.ecsv', overwrite=True)
 
 def process_SNR_table(args):
-    idx, mag_s, planet, instru, thermal_model, reflected_model, spectrum_contributions, wave, vega_spectrum, lmin_instru, lmax_instru, band0, exposure_time, name_model, systematic, apodizer, strehl, PCA, PCA_mask, Nc = args
-    planet_spectrum, planet_thermal, planet_reflected, star_spectrum = thermal_reflected_spectrum(planet=planet, instru=instru, thermal_model=thermal_model, reflected_model=reflected_model, wave=wave, vega_spectrum=vega_spectrum, show=False)
+    idx, mag_s, planet, instru, thermal_model, reflected_model, spectrum_contributions, wave_instru, wave_K, vega_spectrum, vega_spectrum_K, lmin_instru, lmax_instru, band0, exposure_time, name_model, systematic, apodizer, strehl, PCA, PCA_mask, Nc = args
+    planet_spectrum, planet_thermal, planet_reflected, star_spectrum = thermal_reflected_spectrum(planet=planet, instru=instru, thermal_model=thermal_model, reflected_model=reflected_model, wave_instru=wave_instru, wave_K=wave_K, vega_spectrum_K=vega_spectrum_K, show=False)
     if spectrum_contributions == "thermal":
         planet_spectrum = planet_thermal
     elif spectrum_contributions == "reflected":
         planet_spectrum = planet_reflected
-    mag_p = -2.5*np.log10(np.nanmean(planet_spectrum.flux[(wave>lmin_instru)&(wave<lmax_instru)])/np.nanmean(vega_spectrum.flux[(vega_spectrum.wavelength>lmin_instru) & (vega_spectrum.wavelength<lmax_instru)]))
+    mag_p = -2.5*np.log10(np.nanmean(planet_spectrum.flux[(wave_instru>lmin_instru)&(wave_instru<lmax_instru)])/np.nanmean(vega_spectrum.flux[(wave_instru>lmin_instru) & (wave_instru<lmax_instru)]))
     name_band, SNR_planet, signal_planet, sigma_ns_planet, sigma_s_planet, DIT_band = FastCurves(instru=instru, calculation="SNR", systematic=systematic, T_planet=float(planet["PlanetTeq"].value), lg_planet=float(planet["PlanetLogg"].value), mag_star=mag_s, band0=band0, T_star=float(planet["StarTeff"].value), lg_star=float(planet["StarLogg"].value), exposure_time=exposure_time, model="None", mag_planet=mag_p, separation_planet=float(planet["AngSep"].value/1000), planet_name="None", return_SNR_planet=True, show_plot=False, verbose=False, planet_spectrum=planet_spectrum.copy(), star_spectrum=star_spectrum.copy(), apodizer=apodizer, strehl=strehl, PCA=PCA, PCA_mask=PCA_mask, Nc=Nc)
-    
     return idx, planet_spectrum, planet_thermal, planet_reflected, star_spectrum, mag_p, name_band, SNR_planet, signal_planet, sigma_ns_planet, sigma_s_planet, DIT_band
 
 
