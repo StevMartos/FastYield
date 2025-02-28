@@ -5,7 +5,11 @@
 
 # FastYield
 
-Python package for exoplanet detection and performance estimation using the molecular mapping technique. FastYield is an update of [FastCurves](https://github.com/ABidot/FastCurves). FastCurves can estimate detection limits related to various instrument parameters (PSF profiles, transmission, detector characteristics, etc.) and planet characteristics (magnitude, temperature, gravity, albedo, etc.). FastCurves shows promise as an ETC for predicting IFS performance when using molecular mapping (stellar halo subtraction with spectral high-pass filtering and cross-correlation technique) as a post-processing method for efficient speckle removal. FastYield extends FastCurves by applying it to an archival or synthetic planet table to estimate the yield performance that an instrument can achieve. For more information, see [Bidot et al. 2024](https://www.aanda.org/articles/aa/pdf/2024/02/aa46185-23.pdf) or Martos et al. (in prep.).
+Python package for exoplanet detection and performance estimation using the molecular mapping technique. **FastYield** is an updated version of [FastCurves](https://github.com/ABidot/FastCurves), designed to extend its capabilities. **FastCurves** estimates detection limits based on various instrument parameters (PSF profiles, transmission, detector characteristics, etc.) and planetary properties (magnitude, temperature, gravity, albedo, etc.). It also provides retrieval performance estimates through corner plots. 
+
+FastCurves serves as a promising exposure time calculator (ETC) for predicting the performance of integral field spectrographs (IFS) when molecular mapping is used as a post-processing technique. This method, which involves stellar halo subtraction through spectral high-pass filtering and cross-correlation, efficiently removes speckles. **FastYield** builds upon FastCurves by applying it to archival or synthetic planet catalogs, allowing for yield performance estimations for a given instrument. 
+
+For more details, see [Bidot et al. 2024](https://www.aanda.org/articles/aa/pdf/2024/02/aa46185-23.pdf) or Martos et al. (in prep.).
 
 <picture align="center">
   <source media="(prefers-color-scheme: dark)" srcset="FastYield example.png">
@@ -14,12 +18,14 @@ Python package for exoplanet detection and performance estimation using the mole
 
 ## Instruments considered:
 
-* ELT/HARMONI (molecular mapping)
-* ELT/ANDES (molecular mapping)
-* VLT/ERIS (molecular mapping)
-* JWST/MIRI/MRS (molecular mapping)
+* ELT/HARMONI      (molecular mapping)
+* ELT/ANDES        (molecular mapping)
+* VLT/ERIS         (molecular mapping)
+* VLT/HiRISE       (molecular mapping)
+* JWST/MIRI/MRS    (molecular mapping)
 * JWST/NIRSpec/IFU (molecular mapping)
-* JWST/NIRCam (ADI+RDI)
+* JWST/NIRCam      (ADI+RDI)
+* OHP/VIPAPYRUS    (molecular mapping)
 
 ## Add an instrument:
 
