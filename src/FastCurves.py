@@ -240,11 +240,7 @@ def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_
             # Calculation of alpha (number of useful photons/min at molecular mapping on the band under consideration) (with systematic modulations, if any)
             
             alpha = get_alpha(planet_spectrum_band, template, Rc, R, fraction_PSF, trans, separation, filter_type) # molecular mapping useful signal (in ph/mn)
-            
-            # if calculation == "contrast": # TO HAVE THE CONTRAST PER BAND INSTEAD OF A CONTRAST ON THE INSTRUMENTAL BANDWIDTH
-            #     alpha *= np.nansum(star_spectrum_band.flux)/np.nansum(planet_spectrum_band.flux)
-            #     beta *= np.nansum(star_spectrum_band.flux)/np.nansum(planet_spectrum_band.flux)                
-            
+
         #------------------------------------------------------------------------------------------------------------------------------------------------
         
         # Printing interest quantities
@@ -254,7 +250,11 @@ def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_
             print("\033[4m" + "BAND = "+f'{band}'+f" (from {round(wave_band[0], 2)} to {round(wave_band[-1], 2)} µm):"+"\033[0m")
             print(" Mean total system transmission =", round(np.nanmean(trans), 3))
             if calculation == "SNR" or calculation == "corner plot":
-                print(" Cp(ph) = {0:.2e}".format(np.nansum(planet_spectrum_band.flux)/np.nansum(star_spectrum_band.flux))  , ' => \u0394'+'mag = ', round(mag_planet_band-mag_star_band, 2), f"\n Magnitudes: mag_star = {round(mag_star_band, 2)} & mag_planet = {round(mag_planet_band, 2)}")
+                if post_processing == "molecular mapping":
+                    c = np.nansum(planet_spectrum_band.flux)/np.nansum(star_spectrum_band.flux) / M_pca
+                else:
+                    c = np.nansum(planet_spectrum_band.flux)/np.nansum(star_spectrum_band.flux)
+                print(" Cp(ph) = {0:.2e}".format(c)  , ' => \u0394'+'mag = ', round(mag_planet_band-mag_star_band, 2), f"\n Magnitudes: mag_star = {round(mag_star_band, 2)} & mag_planet = {round(mag_planet_band, 2)}")
             if coronagraph is None:
                 print(" Fraction of flux in the core of the PSF: f =", round(100*fraction_PSF, 1), "%")
             if post_processing == "molecular mapping":
@@ -326,11 +326,11 @@ def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_
                 elif calculation == "SNR":
                     signal = np.nansum(planet_spectrum_band.flux)*fraction_PSF*radial_transmission # planet flux in the PSF peak as a function of separation (in e-/DIT/pixel)
                     
-        sigma_dc_2 = dark_current * DIT * 60 # dark current photon noise (in e-/DIT/pixel)
+        sigma_dc_2  = dark_current * DIT * 60 # dark current photon noise (in e-/DIT/pixel)
         sigma_ron_2 = RON_eff**2 # effective read out noise (in e-/DIT/pixel)
         
         if config_data["type"] == "IFU_fiber": # detector noises must be multiplied by the number on which the fiber's signal is projected and integrated along the diretion perpendicular to the spectral dispersion of the detector
-            sigma_dc_2 *= config_data['pixel_detector_projection'] # adds quadratically
+            sigma_dc_2  *= config_data['pixel_detector_projection']  # adds quadratically
             sigma_ron_2 *= config_data['pixel_detector_projection'] # (in e-/DIT/spaxel)
         
         #------------------------------------------------------------------------------------------------------------------------------------------------
@@ -667,7 +667,6 @@ def FastCurves(calculation="contrast", instru="HARMONI", exposure_time=120, mag_
         star_spectrum.rv_star = rv_star
             
     if planet_spectrum is None: # if not input, load the planet spectrum
-        print("GAREIUHAEKRH")
         planet_spectrum = load_planet_spectrum(T_planet, lg_planet, model, instru=instru) # planet spectrum: class Spectrum(wavel, flux, R, T) in J/s/m²/µm according to the considered model
         # Rotational broadening of the spectrum [km/s]
         planet_spectrum = planet_spectrum.broad(vsini_planet)

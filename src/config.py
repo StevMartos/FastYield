@@ -117,6 +117,26 @@ config_data_ERIS = {
 
 
 
+config_data_HiRISE = {
+    'name': "HiRISE", 
+    'type': "IFU_fiber", 
+    'base': "ground", 
+    'latitude': -24.627, # Latitude de Paranal
+    'longitude': -70.404, # Longitude de Paranal
+    'altitude': 2635, # Altitude de Paranal en mètres
+    'sep_unit': "arcsec", 
+    'telescope': {"diameter": 8, "area": 49.3}, # all-glass diameter in m, including central hole, secondary and spider obscuration in m^2, K, Armazones coord.
+    'gratings': {"H": GratingInfo(1.43, 1.78, 140000.)}, 
+    'lambda_range': {"lambda_min": 1.43, "lambda_max": 1.78}, # µm
+    'size_core': 1, # 1 fiber on the planet
+    'pixel_detector_projection': 2 * 2.04 , # ~ 2 * Npx_x * Npx_y (2x pour les darks: on supposant le même nb de bkg que de sci) = nb of pixels on which the fiber's signal is projected 
+    'apodizers': {"NO_SP": ApodizerInfo(1, 0)}, 
+    'strehls': ["JQ1", "MED", "JQ3"], 
+    'spec': {"RON": 12, "dark_current": 0.0053, "FOV":4, "pxscale":0.01225, "minDIT": 1.4725/60, "maxDIT": 20, "saturation_e": 64000., "Q_eff": 1}, # en réalité Q_eff ~ 0.54 mais elle est déjà comprise dans les transmissions
+    # e-, e-/s, arcsec, arcsec/px, min, min, e-/ph;
+}
+
+
 
 #######################################################################################################################
 ######################################################## JWST : #######################################################
@@ -232,8 +252,6 @@ config_data_VIPAPYRUS = {
 
 
 
-config_data_list = [config_data_HARMONI, config_data_ANDES, config_data_ERIS, config_data_MIRIMRS, config_data_NIRCam, config_data_NIRSpec, config_data_VIPAPYRUS]
-instru_name_list = ["HARMONI", "ANDES", "ERIS", "MIRIMRS", "NIRCam", "NIRSpec", "VIPAPYRUS"]
 
 
 
@@ -245,32 +263,8 @@ instru_name_list = ["HARMONI", "ANDES", "ERIS", "MIRIMRS", "NIRCam", "NIRSpec", 
 
 
 
-
-
-
-
-
-
-
-
-config_data_HiRISE = {
-    'name': "HiRISE", 
-    'type': "IFU_fiber", 
-    'base': "ground", 
-    'latitude': -24.627, # Latitude de Paranal
-    'longitude': -70.404, # Longitude de Paranal
-    'altitude': 2635, # Altitude de Paranal en mètres
-    'sep_unit': "mas", 
-    'telescope': {"diameter": 8, "area": 49.3}, # all-glass diameter in m, including central hole, secondary and spider obscuration in m^2, K, Armazones coord.
-    'gratings': {"H": GratingInfo(1.431, 1.78, 150000.)}, 
-    'lambda_range': {"lambda_min": 1.431, "lambda_max": 1.78}, # µm
-}
-
-
-
-# config_data_list = [config_data_HARMONI, config_data_ANDES, config_data_ERIS, config_data_MIRIMRS, config_data_NIRCam, config_data_NIRSpec, config_data_HiRISE]
-
-# instru_name_list = ["HARMONI", "ANDES", "ERIS", "MIRIMRS", "NIRCam", "NIRSpec", "HiRISE"]
+config_data_list = [config_data_HARMONI, config_data_ANDES, config_data_ERIS, config_data_MIRIMRS, config_data_NIRCam, config_data_NIRSpec, config_data_HiRISE]
+instru_name_list = ["HARMONI", "ANDES", "ERIS", "MIRIMRS", "NIRCam", "NIRSpec", "HiRISE"]
 
 
 

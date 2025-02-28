@@ -47,7 +47,7 @@ def stellar_high_filtering(cube, R, Rc, filter_type, outliers=False, sigma_outli
     for k in range(Y.shape[1]):
         if not all(np.isnan(Y[:, k])):
             if show:
-                fig, ax = plt.subplots(1, 2, figsize=(8, 3), layout="constrained", gridspec_kw={'wspace': 0.05, 'hspace':0}, dpi=300) ; ax[0].set_xlabel("wavelength axis") ; ax[0].set_ylabel("modulation (normalized)") ; ax[1].set_yscale('log') ; ax[1].set_xscale('log') ; ax[1].set_xlabel("resolution frequency R") ; ax[1].set_ylabel("PSD") ; ax[0].plot(Y[:, k]/np.sqrt(np.nansum(Y[:, k]**2)), 'r', zorder=10) ; Y_spectrum = Spectrum(None, Y[:, k][~np.isnan(Y[:, k])], R, None) ; res, psd = Y_spectrum.get_psd(smooth=0) ; ax[1].plot(res, psd, "r", label="raw (LF+HF)") ; Y_HF = filtered_flux(Y[:, k], R=R, Rc=Rc, filter_type=filter_type)[0] ; ax[0].plot(Y_HF/np.sqrt(np.nansum(Y_HF**2)), 'g') ; Y_spectrum = Spectrum(None, Y_HF[~np.isnan(Y_HF)], R, None) ; res_HF, psd_HF = Y_spectrum.get_psd(smooth=0) ; ax[1].plot(res_HF, psd_HF, "g", label="HF") ; plt.title(f" F = {round(psd_HF[np.abs(res_HF-Rc).argmin()]/psd[np.abs(res-Rc).argmin()], 3)}")
+                fig, ax = plt.subplots(1, 2, figsize=(8, 3), layout="constrained", gridspec_kw={'wspace': 0.05, 'hspace':0}, dpi=300) ; ax[0].set_xlabel("wavelength axis") ; ax[0].set_ylabel("modulation (normalized)") ; ax[1].set_yscale('log') ; ax[1].set_xscale('log') ; ax[1].set_xlabel("resolution frequency R") ; ax[1].set_ylabel("PSD") ; ax[0].plot(Y[:, k]/np.sqrt(np.nansum(Y[:, k]**2)), 'darkred', zorder=10) ; Y_spectrum = Spectrum(None, Y[:, k][~np.isnan(Y[:, k])], R, None) ; res, psd = Y_spectrum.get_psd(smooth=0) ; ax[1].plot(res, psd, "r", label="raw (LF+HF)") ; Y_HF = filtered_flux(Y[:, k], R=R, Rc=Rc, filter_type=filter_type)[0] ; ax[0].plot(Y_HF/np.sqrt(np.nansum(Y_HF**2)), 'seagreen') ; Y_spectrum = Spectrum(None, Y_HF[~np.isnan(Y_HF)], R, None) ; res_HF, psd_HF = Y_spectrum.get_psd(smooth=0) ; ax[1].plot(res_HF, psd_HF, "g", label="HF") ; plt.title(f" F = {round(psd_HF[np.abs(res_HF-Rc).argmin()]/psd[np.abs(res-Rc).argmin()], 3)}")
             if only_high_pass:
                 _, Y_LF = filtered_flux(Y[:, k], R, Rc, filter_type)
                 M = Y_LF/stell
@@ -188,14 +188,14 @@ def molecular_mapping_rv(instru, S_res, star_flux, T_planet, lg_planet, model, w
 
 
 
-def correlation_rv(instru, d_planet, d_bkgd, star_flux, wave, trans, T_planet, lg_planet, model, R, Rc, filter_type, large_rv=False, rv=None, rv_planet=None, vsini_planet=None, pca=None, template=None, epsilon=0.8, fastbroad=True, logL=False, method_logL="classic", sigma_l=None, weight=None, stellar_component=True, degrade_resolution=True, disable_tqdm=False, show=True, smooth_PSD=1, target_name=None, compare_data=False, cut_fringes=False, Rmin=None, Rmax=None):
+def correlation_rv(instru, d_planet, d_bkg, star_flux, wave, trans, T_planet, lg_planet, model, R, Rc, filter_type, large_rv=False, rv=None, rv_planet=None, vsini_planet=None, pca=None, template=None, epsilon=0.8, fastbroad=True, logL=False, method_logL="classic", sigma_l=None, weight=None, stellar_component=True, degrade_resolution=True, disable_tqdm=False, show=True, smooth_PSD=1, target_name=None, compare_data=False, cut_fringes=False, Rmin=None, Rmax=None):
     """
     Perform radial velocity (RV) correlation analysis between a template and the observed data.
 
     Parameters:
     instru (str): Instrument name.
     d_planet (array-like): Planet signal data.
-    d_bkgd (array-like): Background data.
+    d_bkg (array-like): Background data.
     star_flux (array-like): Stellar flux data.
     wave (array-like): Wavelength array.
     trans (array-like): Transmission spectrum.
@@ -239,8 +239,8 @@ def correlation_rv(instru, d_planet, d_bkgd, star_flux, wave, trans, T_planet, l
             rv = np.linspace(-1000, 1000, 4001)
     # Initialize correlation arrays
     CCF_planet = np.zeros((len(rv))) ; corr_planet = np.zeros((len(rv))) ; corr_auto = np.zeros((len(rv))) ; corr_auto_noise = np.zeros((len(rv))) ; logL_planet = np.zeros((len(rv))) ; sigma_planet = None
-    if d_bkgd is not None: # Initialize background CCF if background data is provided
-        CCF_bkgd = np.zeros((len(d_bkgd), len(rv)))
+    if d_bkg is not None: # Initialize background CCF if background data is provided
+        CCF_bkgd = np.zeros((len(d_bkg), len(rv)))
     else:
         CCF_bkgd = None
     if not compare_data: # If not comparing data, calculating a template
@@ -334,30 +334,37 @@ def correlation_rv(instru, d_planet, d_bkgd, star_flux, wave, trans, T_planet, l
         corr_planet[i] = np.nansum(d_p * t) / np.sqrt(np.nansum(d_p**2)) # correlation strength
         if rv_planet is not None: # auto-correlation 
             corr_auto[i] = np.nansum(template_shift * t) / np.sqrt(np.nansum(template_shift[~np.isnan(t)]**2))
-        if d_bkgd is not None: # CCF noise
-            for j in range(len(d_bkgd)):
-                CCF_bkgd[j, i] = np.nansum(d_bkgd[j] * t)
+        if d_bkg is not None: # CCF noise
+            for j in range(len(d_bkg)):
+                CCF_bkgd[j, i] = np.nansum(d_bkg[j] * t)
         if logL: # logL computation
             logL_planet[i] = get_logL(d_p, t, sigma_l, method=method_logL)
         # Sanity check
         #plt.figure(dpi=300) ; plt.plot(wave, d_p / np.sqrt(np.nansum(d_p**2))) ; plt.plot(wave, t / np.sqrt(np.nansum(t**2))) ; plt.title(f" N = {len(d_p[(~np.isnan(d_p))&(~np.isnan(t))&(~np.isnan(sigma_l))])}") ; plt.show()
+    
     # END OF THE LOOP
     if rv_planet is not None:
         # Compute sigma for the planet if RV is known
         if sigma_l is not None:
             sigma_planet = np.sqrt(np.nansum(sigma_l**2 * template_shift**2)) / np.sqrt(np.nansum(template_shift**2))
+        
         # Display template and extracted planet spectrum
         if show:
+            
             d_planet = np.copy(d_planet)
             if weight is not None:
                 d_planet *= weight
             d_planet[d_planet == 0] = np.nan ; template_shift[template_shift == 0] = np.nan ; template_shift[np.isnan(d_planet)] = np.nan ; d_planet[np.isnan(template_shift)] = np.nan
+            
             # Set template to approximately the same signal as the data
             res_d_planet, psd_d_planet = calc_psd(wave, d_planet, R, smooth=0)
             res_template_shift, psd_template_shift = calc_psd(wave, template_shift, R, smooth=0)
-            ratio = np.sqrt(np.nansum(psd_d_planet[(res_d_planet > Rc) & (res_d_planet < R / 10)]) / np.nansum(psd_template_shift[(res_template_shift > Rc) & (res_template_shift < R / 10)]))
-            #ratio = np.nansum(d_planet*template_shift) / np.sqrt(np.nansum(template_shift**2)) / np.sqrt(np.nansum(template_shift**2))  # assuming cos_p = 1
+            if Rc is not None:
+                ratio = np.sqrt(np.nansum(psd_d_planet[(res_d_planet > Rc) & (res_d_planet < R / 10)]) / np.nansum(psd_template_shift[(res_template_shift > Rc) & (res_template_shift < R / 10)]))
+            else:
+                ratio = np.nansum(d_planet*template_shift) / np.sqrt(np.nansum(template_shift**2)) / np.sqrt(np.nansum(template_shift**2))  # assuming cos_p = 1
             template_shift *= ratio
+            
             # Create subplots for data visualization
             fig, axs = plt.subplots(2, 2, figsize=(20, 10), dpi=300, gridspec_kw={'height_ratios': [3, 1]}, sharex='col')
             if target_name is not None:
@@ -366,14 +373,15 @@ def correlation_rv(instru, d_planet, d_bkgd, star_flux, wave, trans, T_planet, l
                 fig.suptitle(f"{instru} {tn}data sets, with R={int(R)} and $R_c$={Rc} \n correlation strength = {round(np.nansum(d_planet * template_shift) / np.sqrt(np.nansum(d_planet**2) * np.nansum(template_shift**2)), 3)}", fontsize=20)
             else:
                 fig.suptitle(f"{instru} {tn}data and {model} template, with $T$={round(T_planet)}K, lg={round(lg_planet, 1)}, rv={round(rv_planet, 1)}km/s, vsini={round(vsini_planet, 1)}km/s, R={int(R)} and $R_c$={Rc} \n correlation strength = {round(np.nansum(d_planet * template_shift) / np.sqrt(np.nansum(d_planet**2) * np.nansum(template_shift**2)), 3)}", fontsize=20)
+            
             # Plot high-pass filtered data and template
             axs[0, 0].set_ylabel("high-pass flux (normalized)", fontsize=14)
             axs[0, 0].tick_params(axis='both', which='major', labelsize=14)
-            axs[0, 0].plot(wave, d_planet, 'r', label=f"{tn}data")
+            axs[0, 0].plot(wave, d_planet, 'darkred', label=f"{tn}data")
             if compare_data:
-                axs[0, 0].plot(wave, template_shift, 'b', label=model)
+                axs[0, 0].plot(wave, template_shift, 'steelblue', label=model)
             else:
-                axs[0, 0].plot(wave, template_shift, 'b', label=model + " template")
+                axs[0, 0].plot(wave, template_shift, 'steelblue', label=model + " template")
             if sigma_l is not None:
                 template_shift_noise = np.copy(template_shift)
                 noise = np.random.normal(0, sigma_l, len(wave))
@@ -386,60 +394,94 @@ def correlation_rv(instru, d_planet, d_bkgd, star_flux, wave, trans, T_planet, l
                 noise[np.isnan(d_planet)] = np.nan
                 template_shift_noise += noise
                 if not compare_data:
-                    axs[0, 0].plot(wave, template_shift_noise, 'b', label=model + " template w/ expected noise " + r"($cos\theta_n$ = " + f"{round(np.nansum(template_shift_noise * template_shift) / np.sqrt(np.nansum(template_shift_noise**2) * np.nansum(template_shift**2)), 3)})", alpha=0.5)
+                    axs[0, 0].plot(wave, template_shift_noise, 'steelblue', label=model + " template w/ expected noise " + r"($cos\theta_n$ = " + f"{round(np.nansum(template_shift_noise * template_shift) / np.sqrt(np.nansum(template_shift_noise**2) * np.nansum(template_shift**2)), 3)})", alpha=0.5)
                     res_template_shift_noise, psd_template_shift_noise = calc_psd(wave, template_shift_noise, R, smooth=smooth_PSD)
-                    axs[0, 1].plot(res_template_shift_noise, psd_template_shift_noise, 'b', alpha=0.5, zorder=10)
-                axs[1, 0].plot(wave, noise, 'g', label="expected noise", zorder=3, alpha=0.5)
+                    axs[0, 1].plot(res_template_shift_noise, psd_template_shift_noise, 'steelblue', alpha=0.5, zorder=10)
+                axs[1, 0].plot(wave, noise, 'seagreen', label="expected noise", zorder=3, alpha=0.8)
                 res_noise, psd_noise = calc_psd(wave, noise, R, smooth=smooth_PSD)
-                axs[1, 1].plot(res_noise, psd_noise, 'g', zorder=10, alpha=0.5)
+                axs[1, 1].plot(res_noise, psd_noise, 'seagreen', zorder=10, alpha=0.8)
             axs[0, 0].grid(True, which='both', linestyle='--', linewidth=0.5) ; axs[0, 0].minorticks_on()
-            axs[0, 0].legend(fontsize=14)
+            axs[0, 0].legend(fontsize=14, loc="upper left")
             axs[0, 0].set_ylim(2 * np.nanmin(d_planet), 2 * np.nanmax(d_planet))
+            
+            #Zoom
+            if instru=="HiRISE" or instru=="VIPA":
+                if target_name=="CH4":
+                    zoom_xmin, zoom_xmax = 1.665, 1.668
+                elif target_name == "Jupiter":
+                    zoom_xmin, zoom_xmax = 1.67, 1.69
+                else:
+                    zoom_xmin, zoom_xmax = 1.57, 1.58
+                axins = inset_axes(axs[0, 0], width="40%", height="40%", loc="lower right", borderpad=2)
+                axins.plot(wave, d_planet, 'darkred', label=f"{tn}data")
+                axins.plot(wave, template_shift, 'steelblue')
+                axins.set_xlim(zoom_xmin, zoom_xmax)
+                axins.set_ylim(min(np.nanmin(d_planet[(wave >= zoom_xmin) & (wave <= zoom_xmax)]), np.nanmin(template_shift[(wave >= zoom_xmin) & (wave <= zoom_xmax)])), max(np.nanmax(d_planet[(wave >= zoom_xmin) & (wave <= zoom_xmax)]), np.nanmax(template_shift[(wave >= zoom_xmin) & (wave <= zoom_xmax)])))
+                axins.tick_params(axis='both', which='major', labelsize=10)            
+                mark_inset(axs[0, 0], axins, loc1=1, loc2=3, fc="none", ec="black", linestyle="--")
+                axins.set_xticklabels([])
+                axins.set_yticklabels([])
+
             # Calculate PSDs
             res_planet, psd_planet = calc_psd(wave, d_planet, R, smooth=smooth_PSD)
             res_template, psd_template = calc_psd(wave, template_shift, R, smooth=smooth_PSD)
+            
             # Plot PSDs
             axs[0, 1].set_ylabel("PSD", fontsize=14)
             axs[0, 1].tick_params(axis='both', which='major', labelsize=14)
             axs[0, 1].set_yscale('log')
             axs[0, 1].set_xlim(10, 2*R)
-            axs[0, 1].plot(res_planet, psd_planet, 'r')
-            axs[0, 1].plot(res_template, psd_template, 'b')
+            axs[0, 1].plot(res_planet, psd_planet, 'darkred')
+            axs[0, 1].plot(res_template, psd_template, 'steelblue')
             axs[0, 1].grid(True, which='both', linestyle='--', linewidth=0.5) ; axs[0, 1].minorticks_on()
-            axs[0, 1].axvline(Rc, c='k', ls="--", label=f"$R_c$ = {int(Rc)}")
+            if Rc is not None:
+                axs[0, 1].axvline(Rc, c='k', ls="--", label=f"$R_c$ = {int(Rc)}")
             axs[0, 1].axvline(R, c='k', ls="-", label=f"$R$ = {int(R)}")
-            axs[0, 1].legend(fontsize=14)
+            axs[0, 1].legend(fontsize=14, loc="upper left")
+            
             # Calculate residuals
             residuals = d_planet - template_shift
+            
             # Plot residuals
             axs[1, 0].set_xlabel("wavelength [µm]", fontsize=14) ; axs[1, 0].set_ylabel("residuals", fontsize=14)
             axs[1, 0].tick_params(axis='both', which='major', labelsize=14)
             axs[1, 0].set_xlim(np.nanmin(wave[~np.isnan(residuals)]), np.nanmax(wave[~np.isnan(residuals)])) ; axs[1, 0].set_ylim(-5 * np.nanstd(residuals), 5 * np.nanstd(residuals))
             if compare_data:
-                axs[1, 0].plot(wave, residuals, 'k', label="data1 - data2")
+                axs[1, 0].plot(wave, residuals, 'k', label="data1 - data2", alpha=0.8)
             else:
-                axs[1, 0].plot(wave, residuals, 'k', label="data - template")
+                axs[1, 0].plot(wave, residuals, 'k', label="data - template", alpha=0.8)
             axs[1, 0].grid(True, which='both', linestyle='--', linewidth=0.5) ; axs[1, 0].minorticks_on()
-            axs[1, 0].legend(fontsize=14)
+            axs[1, 0].legend(fontsize=14, loc="upper left")
+            
             # Calculate PSD of residuals
             res_residuals, psd_residuals = calc_psd(wave, residuals, R, smooth=smooth_PSD)
+            
             # Plot PSD of residuals
             axs[1, 1].set_xlabel("resolution R", fontsize=14) ; axs[1, 1].set_ylabel("PSD", fontsize=14)
             axs[1, 1].set_xscale('log') ; axs[1, 1].set_yscale('log')
             axs[1, 1].tick_params(axis='both', which='major', labelsize=14)
-            axs[1, 1].plot(res_residuals, psd_residuals, 'k')
+            axs[1, 1].plot(res_residuals, psd_residuals, 'k', alpha=0.8)
             axs[1, 1].grid(True, which='both', linestyle='--', linewidth=0.5) ; axs[1, 1].minorticks_on()
-            axs[1, 1].axvline(Rc, c='k', ls="--", label=f"$R_c$ = {Rc}")
+            if Rc is not None:
+                axs[1, 1].axvline(Rc, c='k', ls="--", label=f"$R_c$ = {Rc}")
             axs[1, 1].axvline(R, c='k', ls="-", label=f"$R$ = {R}")
-            plt.tight_layout() ; plt.show()
+            
+            plt.tight_layout()
+            plt.show()
+            
             if sigma_l is not None:
                 print("std(residuals) / std(noise) = ", np.nanstd(residuals) / np.nanstd(noise))
                 print("psd(residuals) / psd(noise) = ", np.sqrt(np.nansum(psd_residuals)) / np.sqrt(np.nansum(psd_noise)))
+            
+            
+
+    
+    
     return rv, CCF_planet, corr_planet, CCF_bkgd, corr_auto, logL_planet, sigma_planet
 
 
 
-def plot_CCF_rv(instru, band, target_name, d_planet, d_bkgd, star_flux, wave, trans, T_planet, lg_planet, model, R, Rc, filter_type, large_rv=True, rv=None, rv_planet=None, vsini_planet=0, pca=None, template=None, epsilon=0.8, fastbroad=True, logL=False, method_logL="classic", sigma_l=None, weight=None, stellar_component=True, degrade_resolution=True, disable_tqdm=False, show=True, smooth_PSD=1, compare_data=False, cut_fringes=False, Rmin=None, Rmax=None):
+def plot_CCF_rv(instru, band, target_name, d_planet, d_bkg, star_flux, wave, trans, T_planet, lg_planet, model, R, Rc, filter_type, large_rv=True, rv=None, rv_planet=None, vsini_planet=0, pca=None, template=None, epsilon=0.8, fastbroad=True, logL=False, method_logL="classic", sigma_l=None, weight=None, stellar_component=True, degrade_resolution=True, disable_tqdm=False, show=True, smooth_PSD=1, compare_data=False, cut_fringes=False, Rmin=None, Rmax=None, rv_star=None, zoom_CCF=True):
     """
     Plots the Cross-Correlation Function (CCF) for the given parameters.
 
@@ -448,7 +490,7 @@ def plot_CCF_rv(instru, band, target_name, d_planet, d_bkgd, star_flux, wave, tr
     band (str): Spectral band used for the observation.
     target_name (str): Name of the target.
     d_planet (array-like): Data of the planet.
-    d_bkgd (array-like): Background data.
+    d_bkg (array-like): Background data.
     star_flux (array-like): Flux of the star.
     wave (array-like): Wavelength array.
     trans (array-like): Transmission data.
@@ -482,15 +524,15 @@ def plot_CCF_rv(instru, band, target_name, d_planet, d_bkgd, star_flux, wave, tr
     tuple: Contains radial velocity array, SNR of the planet, SNR of the background, and maximum SNR.
     """
     # Compute the radial velocity and cross-correlation functions for the planet and background
-    rv, CCF_planet, corr_planet, CCF_bkgd, corr_auto, logL_planet, sigma_planet = correlation_rv(instru=instru, d_planet=d_planet, d_bkgd=d_bkgd, star_flux=star_flux, wave=wave, trans=trans, T_planet=T_planet, lg_planet=lg_planet, model=model, R=R, Rc=Rc, filter_type=filter_type, large_rv=large_rv, rv=rv, rv_planet=rv_planet, vsini_planet=vsini_planet, pca=pca, template=template, epsilon=epsilon, fastbroad=fastbroad, logL=logL, method_logL=method_logL, sigma_l=sigma_l, weight=weight, stellar_component=stellar_component, degrade_resolution=degrade_resolution, disable_tqdm=disable_tqdm, show=show, smooth_PSD=smooth_PSD, target_name=target_name, compare_data=compare_data, cut_fringes=cut_fringes, Rmin=Rmin, Rmax=Rmax)
+    rv, CCF_planet, corr_planet, CCF_bkgd, corr_auto, logL_planet, sigma_planet = correlation_rv(instru=instru, d_planet=d_planet, d_bkg=d_bkg, star_flux=star_flux, wave=wave, trans=trans, T_planet=T_planet, lg_planet=lg_planet, model=model, R=R, Rc=Rc, filter_type=filter_type, large_rv=large_rv, rv=rv, rv_planet=rv_planet, vsini_planet=vsini_planet, pca=pca, template=template, epsilon=epsilon, fastbroad=fastbroad, logL=logL, method_logL=method_logL, sigma_l=sigma_l, weight=weight, stellar_component=stellar_component, degrade_resolution=degrade_resolution, disable_tqdm=disable_tqdm, show=show, smooth_PSD=smooth_PSD, target_name=target_name, compare_data=compare_data, cut_fringes=cut_fringes, Rmin=Rmin, Rmax=Rmax)
     # Refine the radial velocity estimate for the planet
     rv_planet = rv[(rv < rv_planet + 25) & (rv > rv_planet - 25)][CCF_planet[(rv < rv_planet + 25) & (rv > rv_planet - 25)].argmax()]
     # Remove the offset introduced by the residual stellar component and systematic effects
     CCF_planet -= np.nanmean(CCF_planet[(rv > rv_planet + 200) | (rv < rv_planet - 200)])
     #corr_planet -= np.nanmean(corr_planet[(rv>rv_planet+200)|(rv<rv_planet-200)]) # not needed since we are only interested on the max correlation value (without subtracting the potential offset)
     corr_auto -= np.nanmean(corr_auto[(rv > rv_planet + 200) | (rv < rv_planet - 200)])
-    if d_bkgd is not None: # Remove offset from the background CCF if background data is provided
-        for i in range(len(d_bkgd)):
+    if d_bkg is not None: # Remove offset from the background CCF if background data is provided
+        for i in range(len(d_bkg)):
             CCF_bkgd[i] -= np.nanmean(CCF_bkgd[i])
     # Estimating the CCF noise # https://arxiv.org/pdf/2405.13469: std(rv_planet +- 200 km/s)
     sigma2_tot = np.nanvar(CCF_planet[(rv > rv_planet + 200) | (rv < rv_planet - 200)])  # Total variance
@@ -500,44 +542,76 @@ def plot_CCF_rv(instru, band, target_name, d_planet, d_bkgd, star_flux, wave, tr
     else:
         sigma_CCF = np.sqrt(sigma2_tot)
     # Calculate Signal-to-Noise Ratio (SNR)
-    SNR_planet = CCF_planet / sigma_CCF
-    max_SNR = np.nanmax(SNR_planet[(rv < rv_planet + 25) & (rv > rv_planet - 25)])
-    if d_bkgd is not None: # Plot background SNR if background data is provided
-        SNR_bkgd = np.zeros((len(d_bkgd), len(rv)))
-        for i in range(len(d_bkgd)):
-            SNR_bkgd[i] = CCF_bkgd[i] / np.nanstd(CCF_bkgd[i])
+    SNR_planet    = CCF_planet / sigma_CCF
+    signal_planet = np.nanmax(CCF_planet)
+    max_SNR       = np.nanmax(SNR_planet[(rv < rv_planet + 25) & (rv > rv_planet - 25)])
+    if d_bkg is not None: # Plot background SNR if background data is provided
+        SNR_bkgd = np.zeros((len(d_bkg), len(rv)))
+        for i in range(len(d_bkg)):
+            SNR_bkgd[i] = CCF_bkgd[i] / np.nanstd(CCF_bkgd[i][(rv > rv_planet + 200) | (rv < rv_planet - 200)])
     else:
         SNR_bkgd = None
     if show:
         # Plot the CCF in S/N and correlation units
-        plt.figure(dpi=300)
-        ax1 = plt.gca()
-        ax1.grid(True, which='both', linestyle='--', linewidth=0.5) ; ax1.minorticks_on()
-        ax1.set_xlim(rv[0], rv[-1])
+        plt.figure(figsize=(10, 6), dpi=300)
+        ax1 = plt.gca()        
+        ax1.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+        ax1.minorticks_on()
+        ax1.set_xlim(rv[0], rv[-1])        
+        title = f'CCF of {target_name} on {band}-band of {instru} with {model} template'
         if compare_data:
-            ax1.set_title(f'CCF of {target_name} on {band}-band of {instru} with {model} as template \n'f' with $R_c$ = {Rc}', fontsize=16)
+            title += f"\nwith $R_c$ = {Rc}"
         else:
-            ax1.set_title(f'CCF of {target_name} on {band}-band of {instru} with {model} template \n'f'at $T$ = {round(T_planet)}K, $lg$ = {round(lg_planet, 1)} and Vsini = {round(vsini_planet, 1)} km/s with $R_c$ = {Rc}', fontsize=16)
-        ax1.set_xlabel("radial velocity [km/s]", fontsize=14)
-        ax1.set_ylabel("CCF [S/N]", fontsize=14)
-        ax1.plot([], [], 'gray', label=f"noise", alpha=0.5)
-        if d_bkgd is not None: # Plot background SNR if background data is provided
-            for i in range(len(d_bkgd)):
-                ax1.plot(rv, SNR_bkgd[i], 'gray', alpha=max(0.1, 1 / len(d_bkgd)))
+            title += f"\nat $T$ = {round(T_planet)}K, $\log g$ = {round(lg_planet, 1)} and Vsini = {round(vsini_planet, 1)} km/s\nwith $R_c$ = {Rc}"
+        ax1.set_title(title, fontsize=18, pad=15)        
+        ax1.set_xlabel("Observed Radial Velocity [km/s]", fontsize=14, labelpad=10)
+        ax1.set_ylabel("CCF [S/N]", fontsize=14, labelpad=10)
         
-        ax1.plot(rv, corr_auto * max_SNR / np.nanmax(corr_auto), "k", label=f"auto-correlation")
-        ax1.plot(rv, SNR_planet, label=f"{target_name}", zorder=3)
-        ymin, ymax = ax1.get_ylim()
+        ax1.plot([], [], 'gray', label="Noise", alpha=0.5)        
+        if d_bkg is not None:  # Ajout du fond si disponible
+            for i in range(len(d_bkg)):
+                ax1.plot(rv, SNR_bkgd[i], 'gray', alpha=min(max(0.1, 1 / len(d_bkg)) + 0.1, 1))
+        
+        ax1.plot(rv, corr_auto * max_SNR / np.nanmax(corr_auto), "k", label="Auto-correlation")
+        ax1.plot(rv, SNR_planet, label=f"{target_name.replace('_', ' ')}", c="C0", zorder=3, linewidth=2)
+        
+        if rv_star is not None:
+            ax1.axvline(rv_star, c='g', ls='--', label=f"$rv_{{star}}$ = {round(rv_star, 1)} km/s", alpha=0.5, linewidth=1.5)
+        ax1.axvline(rv_planet, c='r', ls='--', label=f"$rv_{{obs}}$ = {round(rv_planet, 1)} km/s", alpha=0.5, linewidth=1.5)
+        ax1.axvline(0, c='k', ls='-', alpha=0.5, linewidth=1)
+        
+        ymin, _ = ax1.get_ylim()
+        ymax = 1.2 * np.nanmax(SNR_planet)
+        ymin = -1.5 * np.abs(np.nanmin(SNR_planet))
         ax1.set_ylim(ymin, ymax)
-        ax1.plot([rv_planet, rv_planet], [ymin, ymax], 'r:', label=f"rv = {round(rv_planet, 1)} km/s")
-        # Add secondary y-axis for correlation strength
         ax2 = ax1.twinx()
-        ax2.set_ylabel("correlation strength", fontsize=14, labelpad=20, rotation=270)
+        ax2.set_ylabel("Correlation Strength", fontsize=14, labelpad=20, rotation=270)
         ax2.tick_params(axis='y')
         ax2.set_ylim(ymin * np.nanmax(corr_planet) / max_SNR, ymax * np.nanmax(corr_planet) / max_SNR)
-        ax1.legend(loc="upper right")
-        ax1.set_zorder(1)
+        
+        if zoom_CCF:
+            zoom_xmin, zoom_xmax = rv_planet - 100, rv_planet + 100
+            axins = inset_axes(ax1, width="40%", height="40%", loc="upper left", borderpad=2)  
+            if d_bkg is not None:  # Ajout du fond si disponible
+                for i in range(len(d_bkg)):
+                    axins.plot(rv, SNR_bkgd[i], 'gray', alpha=min(max(0.1, 1 / len(d_bkg)) + 0.1, 1))
+            axins.plot(rv, corr_auto * max_SNR / np.nanmax(corr_auto), "k")
+            axins.plot(rv, SNR_planet, c='C0', zorder=10)
+            if rv_star is not None:
+                axins.axvline(rv_star, c='g', ls='--', alpha=0.5, linewidth=1.5)
+            axins.axvline(rv_planet, c='r', ls='--', alpha=0.5, linewidth=1.5)
+            axins.axvline(0, c='k', ls='-', alpha=0.5, linewidth=1)
+            axins.set_xlim(zoom_xmin, zoom_xmax)
+            axins.set_ylim(-1.25 * np.abs(np.nanmin(SNR_planet)), 1.1*np.nanmax(SNR_planet))                
+            axins.tick_params(axis='both', which='major', labelsize=10)
+            mark_inset(ax1, axins, loc1=2, loc2=3, fc="none", ec="black", linestyle="--")
+            #axins.set_xticklabels([])
+            axins.set_yticklabels([])
+        
+        ax1.legend(loc="upper right", fontsize=12, frameon=True, facecolor='white', framealpha=0.8)        
+        plt.tight_layout()
         plt.show()
+        
         # Print error on sigma (if required)
         if sigma_l is not None:
             print(" error on sigma (sigma CCF/sigma planet) = ", round(sigma_CCF / sigma_planet, 3))
@@ -563,7 +637,7 @@ def plot_CCF_rv(instru, band, target_name, d_planet, d_bkgd, star_flux, wave, tr
             plt.show()
             # Print maximum log-likelihood
             print(f" max logL for rv = {round(rv_planet, 2)} km/s")
-    return rv, SNR_planet, SNR_bkgd, corr_planet
+    return rv, SNR_planet, SNR_bkgd, corr_planet, signal_planet, sigma_CCF, sigma_planet
 
 
 
@@ -571,11 +645,11 @@ def plot_CCF_rv(instru, band, target_name, d_planet, d_bkgd, star_flux, wave, tr
 
 
 
-def correlation_vsini(instru, d_planet, d_bkgd, star_flux, wave, trans, T_planet, lg_planet, model, R, Rc, filter_type, vsini, rv_planet=None, vsini_planet=None, pca=None, template=None, epsilon=0.8, fastbroad=True, logL=False, method_logL="classic", sigma_l=None, weight=None, stellar_component=True, degrade_resolution=True, disable_tqdm=False, compare_data=False, cut_fringes=False, Rmin=None, Rmax=None, target_name=None):
+def correlation_vsini(instru, d_planet, d_bkg, star_flux, wave, trans, T_planet, lg_planet, model, R, Rc, filter_type, vsini, rv_planet=None, vsini_planet=None, pca=None, template=None, epsilon=0.8, fastbroad=True, logL=False, method_logL="classic", sigma_l=None, weight=None, stellar_component=True, degrade_resolution=True, disable_tqdm=False, compare_data=False, cut_fringes=False, Rmin=None, Rmax=None, target_name=None):
     # Initialize correlation arrays
     CCF_planet = np.zeros_like(vsini) ; corr_planet = np.zeros_like(vsini) ; corr_auto = np.zeros_like(vsini) ; corr_auto_noise = np.zeros_like(vsini) ; logL_planet = np.zeros_like(vsini) ; sigma_planet = None 
-    if d_bkgd is not None: # Initialize background CCF if background data is provided
-        CCF_bkgd = np.zeros((len(d_bkgd), len(vsini)))
+    if d_bkg is not None: # Initialize background CCF if background data is provided
+        CCF_bkgd = np.zeros((len(d_bkg), len(vsini)))
     else:
         CCF_bkgd = None
     if not compare_data: # If not comparing data, calculating a template
@@ -610,7 +684,6 @@ def correlation_vsini(instru, d_planet, d_bkgd, star_flux, wave, trans, T_planet
             star_HF, star_LF = filtered_flux(sf, R, Rc, filter_type)
         # Broad the template at the known planet Vsini in order to mimic the data and to calculate/estimate the auto-correlation
         if vsini_planet is not None: # if the vsini of the planet is known
-        
             template_broad = template_raw.broad(vsini_planet, epsilon=epsilon, fastbroad=fastbroad)
             if degrade_resolution:
                 template_broad = template_broad.degrade_resolution(wave, renorm=False)
@@ -675,9 +748,9 @@ def correlation_vsini(instru, d_planet, d_bkgd, star_flux, wave, trans, T_planet
         corr_planet[i] = np.nansum(d_p*t) / np.sqrt(np.nansum(d_p**2)) # correlation strength
         if vsini_planet is not None: # auto correlation
             corr_auto[i] = np.nansum(template_broad*t) / np.sqrt(np.nansum(template_broad[~np.isnan(t)]**2)) # auto-correlation
-        if d_bkgd is not None: # CCF noise
-            for j in range(len(d_bkgd)):
-                CCF_bkgd[j, i] = np.nansum(d_bkgd[j]*t)
+        if d_bkg is not None: # CCF noise
+            for j in range(len(d_bkg)):
+                CCF_bkgd[j, i] = np.nansum(d_bkg[j]*t)
         if logL: # logL computation
             logL_planet[i] = get_logL(d_p, t, sigma_l, method=method_logL)
     if vsini_planet is not None and sigma_l is not None:
@@ -686,8 +759,8 @@ def correlation_vsini(instru, d_planet, d_bkgd, star_flux, wave, trans, T_planet
 
 
     
-def plot_CCF_vsini(instru, band, target_name, d_planet, d_bkgd, star_flux, wave, trans, T_planet, lg_planet, model, R, Rc, filter_type, vsini=None, rv_planet=None, vsini_planet=0, pca=None, template=None, epsilon=0.8, fastbroad=True, logL=False, method_logL="classic", sigma_l=None, weight=None, show=True, stellar_component=True, degrade_resolution=True, compare_data=False, cut_fringes=False, Rmin=None, Rmax=None):
-    CCF_planet, corr_planet, CCF_bkgd, corr_auto, logL_planet, sigma_planet = correlation_vsini(instru=instru, d_planet=d_planet, d_bkgd=d_bkgd, star_flux=star_flux, wave=wave, trans=trans, T_planet=T_planet, lg_planet=lg_planet, model=model, R=R, Rc=Rc, filter_type=filter_type, vsini=vsini, rv_planet=rv_planet, vsini_planet=vsini_planet, pca=pca, template=template, epsilon=epsilon, fastbroad=fastbroad, logL=logL, method_logL=method_logL, sigma_l=sigma_l, weight=weight, stellar_component=stellar_component, degrade_resolution=degrade_resolution, compare_data=compare_data, cut_fringes=cut_fringes, Rmin=Rmin, Rmax=Rmax, target_name=target_name)
+def plot_CCF_vsini(instru, band, target_name, d_planet, d_bkg, star_flux, wave, trans, T_planet, lg_planet, model, R, Rc, filter_type, vsini=None, rv_planet=None, vsini_planet=0, pca=None, template=None, epsilon=0.8, fastbroad=True, logL=False, method_logL="classic", sigma_l=None, weight=None, show=True, stellar_component=True, degrade_resolution=True, compare_data=False, cut_fringes=False, Rmin=None, Rmax=None):
+    CCF_planet, corr_planet, CCF_bkgd, corr_auto, logL_planet, sigma_planet = correlation_vsini(instru=instru, d_planet=d_planet, d_bkg=d_bkg, star_flux=star_flux, wave=wave, trans=trans, T_planet=T_planet, lg_planet=lg_planet, model=model, R=R, Rc=Rc, filter_type=filter_type, vsini=vsini, rv_planet=rv_planet, vsini_planet=vsini_planet, pca=pca, template=template, epsilon=epsilon, fastbroad=fastbroad, logL=logL, method_logL=method_logL, sigma_l=sigma_l, weight=weight, stellar_component=stellar_component, degrade_resolution=degrade_resolution, compare_data=compare_data, cut_fringes=cut_fringes, Rmin=Rmin, Rmax=Rmax, target_name=target_name)
     SNR_planet = CCF_planet/sigma_planet
     vsini_planet = vsini[SNR_planet.argmax()]
     plt.figure(dpi=300) # CCF plot (in S/N and correlation units) 
@@ -696,12 +769,12 @@ def plot_CCF_vsini(instru, band, target_name, d_planet, d_bkgd, star_flux, wave,
         ax1.set_title(f'CCF of {target_name} on {band}-band of {instru} with {model} as template \n with $R_c$ = {Rc}', fontsize=16)
     else:
         ax1.set_title(f'CCF of {target_name} on {band}-band of {instru} with {model} \n at $T_p$ = {T_planet}K and RV = {round(rv_planet, 1)} km/s with $R_c$ = {Rc}', fontsize=16)
-    ax1.set_xlabel("rotational broadening (in km/s)", fontsize=14)
-    ax1.set_ylabel("CCF (in S/N)", fontsize=14)
+    ax1.set_xlabel("rotational broadening [km/s]", fontsize=14)
+    ax1.set_ylabel("CCF [S/N]", fontsize=14)
     ax1.plot([], [], 'gray', label=f"noise", alpha=0.5)
-    for i in range(len(d_bkgd)):
+    for i in range(len(d_bkg)):
         CCF_bkgd[i] -= np.nanmean(CCF_bkgd[i])
-        ax1.plot(vsini, CCF_bkgd[i]/np.nanstd(CCF_bkgd[i]), 'gray', alpha=max(0.1, 1/len(d_bkgd)))
+        ax1.plot(vsini, CCF_bkgd[i]/np.nanstd(CCF_bkgd[i]), 'gray', alpha=max(0.1, 1/len(d_bkg)))
     ax1.plot(vsini, corr_auto*np.nanmax(SNR_planet)/np.nanmax(corr_auto), "k", label=f"auto-correlation")
     ax1.plot(vsini, SNR_planet, label=f"planet", zorder=3)
     ax1.set_xlim(0, vsini[-1])
@@ -716,7 +789,7 @@ def plot_CCF_vsini(instru, band, target_name, d_planet, d_bkgd, star_flux, wave,
     if logL:
         vsini_planet = vsini[logL_planet.argmax()]
         plt.figure(dpi=300) # CCF plot (in S/N and correlation units) 
-        ax1 = plt.gca() ; ax1.grid(True) ; ax1.set_xlim(vsini[0], vsini[-1]) ; ax1.set_title(f'logL ({method_logL}) of {target_name} on {band}-band of {instru} with {model} \n at $T_p$ = {T_planet}K and RV = {round(rv_planet, 1)} km/s with $R_c$ = {Rc}', fontsize=16) ; ax1.set_xlabel("rotational broadening (in km/s)", fontsize=14) ; ax1.set_ylabel("logL", fontsize=14)
+        ax1 = plt.gca() ; ax1.grid(True) ; ax1.set_xlim(vsini[0], vsini[-1]) ; ax1.set_title(f'logL ({method_logL}) of {target_name} on {band}-band of {instru} with {model} \n at $T_p$ = {T_planet}K and RV = {round(rv_planet, 1)} km/s with $R_c$ = {Rc}', fontsize=16) ; ax1.set_xlabel("rotational broadening [km/s]", fontsize=14) ; ax1.set_ylabel("logL", fontsize=14)
         ax1.plot(vsini, logL_planet, label=f"planet", zorder=3)
         ymin, ymax = ax1.get_ylim() ; ax1.set_ylim(ymin, ymax)
         ax1.plot([vsini_planet, vsini_planet], [ymin, ymax], 'r:', label=f"Vsini = {round(vsini_planet, 1)} km/s")
@@ -768,7 +841,7 @@ def correlation_T_lg(instru, d_planet, star_flux, wave, trans, R, Rc, filter_typ
                 lg = 4
             else:
                 lg = lg_planet[i]
-            _, _, corr_planet, _, _, _, _ = correlation_rv(instru=instru, d_planet=d_planet, d_bkgd=None, star_flux=star_flux, wave=wave, trans=trans, T_planet=T, lg_planet=lg, model=model, R=R, Rc=Rc, filter_type=filter_type, show=False, large_rv=False, rv=rv, rv_planet=None, vsini_planet=vsini_planet, pca=pca, template=template, weight=weight, stellar_component=stellar_component, disable_tqdm=True)
+            _, _, corr_planet, _, _, _, _ = correlation_rv(instru=instru, d_planet=d_planet, d_bkg=None, star_flux=star_flux, wave=wave, trans=trans, T_planet=T, lg_planet=lg, model=model, R=R, Rc=Rc, filter_type=filter_type, show=False, large_rv=False, rv=rv, rv_planet=None, vsini_planet=vsini_planet, pca=pca, template=template, weight=weight, stellar_component=stellar_component, disable_tqdm=True)
             corr_3d[i, j, :] = corr_planet
     idx_max_corr = np.unravel_index(np.argmax(corr_3d, axis=None), corr_3d.shape)
     corr_2d = corr_3d[:, :, idx_max_corr[2]] # on se place à la vitesse radiale donnant le plus grand SNR
@@ -796,7 +869,7 @@ def correlation_T_lg(instru, d_planet, star_flux, wave, trans, R, Rc, filter_typ
         lg = 4
     else:
         lg = lg_planet[idx_max_corr[0]]
-    correlation_rv(instru=instru, d_planet=d_planet, d_bkgd=None, star_flux=star_flux, wave=wave, trans=trans, T_planet=T, lg_planet=lg, model=model, R=R, Rc=Rc, filter_type=filter_type, show=True, large_rv=False, rv=np.array([rv[idx_max_corr[2]]]), rv_planet=rv[idx_max_corr[2]], vsini_planet=vsini_planet, pca=pca, template=template, weight=weight, stellar_component=stellar_component, disable_tqdm=True)
+    correlation_rv(instru=instru, d_planet=d_planet, d_bkg=None, star_flux=star_flux, wave=wave, trans=trans, T_planet=T, lg_planet=lg, model=model, R=R, Rc=Rc, filter_type=filter_type, show=True, large_rv=False, rv=np.array([rv[idx_max_corr[2]]]), rv_planet=rv[idx_max_corr[2]], vsini_planet=vsini_planet, pca=pca, template=template, weight=weight, stellar_component=stellar_component, disable_tqdm=True)
     return T_planet[idx_max_corr[1]], lg_planet[idx_max_corr[0]], rv[idx_max_corr[2]]
 
 
@@ -835,14 +908,14 @@ def SNR_T_rv(instru, Sres, Sres_wo_planet, x0, y0, size_core, d_planet, rv_plane
     plt.legend(fontsize=12) ; plt.show()
     if model[:4] == "mol_":
         model = model[:4] + lg_planet[idx_max_snr[0]]
-    correlation_rv(instru=instru, d_planet=d_planet, d_bkgd=None, wave=wave, trans=trans, T_planet=T_planet[idx_max_snr[1]], lg_planet=lg_planet[idx_max_snr[0]], model=model, R=R, Rc=Rc, filter_type=filter_type, show=True, large_rv=False, rv=np.array([rv_planet]), rv_planet=rv_planet, vsini_planet=vsini_planet, pca=pca, template=template, weight=weight)
+    correlation_rv(instru=instru, d_planet=d_planet, d_bkg=None, wave=wave, trans=trans, T_planet=T_planet[idx_max_snr[1]], lg_planet=lg_planet[idx_max_snr[0]], model=model, R=R, Rc=Rc, filter_type=filter_type, show=True, large_rv=False, rv=np.array([rv_planet]), rv_planet=rv_planet, vsini_planet=vsini_planet, pca=pca, template=template, weight=weight)
     if 1 == 0:
         plt.figure() ; plt.pcolormesh(T_planet, lg_planet, noise_2d, cmap=plt.get_cmap('rainbow'))
         plt.xlabel("planet's temperature [K]", fontsize=12) ; plt.ylabel("planet's gravity surface", fontsize=12) ; plt.title(f'Noise value for different {model} spectra for {target_name} \n on {band} of {instru} with $R_c$ = {Rc}', fontsize=14)
-        cbar = plt.colorbar() ; cbar.set_label("noise (in e-)", fontsize=14, labelpad=20, rotation=270) ; plt.show()
+        cbar = plt.colorbar() ; cbar.set_label("noise [e-]", fontsize=14, labelpad=20, rotation=270) ; plt.show()
         plt.figure() ; plt.pcolormesh(T_planet, lg_planet, signal_2d, cmap=plt.get_cmap('rainbow'), vmin=np.nanmin(signal_2d), vmax=np.nanmax(signal_2d))
         plt.xlabel("planet's temperature [K]", fontsize=12) ; plt.ylabel("planet's gravity surface", fontsize=12) ; plt.title(f'Signal value for different {model} spectra for {target_name} \n on {band} of {instru} with $R_c$ = {Rc}', fontsize=14)
-        cbar = plt.colorbar() ; cbar.set_label("signal (in e-)", fontsize=14, labelpad=20, rotation=270) ; plt.show()
+        cbar = plt.colorbar() ; cbar.set_label("signal [e-]", fontsize=14, labelpad=20, rotation=270) ; plt.show()
     
 
 
@@ -851,7 +924,14 @@ def SNR_T_rv(instru, Sres, Sres_wo_planet, x0, y0, size_core, d_planet, rv_plane
 
 
 def get_template(instru, wave, model, T_planet, lg_planet, vsini_planet, rv_planet, R, Rc, filter_type, epsilon=0.8, fastbroad=True, wave_inter=None):
-    template = load_planet_spectrum(T_planet, lg_planet, model=model, instru=instru, interpolated_spectrum=True) # loading the template model
+    if model == "tellurics":
+        sky_transmission_path = os.path.join("sim_data/Transmission/sky_transmission_airmass_1.0.fits")
+        sky_trans             = fits.getdata(sky_transmission_path)
+        template              = Spectrum(sky_trans[0, :], sky_trans[1, :], None, None)
+    elif model == "BT-NextGen":
+        template = load_star_spectrum(T_planet, lg_planet, model=model, interpolated_spectrum=True) # loading the template model
+    else:
+        template = load_planet_spectrum(T_planet, lg_planet, model=model, instru=instru, interpolated_spectrum=True) # loading the template model
     if model[:4] == "mol_" and Rc is not None : # to crop empty features regions in molecular templates
         _, template_LF = filtered_flux(template.flux, R=template.R, Rc=Rc, filter_type=filter_type)
         sg = sigma_clip(template_LF, sigma=1)
@@ -928,10 +1008,10 @@ def parameters_estimation(instru, band, target_name, wave, d_planet, star_flux, 
     try: # Opening existing estimations
         if force_new_est: # forcing new calculations
             raise ValueError("force_new_est = True")
-        T_arr = fits.getdata(f"utils/parameters estimation/parameters_estimation_T_arr_{instru}_{band}_{target_name}_R{R}_Rc{Rc}_{model}_precise_estimate_{precise_estimate}_stellar_component_{stellar_component}.fits")
-        lg_arr = fits.getdata(f"utils/parameters estimation/parameters_estimation_lg_arr_{instru}_{band}_{target_name}_R{R}_Rc{Rc}_{model}_precise_estimate_{precise_estimate}_stellar_component_{stellar_component}.fits")
+        T_arr     = fits.getdata(f"utils/parameters estimation/parameters_estimation_T_arr_{instru}_{band}_{target_name}_R{R}_Rc{Rc}_{model}_precise_estimate_{precise_estimate}_stellar_component_{stellar_component}.fits")
+        lg_arr    = fits.getdata(f"utils/parameters estimation/parameters_estimation_lg_arr_{instru}_{band}_{target_name}_R{R}_Rc{Rc}_{model}_precise_estimate_{precise_estimate}_stellar_component_{stellar_component}.fits")
         vsini_arr = fits.getdata(f"utils/parameters estimation/parameters_estimation_vsini_arr_{instru}_{band}_{target_name}_R{R}_Rc{Rc}_{model}_precise_estimate_{precise_estimate}_stellar_component_{stellar_component}.fits")
-        rv_arr = fits.getdata(f"utils/parameters estimation/parameters_estimation_rv_arr_{instru}_{band}_{target_name}_R{R}_Rc{Rc}_{model}_precise_estimate_{precise_estimate}_stellar_component_{stellar_component}.fits")
+        rv_arr    = fits.getdata(f"utils/parameters estimation/parameters_estimation_rv_arr_{instru}_{band}_{target_name}_R{R}_Rc{Rc}_{model}_precise_estimate_{precise_estimate}_stellar_component_{stellar_component}.fits")
         if SNR_estimate:
             SNR_4D = fits.getdata(f"utils/parameters estimation/parameters_estimation_SNR_4D_{instru}_{band}_{target_name}_R{R}_Rc{Rc}_{model}_precise_estimate_{precise_estimate}_stellar_component_{stellar_component}.fits")
             corr_4D = None ; logL_4D = None ; logL_4D_sim = None
@@ -952,13 +1032,13 @@ def parameters_estimation(instru, band, target_name, wave, d_planet, star_flux, 
         if verbose and not fastcurves:
             print(f"New parameters estimation: {e}")
         DT = 100 ; Dlg = 1 ; Dvsini = 20 ; Drv = 20 # for precise estimates
-        if T_arr is None and lg_arr is None and vsini_arr is None and rv_arr is None:
+        if T_arr is None or lg_arr is None or vsini_arr is None or rv_arr is None:
             if SNR_estimate:
                 T_arr, lg_arr = get_model_grid(model)
                 if precise_estimate:
-                    T_arr = np.linspace(max(500, T_planet-DT/2), min(3000, T_planet+DT/2), int(DT/10)).astype(np.float32)
-                    lg_arr = np.linspace(max(3, lg_planet-Dlg/2), min(5, lg_planet+Dlg/2), int(Dlg/0.1)).astype(np.float32)
-                    rv_arr = np.append(np.linspace(-1000, rv_planet-3*Drv/4, 100), np.append(np.linspace(rv_planet-Drv/2, rv_planet+Drv/2, int(Drv/0.5)), np.linspace(rv_planet+3*Drv/4, 1000, 100)))
+                    T_arr     = np.linspace(max(500, T_planet-DT/2), min(3000, T_planet+DT/2), int(DT/10)).astype(np.float32)
+                    lg_arr    = np.linspace(max(3, lg_planet-Dlg/2), min(5, lg_planet+Dlg/2), int(Dlg/0.1)).astype(np.float32)
+                    rv_arr    = np.append(np.linspace(-1000, rv_planet-3*Drv/4, 100), np.append(np.linspace(rv_planet-Drv/2, rv_planet+Drv/2, int(Drv/0.5)), np.linspace(rv_planet+3*Drv/4, 1000, 100)))
                     vsini_arr = np.linspace(max(0, vsini_planet-Dvsini/2), min(80, vsini_planet + Dvsini/2), int(Dvsini/0.5)).astype(np.float32) # dvsini = 0.5 km/s
                 else:
                     rv_arr = np.append(np.linspace(-1000, rv_planet-3*Drv/4, 50), np.append(np.linspace(rv_planet-Drv/2, rv_planet+Drv/2, int(Drv/1)), np.linspace(rv_planet+3*Drv/4, 1000, 50)))
@@ -967,17 +1047,22 @@ def parameters_estimation(instru, band, target_name, wave, d_planet, star_flux, 
                     else:
                         vsini_arr = np.array([vsini_planet])
             else:
-                if precise_estimate or R < 20000:
+                if precise_estimate:
+                    N = 20
+                elif R < 20000:
                     N = 20
                 else:
                     N = 10
-                DT = max(2*T_planet / SNR_CCF, 10)
-                Dlg = max(2*lg_planet / SNR_CCF, 0.5)
+                DT     = max(2*T_planet / SNR_CCF, 10)
+                Dlg    = max(2*lg_planet / SNR_CCF, 0.5)
                 Dvsini = 20 * c*1e-3 / (2*R)
-                Drv = min(20 * c*1e-3 / (2*R) / SNR_CCF, 50)
+                Drv    = min(20 * c*1e-3 / (2*R) / SNR_CCF, 50)
                 T_arr, lg_arr = get_model_grid(model)
-                T_arr = np.linspace(max(T_arr[0], T_planet-DT/2), min(T_arr[-1], T_planet + DT/2), N+1).astype(np.float32) # dvsini = 0.5 km/s
-                lg_arr = np.linspace(max(lg_arr[0], lg_planet-Dlg/2), min(lg_arr[-1], lg_planet + Dlg/2), N+1).astype(np.float32) # dvsini = 0.5 km/s
+                T_arr  = np.linspace(max(T_arr[0], T_planet-DT/2), min(T_arr[-1], T_planet + DT/2), N+1).astype(np.float32) # dvsini = 0.5 km/s
+                if "mol_" in model:
+                    lg_arr = np.array([0])
+                else:    
+                    np.linspace(max(lg_arr[0], lg_planet-Dlg/2), min(lg_arr[-1], lg_planet + Dlg/2), N+1).astype(np.float32) # dvsini = 0.5 km/s
                 if R > 20000:
                     vsini_arr = np.linspace(max(0, vsini_planet-Dvsini/2), min(80, vsini_planet + Dvsini/2), N+1).astype(np.float32) # dvsini = 0.5 km/s
                 else:
@@ -999,22 +1084,23 @@ def parameters_estimation(instru, band, target_name, wave, d_planet, star_flux, 
             d_planet_sim = get_d_planet_sim(d_planet=d_planet, wave=wave, trans=trans, model=model, T_planet=T_planet, lg_planet=lg_planet, vsini_planet=vsini_planet, rv_planet=rv_planet, R=R, Rc=Rc, filter_type=filter_type, degrade_resolution=degrade_resolution, stellar_component=stellar_component, pca=pca, star_flux=star_flux, instru=instru, epsilon=epsilon, fastbroad=fastbroad, target_name=target_name, corner_plot=True, wave_inter=wave_inter)
         else:
             d_planet_sim = None
-        corr_4D = np.zeros((len(T_arr), len(lg_arr), len(vsini_arr), len(rv_arr)), dtype=np.float32)
-        SNR_4D = np.zeros((len(T_arr), len(lg_arr), len(vsini_arr), len(rv_arr)), dtype=np.float32)
-        logL_4D = np.zeros((len(T_arr), len(lg_arr), len(vsini_arr), len(rv_arr)), dtype=np.float32)
+        corr_4D     = np.zeros((len(T_arr), len(lg_arr), len(vsini_arr), len(rv_arr)), dtype=np.float32)
+        SNR_4D      = np.zeros((len(T_arr), len(lg_arr), len(vsini_arr), len(rv_arr)), dtype=np.float32)
+        logL_4D     = np.zeros((len(T_arr), len(lg_arr), len(vsini_arr), len(rv_arr)), dtype=np.float32)
         logL_4D_sim = np.zeros((len(T_arr), len(lg_arr), len(vsini_arr), len(rv_arr)), dtype=np.float32)
         from numba import njit, prange
         from multiprocessing import Pool, cpu_count
         with Pool(processes=cpu_count()) as pool: # Utilisation de multiprocessing pour paralléliser les combinaisons i, j
             results = list(tqdm(pool.imap(process_parameters_estimation, [(i, j, T_arr, lg_arr, vsini_arr, rv_arr, d_planet, weight, pca, model, instru, wave, trans, epsilon, fastbroad, R, Rc, filter_type, sigma_l, logL, method_logL, star_HF, star_LF, SNR_estimate, rv_planet, stellar_component, degrade_resolution, d_planet_sim, wave_inter) for i in range(len(T_arr)) for j in range(len(lg_arr))]), total=len(T_arr)*len(lg_arr), disable=not verbose, desc="Parameters estimation"))
             for (i, j, corr_2D, SNR_2D, logL_2D, logL_2D_sim) in results: # Remplissage des matrices 5D avec les résultats
-                corr_4D[i, j, :, :] = corr_2D
-                SNR_4D[i, j, :, :] = SNR_2D
-                logL_4D[i, j, :, :] = logL_2D
+                corr_4D[i, j, :, :]     = corr_2D
+                SNR_4D[i, j, :, :]      = SNR_2D
+                logL_4D[i, j, :, :]     = logL_2D
                 logL_4D_sim[i, j, :, :] = logL_2D_sim
         if save:
             fits.writeto(f"utils/parameters estimation/parameters_estimation_T_arr_{instru}_{band}_{target_name}_R{R}_Rc{Rc}_{model}_precise_estimate_{precise_estimate}_stellar_component_{stellar_component}.fits", T_arr, overwrite=True)
-            fits.writeto(f"utils/parameters estimation/parameters_estimation_lg_arr_{instru}_{band}_{target_name}_R{R}_Rc{Rc}_{model}_precise_estimate_{precise_estimate}_stellar_component_{stellar_component}.fits", lg_arr, overwrite=True)
+            if "mol_" not in model:
+                fits.writeto(f"utils/parameters estimation/parameters_estimation_lg_arr_{instru}_{band}_{target_name}_R{R}_Rc{Rc}_{model}_precise_estimate_{precise_estimate}_stellar_component_{stellar_component}.fits", lg_arr, overwrite=True)
             fits.writeto(f"utils/parameters estimation/parameters_estimation_vsini_arr_{instru}_{band}_{target_name}_R{R}_Rc{Rc}_{model}_precise_estimate_{precise_estimate}_stellar_component_{stellar_component}.fits", vsini_arr, overwrite=True)
             fits.writeto(f"utils/parameters estimation/parameters_estimation_rv_arr_{instru}_{band}_{target_name}_R{R}_Rc{Rc}_{model}_precise_estimate_{precise_estimate}_stellar_component_{stellar_component}.fits", rv_arr, overwrite=True)
             if SNR_estimate:
@@ -1026,16 +1112,16 @@ def parameters_estimation(instru, band, target_name, wave, d_planet, star_flux, 
                     if d_planet_sim is not None:
                         fits.writeto(f"utils/parameters estimation/parameters_estimation_logL_4D_sim_{method_logL}_{instru}_{band}_R{R}_Rc{Rc}_{target_name}_{model}_precise_estimate_{precise_estimate}_stellar_component_{stellar_component}.fits", logL_4D_sim, overwrite=True)         
         
-    if show:
+    if show and len(T_arr) > 2 and len(lg_arr) > 2:
         if SNR_estimate:
-            idx_max_SNR = np.unravel_index(np.argmax(SNR_4D, axis=None), SNR_4D.shape)
-            SNR_2D = SNR_4D[:, :, idx_max_SNR[2], idx_max_SNR[3]].transpose()
+            idx_max_SNR = np.unravel_index(np.argmax(SNR_4D[:, :, :, (rv_arr>-50)&(rv_arr<50)], axis=None), SNR_4D[:, :, :, (rv_arr>-50)&(rv_arr<50)].shape)
+            SNR_2D = SNR_4D[:, :, :, (rv_arr>-50)&(rv_arr<50)][:, :, idx_max_SNR[2], idx_max_SNR[3]].transpose()
             T_SNR_found = T_arr[idx_max_SNR[0]]
             lg_SNR_found = lg_arr[idx_max_SNR[1]]
             vsini_SNR_found = vsini_arr[idx_max_SNR[2]]
-            rv_SNR_found = rv_arr[idx_max_SNR[3]]
+            rv_SNR_found = rv_arr[(rv_arr>-50)&(rv_arr<50)][idx_max_SNR[3]]
             print(f"maximum S/N for T = {round(T_SNR_found)} K, lg = {lg_SNR_found:.2f} and rv = {rv_SNR_found:.1f} km/s")
-            plt.figure(dpi=300) ; plt.ylabel("surface gravity (in dex)", fontsize=12) ; plt.xlabel("temperature [K]", fontsize=12) ; plt.title(f'S/N with {model} spectra for {target_name}\n data spectrum on {band}-band of {instru} with $R_c$ = {Rc}', fontsize=14)
+            plt.figure(dpi=300) ; plt.ylabel("surface gravity [dex]", fontsize=12) ; plt.xlabel("temperature [K]", fontsize=12) ; plt.title(f'S/N with {model} spectra for {target_name}\n data spectrum on {band}-band of {instru} with $R_c$ = {Rc}', fontsize=14)
             plt.pcolormesh(T_arr, lg_arr, SNR_2D, cmap=plt.get_cmap('rainbow'), vmin=np.nanmin(SNR_2D), vmax=np.nanmax(SNR_2D))
             cbar = plt.colorbar() ; cbar.set_label("S/N", fontsize=12, labelpad=20, rotation=270)
             plt.plot([T_SNR_found, T_SNR_found], [lg_SNR_found, lg_SNR_found], 'kX', ms=10, label=r"$S/N_{max}$ "+f"for T = {round(T_SNR_found)}K, lg = {lg_SNR_found:.2f}, \n Vsin(i) = {vsini_SNR_found:.1f}km/s and RV = {rv_SNR_found:.1f}km/s")
@@ -1048,8 +1134,8 @@ def parameters_estimation(instru, band, target_name, wave, d_planet, star_flux, 
             lg_corr_found = lg_arr[idx_max_corr[1]]
             vsini_corr_found = vsini_arr[idx_max_corr[2]]
             rv_corr_found = rv_arr[idx_max_corr[3]]
-            print(f"maximum correlation ({round(np.nanmax(corr_4D), 5)}) for T = {round(T_corr_found)} K, lg = {lg_corr_found:.2f} and rv = {rv_corr_found:.1f} km/s")
-            plt.figure(dpi=300) ; plt.ylabel("surface gravity (in dex)", fontsize=12) ; plt.xlabel("temperature [K]", fontsize=12) ; plt.title(f'Correlation between {model} spectra and {target_name}\n data spectrum on {band}-band of {instru} with $R_c$ = {Rc}', fontsize=14)
+            print(f"maximum correlation ({round(np.nanmax(corr_4D), 5)}) for T = {round(T_corr_found)} K, lg = {lg_corr_found} and rv = {rv_corr_found:.1f} km/s")
+            plt.figure(dpi=300) ; plt.ylabel("surface gravity [dex]", fontsize=12) ; plt.xlabel("temperature [K]", fontsize=12) ; plt.title(f'Correlation between {model} spectra and {target_name}\n data spectrum on {band}-band of {instru} with $R_c$ = {Rc}', fontsize=14)
             plt.pcolormesh(T_arr, lg_arr, corr_2D, cmap=plt.get_cmap('rainbow'), vmin=np.nanmin(corr_2D), vmax=np.nanmax(corr_2D))
             cbar = plt.colorbar() ; cbar.set_label("correlation strength", fontsize=12, labelpad=20, rotation=270)
             plt.plot([T_corr_found, T_corr_found], [lg_corr_found, lg_corr_found], 'kX', ms=10, label=f"max for T = {round(T_corr_found)}K, lg = {lg_corr_found:.2f}, \n Vsin(i) = {vsini_corr_found:.1f}km/s and RV = {rv_corr_found:.1f}km/s")
@@ -1064,7 +1150,7 @@ def parameters_estimation(instru, band, target_name, wave, d_planet, star_flux, 
                 vsini_logL_found = vsini_arr[idx_max_logL[2]]
                 rv_logL_found = rv_arr[idx_max_logL[3]]
                 print(f"maximum logL for T = {round(T_logL_found)} K, lg = {lg_logL_found:.2f} and rv = {rv_logL_found:.1f} km/s")
-                plt.figure(dpi=300) ; plt.ylabel("surface gravity (in dex)", fontsize=12) ; plt.xlabel("temperature [K]", fontsize=12) ; plt.title(f'logL ({method_logL}) with {model} spectra for {target_name}\n data spectrum on {band}-band of {instru} with $R_c$ = {Rc}', fontsize=14)
+                plt.figure(dpi=300) ; plt.ylabel("surface gravity [dex]", fontsize=12) ; plt.xlabel("temperature [K]", fontsize=12) ; plt.title(f'logL ({method_logL}) with {model} spectra for {target_name}\n data spectrum on {band}-band of {instru} with $R_c$ = {Rc}', fontsize=14)
                 plt.pcolormesh(T_arr, lg_arr, logL_2D, cmap=plt.get_cmap('rainbow'), vmin=np.nanmin(logL_2D), vmax=np.nanmax(logL_2D))
                 cbar = plt.colorbar() ; cbar.set_label("logL", fontsize=12, labelpad=20, rotation=270)
                 plt.plot([T_logL_found, T_logL_found], [lg_logL_found, lg_logL_found], 'kX', ms=10, label=r"$logL_{max}$ "+f" for T = {round(T_logL_found)}K, lg = {lg_logL_found:.2f}, \n Vsin(i) = {vsini_logL_found:.1f}km/s and RV = {rv_logL_found:.1f}km/s")
@@ -1078,40 +1164,25 @@ def parameters_estimation(instru, band, target_name, wave, d_planet, star_flux, 
                     lg_logL_sim_found = lg_arr[idx_max_logL_sim[1]]
                     vsini_logL_sim_found = vsini_arr[idx_max_logL_sim[2]]
                     rv_logL_sim_found = rv_arr[idx_max_logL_sim[3]]
-                    plt.figure(dpi=300) ; plt.ylabel("surface gravity (in dex)", fontsize=12) ; plt.xlabel("temperature [K]", fontsize=12) ; plt.title(f'logL_sim ({method_logL}) with {model} spectra for {target_name}\n data spectrum on {band}-band of {instru} with $R_c$ = {Rc}', fontsize=14)
+                    plt.figure(dpi=300) ; plt.ylabel("surface gravity [dex]", fontsize=12) ; plt.xlabel("temperature [K]", fontsize=12) ; plt.title(f'logL_sim ({method_logL}) with {model} spectra for {target_name}\n data spectrum on {band}-band of {instru} with $R_c$ = {Rc}', fontsize=14)
                     plt.pcolormesh(T_arr, lg_arr, logL_sim_2D, cmap=plt.get_cmap('rainbow'), vmin=np.nanmin(logL_sim_2D), vmax=np.nanmax(logL_sim_2D))
                     cbar = plt.colorbar() ; cbar.set_label("logL_sim", fontsize=12, labelpad=20, rotation=270)
                     plt.plot([T_logL_sim_found, T_logL_sim_found], [lg_logL_sim_found, lg_logL_sim_found], 'kX', ms=10, label=r"${logL_{sim}}_{max}$ "+f" for T = {round(T_logL_sim_found)}K, lg = {lg_logL_sim_found:.2f}, \n Vsin(i) = {vsini_logL_sim_found:.1f}km/s and RV = {rv_logL_sim_found:.1f}km/s")
                     plt.contour(T_arr, lg_arr, logL_2D, linewidths=0.1, colors='k')
                     plt.ylim(lg_arr[0], lg_arr[-1]) ; plt.xlim(T_arr[0], T_arr[-1]) ; plt.legend(fontsize=10) ; plt.show()
-                # Corner plot :
-                p_4D = np.exp(logL_4D - np.nanmax(logL_4D))
-                custom_corner_plot(p_4D, T_arr, lg_arr, vsini_arr, rv_arr, target_name, band, instru, R, Rc, sim=False, exposure_time=exposure_time)
-                if d_planet_sim is not None:
-                    p_4D_sim = np.exp(logL_4D_sim - np.nanmax(logL_4D_sim))
-                    custom_corner_plot(p_4D_sim, T_arr, lg_arr, vsini_arr, rv_arr, target_name, band, instru, R, Rc, sim=True, exposure_time=exposure_time)
                 
-                if 1==0:
-                    try:
-                        if force_new_est:
-                            raise ValueError("force_new_est = True")
-                        samples = fits.getdata(f"utils/parameters estimation/parameters_estimation_samples_{instru}_{band}_{target_name}_R{R}_Rc{Rc}_{model}_precise_estimate_{precise_estimate}_stellar_component_{stellar_component}.fits")
-                        if d_planet_sim is not None:
-                            samples_sim = fits.getdata(f"utils/parameters estimation/parameters_estimation_samples_sim_{instru}_{band}_{target_name}_R{R}_Rc{Rc}_{model}_precise_estimate_{precise_estimate}_stellar_component_{stellar_component}.fits")
-                    except:
-                        samples = parameters_estimation_MCMC(logL_4D, T_arr, lg_arr, vsini_arr, rv_arr, T_planet=T_logL_found, lg_planet=lg_logL_found, vsini_planet=vsini_logL_found, rv_planet=rv_logL_found)
-                        if save:
-                            fits.writeto(f"utils/parameters estimation/parameters_estimation_samples_{instru}_{band}_{target_name}_R{R}_Rc{Rc}_{model}_precise_estimate_{precise_estimate}_stellar_component_{stellar_component}.fits", samples, overwrite=True)
-                            if d_planet_sim is not None:
-                                samples_sim = parameters_estimation_MCMC(logL_4D_sim, T_arr, lg_arr, vsini_arr, rv_arr, T_planet=T_planet, lg_planet=lg_planet, vsini_planet=vsini_planet, rv_planet=rv_planet)
-                                fits.writeto(f"utils/parameters estimation/parameters_estimation_samples_sim_{instru}_{band}_{target_name}_R{R}_Rc{Rc}_{model}_precise_estimate_{precise_estimate}_stellar_component_{stellar_component}.fits", samples_sim, overwrite=True)
-                    parameters_estimation_corner_plot(instru, band, target_name, R, Rc, samples, logL_4D, T_arr, lg_arr, vsini_arr, rv_arr, T_planet=T_logL_found, lg_planet=lg_logL_found, vsini_planet=vsini_logL_found, rv_planet=rv_logL_found, d_planet_sim=False)
-                    if d_planet_sim is not None:
-                        parameters_estimation_corner_plot(instru, band, target_name, R, Rc, samples_sim, logL_4D_sim, T_arr, lg_arr, vsini_arr, rv_arr, T_planet=T_planet, lg_planet=lg_planet, vsini_planet=vsini_planet, rv_planet=rv_planet, d_planet_sim=True)
-        
-    if fastcurves: # Corner plot :
+    # Corner plot :
+    if show and logL:
         p_4D = np.exp(logL_4D - np.nanmax(logL_4D))
-        custom_corner_plot(p_4D, T_arr, lg_arr, vsini_arr, rv_arr, target_name, band, instru, R, Rc, sim=False, exposure_time=exposure_time)
+        custom_corner_plot(p_4D, T_arr, lg_arr, vsini_arr, rv_arr, target_name, band, instru, model, R, Rc, sim=False, exposure_time=exposure_time)
+        if d_planet_sim is not None:
+            p_4D_sim = np.exp(logL_4D_sim - np.nanmax(logL_4D_sim))
+            custom_corner_plot(p_4D_sim, T_arr, lg_arr, vsini_arr, rv_arr, target_name, band, instru, model, R, Rc, sim=True, exposure_time=exposure_time)
+        
+        if fastcurves:
+            p_4D = np.exp(logL_4D - np.nanmax(logL_4D))
+            custom_corner_plot(p_4D, T_arr, lg_arr, vsini_arr, rv_arr, target_name, band, instru, model, R, Rc, sim=False, exposure_time=exposure_time)
+        
     return T_arr, lg_arr, vsini_arr, rv_arr, corr_4D, SNR_4D, logL_4D, logL_4D_sim
 
 
@@ -1197,132 +1268,142 @@ def process_parameters_estimation(args):
 
 
 
+
 def estimate_uncertainties_1sigma(p_4D, *params):
     """
-    Estime les incertitudes à 1σ et les valeurs optimales pour chaque paramètre.
-    
+    Estimates the 1σ uncertainties and optimal values for each parameter.
+
     Parameters:
         p_4D : numpy.ndarray
-            Cube de probabilité (ou hypercube).
+            Probability cube (or hypercube).
         *params : list of numpy.ndarray
-            Grilles des paramètres (T, lg, vsini, rv) ou une sous-liste si une dimension est ignorée.
+            Parameter grids (T, lg, vsini, rv) or a subset if a dimension is ignored.
 
     Returns:
-        uncertainties : dict
-            Dictionnaire des incertitudes 1σ pour chaque paramètre.
+        uncertainties : list
+            List of 1σ uncertainties for each parameter.
         optimal_values : list
-            Liste des valeurs optimales (maximum de probabilité) pour chaque paramètre.
+            List of optimal values (maximum probability) for each parameter.
     """
-    if len(params) == 3:
-        param_names = ['T', 'lg', 'rv'] 
-    elif len(params) == 4:
-        param_names = ['T', 'lg', 'vsini', 'rv']
-    uncertainties = {}
+
+    uncertainties  = []
     optimal_values = []
     ndim = len(params)
+
     for i, param_values in enumerate(params):
-        # Marginaliser la probabilité
-        marginalized_p = np.nansum(p_4D, axis=tuple(j for j in range(ndim) if j != i))
-        marginalized_p /= np.nansum(marginalized_p)  # Normalisation
-        # Trouver la valeur optimale (maximum de probabilité)
-        # plt.figure(dpi=300)
-        # plt.plot(param_values, marginalized_p)
-        # plt.title(f"{param_names[i]}")
-        # plt.yscale('log')
-        # plt.show()
-        f_interp = interp1d(param_values, marginalized_p, kind='cubic', bounds_error=False, fill_value=np.nan)
-        values_fine = np.linspace(param_values[0], param_values[-1], 1000)
-        p_fine = f_interp(values_fine)
-        idx_max_fine = np.argmax(p_fine)
+        # Marginalize the probability distribution
+        marginalized_p  = np.nansum(p_4D, axis=tuple(j for j in range(ndim) if j != i))
+        marginalized_p /= np.nansum(marginalized_p)  # Normalization
+
+        # Interpolation to estimate the maximum probability value
+        f_interp      = interp1d(param_values, marginalized_p, kind='cubic', bounds_error=False, fill_value=np.nan)
+        values_fine   = np.linspace(param_values[0], param_values[-1], 1000)
+        p_fine        = f_interp(values_fine)
+        idx_max_fine  = np.argmax(p_fine)
         optimal_value = values_fine[idx_max_fine]
         optimal_values.append(optimal_value)
-        # Calculer les limites 1σ à partir de la probabilité cumulative
-        cdf = np.cumsum(marginalized_p)
-        cdf /= cdf[-1]  # Normalisation
-        # Interpolation pour trouver les bornes à 16% et 84% (1σ)
+
+        # Compute the 1σ limits from the cumulative probability distribution
+        cdf  = np.cumsum(marginalized_p)
+        cdf /= cdf[-1]  # Normalization
+
+        # Interpolation to find the 16% and 84% bounds (1σ)
         f_interp_cdf = interp1d(cdf, param_values, kind='linear', bounds_error=False, fill_value=(param_values[0], param_values[-1]))
-        lower_bound = f_interp_cdf(0.16)
-        upper_bound = f_interp_cdf(0.84)
-        uncertainty = (upper_bound - lower_bound) / 2
-        uncertainties[param_names[i]] = uncertainty
+        lower_bound  = f_interp_cdf(0.16)
+        upper_bound  = f_interp_cdf(0.84)
+        uncertainty  = (upper_bound - lower_bound) / 2
+        uncertainties.append(uncertainty)
+
     return uncertainties, optimal_values
 
 
 
+def custom_corner_plot(p_4D, T_arr, lg_arr, vsini_arr, rv_arr, target_name, band, instru, model, R, Rc, sim=False, exposure_time=None):
+    """
+    Generates a corner plot for parameter estimation based on a probability cube.
 
-def custom_corner_plot(p_4D, T_arr, lg_arr, vsini_arr, rv_arr, target_name, band, instru, R, Rc, sim=False, exposure_time=None):
+    Parameters:
+        p_4D : numpy.ndarray
+            Probability cube (or hypercube).
+        T_arr, lg_arr, vsini_arr, rv_arr : numpy.ndarray
+            Parameter grids for temperature, log gravity, rotational velocity, and radial velocity.
+        target_name : str
+            Name of the observed target.
+        band : str
+            Spectral band used for observation.
+        instru : str
+            Instrument name.
+        model : str
+            Model name.
+        R : float
+            Spectral resolution.
+        Rc : float
+            Calibration spectral resolution.
+        sim : bool, optional
+            Whether the data is simulated. Default is False.
+        exposure_time : float, optional
+            Exposure time in minutes. Default is None.
+    """
+
+    # Define chi² levels and labels
     levels_chi2 = [0, 2.30, 6.17, 11.83, 19.35, 28.74]  # 1σ, 2σ, ..., 5σ
     labels = ["1σ", "2σ", "3σ", "4σ", "5σ"]
-
-    # Définir les paramètres et leurs noms
-    params = [T_arr, lg_arr, rv_arr] if R < 20000 else [T_arr, lg_arr, vsini_arr, rv_arr]
-    param_names = [r"$T \, [\mathrm{K}]$", r"$\lg \, [\mathrm{dex}]$", r"$RV \, [\mathrm{km/s]}$"] if R < 20000 else [r"$T \, [\mathrm{K}]$", r"$\lg \, [\mathrm{dex}]$", r"$Vsin(i) \, [\mathrm{km/s}]$", r"$RV \, [\mathrm{km/s]}$"]
+    
+    # Define parameters and their names
+    params = [T_arr, lg_arr, vsini_arr, rv_arr]
+    param_names = [r"$T \, [\mathrm{K}]$", r"$\lg \, [\mathrm{dex}]$", r"$Vsin(i) \, [\mathrm{km/s]}$", r"$RV \, [\mathrm{km/s]}$"]
+    
+    # Identify dimensions to remove (if size == 1)
+    axes_to_marginalize = []
+    params_to_remove = []
+    
+    if len(T_arr) == 1:
+        axes_to_marginalize.append(0)
+        params_to_remove.append(0)
+    if len(lg_arr) == 1:
+        axes_to_marginalize.append(1)
+        params_to_remove.append(1)
+    if len(vsini_arr) == 1:
+        axes_to_marginalize.append(2)
+        params_to_remove.append(2)
+    if len(rv_arr) == 1:
+        axes_to_marginalize.append(3)
+        params_to_remove.append(3)
+    
+    # Remove elements in reverse order to avoid index shift issues
+    for idx in sorted(params_to_remove, reverse=True):
+        params.pop(idx)
+        param_names.pop(idx)
+    
+    # Reduce the p_4D array by marginalizing over dimensions of size 1
+    for axis in sorted(axes_to_marginalize, reverse=True):
+        p_4D = np.nansum(p_4D, axis=axis)
+    
+    # Number of remaining dimensions
     ndim = len(params)
 
-    # Supprimer la dimension `vsini` si R < 20,000
-    if R < 20000:
-        p_4D = np.nansum(p_4D, axis=2)  # Marginaliser sur `vsini`
-
-    # Estimation des incertitudes
+    # Estimate uncertainties
     uncertainties_1sigma, optimal_values = estimate_uncertainties_1sigma(p_4D, *params)
-
-    # Cropping
-    xmin = np.zeros((ndim))
-    xmax = np.zeros((ndim))
-    for i in range(ndim):
-        marginalized_p = np.nansum(p_4D, axis=tuple(k for k in range(ndim) if k != i))
-        marginalized_p /= np.nansum(marginalized_p)
-        valid = (marginalized_p != 0)
-        sigma = uncertainties_1sigma[list(uncertainties_1sigma.keys())[i]]
-        xmin[i] = max(np.nanmin(params[i][valid]), optimal_values[i] - 10 * sigma)
-        xmax[i] = min(np.nanmax(params[i][valid]), optimal_values[i] + 10 * sigma)
-        mask = (params[i] >= xmin[i]) & (params[i] <= xmax[i])
-        p_4D = np.compress(mask, p_4D, axis=i)
-        params[i] = params[i][mask]
         
-    if 1==0:
-        fine_grids = [np.linspace(xmin[i], xmax[i], max(50, len(params[i]))) for i in range(ndim)]
-        interpolator = RegularGridInterpolator(tuple(params), p_4D, bounds_error=False, fill_value=0)
-        fine_points = np.meshgrid(*fine_grids, indexing="ij")
-        fine_points_flat = np.array([grid.flatten() for grid in fine_points]).T
-        p_4D = interpolator(fine_points_flat).reshape([len(grid) for grid in fine_grids])
-        params = fine_grids
-        T_arr, lg_arr, *rest = params
-        if R < 20000:
-            rv_arr = rest[0]
-        else:
-            vsini_arr, rv_arr = rest
-        uncertainties_1sigma, optimal_values = estimate_uncertainties_1sigma(p_4D, *params)
-        # cropping
-        xmin = np.zeros((ndim))
-        xmax = np.zeros((ndim))
-        for i in range(ndim):
-            marginalized_p = np.nansum(p_4D, axis=tuple(k for k in range(ndim) if k != i))
-            marginalized_p /= np.nansum(marginalized_p)
-            valid = (marginalized_p != 0)
-            sigma = uncertainties_1sigma[list(uncertainties_1sigma.keys())[i]]
-            xmin[i] = max(np.nanmin(params[i][valid]), optimal_values[i] - 10*sigma)   
-            xmax[i] = min(np.nanmax(params[i][valid]), optimal_values[i] + 10*sigma)         
-            mask = (params[i] >= xmin[i]) & (params[i] <= xmax[i])
-            p_4D = np.compress(mask, p_4D, axis=i)
-            params[i] = params[i][mask]
-
-    # Initialiser la figure
+    xmin = np.array([np.nanmin(param) for param in params])
+    xmax = np.array([np.nanmax(param) for param in params])
+    
+    # Initialize the figure
     fig, axes = plt.subplots(ndim, ndim, figsize=(10, 10), dpi=300)
     plt.subplots_adjust(wspace=0.05, hspace=0.05)
 
     for i in range(ndim):
         for j in range(ndim):
             ax = axes[i, j]
-            if j > i:  # Cases au-dessus de la diagonale
+            if j > i:  # Upper triangular part of the matrix
                 ax.axis("off")
                 continue
-            elif i == j:  # Histogrammes sur la diagonale
-                marginalized_p = np.nansum(p_4D, axis=tuple(k for k in range(ndim) if k != i))
+            elif i == j:  # Histograms on the diagonal
+                marginalized_p  = np.nansum(p_4D, axis=tuple(k for k in range(ndim) if k != i))
                 marginalized_p /= np.nansum(marginalized_p)
                 ax.step(params[i], marginalized_p, color="k", where="mid")
                 ax.axvline(optimal_values[i], color="k", linestyle="--")
-                sigma = uncertainties_1sigma[list(uncertainties_1sigma.keys())[i]]
+                sigma = uncertainties_1sigma[i]
                 if sigma is not None:
                     ax.axvline(optimal_values[i] - sigma, color="k", linestyle="--")
                     ax.axvline(optimal_values[i] + sigma, color="k", linestyle="--")
@@ -1330,12 +1411,12 @@ def custom_corner_plot(p_4D, T_arr, lg_arr, vsini_arr, rv_arr, target_name, band
                 ax.set_xlabel(param_names[i], fontsize=10)
                 ax.set_title(f"{param_names[i]} = {optimal_values[i]:.2f} ± {max(sigma, 0.01):.2f}", fontsize=10)
                 ax.set_xlim(xmin[i], xmax[i])
-            elif j < i:  # Contours dans les cases inférieures
-                marginalized_p = np.nansum(p_4D, axis=tuple(k for k in range(ndim) if k != i and k != j))
+            elif j < i:  # Contour plots in the lower triangular part
+                marginalized_p  = np.nansum(p_4D, axis=tuple(k for k in range(ndim) if k != i and k != j))
                 marginalized_p /= np.nansum(marginalized_p)
                 marginalized_p[marginalized_p == 0] = np.nanmin(marginalized_p[marginalized_p != 0])
                 marginalized_p = marginalized_p.transpose()
-                marginalized_chi2 = -2 * np.log(marginalized_p)
+                marginalized_chi2  = -2 * np.log(marginalized_p)
                 marginalized_chi2 -= np.nanmin(marginalized_chi2)
                 cmap = plt.get_cmap("plasma")
                 filled_contour = ax.contourf(params[j], params[i], marginalized_chi2, levels=levels_chi2, cmap=cmap, alpha=0.8)
@@ -1358,215 +1439,22 @@ def custom_corner_plot(p_4D, T_arr, lg_arr, vsini_arr, rv_arr, target_name, band
             if j > 0:
                 ax.set_yticklabels([])
     
+    # Set the title
     if sim:
         if exposure_time is None:
-            fig.suptitle(f"Parameters estimation of {target_name} on {band}-band of {instru}\n (with R = {round(R)} and $R_c$ = {Rc}) \n simulation", fontsize=16, y=0.95)
+            fig.suptitle(f"Parameter estimation of {target_name} on {band}-band of {instru}\n (with R = {round(R)} and $R_c$ = {Rc}) \n Simulation", fontsize=16, y=0.95)
         else:
-            fig.suptitle(f"Parameters estimation of {target_name} on {band}-band of {instru}\n (with "+"$t_{exp}$"+f" = {round(exposure_time)} mn, R = {round(R)} and $R_c$ = {Rc}) \n simulation", fontsize=16, y=0.95)
+            fig.suptitle(f"Parameter estimation of {target_name} on {band}-band of {instru}\n (with "+"$t_{exp}$"+f" = {round(exposure_time)} min, R = {round(R)} and $R_c$ = {Rc}) \n Simulation", fontsize=16, y=0.95)
     else:
         if exposure_time is None:
-            fig.suptitle(f"Parameters estimation of {target_name} on {band}-band of {instru}\n (with R = {round(R)} and $R_c$ = {Rc})", fontsize=16, y=0.95)
+            fig.suptitle(f"Parameter estimation of {target_name} on {band}-band of {instru}\n (with R = {round(R)} and $R_c$ = {Rc})", fontsize=16, y=0.95)
         else:
-            fig.suptitle(f"Parameters estimation of {target_name} on {band}-band of {instru}\n (with "+"$t_{exp}$"+f" = {round(exposure_time)} mn, R = {round(R)} and $R_c$ = {Rc})", fontsize=16, y=0.95)
+            fig.suptitle(f"Parameter estimation of {target_name} on {band}-band of {instru}\n (with "+"$t_{exp}$"+f" = {round(exposure_time)} min, R = {round(R)} and $R_c$ = {Rc})", fontsize=16, y=0.95)
+    
     plt.show()
 
 
 
-
-
-
-
-
-
-def likelihood_function(theta, L_interpolator, T_arr, lg_arr, vsini_arr, rv_arr):
-    T, lg, vsini, rv = theta
-    if (T < T_arr.min() or T > T_arr.max() or
-        lg < lg_arr.min() or lg > lg_arr.max() or
-        vsini < vsini_arr.min() or vsini > vsini_arr.max() or
-        rv < rv_arr.min() or rv > rv_arr.max()):
-        return 0.0  # Retourne 0 si les paramètres sont hors des limites
-    return L_interpolator([T, lg, vsini, rv])
-
-def log_probability(theta, L_interpolator, T_arr, lg_arr, vsini_arr, rv_arr):
-    L_val = likelihood_function(theta, L_interpolator, T_arr, lg_arr, vsini_arr, rv_arr)
-    if L_val <= 0:  # Empêche les erreurs log(0)
-        return -np.inf
-    return np.log(L_val)
-
-def parameters_estimation_MCMC(logL_4D, T_arr, lg_arr, vsini_arr, rv_arr, T_planet, lg_planet, vsini_planet, rv_planet):
-    # Convertir logL en vraisemblance normalisée
-    L = np.exp(logL_4D - np.max(logL_4D))
-    L /= np.sum(L)  # Normalisation
-
-    # Créer un interpolateur pour L
-    L_interpolator = RegularGridInterpolator((T_arr, lg_arr, vsini_arr, rv_arr), L)
-
-    # MCMC parameters
-    ndim = 4  # T, lg, vsini, rv
-    nwalkers = 100  # Nombre de walkers
-    initial_position = [T_planet, lg_planet, vsini_planet, rv_planet]  # Position initiale des paramètres
-    initial_spread = [100, 0.1, 1, 1]  # Écart-type pour les walkers
-    p0 = [np.clip(initial_position + initial_spread * np.random.randn(ndim), 
-            [T_arr.min(), lg_arr.min(), vsini_arr.min(), rv_arr.min()], 
-            [T_arr.max(), lg_arr.max(), vsini_arr.max(), rv_arr.max()]) for _ in range(nwalkers)]
-    nsteps = 5000 # Nombre d'itérations du MCMC
-    burn_in = 1000 # Nombre d'étapes pour le burn-in
-
-    ## Exécution du MCMC avec multiprocessing
-    with Pool(processes=cpu_count()) as pool:
-        sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(L_interpolator, T_arr, lg_arr, vsini_arr, rv_arr), pool=pool)
-        for _ in tqdm(sampler.sample(p0, iterations=nsteps), total=nsteps, desc="Running MCMC"):
-            pass
-
-    # Extraire les échantillons après burn-in
-    samples = sampler.chain[:, burn_in:, :].reshape((-1, ndim))
-    return samples
-
-def parameters_estimation_corner_plot(instru, band, target_name, R, Rc, samples, logL_4D, T_arr, lg_arr, vsini_arr, rv_arr, T_planet, lg_planet, vsini_planet, rv_planet, d_planet_sim):
-    import corner
-    from scipy.integrate import quad
-    import matplotlib.lines as mlines
-    ndim = 4  # T, lg, vsini, rv
-    smooth_corner = 0
-    alpha_value = 0.5
-    if d_planet_sim:
-        color_value = "r"
-    else:
-        color_value = "g"
-    color_L = "b"
-    target_name = target_name.replace("_", " ")
-    T_found, lg_found, vsini_found, rv_found = samples.T
-    
-    # Plot des résultats avec corner
-    data = np.zeros((samples.shape[0], ndim))
-    data[:, 0] = T_found
-    data[:, 1] = lg_found
-    data[:, 2] = vsini_found
-    data[:, 3] = rv_found
-    injected_values = np.array([T_planet, lg_planet, vsini_planet, rv_planet])
-    data_bins= 20
-    # https://corner.readthedocs.io/en/latest/api/
-    figure = corner.corner(
-        data, 
-        bins = data_bins, 
-        labels = [r"$T \, [\mathrm{K}]$", r"$lg \, [\mathrm{dex}]$", r"$Vsin(i) \, [\mathrm{km/s}]$", r"$RV \, [\mathrm{km/s}]$"], 
-        quantiles = [0.16, 0.5, 0.84], # below -+1 sigma 
-        levels = [0.68, 0.95, 0.997], # 1, 2 and 3 sigma contour
-        show_titles = True, 
-        title_kwargs = {"fontsize": 12}, 
-        top_ticks=False, 
-        plot_density = True, 
-        plot_contours = True, 
-        fill_contours = True, 
-        smooth = smooth_corner, 
-        smooth1d = smooth_corner)
-    axes = np.array(figure.axes).reshape((ndim, ndim))
-    for i in range(ndim):
-        ax = axes[i, i]
-        ax.axvline(injected_values[i], color=color_value, alpha=alpha_value)
-        p = np.exp(logL_4D - np.max(logL_4D))  # Pour éviter les overflow numériques
-        if i==0:
-            p = np.nansum(p, axis=(1, 2, 3))
-            f = interp1d(T_arr, p, bounds_error=False, fill_value=np.nan)
-        elif i==1:
-            p = np.nansum(p, axis=(0, 2, 3))
-            f = interp1d(lg_arr, p, bounds_error=False, fill_value=np.nan)
-        elif i==2:
-            p = np.nansum(p, axis=(0, 1, 3))
-            f = interp1d(vsini_arr, p, bounds_error=False, fill_value=np.nan)
-        elif i==3:
-            p = np.nansum(p, axis=(0, 1, 2))
-            f = interp1d(rv_arr, p, bounds_error=False, fill_value=np.nan)
-        data_param = data[:, i]
-        x = np.linspace(data_param.min(), data_param.max(), 1000)
-        pdf = f(x)
-        integral, _ = quad(f, np.nanmin(x[~np.isnan(pdf)]), np.nanmax(x[~np.isnan(pdf)]))
-        pdf /= integral
-        ax.plot(x, pdf * len(data_param) * np.diff(ax.get_xlim())[0] / data_bins, color=color_L, lw=2, label="logL", alpha=0.5)
-        if i==0:
-            ax.legend()
-    for yi in range(ndim):
-        for xi in range(yi):
-            ax = axes[yi, xi]
-            ax.axvline(injected_values[xi], color=color_value, alpha=alpha_value)
-            ax.axhline(injected_values[yi], color=color_value, alpha=alpha_value)
-            ax.plot(injected_values[xi], injected_values[yi], "s"+color_value)
-    figure.suptitle(f"Parameters estimation of {target_name} on {band}-band of {instru}\n (with R = {round(R)} and $R_c$ = {Rc})", fontsize=16, y=1.05)
-    if d_planet_sim:
-        plt.legend(handles=[mlines.Line2D([], [], color="w", label=""), mlines.Line2D([], [], linestyle="-", marker="s", color=color_value, label=f"T = {round(T_planet)} K"), mlines.Line2D([], [], color="w", label=""), mlines.Line2D([], [], linestyle="-", marker="s", color=color_value, label=f"lg = {lg_planet:.2f}"), mlines.Line2D([], [], color="w", label=""), mlines.Line2D([], [], linestyle="-", marker="s", color=color_value, label=f"Vsini(i) = {vsini_planet:.1f} km/s"), mlines.Line2D([], [], color="w", label=""), mlines.Line2D([], [], linestyle="-", marker="s", color=color_value, label=f"RV = {rv_planet:.1f} km/s"), ], frameon=True, bbox_to_anchor=(1, ndim), loc="upper right", fontsize=12, title="Injected parameters:", title_fontsize=16)    
-    else:
-        plt.legend(handles=[mlines.Line2D([], [], color="w", label=""), mlines.Line2D([], [], linestyle="-", marker="s", color=color_value, label=f"T = {round(T_planet)} K"), mlines.Line2D([], [], color="w", label=""), mlines.Line2D([], [], linestyle="-", marker="s", color=color_value, label=f"lg = {lg_planet:.2f}"), mlines.Line2D([], [], color="w", label=""), mlines.Line2D([], [], linestyle="-", marker="s", color=color_value, label=f"Vsini(i) = {vsini_planet:.1f} km/s"), mlines.Line2D([], [], color="w", label=""), mlines.Line2D([], [], linestyle="-", marker="s", color=color_value, label=f"RV = {rv_planet:.1f} km/s"), ], frameon=True, bbox_to_anchor=(1, ndim), loc="upper right", fontsize=12, title=r"$logL_{max}$ parameters:", title_fontsize=16)    
-    plt.tight_layout()
-    plt.gcf().set_dpi(300)
-    plt.show()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-def corner_plot_lg_T(T_arr, lg_arr, vsini_planet, rv_planet, d_planet, weight, pca, model, instru, wave, trans, epsilon, fastbroad, R, Rc, filter_type, sigma_l, logL, method_logL, star_flux, star_HF, star_LF, SNR_estimate, stellar_component, degrade_resolution, d_planet_sim, target_name=None):
-    chi2_err = np.zeros((T_arr.shape[0], lg_arr.shape[0]))
-    noise_err = np.zeros((T_arr.shape[0], lg_arr.shape[0]))
-    
-    esp_chi2 = np.zeros((len(T_arr), len(lg_arr)))
-    sigma_chi2 = np.zeros((len(T_arr), len(lg_arr)))
-    
-    for i in tqdm(range(len(T_arr))):
-        T_planet = T_arr[i]
-        for j in range(len(lg_arr)):
-            
-            lg_planet = lg_arr[j]
-            
-            t = get_d_planet_sim(d_planet=d_planet, wave=wave, trans=trans, model=model, T_planet=T_planet, lg_planet=lg_planet, vsini_planet=vsini_planet, rv_planet=rv_planet, R=R, Rc=Rc, filter_type=filter_type, degrade_resolution=degrade_resolution, stellar_component=stellar_component, pca=pca, star_flux=star_flux, instru=instru, epsilon=epsilon, fastbroad=fastbroad, target_name=target_name)
-                
-            d_p = np.copy(d_planet)
-            if weight is not None:
-                d_p *= weight ; t *= weight
-            d_p[d_p == 0] = np.nan ; t[t == 0] = np.nan ; t[np.isnan(d_p)] = np.nan ; d_p[np.isnan(t)] = np.nan
-            
-            t *= np.nansum( d_p * t/sigma_l**2 ) / np.nansum( t**2/sigma_l**2 ) 
-            
-            esp_chi2[i, j] = np.nansum( ( (d_p - t)/sigma_l)**2 )
-            sigma_chi2[i, j] = np.sqrt( np.nansum(1 + 4/sigma_l**2 * (d_p**2 + t**2) ) )
-        
-        plt.figure(dpi=300) ; plt.plot(wave, d_p / np.sqrt(np.nansum(d_p**2))) ; plt.plot(wave, t / np.sqrt(np.nansum(t**2))) ; plt.show()
-
-    chi2 = (esp_chi2/sigma_chi2).transpose()
-    chi2 -= np.nanmin(chi2)
-    custom_levels = [ 1, 2, 3]
-    plt.figure(dpi=300)
-    plt.pcolormesh(T_arr, lg_arr, chi2, cmap=plt.get_cmap('rainbow_r'))
-    cbar = plt.colorbar() ; cbar.set_label(r'$\chi^2$ (in $\sigma$ unit)', fontsize=14, labelpad=20, rotation=270)
-    contour = plt.contour(T_arr, lg_arr, chi2, levels=custom_levels)
-    plt.clabel(contour, inline=True, fontsize=10, fmt='%1.2f')
-    plt.xlabel('Teff (K)')
-    plt.ylabel('log(g)')
-    plt.xlim(T_arr[0], T_arr[-1]) ; plt.ylim(lg_arr[0], lg_arr[-1])
-    plt.show()
-    
-    
-    
     
     
     

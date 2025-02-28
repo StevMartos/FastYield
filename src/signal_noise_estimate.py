@@ -4,7 +4,7 @@ from src.molecular_mapping import *
 
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-def transmission(instru, wave_band, band, tellurics, apodizer):
+def transmission(instru, wave_band, band, tellurics, apodizer, fill_value=np.nan):
     """
     To read and retrieve instrumental and sky (if needed) transmission
 
@@ -27,7 +27,7 @@ def transmission(instru, wave_band, band, tellurics, apodizer):
         total system transmission 
     """
     wave, trans = fits.getdata("sim_data/Transmission/"+instru+"/transmission_" + band + ".fits") # instrumental transmission on the considered band
-    f = interp1d(wave, trans, bounds_error=False, fill_value=np.nan)
+    f = interp1d(wave, trans, bounds_error=False, fill_value=fill_value)
     trans = f(wave_band) # interpolated instrumental transmission on the considered band
     config_data = get_config_data(instru) # get instrument specs
     apodizer_trans = config_data["apodizers"][str(apodizer)].transmission # get apodizer transmission, if any
@@ -36,10 +36,10 @@ def transmission(instru, wave_band, band, tellurics, apodizer):
         trans *= fits.getheader("sim_data/PSF/PSF_"+instru+"/PSF_"+band+"_NO_JQ_NO_SP.fits")['AC'] # aperture corrective factor (the fact that not all the incident flux reaches the FOV)
     if tellurics: # if ground-based observation
         sky_transmission_path = os.path.join("sim_data/Transmission/sky_transmission_airmass_1.0.fits")
-        sky_trans = fits.getdata(sky_transmission_path)
-        trans_tell_band = Spectrum(sky_trans[0, :], sky_trans[1, :], None, None)
-        trans_tell_band = trans_tell_band.degrade_resolution(wave_band, renorm=False).flux # degraded tellurics transmission on the considered band
-        trans *= trans_tell_band # total system throughput (instru x atmo)
+        sky_trans             = fits.getdata(sky_transmission_path)
+        trans_tell_band       = Spectrum(sky_trans[0, :], sky_trans[1, :], None, None)
+        trans_tell_band       = trans_tell_band.degrade_resolution(wave_band, renorm=False).flux # degraded tellurics transmission on the considered band
+        trans                *= trans_tell_band # total system throughput (instru x atmo)
     trans[trans<=0] = np.nan # ignoring negatives values (if any)
     return trans
 
@@ -92,7 +92,11 @@ def PSF_profile_fraction_separation(band, strehl, apodizer, coronagraph, instru,
     if sep_unit == "mas":
         pxscale *= 1e3 ; FOV *= 1e3 # arcsec => mas (if wanted)
     profile = fits.getdata(file) # in fraction/arcsec**2 or fraction/mas**2
-    separation = np.arange(pxscale/10, FOV/2+pxscale/10, pxscale/10) # in arcsec or mas (/10 doesn't change the result but gives smoother curves)
+    if instru=="HiRISE":
+        separation = np.arange(pxscale, FOV/2+pxscale, pxscale) # in arcsec or mas (/10 doesn't change the result but gives smoother curves)
+    else:
+        separation = np.arange(pxscale/10, FOV/2+pxscale/10, pxscale/10) # in arcsec or mas (/10 doesn't change the result but gives smoother curves)
+
     #separation = np.arange(pxscale, FOV/2+pxscale, pxscale) # FOR FASTER CALCULATIONS (t_syst calculations)
     f = interp1d(profile[0], profile[1], bounds_error=False, fill_value=np.nan)
     if instru == "MIRIMRS":
@@ -206,6 +210,8 @@ def DIT_RON(instru, config_data, apodizer, PSF_profile, separation, star_spectru
             print(" Saturated detector even with the shortest integration time")
     else: # otherwise the DIT is given by the saturating DIT
         DIT = saturating_DIT # mn
+    if instru == "HiRISE" or instru == "VIPAPYRUS":
+        DIT = max_DIT
     if input_DIT is not None: # except if a DIT is input
         DIT = input_DIT # mn
     if DIT > exposure_time: # The DIT cannot be longer than the total exposure time
@@ -218,6 +224,8 @@ def DIT_RON(instru, config_data, apodizer, PSF_profile, separation, star_spectru
         RON_eff = RON
     if instru == 'ERIS' and RON_eff < 7: # effective RON low limit for ERIS
         RON_eff = 7
+    if RON_eff < 0.5:
+        RON_eff = 0.5
     if verbose:
         print(" DIT =", round(DIT*60, 2), "s / Saturating DIT =", round(saturating_DIT, 1), " mn / ", "RON =", round(RON_eff, 3), "e-")
     return DIT, RON_eff

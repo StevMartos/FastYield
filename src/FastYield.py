@@ -1071,7 +1071,10 @@ def archive_yield_bands_plot(instru="HARMONI", strehl="JQ1", thermal_model="BT-S
     else:
         if instru=="HARMONI":
             apodizers = ["NO_SP", "SP1", "SP_Prox"]
+
             ls_apodizers = ["-", "--", ":"]
+        
+
             planet_table = []
             iwa = 30 # mas
             NbPlanet = np.zeros((len(apodizers)))
@@ -1158,7 +1161,7 @@ def archive_yield_bands_plot(instru="HARMONI", strehl="JQ1", thermal_model="BT-S
     
 def detections_corner(instru="HARMONI", exposure_time=600, thermal_model="BT-Settl", reflected_model="PICASO", apodizer="NO_SP", strehl="JQ1", band="INSTRU"):
     smooth_corner = 1
-    ndim = 5 # Mp, Rp, Tp, d, a
+    ndim = 6 # Mp, Rp, Tp, d, a, sep
     config_data = get_config_data(instru)
 
     # WORKING ANGLE
@@ -1207,10 +1210,11 @@ def detections_corner(instru="HARMONI", exposure_time=600, thermal_model="BT-Set
     data_raw[:, 2] = np.array(planet_table_raw["PlanetTeq"].value)
     data_raw[:, 3] = np.log10(np.array(planet_table_raw["SMA"].value))
     data_raw[:, 4] = np.log10(np.array(planet_table_raw["Distance"].value))
+    data_raw[:, 5] = np.log10(np.array(planet_table_raw["AngSep"].value))
     figure = corner.corner( # https://corner.readthedocs.io/en/latest/api/
         data_raw,
         bins = 20,
-        labels = [r"$log(\frac{M_p}{M_{\oplus}})$", r"$log(\frac{R_p}{R_{\oplus}})$", r"$T \, [\mathrm{K}]$", r"$log(\frac{SMA}{AU})$", r"$log(\frac{d}{pc})$"],
+        labels = [r"$log(\frac{M_p}{M_{\oplus}})$", r"$log(\frac{R_p}{R_{\oplus}})$", r"$T \, [\mathrm{K}]$", r"$log(\frac{SMA}{AU})$", r"$log(\frac{d}{pc})$", r"$log(\frac{sep}{mas})$"],
         quantiles = [0.16, 0.5, 0.84], # below -+1 sigma 
         levels = [0.68, 0.95, 0.997], # 1, 2 and 3 sigma contour
         show_titles = True,
@@ -1234,6 +1238,7 @@ def detections_corner(instru="HARMONI", exposure_time=600, thermal_model="BT-Set
     data[:, 2] = np.array(planet_table["PlanetTeq"].value)
     data[:, 3] = np.log10(np.array(planet_table["SMA"].value))
     data[:, 4] = np.log10(np.array(planet_table["Distance"].value))
+    data[:, 5] = np.log10(np.array(planet_table["AngSep"].value))
     corner.corner(
         data,
         fig = figure,
@@ -1262,10 +1267,10 @@ def detections_corner_instrus_comparison(instru1="HARMONI", instru2="ANDES", apo
     strehls = [strehl1, strehl2]
     c_instrus = ["r", "b"]
     smooth_corner = 1
-    ndim = 5 # Mp, Rp, Tp, d, a
+    ndim = 6 # Mp, Rp, Tp, d, a, sep
     alpha_earth = 0.5
     color_earth = "g"
-    earth_values = np.array([np.log10(1), np.log10(1), 300, np.log10(1), None])
+    earth_values = np.array([np.log10(1), np.log10(1), 300, np.log10(1), None, None])
 
     # WORKING ANGLE
     IWA = np.zeros((len(instrus))) ; OWA = np.zeros((len(instrus)))
@@ -1318,10 +1323,11 @@ def detections_corner_instrus_comparison(instru1="HARMONI", instru2="ANDES", apo
     data_raw[:, 2] = np.array(planet_table_raw["PlanetTeq"].value)
     data_raw[:, 3] = np.log10(np.array(planet_table_raw["SMA"].value))
     data_raw[:, 4] = np.log10(np.array(planet_table_raw["Distance"].value))
+    data_raw[:, 5] = np.log10(np.array(planet_table_raw["AngSep"].value))
     figure = corner.corner( # https://corner.readthedocs.io/en/latest/api/
         data_raw,
         bins = 20,
-        labels = [r"$log(\frac{M_p}{M_{\oplus}})$", r"$log(\frac{R_p}{R_{\oplus}})$", r"$T \, [\mathrm{K}]$", r"$log(\frac{SMA}{AU})$", r"$log(\frac{d}{pc})$"],
+        labels = [r"$log(\frac{M_p}{M_{\oplus}})$", r"$log(\frac{R_p}{R_{\oplus}})$", r"$T \, [\mathrm{K}]$", r"$log(\frac{SMA}{AU})$", r"$log(\frac{d}{pc})$", r"$log(\frac{sep}{mas})$"],
         quantiles = [0.16, 0.5, 0.84], # below -+1 sigma 
         levels = [0.68, 0.95, 0.997], # 1, 2 and 3 sigma contour
         show_titles = True,
@@ -1350,6 +1356,7 @@ def detections_corner_instrus_comparison(instru1="HARMONI", instru2="ANDES", apo
         data[:, 2] = np.array(planet_table["PlanetTeq"].value)
         data[:, 3] = np.log10(np.array(planet_table["SMA"].value))
         data[:, 4] = np.log10(np.array(planet_table["Distance"].value))
+        data[:, 5] = np.log10(np.array(planet_table["AngSep"].value))
         corner.corner(
             data,
             fig = figure,
@@ -1399,10 +1406,10 @@ def detections_corner_models_comparison(model1="tellurics", model2="flat",
     models = [model1, model2]
     c_models = ["r", "b"]
     smooth_corner = 1
-    ndim = 5 # Mp, Rp, Tp, d, a
+    ndim = 6 # Mp, Rp, Tp, d, a, sep
     alpha_earth = 0.5
     color_earth = "g"
-    earth_values = np.array([np.log10(1), np.log10(1), 300, np.log10(1), None])
+    earth_values = np.array([np.log10(1), np.log10(1), 300, np.log10(1), None, None])
     config_data = get_config_data(instru)
     
     # WORKING ANGLE
@@ -1442,10 +1449,11 @@ def detections_corner_models_comparison(model1="tellurics", model2="flat",
     data_raw[:, 2] = np.array(planet_table_raw["PlanetTeq"].value)
     data_raw[:, 3] = np.log10(np.array(planet_table_raw["SMA"].value))
     data_raw[:, 4] = np.log10(np.array(planet_table_raw["Distance"].value))
+    data_raw[:, 5] = np.log10(np.array(planet_table_raw["AngSep"].value))
     figure = corner.corner( # https://corner.readthedocs.io/en/latest/api/
         data_raw,
         bins = 20,
-        labels = [r"$log(\frac{M_p}{M_{\oplus}})$", r"$log(\frac{R_p}{R_{\oplus}})$", r"$T \, [\mathrm{K}]$", r"$log(\frac{SMA}{AU})$", r"$log(\frac{d}{pc})$"],
+        labels = [r"$log(\frac{M_p}{M_{\oplus}})$", r"$log(\frac{R_p}{R_{\oplus}})$", r"$T \, [\mathrm{K}]$", r"$log(\frac{SMA}{AU})$", r"$log(\frac{d}{pc})$", r"$log(\frac{sep}{mas})$"],
         quantiles = [0.16, 0.5, 0.84], # below -+1 sigma 
         levels = [0.68, 0.95, 0.997], # 1, 2 and 3 sigma contour
         show_titles = True,
@@ -1476,6 +1484,7 @@ def detections_corner_models_comparison(model1="tellurics", model2="flat",
         data[:, 2] = np.array(planet_table["PlanetTeq"].value)
         data[:, 3] = np.log10(np.array(planet_table["SMA"].value))
         data[:, 4] = np.log10(np.array(planet_table["Distance"].value))
+        data[:, 5] = np.log10(np.array(planet_table["AngSep"].value))
         corner.corner(
             data,
             fig = figure,
@@ -1526,10 +1535,10 @@ def detections_corner_apodizers_comparison(exposure_time=600, thermal_model="BT-
     strehls = ["JQ1", "JQ1", "JQ1"]
     c_apodizers = ["r", "b", "g"]
     smooth_corner = 1
-    ndim = 5 # Mp, Rp, Tp, d, a
+    ndim = 6 # Mp, Rp, Tp, d, a, sep
     alpha_earth = 0.5
     color_earth = "k"
-    earth_values = np.array([np.log10(1), np.log10(1), 300, np.log10(1), None])
+    earth_values = np.array([np.log10(1), np.log10(1), 300, np.log10(1), None, None])
 
     # WORKING ANGLE
     config_data = get_config_data(instru)    
@@ -1565,10 +1574,11 @@ def detections_corner_apodizers_comparison(exposure_time=600, thermal_model="BT-
     data_raw[:, 2] = np.array(planet_table_raw["PlanetTeq"].value)
     data_raw[:, 3] = np.log10(np.array(planet_table_raw["SMA"].value))
     data_raw[:, 4] = np.log10(np.array(planet_table_raw["Distance"].value))
+    data_raw[:, 5] = np.log10(np.array(planet_table_raw["AngSep"].value))
     figure = corner.corner( # https://corner.readthedocs.io/en/latest/api/
         data_raw,
         bins = 20,
-        labels = [r"$log(\frac{M_p}{M_{\oplus}})$", r"$log(\frac{R_p}{R_{\oplus}})$", r"$T \, [\mathrm{K}]$", r"$log(\frac{SMA}{AU})$", r"$log(\frac{d}{pc})$"],
+        labels = [r"$log(\frac{M_p}{M_{\oplus}})$", r"$log(\frac{R_p}{R_{\oplus}})$", r"$T \, [\mathrm{K}]$", r"$log(\frac{SMA}{AU})$", r"$log(\frac{d}{pc})$", r"$log(\frac{sep}{mas})$"],
         quantiles = [0.16, 0.5, 0.84], # below -+1 sigma 
         levels = [0.68, 0.95, 0.997], # 1, 2 and 3 sigma contour
         show_titles = True,
@@ -1596,6 +1606,7 @@ def detections_corner_apodizers_comparison(exposure_time=600, thermal_model="BT-
         data[:, 2] = np.array(planet_table["PlanetTeq"].value)
         data[:, 3] = np.log10(np.array(planet_table["SMA"].value))
         data[:, 4] = np.log10(np.array(planet_table["Distance"].value))
+        data[:, 5] = np.log10(np.array(planet_table["AngSep"].value))
         corner.corner(
             data,
             fig = figure,

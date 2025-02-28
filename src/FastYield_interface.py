@@ -73,10 +73,11 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         self.__btn_harmoni = tk.Button(self.button_instru, text="ELT/HARMONI", command=self.btn_harmoni_clicked, bg="dark orange", fg="black", font=('Arial', 12, 'bold')) ; self.__btn_harmoni.grid(row=0, column=0, sticky="nsew") ; self.button_instru.grid_columnconfigure(0, weight=1)
         self.__btn_andes = tk.Button(self.button_instru, text="ELT/ANDES", command=self.btn_andes_clicked, bg="dark orange", fg="black", font=('Arial', 12, 'bold')) ; self.__btn_andes.grid(row=0, column=1, sticky="nsew") ; self.button_instru.grid_columnconfigure(1, weight=1)
         self.__btn_eris = tk.Button(self.button_instru, text="VLT/ERIS", command=self.btn_eris_clicked, bg="dark orange", fg="black", font=('Arial', 12, 'bold')) ; self.__btn_eris.grid(row=0, column=2, sticky="nsew") ; self.button_instru.grid_columnconfigure(2, weight=1)
-        self.__btn_mirimrs = tk.Button(self.button_instru, text="JWST/MIRI/MRS", command=self.btn_mirimrs_clicked, bg="dark orange", fg="black", font=('Arial', 12, 'bold')) ; self.__btn_mirimrs.grid(row=0, column=3, sticky="nsew") ; self.button_instru.grid_columnconfigure(3, weight=1)
-        self.__btn_nirspec = tk.Button(self.button_instru, text="JWST/NIRSpec/IFU", command=self.btn_nirspec_clicked, bg="dark orange", fg="black", font=('Arial', 12, 'bold')) ; self.__btn_nirspec.grid(row=0, column=4, sticky="nsew") ; self.button_instru.grid_columnconfigure(4, weight=1)
-        self.__btn_nircam = tk.Button(self.button_instru, text="JWST/NIRCam", command=self.btn_nircam_clicked, bg="dark orange", fg="black", font=('Arial', 12, 'bold')) ; self.__btn_nircam.grid(row=0, column=5, sticky="nsew") ; self.button_instru.grid_columnconfigure(5, weight=1)
-        self.__btn_vipapyrus = tk.Button(self.button_instru, text="OHP/VIPAPYRUS", command=self.btn_vipapyrus_clicked, bg="dark orange", fg="black", font=('Arial', 12, 'bold')) ; self.__btn_vipapyrus.grid(row=0, column=5, sticky="nsew") ; self.button_instru.grid_columnconfigure(5, weight=1)
+        self.__btn_hirise = tk.Button(self.button_instru, text="VLT/HiRISE", command=self.btn_hirise_clicked, bg="dark orange", fg="black", font=('Arial', 12, 'bold')) ; self.__btn_hirise.grid(row=0, column=3, sticky="nsew") ; self.button_instru.grid_columnconfigure(3, weight=1)
+        self.__btn_mirimrs = tk.Button(self.button_instru, text="JWST/MIRI/MRS", command=self.btn_mirimrs_clicked, bg="dark orange", fg="black", font=('Arial', 12, 'bold')) ; self.__btn_mirimrs.grid(row=0, column=4, sticky="nsew") ; self.button_instru.grid_columnconfigure(4, weight=1)
+        self.__btn_nirspec = tk.Button(self.button_instru, text="JWST/NIRSpec/IFU", command=self.btn_nirspec_clicked, bg="dark orange", fg="black", font=('Arial', 12, 'bold')) ; self.__btn_nirspec.grid(row=0, column=5, sticky="nsew") ; self.button_instru.grid_columnconfigure(5, weight=1)
+        self.__btn_nircam = tk.Button(self.button_instru, text="JWST/NIRCam", command=self.btn_nircam_clicked, bg="dark orange", fg="black", font=('Arial', 12, 'bold')) ; self.__btn_nircam.grid(row=0, column=6, sticky="nsew") ; self.button_instru.grid_columnconfigure(6, weight=1)
+        self.__btn_vipapyrus = tk.Button(self.button_instru, text="OHP/VIPAPYRUS", command=self.btn_vipapyrus_clicked, bg="dark orange", fg="black", font=('Arial', 12, 'bold')) ; self.__btn_vipapyrus.grid(row=0, column=7, sticky="nsew") ; self.button_instru.grid_columnconfigure(7, weight=1)
 
         # CHOIX DES UNITES + texp  + name
         self.button_units_texp_name = tk.Frame(self) ; self.button_units_texp_name.pack(side=tk.TOP, fill=tk.X)
@@ -143,7 +144,8 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         if self.config_data["base"]=="ground":
             if self.instru == "HARMONI":
                 self.strehl = "JQ1"
-            elif self.instru == "ANDES" or self.instru=="VIPAPYRUS":
+            elif self.instru == "ANDES" or self.instru=="VIPAPYRUS" or self.instru=="HiRISE":
+                print("jehrikzhrezhrhjherhi")
                 self.strehl = "MED"
             elif self.instru == "ERIS":
                 self.strehl = "JQ0"
@@ -182,6 +184,9 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         self.btn_instru_clicked()
     def btn_eris_clicked(self):
         self.instru = "ERIS"
+        self.btn_instru_clicked()
+    def btn_hirise_clicked(self):
+        self.instru = "HiRISE"
         self.btn_instru_clicked()
     def btn_mirimrs_clicked(self):
         self.instru = "MIRIMRS"
@@ -245,7 +250,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         popdown = self.__list_strehls.tk.eval('ttk::combobox::PopdownWindow %s' % self.__list_strehls)
         self.__list_strehls.tk.call('%s.f.l' % popdown, 'configure', '-font', self.__list_strehls['font'])
         self.__list_strehls['values'] = list_strehls
-        self.__list_strehls.current(0) #index de l'élément sélectionné
+        self.__list_strehls.current([i for i, x in enumerate(list_strehls) if x == self.strehl][0]) #index de l'élément sélectionné
         self.__list_strehls.bind("<<ComboboxSelected>>", lambda _: self.strehl_clicked())
     def band_clicked(self):
         self.band = self.__list_bands.get()
@@ -396,6 +401,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
                 self.planet_table = load_planet_table(self.table+"_Pull_"+self.instru+"_"+self.apodizer+"_"+self.strehl+"_with_systematics_"+self.model+".ecsv")
         else:
             self.planet_table = load_planet_table(self.table+"_Pull_"+self.instru+"_"+self.apodizer+"_"+self.strehl+"_without_systematics_"+self.model+".ecsv")
+        print(self.table+"_Pull_"+self.instru+"_"+self.apodizer+"_"+self.strehl+"_without_systematics_"+self.model+".ecsv")
         # Filtrage les planètes non-visibles depuis le site d'observation
         if self.config_data["base"]=="ground":
             self.get_coords()

@@ -81,7 +81,8 @@ def colormap_bandwidth_resolution_with_constant_Nlambda(T_planet, T_star, lg_pla
     for plot in plots:
         plt.figure(dpi=300) ; plt.yscale('log') ; plt.xlabel("central wavelength range $\lambda_0$ [µm]", fontsize=14) ; plt.ylabel("instrumental resolution R", fontsize=14) ; plt.ylim([R[0], R[-1]]) ; plt.xlim(lmin, lmax)
         if plot=="SNR":
-            plt.contour(lambda_0, R, 100*SNR, linewidths=0.333, colors='k') ; plt.pcolormesh(lambda_0, R, 100*SNR, cmap=plt.get_cmap('rainbow'), vmin=0, vmax=100)
+            plt.contour(lambda_0, R, 100*SNR, linewidths=0.333, colors='k')
+            plt.pcolormesh(lambda_0, R, 100*SNR, cmap=plt.get_cmap('rainbow'), vmin=0, vmax=100)
             cbar = plt.colorbar() ; cbar.set_label('$GAIN_{S/N}$ [%]', fontsize=14, labelpad=20, rotation=270)
             if tellurics :
                 if spectrum_contributions=="thermal":
@@ -818,8 +819,8 @@ def colormap_best_parameters_earth(Npx=10000, T_planet=288, T_star=5800, lg_plan
     D_space = 8 # m
     D_ground = 40 # m
     
-    S_space = (D_space/2)**2 * np.pi # m
-    S_ground = (D_ground/2)**2 * np.pi # m
+    S_space = (D_space/2)**2 * np.pi # m2
+    S_ground = (D_ground/2)**2 * np.pi # m2
     
     N = 200
     R = np.logspace(np.log10(1000), np.log10(100000), num=N)
@@ -831,7 +832,7 @@ def colormap_best_parameters_earth(Npx=10000, T_planet=288, T_star=5800, lg_plan
     delta_lambda = (lmin+lmax)/2 / (2*res_model)
     wave = np.arange(0.9*lmin, 1.1*lmax, delta_lambda)
     star = load_star_spectrum(T_star, lg_star)
-    star = star.interpolate_wavelength(wave, renorm=False) # on réinterpole le flux (en densité (énergie)) sur wave_band
+    star = star.interpolate_wavelength(wave, renorm=False)
     star.flux *= float((star_radius/d).decompose()**2)
     star = star.broad(vsini_star)
         
@@ -892,7 +893,6 @@ def colormap_best_parameters_earth(Npx=10000, T_planet=288, T_star=5800, lg_plan
     plt.title("Eart-like spectrum")
     plt.plot(wave, planet_thermal.flux/norm, 'r-', label=f"thermal ({thermal_model})")
     plt.plot(wave, planet_reflected.flux/norm, 'b-', label=f"reflected ({reflected_model})")
-    print("HERE = ", bb_planet)
     plt.plot(wave, bb_planet/norm_bb, 'k-', label=f"blackbody ({round(100*np.nansum(planet_thermal.flux+planet_reflected.flux) / np.nansum(bb_planet), 1)} %)")
     plt.legend()
     if norm_plot == "1":
