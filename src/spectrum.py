@@ -730,7 +730,7 @@ def spectrum_instru(band0, R, config_data, mag, spectrum):
     Parameters
     ----------
     band0: str
-        wavelength range in which magnitude is entered ("J", "H", etc.)
+        wavelength range in which the magnitude is entered ("J", "H", etc.)
     R: float
         spectral resolution of the input spectrum (it can be arbitrary but must be well above the instrumental spectral resolution)
     config_data: collections
@@ -746,38 +746,27 @@ def spectrum_instru(band0, R, config_data, mag, spectrum):
         instrumental-wavelength-range-restricted and magnitude-adjusted spectrum in photons/min received
     """
     try:
-        lambda_min_band0 = globals()["lmin_"+band0] ; lambda_max_band0 = globals()["lmax_"+band0]
+        lmin_band0 = globals()["lmin_"+band0] ; lmax_band0 = globals()["lmax_"+band0]
     except:
-        if band0 == "J": # Calculation of the number of photons/mn for a mag in the given band and the number of photons/mnn initially in the same band
-            lambda_min_band0 = 1.085 ; lambda_max_band0 = 1.345 # in µm
-        elif band0 == "H":
-            lambda_min_band0 = 1.509 ; lambda_max_band0 = 1.799 # in µm
-        elif band0 == 'Ks':
-            lambda_min_band0 = 1.997 ; lambda_max_band0 = 2.317 # in µm
-        elif band0 == 'K':
-            lambda_min_band0 = 1.974 ; lambda_max_band0 = 2.384 # in µm
-        elif band0 == "L":
-            lambda_min_band0 = 3.262 ; lambda_max_band0 = 3.832 # in µm
-        elif band0 == "L'":
-            lambda_min_band0 = 3.436 ; lambda_max_band0 = 4.086 # in µm
-        elif band0 == "instru":
-            lambda_min_band0 = config_data["lambda_range"]["lambda_min"] ; lambda_max_band0 = config_data["lambda_range"]["lambda_max"] # in µm
-        else:
-            raise KeyError(f"{band0} is not considered band to define the magnitude")
-    dl_band0 = ((lambda_max_band0+lambda_min_band0)/2)/(2*R)
-    wave_band0 = np.arange(lambda_min_band0, lambda_max_band0, dl_band0) # wavelength array on band0 [µm]
-    spec = spectrum.interpolate_wavelength(wave_band0, renorm=False) # interpolating the input spectrum on band0
-    vega_spec = load_vega_spectrum() # getting the vega spectrum
-    vega_spec = vega_spec.interpolate_wavelength(wave_band0, renorm=False) # interpolating the vega spectrum on band0
-    ratio = np.nanmean(vega_spec.flux)*10**(-0.4*mag) / np.nanmean(spec.flux) # ratio by which to adjust the spectrum flux in order to have the input magnitude
+        raise KeyError(f"{band0} is not a considered band to define the magnitude, please choose among: {bands}, {instrus}")
+    
+    dl_band0   = ((lmax_band0+lmin_band0)/2)/(2*R)
+    wave_band0 = np.arange(lmin_band0, lmax_band0, dl_band0) # wavelength array on band0 [µm]
+    spec       = spectrum.interpolate_wavelength(wave_band0, renorm=False) # interpolating the input spectrum on band0
+    vega_spec  = load_vega_spectrum() # getting the vega spectrum
+    vega_spec  = vega_spec.interpolate_wavelength(wave_band0, renorm=False) # interpolating the vega spectrum on band0
+    ratio      = np.nanmean(vega_spec.flux)*10**(-0.4*mag) / np.nanmean(spec.flux) # ratio by which to adjust the spectrum flux in order to have the input magnitude
+    
     # Conversion to photons/mn + restriction of spectra to instrumental range + adjustment of spectra to the input magnitude
-    lambda_min_instru = config_data["lambda_range"]["lambda_min"] ; lambda_max_instru = config_data["lambda_range"]["lambda_max"] # [µm]
-    dl_instru = ((lambda_max_instru+lambda_min_instru)/2)/(2*R) 
-    wave_instru = np.arange(0.98*lambda_min_instru, 1.02*lambda_max_instru, dl_instru) # constant and linear wavelength array on the instrumental bandwidth with equivalent resolution than the raw one
-    spectrum.flux *= ratio # adjusting the spectrum to the input magnitude
+    lmin_instru      = config_data["lambda_range"]["lambda_min"]
+    lmax_instru      = config_data["lambda_range"]["lambda_max"] # [µm]
+    dl_instru        = ((lmax_instru+lmin_instru)/2)/(2*R) 
+    wave_instru      = np.arange(lmin_instru, lmax_instru, dl_instru) # constant and linear wavelength array on the instrumental bandwidth with equivalent resolution than the raw one
+    spectrum.flux   *= ratio # adjusting the spectrum to the input magnitude
     spectrum_density = spectrum.interpolate_wavelength(wave_instru, renorm = False) # in order to have a spectrum in density (i.e. J/s/m2/µm)     
-    spectrum_instru = spectrum.set_nbphotons_min(config_data, wave_instru) # J/s/m²/µm => photons/mn on the instrumental bandwidth
-    return spectrum_instru, spectrum_density # in ph/mn and J/s/m2/µm respectrively
+    spectrum_instru  = spectrum.set_nbphotons_min(config_data, wave_instru) # J/s/m²/µm => photons/mn on the instrumental bandwidth
+    
+    return spectrum_instru, spectrum_density # in ph/mn and J/s/m2/µm respectively
 
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -801,12 +790,13 @@ def spectrum_band(config_data, band, spectrum_instru):
     spectrum_instru: class Spectrum
         band-restricted and resolution-degrated spectrum in photons/min received
     """
-    lmin = config_data['gratings'][band].lmin ; lmax = config_data['gratings'][band].lmax # lambda_min/lambda_max of the considered band
-    R = config_data['gratings'][band].R # spectral resolution of the band
+    lmin = config_data['gratings'][band].lmin # lambda_min of the considered band
+    lmax = config_data['gratings'][band].lmax # lambda_max of the considered band
+    R    = config_data['gratings'][band].R    # spectral resolution of the band
     if R is None: # if not a spectro-imager (e.g. NIRCam)
         R = spectrum_instru.R # leaves resolution at native resolution
-    dl_band = ((lmin+lmax)/2)/(2*R)
-    wave_band = np.arange(lmin, lmax, dl_band) # constant and linear wavelength array on the considered band
+    dl_band       = ((lmin+lmax)/2)/(2*R)
+    wave_band     = np.arange(lmin, lmax, dl_band)                             # constant and linear wavelength array on the considered band
     spectrum_band = spectrum_instru.degrade_resolution(wave_band, renorm=True) # degradation from spectrum resolution to spectral resolution of the considered band
     
     return spectrum_band # degrated spectrum in ph /mn

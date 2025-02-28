@@ -37,14 +37,14 @@ def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_
         cmap = plt.get_cmap("Spectral", len(config_data["gratings"])+1)
     else:
         cmap = plt.get_cmap("Spectral", len(config_data["gratings"]))
-    size_core = config_data["size_core"] ; # aperture size on which the signal is integrated (A_FWHM = Afwhm) (in pixels)
-    A_FWHM = size_core**2 ; 
-    saturation_e = config_data["spec"]["saturation_e"] # full well capacity of the detector (in e-)
-    min_DIT = config_data["spec"]["minDIT"] # minimal integration time (in mn)
-    max_DIT = config_data["spec"]["maxDIT"] # maximal integration time (in mn)
+    size_core          = config_data["size_core"] ; # aperture size on which the signal is integrated (A_FWHM = Afwhm) (in pixels)
+    A_FWHM             = size_core**2 ; 
+    saturation_e       = config_data["spec"]["saturation_e"] # full well capacity of the detector (in e-)
+    min_DIT            = config_data["spec"]["minDIT"] # minimal integration time (in mn)
+    max_DIT            = config_data["spec"]["maxDIT"] # maximal integration time (in mn)
     quantum_efficiency = config_data["spec"]["Q_eff"] # quantum efficiency (in e-/ph)
-    RON = config_data["spec"]["RON"] # read out noise (in e-/DIT)
-    dark_current = config_data["spec"]["dark_current"] # dark current (in e-/s)
+    RON                = config_data["spec"]["RON"] # read out noise (in e-/DIT)
+    dark_current       = config_data["spec"]["dark_current"] # dark current (in e-/s)
     
     #------------------------------------------------------------------------------------------------
     
@@ -258,7 +258,7 @@ def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_
             if coronagraph is None:
                 print(" Fraction of flux in the core of the PSF: f =", round(100*fraction_PSF, 1), "%")
             if post_processing == "molecular mapping":
-                print(" Number of spectral channels:", len(wave_band), " & R =", round(R))
+                print(" Number of spectral channels:", len(wave_band), "& R =", round(R))
                 if calculation == "SNR" or calculation == "corner plot":
                     print(" Useful molecular mapping signal from the planet: α =", round(np.nanmean(alpha)), "ph/mn")
                 print(" Signal loss due to self-subtraction: β/α =", round(100*np.nanmean(beta)/np.nanmean(alpha), 1), "%")
@@ -642,35 +642,54 @@ def FastCurves(calculation="contrast", instru="HARMONI", exposure_time=120, mag_
     """
     time1 = time.time() ; warnings.filterwarnings('ignore', category=UserWarning, append=True)
     
-    if instru not in instru_name_list: # checking if the instru is in FastCurves
+    # checking if the instrument is considered in FastCurves
+    if instru not in instru_name_list:
         raise KeyError(f"{instru} is not yet considered in FastCurves. Available instruments: {instru_name_list}")
-    if instru == "NIRCam" and coronagraph is None: # only one coronographic mask is yet considered in FastCurves for NIRCam
+    
+    # only one coronographic mask is yet considered in FastCurves for NIRCam
+    if instru == "NIRCam" and coronagraph is None:
         coronagraph = "MASK335R"
-    config_data = get_config_data(instru) # getting the instruments specs
+        
+    # getting the instruments specs
+    config_data = get_config_data(instru)
+    
+    # Space- or Ground-based observations
     if config_data["base"] == "space": # space-based observations => no tellurics and no strehl
         tellurics = False ; strehl = "NO_JQ"
     elif config_data["base"] == "ground": # space-based observations => tellurics and strehl
         tellurics = True 
+        
+    # checking if the apodizer is considered for the instrument
     if apodizer not in config_data["apodizers"]:
         raise KeyError(f"No PSF profiles for {apodizer} strehl with {instru}. Available apodizers: {config_data['apodizers']}")
-    if strehl not in config_data["strehls"]: # checking if the strehl is considered for the instrument
+    
+    # checking if the strehl is considered for the instrument
+    if strehl not in config_data["strehls"]:
         raise KeyError(f"No PSF profiles for {strehl} strehl with {instru}. Available strehl values: {config_data['strehls']}")
-    sep_unit = config_data["sep_unit"] # angular separation unit (arcsec or mas)
-    if post_processing is None: # post-processing method considered
+    
+    # angular separation unit (arcsec or mas)
+    sep_unit = config_data["sep_unit"]
+    
+    # post-processing method considered
+    if post_processing is None:
         if "IFU" in config_data["type"]:
             post_processing = "molecular mapping"
         elif config_data["type"] == "imager":
             post_processing = "ADI+RDI"
     
-    if star_spectrum is None: # if not input, load the star spectrum
+    # if not input, load the star spectrum
+    if star_spectrum is None:
         star_spectrum = load_star_spectrum(T_star, lg_star) # star spectrum (BT-NextGen GNS93)
-        star_spectrum.crop(0.98*config_data['lambda_range']['lambda_min'], 1.02*config_data['lambda_range']['lambda_max'])
+        try:
+            star_spectrum.crop(0.98*min(globals()["lmin_"+band0], globals()["lmin_"+instru]), 1.02*max(globals()["lmax_"+band0], globals()["lmax_"+instru]))
+        except:
+            raise KeyError(f"{band0} is not a considered band to define the magnitude, please choose among: {bands}, {instrus}")
         # Rotational broadening of the spectrum [km/s]
         if vsini_star > 0: # the wavelength axis needs to be evenly spaced
             dl_star       = star_spectrum.wavelength - np.roll(star_spectrum.wavelength, 1) ; dl_star[0] = dl_star[1] ; dl_star[dl_star == 0] = np.nanmean(dl_star) # delta lambda array
             R_star        = np.nanmax(star_spectrum.wavelength/(2*dl_star)) # interpolation Resolution (need to be the max res to avoid nan with cg.downvin)
-            if R_star > 1e6: # fixing the upper limit of resolution in order to speeds up the calculation (it also need to be high enough for instruments with very high resolution)
-                R_star = 1e6
+            if R_star > 300_000: # fixing the upper limit of resolution in order to speeds up the calculation (it also need to be high enough for instruments with very high resolution)
+                R_star    = 300_000
             dl_star       = ((star_spectrum.wavelength[0]+star_spectrum.wavelength[-1])/2)/(2*R_star)
             wave_star     = np.arange(star_spectrum.wavelength[0], star_spectrum.wavelength[-1], dl_star) # constant and linear wavelength array on the considered band
             star_spectrum = star_spectrum.interpolate_wavelength(wave_star, renorm=False)
@@ -678,22 +697,27 @@ def FastCurves(calculation="contrast", instru="HARMONI", exposure_time=120, mag_
         # Doppler shifting the spectrum [km/s]
         star_spectrum = star_spectrum.doppler_shift(rv_star)
             
-    if planet_spectrum is None: # if not input, load the planet spectrum
+    # if not input, load the planet spectrum
+    if planet_spectrum is None:
         planet_spectrum = load_planet_spectrum(T_planet, lg_planet, model, instru=instru) # planet spectrum: class Spectrum(wavel, flux, R, T) in J/s/m²/µm according to the considered model
-        planet_spectrum.crop(0.98*config_data['lambda_range']['lambda_min'], 1.02*config_data['lambda_range']['lambda_max'])
+        try:
+            planet_spectrum.crop(0.98*min(globals()["lmin_"+band0], globals()["lmin_"+instru]), 1.02*max(globals()["lmax_"+band0], globals()["lmax_"+instru]))
+        except:
+            raise KeyError(f"{band0} is not a considered band to define the magnitude, please choose among: {bands}, {instrus}")
         # Rotational broadening of the spectrum [km/s]
         if vsini_planet > 0: # the wavelength axis needs to be evenly spaced
             dl_planet       = planet_spectrum.wavelength - np.roll(planet_spectrum.wavelength, 1) ; dl_planet[0] = dl_planet[1] ; dl_planet[dl_planet == 0] = np.nanmean(dl_planet) # delta lambda array
             R_planet        = np.nanmax(planet_spectrum.wavelength/(2*dl_planet)) # interpolation Resolution (need to be the max res to avoid nan with cg.downvin)
-            if R_planet > 1e6: # fixing the upper limit of resolution in order to speeds up the calculation (it also need to be high enough for instruments with very high resolution)
-                R_planet = 1e6
+            if R_planet > 300_000: # fixing the upper limit of resolution in order to speeds up the calculation (it also need to be high enough for instruments with very high resolution)
+                R_planet    = 300_000
             dl_planet       = ((planet_spectrum.wavelength[0]+planet_spectrum.wavelength[-1])/2)/(2*R_planet)
             wave_planet     = np.arange(planet_spectrum.wavelength[0], planet_spectrum.wavelength[-1], dl_planet) # constant and linear wavelength array on the considered band
             planet_spectrum = planet_spectrum.interpolate_wavelength(wave_planet, renorm=False)
         planet_spectrum = planet_spectrum.broad(vsini_planet)
         # Doppler shifting the spectrum [km/s]
         planet_spectrum = planet_spectrum.doppler_shift(rv_planet)
-    
+
+    # FastCurves calculation
     name_bands, separation, curves, signal_bands, sigma_s_2_bands, sigma_ns_2_bands, DIT_bands, planet_flux_bands, star_flux_bands, wave_bands = FastCurves_main(calculation=calculation, instru=instru, exposure_time=exposure_time, mag_star=mag_star, band0=band0, planet_spectrum=planet_spectrum, star_spectrum=star_spectrum, tellurics=tellurics, 
                                                                                                                                                                  apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, systematic=systematic, PCA=PCA, PCA_mask=PCA_mask, Nc=Nc, channel=channel, planet_name=planet_name, separation_planet=separation_planet, mag_planet=mag_planet, show_plot=show_plot, verbose=verbose, 
                                                                                                                                                                  post_processing=post_processing, sep_unit=sep_unit, bkgd=bkgd, Rc=Rc, filter_type=filter_type, input_DIT=input_DIT, band_only=band_only)
@@ -701,7 +725,8 @@ def FastCurves(calculation="contrast", instru="HARMONI", exposure_time=120, mag_
     if verbose:
         print(f'\n FastCurves {calculation} calculation took {round(time.time()-time1, 1)} s')
 
-    if return_SNR_planet: # For FASTYIELD
+    # For FASTYIELD
+    if return_SNR_planet:
         if calculation != "SNR":
             raise KeyError("THE CALCULATION NEED TO BE SET ON SNR !")
         if separation_planet is None:
@@ -717,8 +742,12 @@ def FastCurves(calculation="contrast", instru="HARMONI", exposure_time=120, mag_
             if systematic:
                 sigma_s_planet[nb] = np.sqrt(sigma_s_2_bands[nb][idx])
         return name_bands, SNR_planet, signal_planet, sigma_ns_planet, sigma_s_planet, np.array(DIT_bands)
+    
+    # For deep analysis
     elif return_quantity:
         return name_bands, separation, signal_bands, sigma_s_2_bands, sigma_ns_2_bands, DIT_bands, planet_flux_bands, star_flux_bands, wave_bands
+    
+    # Standard returns
     else:
         return name_bands, separation, curves
 

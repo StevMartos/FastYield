@@ -1,24 +1,18 @@
 # Some parts of this script are taken from PSISIM (see: https://github.com/planetarysystemsimager/psisim)
-import scipy.interpolate as si
-import pyvo
-import json
-import os
-import copy
-from astropy.table import QTable, Table, Column, MaskedColumn
-import importlib
 from src.FastCurves import *
-import corner
-import matplotlib.lines as mlines
-from matplotlib.cm import ScalarMappable
+
+
 
 instru_with_systematics = ["MIRIMRS", "NIRSpec"]
-thermal_models = ["None", "BT-Settl", "Exo-REM", "PICASO"]
-reflected_models = ["None", "tellurics", "flat", "PICASO"]
+thermal_models          = ["None", "BT-Settl", "Exo-REM", "PICASO"]
+reflected_models        = ["None", "tellurics", "flat", "PICASO"]
+
 
 
 path_file = os.path.dirname(__file__)
 archive_path = os.path.join(os.path.dirname(path_file), "sim_data/Archive_table/")
 simulated_path = os.path.join(os.path.dirname(path_file), "sim_data/Simulated_table/")
+
 
     
 class ExoArchive_Universe():
@@ -700,16 +694,6 @@ def create_fastcurves_table(table="Archive"): # take ~ 3 minutes for Archive and
     if table == "Archive":
         planet_table = inject_known_values(planet_table)
         
-    # Getting all instrus limits
-    LMIN = 1 ; LMAX = 1 # µm
-    for instru in config_data_list:
-        globals()["lmin_"+instru["name"]] = get_config_data(instru["name"])["lambda_range"]["lambda_min"]
-        globals()["lmax_"+instru["name"]] = get_config_data(instru["name"])["lambda_range"]["lambda_max"]
-        if LMIN > get_config_data(instru["name"])["lambda_range"]["lambda_min"]:
-            LMIN = get_config_data(instru["name"])["lambda_range"]["lambda_min"]
-        if LMAX < get_config_data(instru["name"])["lambda_range"]["lambda_max"]:
-            LMAX = get_config_data(instru["name"])["lambda_range"]["lambda_max"]
-    
     # defining bands and vega spectrum
     wave_instru     = np.arange(LMIN, LMAX, 1e-2)
     wave_K          = wave_instru[(wave_instru>=lmin_K)&(wave_instru<=lmax_K)]

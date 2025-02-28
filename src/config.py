@@ -251,15 +251,7 @@ config_data_VIPAPYRUS = {
 
 
 
-
-
-
-
-
-
-
-
-
+#######################################################################################################################
 
 
 
@@ -268,22 +260,20 @@ instru_name_list = ["HARMONI", "ANDES", "ERIS", "MIRIMRS", "NIRCam", "NIRSpec", 
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-bands = []
-for instru in config_data_list:
-    globals()["lmin_"+instru["name"]] = get_config_data(instru["name"])["lambda_range"]["lambda_min"]
-    globals()["lmax_"+instru["name"]] = get_config_data(instru["name"])["lambda_range"]["lambda_max"]
-    config_data = get_config_data(instru["name"])
+# ALL BANDS
+LMIN    = 1 # µm
+LMAX    = 1 # µm
+bands   = []
+instrus = []
+for config_data in config_data_list:
+    instrus.append(config_data["name"])
+    globals()["lmin_"+config_data["name"]] = config_data["lambda_range"]["lambda_min"]
+    globals()["lmax_"+config_data["name"]] = config_data["lambda_range"]["lambda_max"]
+    if LMIN > get_config_data(config_data["name"])["lambda_range"]["lambda_min"]:
+        LMIN = get_config_data(config_data["name"])["lambda_range"]["lambda_min"]
+    if LMAX < get_config_data(config_data["name"])["lambda_range"]["lambda_max"]:
+        LMAX = get_config_data(config_data["name"])["lambda_range"]["lambda_max"]
+    config_data = get_config_data(config_data["name"])
     for name_band in config_data["gratings"]:
         if name_band not in bands:
             bands.append(name_band)

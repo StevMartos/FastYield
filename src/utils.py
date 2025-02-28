@@ -20,6 +20,7 @@ from astropy.units import Quantity
 from astropy.coordinates import EarthLocation, AltAz, get_body, SkyCoord
 from astropy.time import Time
 from astropy.modeling import models, fitting
+from astropy.table import QTable, Table, Column, MaskedColumn
 import warnings
 import os
 import time
