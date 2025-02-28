@@ -5,6 +5,7 @@ from src.FastYield_interface import *
 from src.DataAnalysis_interface import *
 
 
+
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
 # Graphic Interface :
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -12,6 +13,8 @@ from src.DataAnalysis_interface import *
 #FastCurves_interface() # need an update
 FastYield_interface()
 #DataAnalysis_interface()
+
+
 
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
 # update FastYield :
@@ -26,14 +29,13 @@ FastYield_interface()
 #archive_yield(exposure_time=120, contrast=True, save=False)
 #archive_yield_plot(fraction=False)
 
+
+
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
 # FastCurves (theoritical cases) :
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-# Pour comparer avec FastCurves v0
 #FastCurves(instru="HARMONI", model="BT-Settl", calculation="contrast", T_planet=1000, lg_planet=4.0, mag_star=6, band0='instru', T_star=9600, lg_star=4.0, exposure_time=120, apodizer="SP1", strehl="MED")
-
-
 
 #FastCurves(instru="HARMONI", model="BT-Settl", calculation="contrast", T_planet=1000, lg_planet=4.0, mag_star=6, band0='K', T_star=6000, lg_star=4.0, exposure_time=120, apodizer="NO_SP", strehl="JQ1")
 
