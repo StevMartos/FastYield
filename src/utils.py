@@ -2,11 +2,13 @@ from src.config import * # + numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
 from matplotlib.cm import get_cmap
+import matplotlib.colors as mcolors
 import matplotlib
 from scipy.interpolate import interp1d, interp2d, RegularGridInterpolator
 from scipy.ndimage.filters import gaussian_filter, gaussian_filter1d
 from scipy.special import comb
 from scipy.signal import savgol_filter
+from scipy.ndimage import shift
 from PyAstronomy import pyasl
 import pandas as pd
 import coronagraph as cg
@@ -33,6 +35,7 @@ import copy
 from numba import njit, prange
 from multiprocessing import Pool, cpu_count
 import pyvo as vo
+
 
 
 warnings.filterwarnings('ignore', category=UserWarning, append=True)
@@ -166,103 +169,77 @@ def annular_mask(R_int, R_ext, size, value=np.nan):
     return mask
 
 def crop(data, Y0=None, X0=None, R_crop=None, return_center=False):
-    if data.ndim == 3 :
-        cube = np.copy(data)
-        A = np.nanmedian(cube, axis=0)
-    elif data.ndim == 2 :
-        A = np.copy(data)
-    A = np.nan_to_num(A)
-    Y0, X0 = np.unravel_index(np.argmax(A, axis=None), A.shape)
-    if R_crop is None :
-        R_crop = max(A.shape[0]-Y0, A.shape[1]-X0, Y0, X0)
-    #print("X0 = ", X0, " / Y0 = ", Y0, " / R_crop = ", R_crop)
-    if data.ndim == 3 :
-        B = np.zeros((data.shape[0], 2*R_crop+1, 2*R_crop+1)) + np.nan
-        for i in range(A.shape[0]):
-            for j in range(A.shape[1]):
-                if  0 <= R_crop-Y0+i <= 2*R_crop and 0 <= R_crop-X0+j <= 2*R_crop :
-                    B[:, R_crop-Y0+i, R_crop-X0+j] = data[:, i, j]
-        while np.isnan(B[:, 0, :]).all() and np.isnan(B[:, -1, :]).all() and np.isnan(B[:, :, 0]).all() and np.isnan(B[:, :, -1]).all(): # crop the edges if they are all nan
-            B = B[:, 1:-1, 1:-1]
-    elif data.ndim == 2 :
-        B = np.zeros((2*R_crop+1, 2*R_crop+1)) + np.nan
-        for i in range(A.shape[0]):
-            for j in range(A.shape[1]):
-                if  0 <= R_crop-Y0+i <= 2*R_crop and 0 <= R_crop-X0+j <= 2*R_crop :
-                    B[R_crop-Y0+i, R_crop-X0+j] = data[i, j]
-        while np.isnan(B[0, :]).all() and np.isnan(B[-1, :]).all() and np.isnan(B[:, 0]).all() and np.isnan(B[:, -1]).all():
-            B = B[1:-1, 1:-1]
+    data = np.nan_to_num(data)
+    # Calcul du centre global sur la médiane du cube si non fourni
+    if Y0 is None or X0 is None:
+        if data.ndim == 3:
+            A = np.nanmedian(data, axis=0)
+        else:
+            A = data
+        Y0, X0 = np.unravel_index(np.argmax(A, axis=None), A.shape)
+    # Calcul du rayon de recadrage si non fourni
+    if R_crop is None:
+        R_crop = max(data.shape[-2] - Y0, data.shape[-1] - X0, Y0, X0)
+    # Détermination des limites de recadrage
+    y_min = max(0, Y0 - R_crop)
+    y_max = min(data.shape[-2], Y0 + R_crop + 1)
+    x_min = max(0, X0 - R_crop)
+    x_max = min(data.shape[-1], X0 + R_crop + 1)
+    # Découpage des indices pour l'image recadrée
+    crop_y_min = R_crop - (Y0 - y_min)
+    crop_y_max = crop_y_min + (y_max - y_min)
+    crop_x_min = R_crop - (X0 - x_min)
+    crop_x_max = crop_x_min + (x_max - x_min)
+    # Création d'un tableau de sortie initialisé avec des NaN
+    if data.ndim == 3:
+        B = np.full((data.shape[0], 2 * R_crop + 1, 2 * R_crop + 1), np.nan)
+        B[:, crop_y_min:crop_y_max, crop_x_min:crop_x_max] = data[:, y_min:y_max, x_min:x_max]
+    else:
+        B = np.full((2 * R_crop + 1, 2 * R_crop + 1), np.nan)
+        B[crop_y_min:crop_y_max, crop_x_min:crop_x_max] = data[y_min:y_max, x_min:x_max]
     if return_center:
         return B, Y0, X0
     else:
         return B
-
-def crop_complex(data, Y0=None, X0=None, R_crop=None):
-    if data.ndim == 3 :
-        cube = np.copy(data)
-        A = np.nanmedian(cube, axis=0)
-    elif data.ndim == 2 :
-        A = np.copy(data)
-    A = np.nan_to_num(A)
-    Y0, X0 = np.unravel_index(np.argmax(A, axis=None), A.shape)
-    if R_crop is None :
-        R_crop = max(A.shape[0]-Y0, A.shape[1]-X0, Y0, X0)
-    #print("X0 = ", X0, " / Y0 = ", Y0, " / R_crop = ", R_crop)
-    if data.ndim == 3 :
-        B = np.zeros((data.shape[0], 2*R_crop+1, 2*R_crop+1), dtype=complex) + np.nan
-        for i in range(A.shape[0]):
-            for j in range(A.shape[1]):
-                if  0 <= R_crop-Y0+i <= 2*R_crop and 0 <= R_crop-X0+j <= 2*R_crop :
-                    B[:, R_crop-Y0+i, R_crop-X0+j] = data[:, i, j]
-        while np.isnan(B[:, 0, :]).all() and np.isnan(B[:, -1, :]).all() and np.isnan(B[:, :, 0]).all() and np.isnan(B[:, :, -1]).all(): # crop the edges if they are all nan
-            B = B[:, 1:-1, 1:-1]
-    elif data.ndim == 2 :
-        B = np.zeros((2*R_crop+1, 2*R_crop+1), dtype=complex) + np.nan
-        for i in range(A.shape[0]):
-            for j in range(A.shape[1]):
-                if  0 <= R_crop-Y0+i <= 2*R_crop and 0 <= R_crop-X0+j <= 2*R_crop :
-                    B[R_crop-Y0+i, R_crop-X0+j] = data[i, j]
-        while np.isnan(B[0, :]).all() and np.isnan(B[-1, :]).all() and np.isnan(B[:, 0]).all() and np.isnan(B[:, -1]).all():
-            B = B[1:-1, 1:-1]
-    return B
-
-def crop_both(data1, data2, Y0=None, X0=None, R_crop=None):
-    if data1.ndim == 3 :
-        cube = np.copy(data1)
-        cube[np.isnan(cube)] = 0
-        A = np.nanmedian(cube, axis=0)
-    elif data1.ndim == 2 :
-        A = np.copy(data1)
-    A = np.nan_to_num(A)
-    Y0, X0 = np.unravel_index(np.argmax(A, axis=None), A.shape)
+    
+def crop_both(data1, data2, Y0=None, X0=None, R_crop=None, return_center=False):
+    data1 = np.nan_to_num(data1)
+    data2 = np.nan_to_num(data2)
+    # Calcul du centre global sur la médiane du cube si non fourni
+    if Y0 is None or X0 is None:
+        if data1.ndim == 3:
+            A = np.nanmedian(data1, axis=0)
+        else:
+            A = data1
+        Y0, X0 = np.unravel_index(np.argmax(A, axis=None), A.shape)
+    # Calcul du rayon de recadrage si non fourni
     if R_crop is None:
-        R_crop = max(A.shape[0]-Y0, A.shape[1]-X0, Y0, X0)
-    #print("X0 = ", X0, " / Y0 = ", Y0, " / R_crop = ", R_crop)
-    if data1.ndim == 3 :
-        B = np.zeros((data1.shape[0], 2*R_crop+1, 2*R_crop+1)) + np.nan
-        C = np.zeros((data2.shape[0], 2*R_crop+1, 2*R_crop+1)) + np.nan
-        for i in range(A.shape[0]):
-            for j in range(A.shape[1]):
-                if  0 <= R_crop-Y0+i <= 2*R_crop and 0 <= R_crop-X0+j <= 2*R_crop :
-                    B[:, R_crop-Y0+i, R_crop-X0+j] = data1[:, i, j]
-                    C[:, R_crop-Y0+i, R_crop-X0+j] = data2[:, i, j]
-        while np.isnan(B[:, 0, :]).all() and np.isnan(B[:, -1, :]).all() and np.isnan(B[:, :, 0]).all() and np.isnan(B[:, :, -1]).all():
-            B = B[:, 1:-1, 1:-1]
-        while np.isnan(C[:, 0, :]).all() and np.isnan(C[:, -1, :]).all() and np.isnan(C[:, :, 0]).all() and np.isnan(C[:, :, -1]).all():
-            C = C[:, 1:-1, 1:-1]
-    elif data1.ndim == 2 :
-        B = np.zeros((2*R_crop+1, 2*R_crop+1)) + np.nan
-        C = np.zeros((2*R_crop+1, 2*R_crop+1)) + np.nan
-        for i in range(A.shape[0]):
-            for j in range(A.shape[1]):
-                if  0 <= R_crop-Y0+i <= 2*R_crop and 0 <= R_crop-X0+j <= 2*R_crop :
-                    B[R_crop-Y0+i, R_crop-X0+j] = data1[i, j]
-                    c[R_crop-Y0+i, R_crop-X0+j] = data2[i, j]
-        while np.isnan(B[0, :]).all() and np.isnan(B[-1, :]).all() and np.isnan(B[:, 0]).all() and np.isnan(B[:, -1]).all():
-            B = B[1:-1, 1:-1]
-        while np.isnan(C[0, :]).all() and np.isnan(C[-1, :]).all() and np.isnan(C[:, 0]).all() and np.isnan(C[:, -1]).all():
-            C = C[1:-1, 1:-1]
-    return B, C
+        R_crop = max(data1.shape[-2] - Y0, data1.shape[-1] - X0, Y0, X0)
+    # Détermination des limites de recadrage
+    y_min = max(0, Y0 - R_crop)
+    y_max = min(data1.shape[-2], Y0 + R_crop + 1)
+    x_min = max(0, X0 - R_crop)
+    x_max = min(data1.shape[-1], X0 + R_crop + 1)
+    # Découpage des indices pour l'image recadrée
+    crop_y_min = R_crop - (Y0 - y_min)
+    crop_y_max = crop_y_min + (y_max - y_min)
+    crop_x_min = R_crop - (X0 - x_min)
+    crop_x_max = crop_x_min + (x_max - x_min)
+    # Création des tableaux de sortie initialisés avec des NaN
+    if data1.ndim == 3:
+        B = np.full((data1.shape[0], 2 * R_crop + 1, 2 * R_crop + 1), np.nan)
+        C = np.full((data2.shape[0], 2 * R_crop + 1, 2 * R_crop + 1), np.nan)
+        B[:, crop_y_min:crop_y_max, crop_x_min:crop_x_max] = data1[:, y_min:y_max, x_min:x_max]
+        C[:, crop_y_min:crop_y_max, crop_x_min:crop_x_max] = data2[:, y_min:y_max, x_min:x_max]
+    else:
+        B = np.full((2 * R_crop + 1, 2 * R_crop + 1), np.nan)
+        C = np.full((2 * R_crop + 1, 2 * R_crop + 1), np.nan)
+        B[crop_y_min:crop_y_max, crop_x_min:crop_x_max] = data1[y_min:y_max, x_min:x_max]
+        C[crop_y_min:crop_y_max, crop_x_min:crop_x_max] = data2[y_min:y_max, x_min:x_max]
+    if return_center:
+        return B, C, Y0, X0
+    else:
+        return B, C
 
 def dither(cube, factor=10):
     NbChannel, NbLine, NbColumn = cube.shape
@@ -273,7 +250,33 @@ def dither(cube, factor=10):
                 cube_dither[l, int(i*factor):int((i+1)*factor), int(j*factor):int((j+1)*factor)] = cube[l, i, j]
     return cube_dither
 
+def find_centroid(image):
+    """
+    Trouve le centre de la PSF en utilisant un ajustement gaussien 2D.
+    """
+    y, x = np.mgrid[:image.shape[0], :image.shape[1]]
+    # Modèle gaussien 2D
+    gaussian = models.Gaussian2D(amplitude=np.max(image), x_mean=image.shape[1]//2, y_mean=image.shape[0]//2)
+    fit_p = fitting.LevMarLSQFitter()
+    fitted_model = fit_p(gaussian, x, y, image)
+    return fitted_model.x_mean.value, fitted_model.y_mean.value
 
+def align_psf(cube_desat, cube):
+    """
+    Aligne chaque slice d'un cube de PSF en fonction de leur centre.
+    """
+    n_slices           = cube.shape[0]
+    aligned_cube       = np.zeros_like(cube)
+    aligned_cube_desat = np.zeros_like(cube_desat)
+    # Trouver le centre moyen (référence)
+    centers     = np.array([find_centroid(cube_desat[i]) for i in range(n_slices)])
+    mean_center = np.mean(centers, axis=0)
+    # Aligner chaque slice
+    for i in range(n_slices):
+        dx, dy = mean_center - centers[i]
+        aligned_cube[i]       = shift(cube[i], shift=(dy, dx), mode='constant', cval=0)
+        aligned_cube_desat[i] = shift(cube_desat[i], shift=(dy, dx), mode='constant', cval=0)
+    return aligned_cube_desat, aligned_cube
 
 def correlation_PSF(cube_M, CCF):
     idx_PSF_centroid = np.unravel_index(np.nanargmax(PSF, axis=None), PSF.shape)    
@@ -412,8 +415,8 @@ def extract_jwst_data(instru, target_name, band, crop_band=True, cosmic=False, s
         cube = cube[(wave>config_data['gratings'][band].lmin) & (wave<config_data['gratings'][band].lmax)]
         err = err[(wave>config_data['gratings'][band].lmin) & (wave<config_data['gratings'][band].lmax)]
         wave = wave[(wave>config_data['gratings'][band].lmin) & (wave<config_data['gratings'][band].lmax)]
-        from src.signal_noise_estimate import transmission
-        trans = transmission(instru, wave, band, tellurics=False, apodizer="NO_SP") / fits.getheader("sim_data/PSF/PSF_"+instru+"/PSF_"+band+"_NO_JQ_NO_SP.fits")['AC'] # AC is obviously already taken into account
+        from src.signal_noise_estimate import get_transmission
+        trans = get_transmission(instru, wave, band, tellurics=False, apodizer="NO_SP") / fits.getheader("sim_data/PSF/PSF_"+instru+"/PSF_"+band+"_NO_JQ_NO_SP.fits")['AC'] # AC is obviously already taken into account
         for i in range(cube.shape[0]):
             cube[i] *= trans[i] ; err[i] *= trans[i] # e-/s/pixel
     else :
@@ -467,7 +470,7 @@ def extract_jwst_data(instru, target_name, band, crop_band=True, cosmic=False, s
 
 
 
-def extract_vipa_data(instru, target_name, gain, label_fiber, interpolate=True, degrade_resolution=True, outliers=False, sigma_outliers=5, mask_nan_values=False, R=70000, Rc=100, filter_type="gaussian", wave_input=None, only_high_pass=False):
+def extract_vipa_data(instru, target_name, gain, label_fiber, interpolate=True, degrade_resolution=True, outliers=False, sigma_outliers=5, use_weight=True, mask_nan_values=False, R=70000, Rc=100, filter_type="gaussian", wave_input=None, only_high_pass=False):
     from src.spectrum import Spectrum, filtered_flux
     f                                     = fits.open("data/"+instru+"/VIPA_Final_Spectrum_"+target_name+"_gain_"+str(gain)+"_fiber_"+label_fiber+".fits")
     wave0, flux0, sigma0, weight0, trans0 = f[0].data
@@ -517,10 +520,10 @@ def extract_vipa_data(instru, target_name, gain, label_fiber, interpolate=True, 
             wave = wave_input
         else:
             wave = np.arange(0.98*lmin, 1.02*lmax+dl, dl) # new wavelength array (with degrated resolution)
-        flux       = Spectrum(wave0, flux0, R0, None)      ; flux   = flux.degrade_resolution(wave, renorm=False).flux
-        weight     = Spectrum(wave0, weight0, R0, None)    ; weight = weight.degrade_resolution(wave, renorm=False).flux
-        sigma      = Spectrum(wave0, sigma0, R0, None)     ; sigma  = sigma.degrade_resolution(wave, renorm=False).flux
-        trans      = Spectrum(wave0, trans0, R0, None)     ; trans  = trans.degrade_resolution(wave, renorm=False).flux
+        flux       = Spectrum(wave0, flux0, R0, None)      ; flux   = flux.degrade_resolution(wave, renorm=False, R_output=R).flux
+        weight     = Spectrum(wave0, weight0, R0, None)    ; weight = weight.degrade_resolution(wave, renorm=False, R_output=R).flux
+        sigma      = Spectrum(wave0, sigma0, R0, None)     ; sigma  = sigma.degrade_resolution(wave, renorm=False, R_output=R).flux
+        trans      = Spectrum(wave0, trans0, R0, None)     ; trans  = trans.degrade_resolution(wave, renorm=False, R_output=R).flux
         f          = interp1d(wave0, nan_values0, bounds_error=False, fill_value=np.nan) 
         nan_values = f(wave) != 0
 
@@ -550,15 +553,28 @@ def extract_vipa_data(instru, target_name, gain, label_fiber, interpolate=True, 
         sg      = sigma_clip(flux_HF, sigma=sigma_outliers)
         flux_HF = np.array(np.ma.masked_array(flux_HF, mask=sg.mask).filled(np.nan))
     
+    # Weight function (if wanted)
+    if use_weight:
+        if 1==1:
+            weight /= sigma
+        weight /= np.nanmax(weight)
+        sigma  *= weight # since the signals will be multiplied by the weight, the noise needs also to be multiplied by it
+    else:
+        weight = None
+        
     return wave, flux, flux_HF, sigma, weight, trans, R
 
 
 
 
-def extract_hirise_data(target_name, interpolate, degrade_resolution, R, Rc, filter_type, order_by_order, outliers, sigma_outliers, only_high_pass=False, cut_fringes=False, Rmin=None, Rmax=None, weight=True, mask_nan_values=False, keep_only_good=False, wave_input=None, reference_fibers=True, verbose=True): # OPENING DATA AND DEGRADATING THE RESOLUTION (if wanted)
+def extract_hirise_data(target_name, interpolate, degrade_resolution, R, Rc, filter_type, order_by_order, outliers, sigma_outliers, only_high_pass=False, cut_fringes=False, Rmin=None, Rmax=None, use_weight=True, mask_nan_values=False, keep_only_good=False, wave_input=None, reference_fibers=True, verbose=True): # OPENING DATA AND DEGRADATING THE RESOLUTION (if wanted)
     from src.spectrum import Spectrum, filtered_flux
-    GAIN = np.nanmean([2.28, 2.19, 2.00]) # in e-/ADU
-
+    
+    # hard coded values
+    GAIN     = np.nanmean([2.28, 2.19, 2.00]) # in e-/ADU
+    noffsets = 1
+    nrefs    = 3
+    
     # OPENING DATA 
     file       = "data/HiRISE/"+target_name+".fits"
     f          = fits.open(file)
@@ -566,78 +582,82 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R, Rc, fil
     T_star     = hdr["HIERARCH STAR TEFF"] 
     lg_star    = hdr["HIERARCH STAR LOGG"]
     rv_star    = hdr["HIERARCH STAR RV"] - hdr["HIERARCH STAR HELCORR MEAN"]
+    vsini_star = hdr["HIERARCH STAR VSINI"]
     t_exp_comp = hdr["HIERARCH COMP DIT"]*hdr["HIERARCH COMP NEXP"]
     t_exp_star = hdr["HIERARCH STAR DIT"]*hdr["HIERARCH STAR NEXP"]
     if verbose:
         print("OBSERVATION DATE: ", mjd_to_date(hdr["MJD-OBS"]))
         print(f" star t_exp = {round(t_exp_star/60)} mn")
         print(f" comp t_exp = {round(t_exp_comp/60)} mn")
-    try:
-        wave0             = f[1].data["wave"]*1e-3 # in µm
-        trans0            = f[1].data["response"]
-        star_flux0        = f[1].data["star_signal"]*GAIN*hdr["HIERARCH STAR DIT"]*hdr["HIERARCH STAR NEXP"] # ADU/s => total e-
-        star_weight0      = f[1].data["star_weight"] ; star_weight0[star_weight0==0] = np.nan
-        star_sigma_bkg0   = f[1].data["star_noise"]*GAIN*t_exp_star
-        star_sigma_tot0   = np.sqrt(star_flux0 + star_sigma_bkg0**2)
-        planet_flux0      = f[1].data["companion_signal"]*GAIN*t_exp_comp # in e-
-        planet_weight0    = f[1].data["companion_weight"] ; planet_weight0[planet_weight0==0] = np.nan
-        planet_sigma_bkg0 = f[1].data["companion_noise"]*GAIN*t_exp_comp
-        planet_sigma_tot0 = np.sqrt(planet_flux0 + planet_sigma_bkg0**2)
-        print("Opening old pipeline data") ; data_name = "old"
-    except:
-        wave0                 = f[1].data["pipeline"]*1e-3          # in µm
-        wave0                 = f[1].data["recalibrated"]*1e-3      # in µm
-        #wave0                = f[7].data["wave"]*1e-3              # in µm
-        trans0                = f[2].data["response"]               # no unit
-        star_flux0            = f[3].data["signal"]                 # in e-
-        star_weight0          = f[3].data["weight"]                 # no unit
-        star_sigma_bkg0       = f[3].data["noise_det"]              # e-
-        star_sigma_tot0       = f[3].data["noise_total"]            # e-
-        planet_flux0          = f[7].data["signal"]                 # in e-
-        planet_weight0        = f[7].data["weight"]                 # no unit
-        planet_sigma_bkg0     = f[7].data["noise_det"]              # e-
-        planet_sigma_tot0     = f[7].data["noise_total"]            # e-
-        if reference_fibers:
-            bkg_flux0 = []
-            bkg_idx   = [4, 5, 6, 8, 9, 10]
-            for idx in bkg_idx:
-                bkg_flux0.append(f[idx].data["signal"])             # e-
-        print("Opening new pipeline data") ; data_name = "new"
-    
-    
+        print(f" DELTA RV HELCORR = ", round(abs(hdr["HIERARCH STAR HELCORR MEAN"] - hdr["HIERARCH COMP HELCORR MEAN"]), 3), "km/s")
+
+    bkg_flux0 = []
+    wave0     = f[1].data["pipeline"]*1e-3     # in µm
+    wave0     = f[1].data["recalibrated"]*1e-3 # in µm
+    #wave0     = f[7].data["wave"]*1e-3         # in µm
+    for ioff in range(noffsets):
+        # Response data
+        data_response = f[f.index_of(f'RESPONSE,OFFSET{ioff}')].data
+        trans0        = data_response["response"]       # no unit
+        trans_model0  = data_response["response_model"] # no unit
+        # Star data
+        data_star       = f[f.index_of(f'STAR,OFFSET{ioff},SCI')].data
+        star_flux0      = data_star["signal"]                        # in e-
+        star_wave0      = data_star["wave"]*1e-3                     # in µm
+        star_weight0    = data_star["weight"]                        # no unit
+        star_sigma_tot0 = data_star["noise"]                   # e-
+        star_sigma_bkg0 = data_star["noise_background"]                     # e-
+        #star_sigma_bkg0 = np.sqrt(star_sigma_tot0**2 - star_flux0)   # e-
+        for iref in range(nrefs):
+            data_star_ref = f[f.index_of(f'STAR,OFFSET{ioff},REF{iref}')].data
+            bkg_flux0.append(data_star_ref["signal"])             # e-
+        # Comp data
+        data_planet       = f[f.index_of(f'COMP,OFFSET{ioff},SCI')].data
+        planet_flux0      = data_planet["signal"]                          # in e-
+        planet_wave0      = data_planet["wave"]*1e-3                       # in µm
+        planet_weight0    = data_planet["weight"]                          # no unit
+        planet_sigma_tot0 = data_planet["noise"]                     # e-
+        planet_sigma_bkg0 = data_planet["noise_background"]                       # e-
+        #planet_sigma_bkg0 = np.sqrt(planet_sigma_tot0**2 - planet_flux0)   # e-
+        for iref in range(nrefs):
+            data_planet_ref = f[f.index_of(f'COMP,OFFSET{ioff},REF{iref}')].data
+            bkg_flux0.append(data_planet_ref["signal"]) # e-
+                
+    wave_raw = wave0
+        
     # sky_transmission_path = os.path.join("sim_data/Transmission/sky_transmission_airmass_1.0.fits")
     # sky_trans             = fits.getdata(sky_transmission_path)
     # trans_tell_band       = Spectrum(sky_trans[0, :], sky_trans[1, :], None, None)
     # planet_flux0          = trans_tell_band.interpolate_wavelength(wave0, renorm=False).flux # degraded tellurics transmission on the considered band
-    
-    # calib_name = "beta_Pic_b"
-    # trans0     = fits.open("data/HiRISE/"+calib_name+".fits")[2].data["response"]               # no unit
-    # wave0      = fits.open("data/HiRISE/"+calib_name+".fits")[1].data["recalibrated"]*1e-3      # in µm
+    # #planet_flux0          = trans_model0
 
-    
-    if data_name == "old":
-        reference_fibers = False
+    # calib_name = "HD_26820"
+    # wave0      = fits.open("data/HiRISE/"+calib_name+".fits")[1].data["recalibrated"]*1e-3      # in µm
         
+    # wavelength axis properties
     lmin = wave0[0]
     lmax = wave0[-1]
-    #lmin = 1.5 ; lmax = 1.65
-    dwl0 = wave0 - np.roll(wave0, 1) ; dwl0[0] = dwl0[1] ; dwl0[dwl0==0] = np.nanmedian(dwl0) # delta lambda array
-    R0   = np.nanmedian(wave0/(2*dwl0)) # calculating the resolution => assuming a Nyquist sampling
-    dl0  = np.nanmedian(dwl0)
-    nan_values0 = np.isnan(star_flux0)|np.isnan(planet_flux0)|np.isnan(trans0) # missing values
+    dl0  = wave0 - np.roll(wave0, 1) ; dl0[0] = dl0[1] ; dl0[dl0==0] = np.nanmedian(dl0) # delta lambda array
+    R0   = np.nanmedian(wave0/(2*dl0)) # calculating the resolution => assuming a Nyquist sampling
+    dl0  = np.nanmedian(dl0)
     
-    # flagging the orders limits (for "order_by_order")
-    if order_by_order:
-        lmin_orders = np.array([]) ; lmax_orders = np.array([])
-        for i in range(len(wave0)):
-            if dwl0[i] > 1000*dl0:
-                lmin_orders = np.append(lmin_orders, wave0[i-1]) ; lmax_orders = np.append(lmax_orders, wave0[i])
+    # Flagging NaN values
+    nan_values0 = np.isnan(star_flux0)|np.isnan(planet_flux0)|np.isnan(trans0) # missing values
+        
+    # flagging the orders limits (for "order_by_order" filtering method)      
+    if order_by_order:          
+        transitions = np.where(np.diff(wave0) > 1000 * dl0)[0] + 1  # Indexes where the order changes
+        lmin_orders = wave0[transitions - 1]
+        lmax_orders = wave0[transitions]
     
     # (first) OUTLIERS FILTERING (if wanted)
     if outliers:
         trans0_HF       = filtered_flux(trans0, R=R0, Rc=Rc, filter_type=filter_type)[0]
         sg              = sigma_clip(trans0_HF, sigma=2*sigma_outliers)
         trans0          = np.array(np.ma.masked_array(trans0, mask=sg.mask).filled(np.nan))
+        trans_model0_HF = filtered_flux(trans_model0, R=R0, Rc=Rc, filter_type=filter_type)[0]
+        sg              = sigma_clip(trans_model0_HF, sigma=2*sigma_outliers)
+        trans_model0    = np.array(np.ma.masked_array(trans_model0, mask=sg.mask).filled(np.nan))
         star_flux0_HF   = filtered_flux(star_flux0, R=R0, Rc=Rc, filter_type=filter_type)[0]
         sg              = sigma_clip(star_flux0_HF, sigma=2*sigma_outliers)
         star_flux0      = np.array(np.ma.masked_array(star_flux0, mask=sg.mask).filled(np.nan))
@@ -664,73 +684,83 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R, Rc, fil
         
     # Interpolation of the data (should not really degrade data) (if wanted)
     if interpolate: # in order to have a regular wavelength axis
+        # new wavelength axis
         if wave_input is not None and not degrade_resolution:
             wave = wave_input
         else:
             wave = np.arange(0.98*lmin, 1.02*lmax+dl0, dl0) # constant and regular wavelength array : 0.01 µm ~ doppler shift at few thousands of km/s
+        # star data interpolation
         f = interp1d(wave0[~np.isnan(star_flux0)], star_flux0[~np.isnan(star_flux0)], bounds_error=False, fill_value=np.nan)                      ; star_flux0        = f(wave)
         f = interp1d(wave0[~np.isnan(star_weight0)], star_weight0[~np.isnan(star_weight0)], bounds_error=False, fill_value=np.nan)                ; star_weight0      = f(wave)
         f = interp1d(wave0[~np.isnan(star_sigma_tot0)], star_sigma_tot0[~np.isnan(star_sigma_tot0)], bounds_error=False, fill_value=np.nan)       ; star_sigma_tot0   = f(wave)
         f = interp1d(wave0[~np.isnan(star_sigma_bkg0)], star_sigma_bkg0[~np.isnan(star_sigma_bkg0)], bounds_error=False, fill_value=np.nan)       ; star_sigma_bkg0   = f(wave)
+        # planet data interpolation 
         f = interp1d(wave0[~np.isnan(planet_flux0)], planet_flux0[~np.isnan(planet_flux0)], bounds_error=False, fill_value=np.nan)                ; planet_flux0      = f(wave)
         f = interp1d(wave0[~np.isnan(planet_weight0)], planet_weight0[~np.isnan(planet_weight0)], bounds_error=False, fill_value=np.nan)          ; planet_weight0    = f(wave)
         f = interp1d(wave0[~np.isnan(planet_sigma_tot0)], planet_sigma_tot0[~np.isnan(planet_sigma_tot0)], bounds_error=False, fill_value=np.nan) ; planet_sigma_tot0 = f(wave)
         f = interp1d(wave0[~np.isnan(planet_sigma_bkg0)], planet_sigma_bkg0[~np.isnan(planet_sigma_bkg0)], bounds_error=False, fill_value=np.nan) ; planet_sigma_bkg0 = f(wave)
+        # trans data interpolation
         f = interp1d(wave0[~np.isnan(trans0)], trans0[~np.isnan(trans0)], bounds_error=False, fill_value=np.nan)                                  ; trans0            = f(wave)
+        f = interp1d(wave0[~np.isnan(trans_model0)], trans_model0[~np.isnan(trans_model0)], bounds_error=False, fill_value=np.nan)                ; trans_model0      = f(wave)
+        # NaN values interpolation
         f = interp1d(wave0, nan_values0, bounds_error=False, fill_value=np.nan)                                                                   ; nan_values0       = f(wave) != 0
+        # bkg data interpolation
         if reference_fibers:
             for i in range(len(bkg_flux0)):
                 f = interp1d(wave0[~np.isnan(bkg_flux0[i])], bkg_flux0[i][~np.isnan(bkg_flux0[i])], bounds_error=False, fill_value=np.nan)        ; bkg_flux0[i]      = f(wave)
+        # new wavelength axis
         wave0 = wave
 
     # Artificially degrating the data to an arbitrary resolution R (if wanted)
     if degrade_resolution:
-        dl = np.nanmedian(wave0/(2*R)) # 2*R => Nyquist sampling (Shannon)
+        # new wavelength axis
         if wave_input is not None:
             wave = wave_input
         else:
+            dl   = np.nanmedian(wave0/(2*R))              # 2*R => Nyquist sampling (Shannon)
             wave = np.arange(0.98*lmin, 1.02*lmax+dl, dl) # new wavelength array (with degrated resolution)
-        star_flux        = Spectrum(wave0, star_flux0, R0, None)        ; star_flux        = star_flux.degrade_resolution(wave, renorm=False).flux
-        star_weight      = Spectrum(wave0, star_weight0, R0, None)      ; star_weight      = star_weight.degrade_resolution(wave, renorm=False).flux
-        star_sigma_tot   = Spectrum(wave0, star_sigma_tot0, R0, None)   ; star_sigma_tot   = star_sigma_tot.degrade_resolution(wave, renorm=False).flux
-        star_sigma_bkg   = Spectrum(wave0, star_sigma_bkg0, R0, None)   ; star_sigma_bkg   = star_sigma_bkg.degrade_resolution(wave, renorm=False).flux
-        planet_flux      = Spectrum(wave0, planet_flux0, R0, None)      ; planet_flux      = planet_flux.degrade_resolution(wave, renorm=False).flux
-        planet_weight    = Spectrum(wave0, planet_weight0, R0, None)    ; planet_weight    = planet_weight.degrade_resolution(wave, renorm=False).flux
-        planet_sigma_tot = Spectrum(wave0, planet_sigma_tot0, R0, None) ; planet_sigma_tot = planet_sigma_tot.degrade_resolution(wave, renorm=False).flux
-        planet_sigma_bkg = Spectrum(wave0, planet_sigma_bkg0, R0, None) ; planet_sigma_bkg = planet_sigma_bkg.degrade_resolution(wave, renorm=False).flux
-        trans            = Spectrum(wave0, trans0, R0, None)            ; trans            = trans.degrade_resolution(wave, renorm=False).flux
-        f = interp1d(wave0, nan_values0, bounds_error=False, fill_value=np.nan) 
-        nan_values = f(wave) != 0
+        # Degrade star data
+        star_flux        = Spectrum(wave0, star_flux0, R0, None).degrade_resolution(wave, renorm=False, R_output=R).flux
+        star_weight      = Spectrum(wave0, star_weight0, R0, None).degrade_resolution(wave, renorm=False, R_output=R).flux
+        star_sigma_tot   = Spectrum(wave0, star_sigma_tot0, R0, None).degrade_resolution(wave, renorm=False, R_output=R).flux
+        star_sigma_bkg   = Spectrum(wave0, star_sigma_bkg0, R0, None).degrade_resolution(wave, renorm=False, R_output=R).flux
+        # Degrade planet data
+        planet_flux      = Spectrum(wave0, planet_flux0, R0, None).degrade_resolution(wave, renorm=False, R_output=R).flux
+        planet_weight    = Spectrum(wave0, planet_weight0, R0, None).degrade_resolution(wave, renorm=False, R_output=R).flux
+        planet_sigma_tot = Spectrum(wave0, planet_sigma_tot0, R0, None).degrade_resolution(wave, renorm=False, R_output=R).flux
+        planet_sigma_bkg = Spectrum(wave0, planet_sigma_bkg0, R0, None).degrade_resolution(wave, renorm=False, R_output=R).flux
+        # Degrade trans data
+        trans            = Spectrum(wave0, trans0, R0, None).degrade_resolution(wave, renorm=False, R_output=R).flux
+        trans_model      = Spectrum(wave0, trans_model0, R0, None).degrade_resolution(wave, renorm=False, R_output=R).flux
+        # Interpolate star data
+        f = interp1d(wave0, nan_values0, bounds_error=False, fill_value=np.nan) ; nan_values = f(wave) != 0
+        # Degrade bkg data
         if reference_fibers:
             bkg_flux = [0] * len(bkg_flux0)
             for i in range(len(bkg_flux0)):
-                bkg_flux[i]  = Spectrum(wave0, bkg_flux0[i], R0, None)  ; bkg_flux[i]      = bkg_flux[i].degrade_resolution(wave, renorm=False).flux
+                bkg_flux[i] = Spectrum(wave0, bkg_flux0[i], R0, None).degrade_resolution(wave, renorm=False).flux
             
     else: # otherwise, takes the raw data
-        R = R0 ; wave = wave0 ; dl = dl0 ; star_flux = star_flux0 ; star_weight = star_weight0 ; star_sigma_tot = star_sigma_tot0 ; star_sigma_bkg = star_sigma_bkg0 ; planet_flux = planet_flux0 ; planet_weight = planet_weight0 ; planet_sigma_tot = planet_sigma_tot0 ; planet_sigma_bkg = planet_sigma_bkg0 ; trans = trans0 ; nan_values = nan_values0 ; bkg_flux = bkg_flux0
+        R = R0 ; wave = wave0 ; dl = dl0 ; star_flux = star_flux0 ; star_weight = star_weight0 ; star_sigma_tot = star_sigma_tot0 ; star_sigma_bkg = star_sigma_bkg0 ; planet_flux = planet_flux0 ; planet_weight = planet_weight0 ; planet_sigma_tot = planet_sigma_tot0 ; planet_sigma_bkg = planet_sigma_bkg0 ; trans = trans0 ; trans_model = trans_model0 ; nan_values = nan_values0 ; bkg_flux = bkg_flux0
         
-    # HIGH PASS FILTERING 
-    if order_by_order: # order by order processing (if wanted)
-        star_flux_HF   = np.zeros_like(wave) + np.nan
-        star_flux_LF   = np.zeros_like(wave) + np.nan
-        planet_flux_HF = np.zeros_like(wave) + np.nan 
-        planet_flux_LF = np.zeros_like(wave) + np.nan
-        for i in range(len(lmin_orders)+1): 
-            if i==0:
-                sf_HF, sf_LF = filtered_flux(star_flux[wave<lmin_orders[i]], R=R, Rc=Rc, filter_type=filter_type)
-                star_flux_HF[wave<lmin_orders[i]] = sf_HF ; star_flux_LF[wave<lmin_orders[i]] = sf_LF
-                pf_HF, pf_LF = filtered_flux(planet_flux[wave<lmin_orders[i]], R=R, Rc=Rc, filter_type=filter_type)
-                planet_flux_HF[wave<lmin_orders[i]] = pf_HF ; planet_flux_LF[wave<lmin_orders[i]] = pf_LF
-            elif i==len(lmin_orders):
-                sf_HF, sf_LF = filtered_flux(star_flux[wave>lmax_orders[i-1]], R=R, Rc=Rc, filter_type=filter_type)
-                star_flux_HF[wave>lmax_orders[i-1]] = sf_HF ; star_flux_LF[wave>lmax_orders[i-1]] = sf_LF
-                pf_HF, pf_LF = filtered_flux(planet_flux[wave>lmax_orders[i-1]], R=R, Rc=Rc, filter_type=filter_type)
-                planet_flux_HF[wave>lmax_orders[i-1]] = pf_HF ; planet_flux_LF[wave>lmax_orders[i-1]] = pf_LF
-            else:
-                sf_HF, sf_LF = filtered_flux(star_flux[(wave<lmin_orders[i])&(wave>lmax_orders[i-1])], R=R, Rc=Rc, filter_type=filter_type)
-                star_flux_HF[(wave<lmin_orders[i])&(wave>lmax_orders[i-1])] = sf_HF ; star_flux_LF[(wave<lmin_orders[i])&(wave>lmax_orders[i-1])] = sf_LF
-                pf_HF, pf_LF = filtered_flux(planet_flux[(wave<lmin_orders[i])&(wave>lmax_orders[i-1])], R=R, Rc=Rc, filter_type=filter_type)
-                planet_flux_HF[(wave<lmin_orders[i])&(wave>lmax_orders[i-1])] = pf_HF ; planet_flux_LF[(wave<lmin_orders[i])&(wave>lmax_orders[i-1])] = pf_LF
+    # HIGH PASS FILTERING
+    if order_by_order:
+        star_flux_HF, star_flux_LF     = np.full_like(wave, np.nan), np.full_like(wave, np.nan)
+        planet_flux_HF, planet_flux_LF = np.full_like(wave, np.nan), np.full_like(wave, np.nan)
+        sf_HF, sf_LF                   = np.full_like(wave, np.nan), np.full_like(wave, np.nan)
+        # Process each spectral order separately
+        for i in range(len(lmin_orders) + 1):
+            if i == 0:                  # First order
+                mask = wave < lmin_orders[i]
+            elif i == len(lmin_orders): # Last order
+                mask = wave > lmax_orders[i - 1]
+            else:                       # Intermediate orders
+                mask = (wave > lmax_orders[i - 1]) & (wave < lmin_orders[i])
+            if np.any(mask): # Apply filtering if the mask is not empty
+                star_flux_HF[mask], star_flux_LF[mask]     = filtered_flux(star_flux[mask], R=R, Rc=Rc, filter_type=filter_type)
+                planet_flux_HF[mask], planet_flux_LF[mask] = filtered_flux(planet_flux[mask], R=R, Rc=Rc, filter_type=filter_type)
+                sf_HF[mask], sf_LF[mask]                   = filtered_flux(star_flux[mask]/trans[mask], R=R, Rc=Rc, filter_type=filter_type)
+
     else:
         # Handling LF filtering edge effects due to the gaps bewteen the orders
         star_flux_HF, star_flux_LF     = filtered_flux(star_flux, R=R, Rc=Rc, filter_type=filter_type)
@@ -742,15 +772,16 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R, Rc, fil
         planet_flux_LF = f(wave)
         f              = interp1d(wave[~nan_values], trans_LF[~nan_values], bounds_error=False, fill_value=np.nan) 
         trans_LF       = f(wave)
-        
+        # masking inter order regions
         NV              = keep_true_chunks(nan_values, N=0.005/np.nanmean(np.diff(wave))) # 0.005 µm ~ size of the gap between orders
         star_flux[NV]   = star_flux_LF[NV]
         planet_flux[NV] = planet_flux_LF[NV]
         trans[NV]       = trans_LF[NV]
-        
         # HF / LF calculations
         star_flux_HF, star_flux_LF     = filtered_flux(star_flux, R=R, Rc=Rc, filter_type=filter_type)
         planet_flux_HF, planet_flux_LF = filtered_flux(planet_flux, R=R, Rc=Rc, filter_type=filter_type)
+        sf_HF, sf_LF                   = filtered_flux(star_flux/trans, R=R, Rc=Rc, filter_type=filter_type)
+
     if reference_fibers:
         bkg_flux_HF = [0] * len(bkg_flux)
         bkg_flux_LF = [0] * len(bkg_flux)
@@ -768,6 +799,7 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R, Rc, fil
             for i in range(len(bkg_flux)):
                 bkg_flux_HF[i], bkg_flux_LF[i] = filtered_flux(bkg_flux[i]/trans, R=R, Rc=Rc, filter_type=filter_type)
                 d_bkg[i]                       = trans*bkg_flux_HF[i]
+                
     # Standard molecular mapping post-processing
     else:
         d_planet = planet_flux - star_flux * planet_flux_LF / star_flux_LF # high pass planet spectrum extracted = trans*[Sp]_HF
@@ -775,7 +807,8 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R, Rc, fil
             d_bkg = [0] * len(bkg_flux)
             for i in range(len(bkg_flux)):
                 d_bkg[i] = bkg_flux[i] - star_flux * bkg_flux_LF[i] / star_flux_LF
-    sf_HF, sf_LF = filtered_flux(star_flux/trans, R=R, Rc=Rc, filter_type=filter_type)
+                
+    # Star high-pass filtered data
     d_star       = trans*sf_HF # Considered as noise / background flux
         
     # Removing the flagged NaN values
@@ -847,16 +880,16 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R, Rc, fil
         fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(10, 10), dpi=300, sharex=True)        
         axes[0].set_title("Companion's Signal", fontsize=14, fontweight="bold")
         axes[0].plot(wave, planet_flux, "r-", linewidth=2, label="LF+HF (Total Flux)")
-        axes[0].plot(wave, planet_flux_LF, "g--", linewidth=2, label="LF (Low-Frequency)")
-        axes[0].plot(wave, planet_flux_HF, "b-.", linewidth=2, label="HF (High-Frequency)")
+        axes[0].plot(wave, planet_flux_LF, "g-", linewidth=2, label="LF (Low-Frequency)")
+        axes[0].plot(wave, planet_flux_HF, "b-", linewidth=2, label="HF (High-Frequency)")
         axes[0].plot(wave, filtered_flux(planet_flux_HF, R=R, Rc=Rc, filter_type=filter_type)[1], "k:", linewidth=2, label="[HF]_LF (Filtered HF)")
         axes[0].set_ylabel("Flux", fontsize=12)
         axes[0].legend(fontsize=10, loc="best", frameon=True)
         axes[0].grid(True, linestyle="--", linewidth=0.5, alpha=0.7)
         axes[1].set_title("Star's Signal", fontsize=14, fontweight="bold")
         axes[1].plot(wave, star_flux, "r-", linewidth=2, label="LF+HF (Total Flux)")
-        axes[1].plot(wave, star_flux_LF, "g--", linewidth=2, label="LF (Low-Frequency)")
-        axes[1].plot(wave, star_flux_HF, "b-.", linewidth=2, label="HF (High-Frequency)")
+        axes[1].plot(wave, star_flux_LF, "g-", linewidth=2, label="LF (Low-Frequency)")
+        axes[1].plot(wave, star_flux_HF, "b-", linewidth=2, label="HF (High-Frequency)")
         axes[1].plot(wave, filtered_flux(star_flux_HF, R=R, Rc=Rc, filter_type=filter_type)[1], "k:", linewidth=2, label="[HF]_LF (Filtered HF)")        
         axes[1].set_xlabel("Wavelength [µm]", fontsize=12)
         axes[1].set_ylabel("Flux", fontsize=12)
@@ -869,18 +902,18 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R, Rc, fil
         # Plot of the noise budget
         fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(10, 12), dpi=300, sharex=True)    
         axes[0].plot(wave, planet_flux, color="gray", linestyle="-", linewidth=2, alpha=0.8, label=r"$S$ (Signal)")
-        axes[0].plot(wave, np.sqrt(planet_flux), color="red", linestyle="--", linewidth=2, alpha=0.8, label=r"$\sigma_{ph}$ (Photon Noise)")
-        axes[0].plot(wave, planet_sigma_bkg, color="blue", linestyle="-.", linewidth=2, alpha=0.8, label=r"$\sigma_{bkg}$ (Background Noise)")
-        axes[0].plot(wave, planet_sigma_tot, color="green", linestyle=":", linewidth=2, alpha=0.8, label=r"$\sigma_{total}$ (Total Noise)")
+        axes[0].plot(wave, np.sqrt(planet_flux), color="red", linestyle="-", linewidth=2, alpha=0.8, label=r"$\sigma_{ph}$ (Photon Noise)")
+        axes[0].plot(wave, planet_sigma_bkg, color="blue", linestyle="-", linewidth=2, alpha=0.8, label=r"$\sigma_{bkg}$ (Background Noise)")
+        axes[0].plot(wave, planet_sigma_tot, color="green", linestyle="-", linewidth=2, alpha=0.8, label=r"$\sigma_{total}$ (Total Noise)")
         axes[0].set_yscale('log')
         axes[0].set_ylabel("Signal [e-]", fontsize=14)
         axes[0].set_title("Planet - Spectral Signal and Noise Components", fontsize=16, fontweight="bold")
         axes[0].grid(True, which="both", linestyle="--", linewidth=0.5, alpha=0.6)
         axes[0].legend(fontsize=12, loc="best", frameon=True)
         axes[1].plot(wave, star_flux, color="gray", linestyle="-", linewidth=2, alpha=0.8, label=r"$S$ (Signal)")
-        axes[1].plot(wave, np.sqrt(star_flux), color="red", linestyle="--", linewidth=2, alpha=0.8, label=r"$\sigma_{ph}$ (Photon Noise)")
-        axes[1].plot(wave, star_sigma_bkg, color="blue", linestyle="-.", linewidth=2, alpha=0.8, label=r"$\sigma_{bkg}$ (Background Noise)")
-        axes[1].plot(wave, star_sigma_tot, color="green", linestyle=":", linewidth=2, alpha=0.8, label=r"$\sigma_{total}$ (Total Noise)")
+        axes[1].plot(wave, np.sqrt(star_flux), color="red", linestyle="-", linewidth=2, alpha=0.8, label=r"$\sigma_{ph}$ (Photon Noise)")
+        axes[1].plot(wave, star_sigma_bkg, color="blue", linestyle="-", linewidth=2, alpha=0.8, label=r"$\sigma_{bkg}$ (Background Noise)")
+        axes[1].plot(wave, star_sigma_tot, color="green", linestyle="-", linewidth=2, alpha=0.8, label=r"$\sigma_{total}$ (Total Noise)")
         axes[1].set_yscale('log')
         axes[1].set_xlabel("Wavelength [µm]", fontsize=14)
         axes[1].set_ylabel("Signal [e-]", fontsize=14)
@@ -894,8 +927,10 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R, Rc, fil
     planet_sigma = np.sqrt( planet_sigma_tot**2 + star_sigma_tot**2 * (planet_flux_LF/star_flux_LF)**2 ) 
     
     # Weight function (if wanted)
-    if weight:
-        planet_weight *= star_weight
+    if use_weight:
+        planet_weight  = (planet_weight + star_weight) / 2
+        planet_weight /= np.nanmax(planet_weight)
+        planet_sigma  *= planet_weight # since the signals will be multiplied by the weight, the noise needs also to be multiplied by it
     else:
         planet_weight = None
         
@@ -906,7 +941,7 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R, Rc, fil
         else:
             d_planet = cut_spectral_frequencies(input_flux=d_planet, R=R, Rmin=Rmin, Rmax=Rmax, show=False, target_name=target_name[:-7], force_new_calc=False)
 
-    return wave, star_flux, d_star, planet_flux, d_planet, trans, R, planet_sigma, planet_weight, T_star, lg_star, rv_star, hdr, d_bkg
+    return wave, star_flux, d_star, planet_flux, d_planet, trans, trans_model, R, planet_sigma, planet_weight, T_star, lg_star, rv_star, vsini_star, hdr, d_bkg, wave_raw
 
 
 
@@ -949,7 +984,7 @@ def cut_spectral_frequencies(input_flux, R, Rmin, Rmax, filter_type='empirical',
         try : # Opening existing filter response profile
             if force_new_calc:
                 raise ValueError("force_new_calc = True")
-            empirical_res_values, empirical_filter_response = fits.getdata(f"utils/{target_name}_empirical_filter_response.fits")
+            empirical_res_values, empirical_filter_response = fits.getdata(f"utils/empirical_filter_response/{target_name}_{R}_{Rmin}_{Rmax}_empirical_filter_response.fits")
             f = interp1d(empirical_res_values, empirical_filter_response, bounds_error=False, fill_value="extrapolate")
             filter_response = f(res_values)
         except Exception as e: # Calculating empirical filter response profile (needs to be done once on data!!! and not on models)
@@ -976,7 +1011,7 @@ def cut_spectral_frequencies(input_flux, R, Rmin, Rmax, filter_type='empirical',
             # Sauvegarde du profil trouvé
             empirical_filter_response = np.zeros((2, len(filter_response)))
             empirical_filter_response[0] = res_values ; empirical_filter_response[1] = filter_response
-            fits.writeto(f"utils/{target_name}_empirical_filter_response.fits", empirical_filter_response, overwrite=True)
+            fits.writeto(f"utils/empirical_filter_response/{target_name}_{R}_{Rmin}_{Rmax}_empirical_filter_response.fits", empirical_filter_response, overwrite=True)
             plt.figure(dpi=300)
             plt.plot(np.fft.fftshift(res_values), np.fft.fftshift(psd_values), label="PSD des données")
             plt.plot(np.fft.fftshift(res_values), np.fft.fftshift(psd_values_LF), label="PSD lissée (avec le pic)")
@@ -1328,7 +1363,13 @@ def get_coordinates_arrays(filename) :
 
 
 
-
+def air2vacuum(wavelength):
+    """
+    Convert wavelength from air to vacuum (wavelength in µm)
+    """
+    s = 1e4 / (wavelength * 1e4) # self.wavelength in Angstrom
+    n =  1 + 0.00008336624212083 + 0.02408926869968 / (130.1065924522 - s**2) + 0.0001599740894897 / (38.92568793293 - s**2)
+    return wavelength * n
 
 
 

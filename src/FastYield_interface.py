@@ -4,6 +4,7 @@ import tkinter as tk
 from tkinter import *
 from tkinter import ttk
 from matplotlib.cm import ScalarMappable
+from matplotlib.colors import Normalize
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from ttkwidgets.autocomplete import AutocompleteEntry
 from timezonefinder import TimezoneFinder
@@ -19,48 +20,41 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
 
     def __init__(self):
         super().__init__()
-        self.table = "Archive" # Archive / Simulated
-        self.instru = "HARMONI"
-        self.apodizer = "NO_SP"
-        self.strehl = "JQ1"
-        self.units = "Observational"
-        self.exposure_time = DoubleVar(value=120)
-        self.min_elevation = DoubleVar(value=30)
-        self.thermal_model = "BT-Settl"
-        self.reflected_model = "PICASO"
-        self.model = self.thermal_model+"+"+self.reflected_model
+        self.table                  = "Archive"
+        self.instru                 = "HARMONI"
+        self.apodizer               = "NO_SP"
+        self.strehl                 = "JQ1"
+        self.units                  = "Observational"
+        self.exposure_time          = DoubleVar(value=120)
+        self.min_elevation          = DoubleVar(value=30)
+        self.thermal_model          = "BT-Settl"
+        self.reflected_model        = "PICASO"
+        self.model                  = self.thermal_model+"+"+self.reflected_model
         self.spectrum_contributions = "thermal+reflected"
-        self.band = "INSTRU"
-        self.only_visible_targets = False
-        self.systematics = False
-        self.PCA = False
-        self.planet_table = None
-        self.popup = None
-        self.popup_state = "Close"
-        self.calculation = None
-        self.planet = None
-        self.planet_name = StringVar()
-        self.date = datetime.now().strftime("%d/%m/%Y")
-        self.date_obs = StringVar(value=datetime.now().strftime("%d/%m/%Y"))
+        self.band                   = "INSTRU"
+        self.only_visible_targets   = False
+        self.systematics            = False
+        self.PCA                    = False
+        self.planet_table           = None
+        self.popup                  = None
+        self.popup_state            = "Close"
+        self.calculation            = None
+        self.planet                 = None
+        self.planet_name            = StringVar()
+        self.date                   = datetime.now().strftime("%d/%m/%Y")
+        self.date_obs               = StringVar(value=datetime.now().strftime("%d/%m/%Y"))
         self.title("FastYield")
-        
-        # Obtenir la taille de l'écran
-        screen_width = self.winfo_screenwidth()
-        screen_height = self.winfo_screenheight()
-        # Configurer la fenêtre pour qu'elle utilise toute la taille de l'écran
-        self.geometry(f"{screen_width}x{screen_height}+0+0")
         
         try:
             self.state('zoomed') #works fine on Windows!
-        except:
-            # m = self.maxsize()
-            # self.geometry('{}x{}+0+0'.format(*m))    
+        except:  
             # Obtenir la taille de l'écran
             screen_width = self.winfo_screenwidth()
             screen_height = self.winfo_screenheight()
             # Configurer la fenêtre pour qu'elle utilise toute la taille de l'écran
             self.geometry(f"{screen_width}x{screen_height}+0+0")
-        self.configure(bg='black')        
+        self.configure(bg='black')   
+        
         Label(self, text="FastYield", font='Magneto 30 bold', bg="black", fg="dark orange").pack()
         
         # CHOIX DE LA TABLE
@@ -69,14 +63,14 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         self.__btn_simulated = tk.Button(self.button_table, text="SIMULATED TABLE", command=self.btn_simulated_clicked, bg="dark orange", fg="black", font=('Arial', 12, 'bold')) ; self.__btn_simulated.grid(row=0, column=1, sticky="nsew") ; self.button_table.grid_columnconfigure(1, weight=1)
 
         # CHOIX DE L'INSTRUMENT 
-        self.button_instru = tk.Frame(self) ; self.button_instru.pack(side=tk.TOP, fill=tk.X)
-        self.__btn_harmoni = tk.Button(self.button_instru, text="ELT/HARMONI", command=self.btn_harmoni_clicked, bg="dark orange", fg="black", font=('Arial', 12, 'bold')) ; self.__btn_harmoni.grid(row=0, column=0, sticky="nsew") ; self.button_instru.grid_columnconfigure(0, weight=1)
-        self.__btn_andes = tk.Button(self.button_instru, text="ELT/ANDES", command=self.btn_andes_clicked, bg="dark orange", fg="black", font=('Arial', 12, 'bold')) ; self.__btn_andes.grid(row=0, column=1, sticky="nsew") ; self.button_instru.grid_columnconfigure(1, weight=1)
-        self.__btn_eris = tk.Button(self.button_instru, text="VLT/ERIS", command=self.btn_eris_clicked, bg="dark orange", fg="black", font=('Arial', 12, 'bold')) ; self.__btn_eris.grid(row=0, column=2, sticky="nsew") ; self.button_instru.grid_columnconfigure(2, weight=1)
-        self.__btn_hirise = tk.Button(self.button_instru, text="VLT/HiRISE", command=self.btn_hirise_clicked, bg="dark orange", fg="black", font=('Arial', 12, 'bold')) ; self.__btn_hirise.grid(row=0, column=3, sticky="nsew") ; self.button_instru.grid_columnconfigure(3, weight=1)
-        self.__btn_mirimrs = tk.Button(self.button_instru, text="JWST/MIRI/MRS", command=self.btn_mirimrs_clicked, bg="dark orange", fg="black", font=('Arial', 12, 'bold')) ; self.__btn_mirimrs.grid(row=0, column=4, sticky="nsew") ; self.button_instru.grid_columnconfigure(4, weight=1)
-        self.__btn_nirspec = tk.Button(self.button_instru, text="JWST/NIRSpec/IFU", command=self.btn_nirspec_clicked, bg="dark orange", fg="black", font=('Arial', 12, 'bold')) ; self.__btn_nirspec.grid(row=0, column=5, sticky="nsew") ; self.button_instru.grid_columnconfigure(5, weight=1)
-        self.__btn_nircam = tk.Button(self.button_instru, text="JWST/NIRCam", command=self.btn_nircam_clicked, bg="dark orange", fg="black", font=('Arial', 12, 'bold')) ; self.__btn_nircam.grid(row=0, column=6, sticky="nsew") ; self.button_instru.grid_columnconfigure(6, weight=1)
+        self.button_instru   = tk.Frame(self) ; self.button_instru.pack(side=tk.TOP, fill=tk.X)
+        self.__btn_harmoni   = tk.Button(self.button_instru, text="ELT/HARMONI", command=self.btn_harmoni_clicked, bg="dark orange", fg="black", font=('Arial', 12, 'bold')) ; self.__btn_harmoni.grid(row=0, column=0, sticky="nsew") ; self.button_instru.grid_columnconfigure(0, weight=1)
+        self.__btn_andes     = tk.Button(self.button_instru, text="ELT/ANDES", command=self.btn_andes_clicked, bg="dark orange", fg="black", font=('Arial', 12, 'bold')) ; self.__btn_andes.grid(row=0, column=1, sticky="nsew") ; self.button_instru.grid_columnconfigure(1, weight=1)
+        self.__btn_eris      = tk.Button(self.button_instru, text="VLT/ERIS", command=self.btn_eris_clicked, bg="dark orange", fg="black", font=('Arial', 12, 'bold')) ; self.__btn_eris.grid(row=0, column=2, sticky="nsew") ; self.button_instru.grid_columnconfigure(2, weight=1)
+        self.__btn_hirise    = tk.Button(self.button_instru, text="VLT/HiRISE", command=self.btn_hirise_clicked, bg="dark orange", fg="black", font=('Arial', 12, 'bold')) ; self.__btn_hirise.grid(row=0, column=3, sticky="nsew") ; self.button_instru.grid_columnconfigure(3, weight=1)
+        self.__btn_mirimrs   = tk.Button(self.button_instru, text="JWST/MIRI/MRS", command=self.btn_mirimrs_clicked, bg="dark orange", fg="black", font=('Arial', 12, 'bold')) ; self.__btn_mirimrs.grid(row=0, column=4, sticky="nsew") ; self.button_instru.grid_columnconfigure(4, weight=1)
+        self.__btn_nirspec   = tk.Button(self.button_instru, text="JWST/NIRSpec/IFU", command=self.btn_nirspec_clicked, bg="dark orange", fg="black", font=('Arial', 12, 'bold')) ; self.__btn_nirspec.grid(row=0, column=5, sticky="nsew") ; self.button_instru.grid_columnconfigure(5, weight=1)
+        self.__btn_nircam    = tk.Button(self.button_instru, text="JWST/NIRCam", command=self.btn_nircam_clicked, bg="dark orange", fg="black", font=('Arial', 12, 'bold')) ; self.__btn_nircam.grid(row=0, column=6, sticky="nsew") ; self.button_instru.grid_columnconfigure(6, weight=1)
         self.__btn_vipapyrus = tk.Button(self.button_instru, text="OHP/VIPAPYRUS", command=self.btn_vipapyrus_clicked, bg="dark orange", fg="black", font=('Arial', 12, 'bold')) ; self.__btn_vipapyrus.grid(row=0, column=7, sticky="nsew") ; self.button_instru.grid_columnconfigure(7, weight=1)
 
         # CHOIX DES UNITES + texp  + name
@@ -90,15 +84,24 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         self.__btn_exp_entry.bind("<Return>", lambda _: self.draw_table_plot())
         
         # On instancie le Canvas MPL.
-        self.__fig = plt.figure(constrained_layout=True) ; self.__canvas = FigureCanvasTkAgg(self.__fig, master=self) ; self.__canvas.get_tk_widget().pack(fill=tk.BOTH, expand=1) ; self.__canvas.mpl_connect("button_press_event", self.canvas_clicked)
-        self.__plt = self.__fig.add_subplot(1, 4, (1, 3)) ; self.__plt.tick_params(axis='both', labelsize=16)
-        self.cmap = plt.get_cmap("rainbow") ; self.norm = plt.Normalize(0., 5.) ; sm =  ScalarMappable(norm=self.norm, cmap=self.cmap) ; sm.set_array([])
-        self.__cbar = self.__fig.colorbar(sm, ax=self.__plt, pad=0.025, shrink=0.8) ; self.__cbar.set_label('S/N', fontsize=20, labelpad=20, rotation=270) ; self.__cbar.ax.tick_params(labelsize=16)
+        self.__fig = plt.figure(constrained_layout=True, dpi=75)        
+        self.__canvas = FigureCanvasTkAgg(self.__fig, master=self)
+        self.__canvas.get_tk_widget().pack(fill=tk.BOTH, expand=1)
+        self.__canvas.mpl_connect("button_press_event", self.canvas_clicked)        
+        self.__plt = self.__fig.add_subplot(1, 4, (1, 3))
+        self.__plt.tick_params(axis='both', labelsize=14)
+        self.cmap = plt.get_cmap("rainbow")
+        self.norm = Normalize(0., 5.)
+        sm = ScalarMappable(norm=self.norm, cmap=self.cmap)
+        sm.set_array([])
+        self.__cbar = self.__fig.colorbar(sm, ax=self.__plt, pad=0.02, shrink=0.8, orientation='vertical')
+        self.__cbar.set_label('S/N', fontsize=20, labelpad=15, rotation=270)
+        self.__cbar.ax.tick_params(labelsize=14)
         self.__fig.set_constrained_layout_pads(w_pad=0.4, h_pad=0.4, wspace=0., hspace=0.)
         self.__plt2 = self.__fig.add_subplot(1, 4, 4)
         self.__plt2.set_frame_on(False)
-        self.__plt2.tick_params(left=False, right=False, labelleft=False, labelbottom=False, bottom=False) 
-        
+        self.__plt2.tick_params(left=False, right=False, labelleft=False, labelbottom=False, bottom=False)
+
         # On initie la table de planète raw (afin d'avoir la liste de tous les noms des planètes)
         self.planet_table = load_planet_table("Archive_Pull.ecsv")
         
@@ -114,7 +117,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         
     def enter_planet_name(self):
         if self.planet_name.get() in self.planet_table["PlanetName"]:
-            self.planet_index = planet_index(planet_table=self.planet_table, planet_name=self.planet_name.get())
+            self.planet_index = get_planet_index(planet_table=self.planet_table, planet_name=self.planet_name.get())
             self.planet = self.planet_table[self.planet_index]
         else:
             self.planet = None
@@ -241,15 +244,15 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         self.__list_apodizers['values'] = list_apodizers
         self.__list_apodizers.current(0) #index de l'élément sélectionné
         self.__list_apodizers.bind("<<ComboboxSelected>>", lambda _: self.apodizer_clicked())
-        list_strehls = [strehl for strehl in self.config_data["strehls"]]
-        list_strehls = ["None" if elem == "NO_JQ" else elem for elem in list_strehls]
+        list_strehls_raw = [strehl for strehl in self.config_data["strehls"]]
+        list_strehls     = ["None" if elem == "NO_JQ" else elem for elem in list_strehls_raw]
         self.button_strehls = tk.LabelFrame(self.button_band) ; self.button_strehls.grid(row=0, column=2, sticky="nsew") ; self.button_band.grid_columnconfigure(2, weight=1)
         self.__txt_strehls = Label(self.button_strehls, text = "Strehl: ", fg="black", font=('Arial', 14, 'bold')) ; self.__txt_strehls.grid(column=0, row=0) ; self.button_strehls.grid_columnconfigure(0, weight=1)
         self.__list_strehls = ttk.Combobox(self.button_strehls, state='readonly', font=('Arial', 14, 'bold'), justify='center') ; self.__list_strehls.grid(column=1, row=0) ; self.button_strehls.grid_columnconfigure(1, weight=1)
         popdown = self.__list_strehls.tk.eval('ttk::combobox::PopdownWindow %s' % self.__list_strehls)
         self.__list_strehls.tk.call('%s.f.l' % popdown, 'configure', '-font', self.__list_strehls['font'])
         self.__list_strehls['values'] = list_strehls
-        self.__list_strehls.current([i for i, x in enumerate(list_strehls) if x == self.strehl][0]) #index de l'élément sélectionné
+        self.__list_strehls.current([i for i, x in enumerate(list_strehls_raw) if x == self.strehl][0]) # index de l'élément sélectionné
         self.__list_strehls.bind("<<ComboboxSelected>>", lambda _: self.strehl_clicked())
     def band_clicked(self):
         self.band = self.__list_bands.get()
@@ -272,7 +275,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
     def create_button_model(self):
         self.button_model = tk.Frame(self) ; self.button_model.pack(side=tk.TOP, fill=tk.X)
         self.button_thermal_model = tk.LabelFrame(self.button_model) ; self.button_thermal_model.grid(row=0, column=0, sticky="nsew") ; self.button_model.grid_columnconfigure(0, weight=1)
-        self.__txt_thermal_model = Label(self.button_thermal_model, text = "Thermal contribution (model): ", fg="black", font=('Arial', 14, 'bold')) ; self.__txt_thermal_model.grid(column=0, row=0) ; self.button_thermal_model.grid_columnconfigure(0, weight=1)
+        self.__txt_thermal_model = Label(self.button_thermal_model, text = "Thermal contribution (atmospheric model): ", fg="black", font=('Arial', 14, 'bold')) ; self.__txt_thermal_model.grid(column=0, row=0) ; self.button_thermal_model.grid_columnconfigure(0, weight=1)
         self.__list_thermal_model = ttk.Combobox(self.button_thermal_model, state='readonly', font=('Arial', 14, 'bold'), justify='center') ; self.__list_thermal_model.grid(column=1, row=0) ; self.button_thermal_model.grid_columnconfigure(1, weight=1)
         popdown = self.__list_thermal_model.tk.eval('ttk::combobox::PopdownWindow %s' % self.__list_thermal_model)
         self.__list_thermal_model.tk.call('%s.f.l' % popdown, 'configure', '-font', self.__list_thermal_model['font'])
@@ -413,7 +416,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
             planet_table_raw = planet_table_raw[~get_mask(planet_table_raw, "SMA")]
             self.planet_table = self.planet_table[~get_mask(self.planet_table, "SMA")]
         # calcul du SNR de chaque planète sur la bande
-        self.SNR = np.copy(np.sqrt(self.exposure_time.get()/self.planet_table['DIT_'+self.band]) * self.planet_table['signal_'+self.band] / np.sqrt(  self.planet_table['sigma_non-syst_'+self.band]**2 + (self.exposure_time.get()/self.planet_table['DIT_'+self.band])*self.planet_table['sigma_syst_'+self.band]**2 ))
+        self.SNR = np.copy(np.sqrt(self.exposure_time.get()/self.planet_table['DIT_'+self.band]) * self.planet_table['signal_'+self.band] / np.sqrt( self.planet_table['sigma_fund_'+self.band]**2 + (self.exposure_time.get()/self.planet_table['DIT_'+self.band])*self.planet_table['sigma_syst_'+self.band]**2 ))
         z_instru = np.copy(self.SNR) ; z_instru[z_instru>=5] = 5 ; nb_detected = len(self.SNR[self.SNR>=5])
         # WORKING ANGLE
         lambda_c = (self.config_data["lambda_range"]["lambda_min"]+self.config_data["lambda_range"]["lambda_max"])/2 * 1e-6
@@ -493,28 +496,28 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         else:
             txt_syst = "(without systematics)"
         if self.instru == "NIRCam":
-            self.__plt.set_title(f'Known exoplanets detection yield with {self.instru} ({self.spectrum_contributions} light with {self.model})'+'\n on '+self.band+'-band (from '+str(round(self.lmin, 1))+' to '+str(round(self.lmax, 1))+f' µm) with '+'$t_{exp}$=' + str(round(self.exposure_time.get())) + 'mn ' + txt_syst, fontsize = 24)
+            self.__plt.set_title(f'Known exoplanets detection yield with {self.instru} ({self.spectrum_contributions} light with {self.model})'+'\n on '+self.band+'-band (from '+str(round(self.lmin, 1))+' to '+str(round(self.lmax, 1))+f' µm) with '+'$t_{exp}$=' + str(round(self.exposure_time.get())) + 'mn ' + txt_syst, fontsize=18)
         else:
-            self.__plt.set_title(f'Known exoplanets detection yield with {self.instru} ({self.spectrum_contributions} light with {self.model})'+'\n on '+self.band+'-band (from '+str(round(self.lmin, 1))+' to '+str(round(self.lmax, 1))+f' µm with R ~ {int(round(self.R, -2))}) with '+'$t_{exp}$=' + str(round(self.exposure_time.get())) + 'mn ' + txt_syst, fontsize = 24)
+            self.__plt.set_title(f'Known exoplanets detection yield with {self.instru} ({self.spectrum_contributions} light with {self.model})'+'\n on '+self.band+'-band (from '+str(round(self.lmin, 1))+' to '+str(round(self.lmax, 1))+f' µm with R ~ {int(round(self.R, -2))}) with '+'$t_{exp}$=' + str(round(self.exposure_time.get())) + 'mn ' + txt_syst, fontsize=18)
         if self.units == "Observational":
-            self.__plt.set_xlabel(f'Angular separation (in {x_raw.unit})', fontsize = 20)
-            self.__plt.set_ylabel(f'Contrast (on {self.band}-band)', fontsize = 20)
-            self.__plt.axvspan(iwa, owa, color='k', alpha=0.5, lw=0, label="Working angle", zorder=2)
+            self.__plt.set_xlabel(f'Angular separation (in {x_raw.unit})', fontsize=18)
+            self.__plt.set_ylabel(f'Contrast (on {self.band}-band)', fontsize=18)
+            self.__plt.axvspan(iwa, owa, color='grey', alpha=0.5, lw=0, label="Working angle", zorder=2)
             if "thermal" in self.spectrum_contributions:
                 self.__plt.set_ylim(1e-11, 1)
             else:
                 self.__plt.set_ylim(1e-14, 1e-3)
             self.__plt.set_xlim(1e-2, 1e6)
         elif self.units == "Physical":
-            self.__plt.set_xlabel(f'Semi Major Axis (in {x_raw.unit})', fontsize = 20)
-            self.__plt.set_ylabel(f"Planet mass (in {y_raw.unit})", fontsize = 20)
+            self.__plt.set_xlabel(f'Semi Major Axis (in {x_raw.unit})', fontsize=18)
+            self.__plt.set_ylabel(f"Planet mass (in {y_raw.unit})", fontsize=18)
             self.__plt.set_ylim(1e-1, 2.5e4) ; self.__plt.set_xlim(5e-3, 1e4)
         self.__plt.legend(loc="lower right", fontsize=16)
         self.__plt.text(.01, .99, f'total number of planets = {len(planet_table_raw)+len(self.planet_table)}', ha='left', va='top', transform=self.__plt.transAxes, fontsize=12)
         self.__plt.text(.01, .965, f'number of planets detected = {nb_detected} / {len(self.planet_table)}', ha='left', va='top', transform=self.__plt.transAxes, fontsize=12)
         if self.planet is not None:
             if self.planet["PlanetName"] in self.planet_table["PlanetName"]: 
-                self.planet_index = planet_index(planet_table=self.planet_table, planet_name=self.planet["PlanetName"])
+                self.planet_index = get_planet_index(planet_table=self.planet_table, planet_name=self.planet["PlanetName"])
                 self.planet = self.planet_table[self.planet_index]
                 self.draw_table_parameters()
                 self.__plt.plot(self.x_instru[self.planet_index], self.y_instru[self.planet_index], "kX", ms=14, zorder=4)
@@ -531,14 +534,14 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
             a_data_y = np.log10(np.array(self.y_instru.value)/10**(c_y))
             delta_x = np.abs(a_clicked_x - a_data_x)
             delta_y = np.abs(a_clicked_y - a_data_y)
-            self.planet_index = ((delta_x)**2+(delta_y)**2).argmin()
-            self.planet = self.planet_table[self.planet_index]
+            self.planet_index = ((delta_x)**2 + (delta_y)**2).argmin()
+            self.planet       = self.planet_table[self.planet_index]
             self.planet_name.set(self.planet["PlanetName"])
             self.draw_table_plot()
             
     def draw_table_parameters(self):
         self.__plt2.clear()
-        self.__plt2.text(0.5, 1, self.planet["PlanetName"]+f"\n on {self.band}-band of {self.instru}", fontsize=20, weight='bold', bbox={'facecolor': 'white', 'alpha': 1, 'edgecolor': 'none', 'pad': 1}, verticalalignment='center', horizontalalignment='center', zorder=10)
+        self.__plt2.text(0.5, 1, f"{self.planet['PlanetName']} ({self.planet['PlanetType']})\n on {self.band}-band of {self.instru}", fontsize=22, weight='bold', bbox=dict(facecolor='white', edgecolor='gray', boxstyle='round,pad=0.5', alpha=0.9), va='center', ha='center', zorder=10)
         if self.band == "INSTRU":
             self.mag_planet =  self.planet["Planet"+self.band+"mag("+self.instru+")("+self.spectrum_contributions+")"]
             self.mag_star = self.planet["Star"+self.band+"mag("+self.instru+")"]
@@ -549,7 +552,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
             else:
                 self.mag_star = self.planet["Star"+self.band+"mag"]
         self.flux_ratio = 10**(-(self.mag_planet-self.mag_star)/2.5)
-        self.data =  [[         'Planet', 'Star'], 
+        data1 =    [[         'Planet', 'Star'], 
                     [ 'T', f'{int(round(float(self.planet["PlanetTeq"].value)))} {self.planet["PlanetTeq"].unit}', f'{int(round(float(self.planet["StarTeff"].value)))} {self.planet["StarTeff"].unit}'], 
                     [ 'lg', f'{round(float(self.planet["PlanetLogg"].value), 1)} {self.planet["PlanetLogg"].unit}', f'{round(float(self.planet["StarLogg"].value), 1)} {self.planet["StarLogg"].unit}'], 
                     [ 'M', f'{round(float(self.planet["PlanetMass"].value), 1)} {self.planet["PlanetMass"].unit}', f'{round(float(self.planet["StarMass"].value), 1)} {self.planet["StarMass"].unit}'], 
@@ -557,21 +560,19 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
                     [ 'mag', f'{round(self.mag_planet, 1)}', f'{round(self.mag_star, 1)}'], 
                     [ 'RV', f'{round(float(self.planet["PlanetRadialVelocity"].value), 1)} {self.planet["PlanetRadialVelocity"].unit}', f'{round(float(self.planet["StarRadialVelocity"].value), 1)} {self.planet["StarRadialVelocity"].unit}'], 
                     [ 'Vsini', f'{round(float(self.planet["PlanetVsini"].value), 1)} {self.planet["PlanetVsini"].unit}', f'{round(float(self.planet["StarVsini"].value), 1)} {self.planet["StarVsini"].unit}']]
-        
-        self.column_headers = self.data.pop(0)
-        self.row_headers = [x.pop(0) for x in self.data]
-        self.cell_text = []
-        for row in self.data:
-            self.cell_text.append([x for x in row])
-        self.rcolors = plt.cm.Oranges(np.full(len(self.row_headers), 0.333))
-        self.ccolors = plt.cm.Oranges(np.full(len(self.column_headers), 0.333))
-        self.table_parameters = self.__plt2.table(cellText=self.cell_text, rowLabels=self.row_headers, rowColours=self.rcolors, rowLoc='center', colColours=self.ccolors, colLabels=self.column_headers, loc='center', bbox = [0.12, 0., 0.89, 0.4])
-        self.table_parameters.set_fontsize(16) 
-        self.cells = self.table_parameters.properties()["celld"] ; self.col=len(self.column_headers) ; self.rows=len(self.row_headers)
-        for i in range(self.col):
-            for j in range(self.rows+1):
-                self.cells[j, i].set_text_props(ha="center")
-        self.data =  [[ 'S/N', f'{round(self.SNR[self.planet_index], 1)}'], 
+        column_headers1 = data1.pop(0)
+        row_headers1 = [row.pop(0) for row in data1]
+        cell_text1 = [row for row in data1]
+        row_colors1 = plt.cm.Oranges(np.full(len(row_headers1), 0.4))
+        col_colors1 = plt.cm.Oranges(np.full(len(column_headers1), 0.4))
+        table1 = self.__plt2.table(cellText=cell_text1, rowLabels=row_headers1, rowColours=row_colors1, rowLoc='center', colColours=col_colors1, colLabels=column_headers1, loc='center', bbox = [0.12, 0., 0.89, 0.4])
+        table1.set_fontsize(16) 
+        cells1 = table1.properties()["celld"]
+        for (i, j), cell in cells1.items():
+            cell.set_text_props(ha="center", va="center")
+            cell.set_edgecolor('gray')
+            cell.set_linewidth(0.5)
+        data2 =  [[ 'S/N', f'{round(self.SNR[self.planet_index], 1)}'], 
                     [ 'Flux ratio', '{0:.1e}'.format(self.flux_ratio)], 
                     [ 'Angular separation', f"{round(float(self.planet['AngSep'].value))} {self.planet['AngSep'].unit}"], 
                     [ 'SMA', f"{round(float(self.planet['SMA'].value), 1)} {self.planet['SMA'].unit}"], 
@@ -580,17 +581,16 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
                     [ f'Star age', f"{round(float(self.planet['StarAge'].value), 2)} {self.planet['StarAge'].unit}"], 
                     [ f'Inclination', f"{round(float(self.planet['Inc'].value))} °"], 
                     [ f'Distance', f"{round(float(self.planet['Distance'].value), 1)} {self.planet['Distance'].unit}"]]
-        self.row_headers = [x.pop(0) for x in self.data]
-        self.cell_text = []
-        for row in self.data:
-            self.cell_text.append([x for x in row])
-        self.rcolors = plt.cm.Oranges(np.full(len(self.row_headers), 0.333))
-        self.table_parameters = self.__plt2.table(cellText=self.cell_text, rowLabels=self.row_headers, rowColours=self.rcolors, rowLoc='center', loc='center', bbox = [0.49, 0.47, 0.52, 0.45])
-        self.table_parameters.set_fontsize(16) 
-        self.cells = self.table_parameters.properties()["celld"] ; self.col=len(self.column_headers) ; self.rows=len(self.row_headers)
-        for i in range(-1, 1):
-            for j in range(self.rows):
-                self.cells[j, i].set_text_props(ha="center")
+        row_headers2 = [row.pop(0) for row in data2]
+        cell_text2 = [row for row in data2]
+        row_colors2 = plt.cm.Oranges(np.full(len(row_headers2), 0.4))
+        table2 = self.__plt2.table(cellText=cell_text2, rowLabels=row_headers2, rowColours=row_colors2, rowLoc='center', loc='center', bbox = [0.49, 0.47, 0.52, 0.45])
+        table2.set_fontsize(16) 
+        cells2 = table2.properties()["celld"]
+        for (i, j), cell in cells2.items():
+            cell.set_text_props(ha="center", va="center")
+            cell.set_edgecolor('gray')
+            cell.set_linewidth(0.5)
         self.__plt2.text(1.05, -0.05, self.date, horizontalalignment='right', size=14, weight='light')
         
     def open_popup(self): # USELESS
@@ -615,10 +615,6 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         self.FastCurves_calculation()
     def FastCurves_calculation(self):
         planet_spectrum, planet_thermal, planet_reflected, star_spectrum = thermal_reflected_spectrum(self.planet, self.instru, thermal_model=self.thermal_model, reflected_model=self.reflected_model, wave_instru=None, wave_K=None, vega_spectrum_K=None, show=True)
-        if self.spectrum_contributions == "thermal": 
-            planet_spectrum = planet_thermal
-        elif self.spectrum_contributions == "reflected":
-            planet_spectrum = planet_reflected
         mag_p = self.planet["PlanetINSTRUmag("+self.instru+")("+self.spectrum_contributions+")"]
         mag_s = self.planet["StarINSTRUmag("+self.instru+")"]
         band0 = "instru"
@@ -630,7 +626,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
             if self.band == "INSTRU": # picking the band with the highest S/N
                 snr_max = 0 ; band_only = None
                 for band in self.config_data["gratings"]:
-                    snr = np.copy(np.sqrt(self.exposure_time.get()/self.planet['DIT_'+band]) * self.planet['signal_'+band] / np.sqrt( self.planet['sigma_non-syst_'+band]**2 + (self.exposure_time.get()/self.planet['DIT_'+band])*self.planet['sigma_syst_'+band]**2 ))
+                    snr = np.copy(np.sqrt(self.exposure_time.get()/self.planet['DIT_'+band]) * self.planet['signal_'+band] / np.sqrt( self.planet['sigma_fund_'+band]**2 + (self.exposure_time.get()/self.planet['DIT_'+band])*self.planet['sigma_syst_'+band]**2 ))
                     if snr > snr_max:
                         snr_max = snr ; band_only = band
             else:

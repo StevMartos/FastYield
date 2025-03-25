@@ -2,15 +2,31 @@
 from src.FastCurves import *
 
 
-
-instru_with_systematics = ["MIRIMRS", "NIRSpec"]
+# Models list
 thermal_models          = ["None", "BT-Settl", "Exo-REM", "PICASO"]
 reflected_models        = ["None", "tellurics", "flat", "PICASO"]
 
+# Planet types list
+planet_types = {
+    # 1️⃣ Giant Planets
+    "Hot Jupiter": {"mass_min": 100, "radius_min": 10, "teq_min": 1000},  
+    "Warm Jupiter": {"mass_min": 100, "radius_min": 10, "teq_min": 500, "teq_max": 1000},  
+    "Cold Jupiter": {"mass_min": 100, "radius_min": 10, "teq_max": 500},  
+    "Hot Neptune": {"mass_min": 10, "mass_max": 100, "radius_min": 3, "radius_max": 10, "teq_min": 800},  
+    "Warm Neptune": {"mass_min": 10, "mass_max": 100, "radius_min": 3, "radius_max": 10, "teq_min": 500, "teq_max": 800},  
+    "Cold Neptune": {"mass_min": 10, "mass_max": 100, "radius_min": 3, "radius_max": 10, "teq_max": 500},  
 
+    # 2️⃣ Intermediate Planets
+    "Sub-Neptune": {"mass_min": 2, "mass_max": 10, "radius_min": 2, "radius_max": 4, "teq_min": 200, "teq_max": 1000},  
 
-path_file = os.path.dirname(__file__)
-archive_path = os.path.join(os.path.dirname(path_file), "sim_data/Archive_table/")
+    # 3️⃣ Rocky Planets
+    "Super-Earth": {"mass_min": 2, "mass_max": 10, "radius_min": 1.2, "radius_max": 2, "teq_min": 200, "teq_max": 1000},  
+    "Exo-Earth": {"mass_min": 0.5, "mass_max": 2, "radius_min": 0.8, "radius_max": 1.2, "teq_min": 200, "teq_max": 400},  
+}
+
+# Path 
+path_file      = os.path.dirname(__file__)
+archive_path   = os.path.join(os.path.dirname(path_file), "sim_data/Archive_table/")
 simulated_path = os.path.join(os.path.dirname(path_file), "sim_data/Simulated_table/")
 
 
@@ -355,7 +371,7 @@ def inject_dace_values(planet_table): # https://dace-query.readthedocs.io/en/lat
     planet_table_dace = Exoplanet.query_database(output_format='astropy_table')
     for planet in planet_table_dace:
         if planet["planet_name"] in planet_table["PlanetName"]:
-            idx = planet_index(planet_table, planet["planet_name"])
+            idx = get_planet_index(planet_table, planet["planet_name"])
             planet_table[idx]["Distance"]           = planet["distance"] * planet_table[idx]["Distance"].unit
             planet_table[idx]["+DeltaDistance"]     = planet["distance_upper"] * planet_table[idx]["Distance"].unit
             planet_table[idx]["-DeltaDistance"]     = -planet["distance_lower"] * planet_table[idx]["Distance"].unit
@@ -381,7 +397,7 @@ def inject_dace_values(planet_table): # https://dace-query.readthedocs.io/en/lat
 def get_missing_k_mags(): # Missing values for K-band mag of Direct Imaging planets
     planet_table = load_planet_table("Archive_Pull.ecsv")
     planet_table = planet_table[planet_table["DiscoveryMethod"]=="Imaging"]
-    planet_table['PlanetKmag(thermal+reflected)'] = np.full((len(planet_table), ), np.nan)
+    planet_table['PlanetKmag(thermal+reflected)'] = np.full(len(planet_table), np.nan)
     planet_table = inject_known_values(planet_table) # on rentre les valeurs connues des magnitudes (en bande K) des planètes détectées par imagerie directe
     print(f" {len(planet_table[np.isnan(planet_table['PlanetKmag(thermal+reflected)'])])}/{len(planet_table)} K-band value are missing for Imaging planets :")
     for i in range(len(planet_table)):
@@ -391,7 +407,7 @@ def get_missing_k_mags(): # Missing values for K-band mag of Direct Imaging plan
 
 
 #######################################################################################################################
-#################################################### Creating tables: #################################################
+#################################################### Utils function: #################################################
 #######################################################################################################################
 
 
@@ -404,22 +420,15 @@ def get_mask(planet_table, column):
         mask = (np.isnan(np.array(planet_table[column])))|(np.array(planet_table[column])==np.nan)|(np.array(planet_table[column])==0)
     return mask
 
-
-
-def planet_index(planet_table, planet_name, TAP=True):
+def get_planet_index(planet_table, planet_name, TAP=True):
     """
     Gives the index of "planet_name" in "planet_table"
     """
-    for i in range(len(planet_table)):
-        if TAP:
-            if planet_table["PlanetName"][i] == planet_name:
-                idx=i
-        else:
-            if planet_table["name"][i] == planet_name:
-                idx=i
+    if TAP:
+        idx = np.where(planet_table["PlanetName"] == planet_name)[0][0]
+    else:
+        idx = np.where(planet_table["name"] == planet_name)[0][0]
     return idx
-
-
 
 def get_closest_planet(planet_table, T_planet, lg_planet): # permet de trouver la planète ayant les paramètres les plus proches de T et lg
     diff_T   = (planet_table["PlanetTeq"].value-T)/T
@@ -428,7 +437,152 @@ def get_closest_planet(planet_table, T_planet, lg_planet): # permet de trouver l
     idx      = np.argmin(distance)
     return idx
 
+def get_planet_type(planet):
+    """
+    Determine the type of a planet based on predefined conditions in `planet_types`.
 
+    Parameters:
+    - planet: a row from `planet_table` containing PlanetMass, PlanetRadius, and PlanetTeq.
+
+    Returns:
+    - A string representing the type of the planet.
+    """
+
+    # Extract properties from the planet
+    mass   = float(planet["PlanetMass"].value)
+    radius = float(planet["PlanetRadius"].value)
+    teq    = float(planet["PlanetTeq"].value)
+
+    # If mass or radius is masked, return "Unidentified"
+    if np.ma.is_masked(mass) or np.ma.is_masked(radius):
+        return "Unidentified"
+
+    # Loop through planet types to find a match
+    for ptype, criteria in planet_types.items():
+        mass_match = ("mass_min" not in criteria or mass >= criteria["mass_min"]) and \
+                     ("mass_max" not in criteria or mass <= criteria["mass_max"])
+        
+        radius_match = ("radius_min" not in criteria or radius >= criteria["radius_min"]) and \
+                       ("radius_max" not in criteria or radius <= criteria["radius_max"])
+
+        teq_match = teq is None or (("teq_min" not in criteria or teq >= criteria["teq_min"]) and \
+                                    ("teq_max" not in criteria or teq <= criteria["teq_max"]))
+
+        if mass_match and radius_match and teq_match:
+            return ptype  # Return the first matching type
+
+    return "Unidentified"  # If no match is found
+
+def find_matching_planets(criteria, planet_table, mode, selected_planets=None, Nmax=None):  
+    # Build the query string dynamically
+    query = " & ".join([
+        f"PlanetMass >= {criteria['mass_min']}" if "mass_min" in criteria else "",
+        f"PlanetMass <= {criteria['mass_max']}" if "mass_max" in criteria else "",
+        f"PlanetRadius >= {criteria['radius_min']}" if "radius_min" in criteria else "",
+        f"PlanetRadius <= {criteria['radius_max']}" if "radius_max" in criteria else "",
+        f"PlanetTeq >= {criteria['teq_min']}" if "teq_min" in criteria else "",
+        f"PlanetTeq <= {criteria['teq_max']}" if "teq_max" in criteria else ""
+    ])
+    
+    # Remove empty conditions from query
+    query = " & ".join(filter(None, query.split(" & ")))
+    filtered_planets = planet_table.query(query) if query else planet_table
+
+    # Mode 'unique': Pick the planet with highest SNR
+    if mode == 'unique':
+        filtered_planets = filtered_planets[~filtered_planets["PlanetName"].isin(selected_planets)]
+        if not filtered_planets.empty:
+            chosen_planet = filtered_planets.loc[filtered_planets["SNR"].idxmax()]
+            selected_planets.add(chosen_planet["PlanetName"])
+            return [chosen_planet]
+        return []
+    # Mode 'multi': Return all filtered planets, limited to Nmax if specified
+    elif mode == 'multi':
+        # Limit the number of results if Nmax is set
+        if Nmax is not None:
+            filtered_planets = filtered_planets.iloc[:Nmax]
+        return filtered_planets.head(Nmax).to_dict(orient='records') if not filtered_planets.empty else []
+
+def plot_matching_planets(matching_planets, exposure_time, mode, instru=None):
+    snr_threshold = 5
+    
+    # Plot
+    fig, ax = plt.subplots(figsize=(12, 6), dpi=300)
+    if instru is not None:
+        fig.suptitle(f"{instru}", fontsize=16, y=0.88)
+    ax.set_frame_on(False)
+    ax.xaxis.set_visible(False)
+    ax.yaxis.set_visible(False)
+
+    # Generate the table based on the mode
+    if mode == 'unique':
+        matching_planets_df = pd.DataFrame([
+            {"Type": ptype, "Name": planet["PlanetName"], 
+             "Mass [M⊕]":  round(planet["PlanetMass"], 2), 
+             "Radius [R⊕]":  round(planet["PlanetRadius"], 2), 
+             "Temperature [K]": int(round(planet["PlanetTeq"])), 
+             f"SNR (in {int(round(exposure_time/60))} h)": round(planet["SNR"], 1)}
+            for ptype, planets in matching_planets.items() for planet in planets])
+        table = ax.table(cellText=matching_planets_df.values, colLabels=matching_planets_df.columns, cellLoc='center', loc='center')
+    elif mode == 'multi':    
+        snr_threshold = 5
+        conditions_df = pd.DataFrame([
+            {"Type": ptype,
+             "Mass [M⊕]": format_range(criteria, "mass"),
+             "Radius [R⊕]": format_range(criteria, "radius"),
+             "Temperature [K]": format_range(criteria, "teq"),
+             "Number of Planets\nconsidered": len(matching_planets[ptype]),
+             f"Number of Planets\ndetected (in {int(round(exposure_time/60))} h)": sum(planet["SNR"] > snr_threshold for planet in matching_planets[ptype])}
+            for ptype, criteria in planet_types.items()])
+        table = ax.table(cellText=conditions_df.values, colLabels=conditions_df.columns, cellLoc='center', loc='center')
+
+    for (i, j), cell in table.get_celld().items():
+        if i == 0:
+            cell.set_fontsize(12)
+            cell.set_text_props(weight='bold', color='white')
+            cell.set_facecolor('#2f4f6f')
+            cell.set_height(0.07)
+        else:
+            cell.set_fontsize(10)
+            cell.set_height(0.06)
+            if i % 2 == 0:
+                cell.set_facecolor('#e6e6e6')
+    table.auto_set_font_size(False)
+    table.set_fontsize(10)
+    if mode == 'unique':
+        table.auto_set_column_width([i for i in range(len(matching_planets_df.columns))])
+    elif mode == 'multi':
+        table.auto_set_column_width([i for i in range(len(conditions_df.columns))])
+    plt.show()
+
+def format_range(criteria, key):
+    min_key = f"{key}_min"
+    max_key = f"{key}_max"
+    if min_key in criteria and max_key in criteria:
+        return f"{criteria[min_key]} - {criteria[max_key]}"
+    elif min_key in criteria:
+        return f">{criteria[min_key]}"
+    elif max_key in criteria:
+        return f"<{criteria[max_key]}"
+    return "N/A"
+
+def get_spectrum_contribution_name_model(thermal_model, reflected_model):
+    if thermal_model == "None":
+        spectrum_contributions = "reflected"
+        name_model = reflected_model
+        if name_model == "PICASO":
+            name_model += "_reflected_only"
+    elif reflected_model == "None":
+        spectrum_contributions = "thermal"
+        name_model = thermal_model
+        if name_model == "PICASO":
+            name_model += "_thermal_only"
+    elif thermal_model == "None" and reflected_model == "None":
+        raise KeyError("PLEASE DEFINE A MODEL FOR THE THERMAL OR THE REFLECTED COMPONENT !")
+    elif thermal_model != "None" and reflected_model != "None":
+        spectrum_contributions = "thermal+reflected"
+        name_model = thermal_model+"+"+reflected_model
+    return spectrum_contributions, name_model
 
 def load_planet_table(table_name):
     """
@@ -439,6 +593,12 @@ def load_planet_table(table_name):
     else:
         planet_table = QTable.read(simulated_path+table_name, format='ascii.ecsv')
     return planet_table
+
+
+
+#######################################################################################################################
+#################################################### Creating tables: #################################################
+#######################################################################################################################
 
 
 
@@ -499,19 +659,19 @@ def create_archive_planet_table():
     planet_table["Phase"] = np.pi/2 * planet_table["Phase"].unit
 
     # Fixing the minimum planets temperature
-    min_Tp                                                         = 200 * u.K # fixing minimum temperature for the planets (the one of the BT-Settl, Morley and SONORA spectra)
+    min_Tp = 200 * u.K # fixing minimum temperature for the planets (the one of the BT-Settl, Morley and SONORA spectra)
     planet_table["PlanetTeq"][planet_table["PlanetTeq"] < min_Tp ] = min_Tp
     
     # Fixing the maximum planets temperature
-    max_Tp                                                         = 3000 * u.K # fixing maximum temperature for the planets
+    max_Tp = 3000 * u.K # fixing maximum temperature for the planets
     planet_table["PlanetTeq"][planet_table["PlanetTeq"] > max_Tp ] = max_Tp
     
     # Fixing the maximum planets mass
-    max_Mp                                                           = 10000 * u.Mearth # otherwise it can be considered as a star 
+    max_Mp = 10000 * u.Mearth # otherwise it can be considered as a star 
     planet_table["PlanetMass"][planet_table["PlanetMass"] > max_Mp ] = max_Mp
     
     # Randomly draw radial velocities of the stars according to a normal distribution when they are missing
-    srv_mask                                     = get_mask(planet_table, "StarRadialVelocity")
+    srv_mask = get_mask(planet_table, "StarRadialVelocity")
     planet_table["StarRadialVelocity"][srv_mask] = np.random.normal(np.nanmean(np.array(planet_table["StarRadialVelocity"][~srv_mask].value)), np.nanstd(np.array(planet_table["StarRadialVelocity"][~srv_mask].value)), len(planet_table["StarRadialVelocity"][srv_mask])) * planet_table["StarRadialVelocity"].unit
     
     # Simulating random star Vsini values (depending on the type of stars) when the values are missing
@@ -675,20 +835,23 @@ def create_fastcurves_table(table="Archive"): # take ~ 3 minutes for Archive and
         plt.show()
     print('\n Total nb of planets considered: %d'%len(planet_table))
     
+    # creating planet type column
+    planet_table["PlanetType"] = np.full(len(planet_table), "Unidentified", dtype="<U32")
+
     # creating magnitudes columns
     for instru in config_data_list:
-        planet_table['StarINSTRUmag('+instru["name"]+')'] = np.full((len(planet_table), ), np.nan)
-        planet_table['PlanetINSTRUmag('+instru["name"]+')(thermal+reflected)'] = np.full((len(planet_table), ), np.nan)
-        planet_table['PlanetINSTRUmag('+instru["name"]+')(thermal)'] = np.full((len(planet_table), ), np.nan)
-        planet_table['PlanetINSTRUmag('+instru["name"]+')(reflected)'] = np.full((len(planet_table), ), np.nan)
+        planet_table['StarINSTRUmag('+instru["name"]+')']                      = np.full(len(planet_table), np.nan)
+        planet_table['PlanetINSTRUmag('+instru["name"]+')(thermal+reflected)'] = np.full(len(planet_table), np.nan)
+        planet_table['PlanetINSTRUmag('+instru["name"]+')(thermal)']           = np.full(len(planet_table), np.nan)
+        planet_table['PlanetINSTRUmag('+instru["name"]+')(reflected)']         = np.full(len(planet_table), np.nan)
     for band in bands:
         if band == "K":
             planet_table['StarKmag'] = planet_table['StarKmag'].value
         else:
-            planet_table['Star'+band+'mag']                  = np.full((len(planet_table), ), np.nan)
-        planet_table['Planet'+band+'mag(thermal+reflected)'] = np.full((len(planet_table), ), np.nan)
-        planet_table['Planet'+band+'mag(thermal)']           = np.full((len(planet_table), ), np.nan)
-        planet_table['Planet'+band+'mag(reflected)']         = np.full((len(planet_table), ), np.nan)
+            planet_table['Star'+band+'mag']                  = np.full(len(planet_table), np.nan)
+        planet_table['Planet'+band+'mag(thermal+reflected)'] = np.full(len(planet_table), np.nan)
+        planet_table['Planet'+band+'mag(thermal)']           = np.full(len(planet_table), np.nan)
+        planet_table['Planet'+band+'mag(reflected)']         = np.full(len(planet_table), np.nan)
     
     # enters the known K-band magnitudes of planets detected by direct imaging
     if table == "Archive":
@@ -704,7 +867,8 @@ def create_fastcurves_table(table="Archive"): # take ~ 3 minutes for Archive and
     # spectra estimations
     with Pool(processes=cpu_count()//2) as pool: 
         results = list(tqdm(pool.imap(process_fastcurves_table, [(idx, make_table_serializable(planet_table[idx]), wave_instru, wave_K, vega_spectrum_K) for idx in range(len(planet_table))]), total=len(planet_table), desc="Estimating magnitudes..."))
-        for (idx, planet_spectrum, planet_thermal, planet_reflected, star_spectrum) in results:
+        for (idx, ptype, planet_spectrum, planet_thermal, planet_reflected, star_spectrum) in results:
+            planet_table[idx]['PlanetType'] = ptype
             for instru in config_data_list:
                 planet_table[idx]['StarINSTRUmag('+instru["name"]+')']                      = -2.5*np.log10(np.nanmean(star_spectrum.flux[(wave_instru>globals()["lmin_"+instru["name"]])&(wave_instru<globals()["lmax_"+instru["name"]])])/np.nanmean(vega_spectrum.flux[(wave_instru>globals()["lmin_"+instru["name"]]) & (wave_instru<globals()["lmax_"+instru["name"]])]))
                 planet_table[idx]['PlanetINSTRUmag('+instru["name"]+')(thermal+reflected)'] = -2.5*np.log10(np.nanmean(planet_spectrum.flux[(wave_instru>globals()["lmin_"+instru["name"]])&(wave_instru<globals()["lmax_"+instru["name"]])])/np.nanmean(vega_spectrum.flux[(wave_instru>globals()["lmin_"+instru["name"]]) & (wave_instru<globals()["lmax_"+instru["name"]])]))
@@ -732,8 +896,9 @@ def create_fastcurves_table(table="Archive"): # take ~ 3 minutes for Archive and
 
 def process_fastcurves_table(args):
     idx, planet, wave_instru, wave_K, vega_spectrum_K = args
-    planet_spectrum, planet_thermal, planet_reflected, star_spectrum = thermal_reflected_spectrum(planet, instru=None, thermal_model="BT-Settl", reflected_model="PICASO", wave_instru=wave_instru, wave_K=wave_K, vega_spectrum_K=vega_spectrum_K, show=False)
-    return idx, planet_spectrum, planet_thermal, planet_reflected, star_spectrum
+    planet_spectrum, planet_thermal, planet_reflected, star_spectrum = thermal_reflected_spectrum(planet, instru=None, thermal_model="BT-Settl", reflected_model="PICASO", wave_instru=wave_instru, wave_K=wave_K, vega_spectrum_K=vega_spectrum_K, show=False, in_im_mag=True)
+    ptype = get_planet_type(planet)
+    return idx, ptype, planet_spectrum, planet_thermal, planet_reflected, star_spectrum
 
 
 def make_table_serializable(table):
@@ -763,11 +928,11 @@ def calculate_SNR_table(instru, table="Archive", thermal_model="None", reflected
     Compute every SNR for every valid planet inside "table" for "instru"
     """
     exposure_time = 120
-    time1 = time.time()
+    time1         = time.time()
     if table == "Archive":
         planet_table = load_planet_table("Archive_Pull_for_FastCurves.ecsv")
         planet_table = planet_table[~get_mask(planet_table, "AngSep")]
-        path = archive_path
+        path         = archive_path
     elif table == "Simulated":
         planet_table = load_planet_table("Simulated_Pull_for_FastCurves.ecsv")
         if instru == "HARMONI" or instru == "ERIS":
@@ -785,36 +950,23 @@ def calculate_SNR_table(instru, table="Archive", thermal_model="None", reflected
     iwa = max(pxscale, config_data["apodizers"][apodizer].sep)
     planet_table = planet_table[planet_table['AngSep'] > iwa * u.mas] # filtering planets with SMA below IWA
     
-    if thermal_model == "Exo-REM": # filtering to the Exo-REM temperature range (if wanted)
-        planet_table = planet_table[(planet_table['PlanetTeq'] > 400*u.K) & (planet_table['PlanetTeq'] < 2000*u.K)]
+    if thermal_model == "Exo-REM": # filtering to the Exo-REM temperature range (if needed)
+        if globals()["lmin_"+instru] >= 1 and globals()["lmax_"+instru] <= 5.3: # very high res
+            planet_table = planet_table[(planet_table['PlanetTeq'] < 2000*u.K)]
+        else:
+            planet_table = planet_table[(planet_table['PlanetTeq'] > 400*u.K) & (planet_table['PlanetTeq'] < 2000*u.K)]
     
-    if thermal_model == "None":
-        spectrum_contributions = "reflected"
-        name_model = reflected_model
-        if name_model == "PICASO":
-            name_model += "_reflected_only"
-    elif reflected_model == "None":
-        spectrum_contributions = "thermal"
-        name_model = thermal_model
-        if name_model == "PICASO":
-            name_model += "_thermal_only"
-    elif thermal_model == "None" and reflected_model == "None":
-        raise KeyError("PLEASE DEFINE A MODEL FOR THE THERMAL OR THE REFLECTED COMPONENT !")
-    elif thermal_model != "None" and reflected_model != "None":
-        spectrum_contributions = "thermal+reflected"
-        name_model = thermal_model+"+"+reflected_model
+    spectrum_contributions, name_model = get_spectrum_contribution_name_model(thermal_model, reflected_model)
     
-    print('\n Nb of planets for which SNR is calculated for '+instru+': %d'%len(planet_table))
-
-    planet_table['signal_INSTRU'] = np.full((len(planet_table), ), np.nan)
-    planet_table['sigma_non-syst_INSTRU'] = np.full((len(planet_table), ), np.nan)
-    planet_table['sigma_syst_INSTRU'] = np.full((len(planet_table), ), np.nan)
-    planet_table['DIT_INSTRU'] = np.full((len(planet_table), ), np.nan)
+    planet_table['signal_INSTRU']     = np.full(len(planet_table), np.nan)
+    planet_table['sigma_fund_INSTRU'] = np.full(len(planet_table), np.nan)
+    planet_table['sigma_syst_INSTRU'] = np.full(len(planet_table), np.nan)
+    planet_table['DIT_INSTRU']        = np.full(len(planet_table), np.nan)
     for band in bands:
-        planet_table['signal_'+band] = np.full((len(planet_table), ), np.nan)
-        planet_table['sigma_non-syst_'+band] = np.full((len(planet_table), ), np.nan)
-        planet_table['sigma_syst_'+band] = np.full((len(planet_table), ), np.nan)
-        planet_table['DIT_'+band] = np.full((len(planet_table), ), np.nan)
+        planet_table['signal_'+band]     = np.full(len(planet_table), np.nan)
+        planet_table['sigma_fund_'+band] = np.full(len(planet_table), np.nan)
+        planet_table['sigma_syst_'+band] = np.full(len(planet_table), np.nan)
+        planet_table['DIT_'+band]        = np.full(len(planet_table), np.nan)
     
     # K-band    
     R_K    = 10_000 # only for photometric purposes (does not need more resolution)
@@ -824,7 +976,7 @@ def calculate_SNR_table(instru, table="Archive", thermal_model="None", reflected
     # instru-band    
     lmin_instru = config_data["lambda_range"]["lambda_min"] # in µm
     lmax_instru = config_data["lambda_range"]["lambda_max"] # in µm
-    R_instru    = 300_000 # abritrary resolution (needs to be high enough)
+    R_instru    = R0_max # abritrary resolution (needs to be high enough)
     dl_instru   = ((lmin_instru+lmax_instru)/2)/(2*R_instru)
     wave_instru = np.arange(0.98*lmin_instru, 1.02*lmax_instru, dl_instru)
     
@@ -840,49 +992,50 @@ def calculate_SNR_table(instru, table="Archive", thermal_model="None", reflected
             print("\n "+instru+" ("+apodizer+" & "+strehl+") with systematics ("+thermal_model+" & "+reflected_model+")")
     else:
         print("\n "+instru+" ("+apodizer+" & "+strehl+") without systematics ("+thermal_model+" & "+reflected_model+")")
+    
     band0 = "instru"
     
     if PCA: # if PCA, no multiprocessing (otherwise it crashes ?)
         for idx in tqdm(range(len(planet_table))):
-            args = (idx, planet_table[idx]["StarINSTRUmag("+instru+")"], make_table_serializable(planet_table[idx]), instru, thermal_model, reflected_model, spectrum_contributions, wave_instru, wave_K, vega_spectrum, vega_spectrum_K, lmin_instru, lmax_instru, band0, exposure_time, name_model, systematic, apodizer, strehl, PCA, PCA_mask, Nc)
-            idx, planet_spectrum, planet_thermal, planet_reflected, star_spectrum, mag_p, name_band, SNR_planet, signal_planet, sigma_ns_planet, sigma_s_planet, DIT_band = process_SNR_table(args)
+            args = (idx, planet_table[idx]["StarINSTRUmag("+instru+")"], make_table_serializable(planet_table[idx]), instru, thermal_model, reflected_model, wave_instru, wave_K, vega_spectrum, vega_spectrum_K, lmin_instru, lmax_instru, band0, exposure_time, name_model, systematic, apodizer, strehl, PCA, PCA_mask, Nc)
+            idx, planet_spectrum, planet_thermal, planet_reflected, star_spectrum, mag_p, name_band, SNR_planet, signal_planet, sigma_fund_planet, sigma_syst_planet, DIT_band = process_SNR_table(args)
             # Recalculates the magnitude in case the thermal model is no longer BT-Settl or the reflected model is no longer PICASO (the mag changes with regards to the raw archive table with the estimated magnbitudes)
             planet_table[idx]['PlanetINSTRUmag('+instru+')('+spectrum_contributions+')'] = mag_p
             for band in bands:
                 if lmin_instru < globals()["lmin_"+band] and globals()["lmax_"+band] < lmax_instru:
                     planet_table[idx]['Planet'+band+'mag('+spectrum_contributions+')'] = -2.5*np.log10(np.nanmean(planet_spectrum.flux[(wave_instru>globals()["lmin_"+band])&(wave_instru<globals()["lmax_"+band])])/np.nanmean(vega_spectrum.flux[(wave_instru>globals()["lmin_"+band]) & (wave_instru<globals()["lmax_"+band])]))
-            SNR     = np.sqrt(exposure_time/DIT_band) * signal_planet / np.sqrt( sigma_ns_planet**2 + (exposure_time/DIT_band)*sigma_s_planet**2 )
-            idx_max = SNR.argmax()
-            planet_table[idx]['signal_INSTRU']         = signal_planet[idx_max]
-            planet_table[idx]['sigma_non-syst_INSTRU'] = sigma_ns_planet[idx_max]
-            planet_table[idx]['sigma_syst_INSTRU']     = sigma_s_planet[idx_max]
-            planet_table[idx]['DIT_INSTRU']            = DIT_band[idx_max]
+            SNR     = np.sqrt(exposure_time/DIT_band) * signal_planet / np.sqrt( sigma_fund_planet**2 + (exposure_time/DIT_band)*sigma_syst_planet**2 )
+            idx_max = SNR.argmax() # all quantities are saved in e-/DIT
+            planet_table[idx]['signal_INSTRU']     = signal_planet[idx_max]
+            planet_table[idx]['sigma_fund_INSTRU'] = sigma_fund_planet[idx_max]
+            planet_table[idx]['sigma_syst_INSTRU'] = sigma_syst_planet[idx_max]
+            planet_table[idx]['DIT_INSTRU']        = DIT_band[idx_max]
             for nb, band in enumerate(name_band):
-                planet_table[idx]['signal_'+band]         = signal_planet[nb]
-                planet_table[idx]['sigma_non-syst_'+band] = sigma_ns_planet[nb]
-                planet_table[idx]['sigma_syst_'+band]     = sigma_s_planet[nb]
-                planet_table[idx]['DIT_'+band]            = DIT_band[nb]
+                planet_table[idx]['signal_'+band]     = signal_planet[nb]
+                planet_table[idx]['sigma_fund_'+band] = sigma_fund_planet[nb]
+                planet_table[idx]['sigma_syst_'+band] = sigma_syst_planet[nb]
+                planet_table[idx]['DIT_'+band]        = DIT_band[nb]
     
     else: # if no PCA, uses multiprocessing
         with Pool(processes=cpu_count()//2) as pool: # Utilisation de multiprocessing pour paralléliser les combinaisons i, j
-            results = list(tqdm(pool.imap(process_SNR_table, [(idx, planet_table[idx]["StarINSTRUmag("+instru+")"], make_table_serializable(planet_table[idx]), instru, thermal_model, reflected_model, spectrum_contributions, wave_instru, wave_K, vega_spectrum, vega_spectrum_K, lmin_instru, lmax_instru, band0, exposure_time, name_model, systematic, apodizer, strehl, PCA, PCA_mask, Nc) for idx in range(len(planet_table))]), total=len(planet_table)))
-            for (idx, planet_spectrum, planet_thermal, planet_reflected, star_spectrum, mag_p, name_band, SNR_planet, signal_planet, sigma_ns_planet, sigma_s_planet, DIT_band) in results:
+            results = list(tqdm(pool.imap(process_SNR_table, [(idx, planet_table[idx]["StarINSTRUmag("+instru+")"], make_table_serializable(planet_table[idx]), instru, thermal_model, reflected_model, wave_instru, wave_K, vega_spectrum, vega_spectrum_K, lmin_instru, lmax_instru, band0, exposure_time, name_model, systematic, apodizer, strehl, PCA, PCA_mask, Nc) for idx in range(len(planet_table))]), total=len(planet_table)))
+            for (idx, planet_spectrum, planet_thermal, planet_reflected, star_spectrum, mag_p, name_band, SNR_planet, signal_planet, sigma_fund_planet, sigma_syst_planet, DIT_band) in results:
                 # Recalculates the magnitude in case the thermal model is no longer BT-Settl or the reflected model is no longer PICASO (the mag changes with regards to the raw archive table with the estimated magnbitudes)
                 planet_table[idx]['PlanetINSTRUmag('+instru+')('+spectrum_contributions+')'] = mag_p
                 for band in bands:
                     if lmin_instru < globals()["lmin_"+band] and globals()["lmax_"+band] < lmax_instru:
                         planet_table[idx]['Planet'+band+'mag('+spectrum_contributions+')'] = -2.5*np.log10(np.nanmean(planet_spectrum.flux[(wave_instru>globals()["lmin_"+band])&(wave_instru<globals()["lmax_"+band])])/np.nanmean(vega_spectrum.flux[(wave_instru>globals()["lmin_"+band]) & (wave_instru<globals()["lmax_"+band])]))
-                SNR     = np.sqrt(exposure_time/DIT_band) * signal_planet / np.sqrt( sigma_ns_planet**2 + (exposure_time/DIT_band)*sigma_s_planet**2 )
-                idx_max = SNR.argmax()
-                planet_table[idx]['signal_INSTRU']         = signal_planet[idx_max]
-                planet_table[idx]['sigma_non-syst_INSTRU'] = sigma_ns_planet[idx_max]
-                planet_table[idx]['sigma_syst_INSTRU']     = sigma_s_planet[idx_max]
-                planet_table[idx]['DIT_INSTRU']            = DIT_band[idx_max]
+                SNR     = np.sqrt(exposure_time/DIT_band) * signal_planet / np.sqrt( sigma_fund_planet**2 + (exposure_time/DIT_band)*sigma_syst_planet**2 )
+                idx_max = SNR.argmax() # all quantities are saved in e-/DIT
+                planet_table[idx]['signal_INSTRU']     = signal_planet[idx_max]
+                planet_table[idx]['sigma_fund_INSTRU'] = sigma_fund_planet[idx_max]
+                planet_table[idx]['sigma_syst_INSTRU'] = sigma_syst_planet[idx_max]
+                planet_table[idx]['DIT_INSTRU']        = DIT_band[idx_max]
                 for nb, band in enumerate(name_band):
-                    planet_table[idx]['signal_'+band]         = signal_planet[nb]
-                    planet_table[idx]['sigma_non-syst_'+band] = sigma_ns_planet[nb]
-                    planet_table[idx]['sigma_syst_'+band]     = sigma_s_planet[nb]
-                    planet_table[idx]['DIT_'+band]            = DIT_band[nb]
+                    planet_table[idx]['signal_'+band]     = signal_planet[nb]
+                    planet_table[idx]['sigma_fund_'+band] = sigma_fund_planet[nb]
+                    planet_table[idx]['sigma_syst_'+band] = sigma_syst_planet[nb]
+                    planet_table[idx]['DIT_'+band]        = DIT_band[nb]
         
     print('\n Calculating SNR took {0:.3f} s'.format(time.time()-time1))
     if systematic:
@@ -894,15 +1047,11 @@ def calculate_SNR_table(instru, table="Archive", thermal_model="None", reflected
         planet_table.write(path+table+"_Pull_"+instru+"_"+apodizer+"_"+strehl+"_without_systematics_"+name_model+".ecsv", format='ascii.ecsv', overwrite=True)
 
 def process_SNR_table(args):
-    idx, mag_s, planet, instru, thermal_model, reflected_model, spectrum_contributions, wave_instru, wave_K, vega_spectrum, vega_spectrum_K, lmin_instru, lmax_instru, band0, exposure_time, name_model, systematic, apodizer, strehl, PCA, PCA_mask, Nc = args
+    idx, mag_s, planet, instru, thermal_model, reflected_model, wave_instru, wave_K, vega_spectrum, vega_spectrum_K, lmin_instru, lmax_instru, band0, exposure_time, name_model, systematic, apodizer, strehl, PCA, PCA_mask, Nc = args
     planet_spectrum, planet_thermal, planet_reflected, star_spectrum = thermal_reflected_spectrum(planet=planet, instru=instru, thermal_model=thermal_model, reflected_model=reflected_model, wave_instru=wave_instru, wave_K=wave_K, vega_spectrum_K=vega_spectrum_K, show=False)
-    if spectrum_contributions == "thermal":
-        planet_spectrum = planet_thermal
-    elif spectrum_contributions == "reflected":
-        planet_spectrum = planet_reflected
     mag_p = -2.5*np.log10(np.nanmean(planet_spectrum.flux[(wave_instru>lmin_instru)&(wave_instru<lmax_instru)])/np.nanmean(vega_spectrum.flux[(wave_instru>lmin_instru) & (wave_instru<lmax_instru)]))
-    name_band, SNR_planet, signal_planet, sigma_ns_planet, sigma_s_planet, DIT_band = FastCurves(instru=instru, calculation="SNR", systematic=systematic, T_planet=float(planet["PlanetTeq"].value), lg_planet=float(planet["PlanetLogg"].value), mag_star=mag_s, band0=band0, T_star=float(planet["StarTeff"].value), lg_star=float(planet["StarLogg"].value), exposure_time=exposure_time, model="None", mag_planet=mag_p, separation_planet=float(planet["AngSep"].value/1000), planet_name="None", return_SNR_planet=True, show_plot=False, verbose=False, planet_spectrum=planet_spectrum.copy(), star_spectrum=star_spectrum.copy(), apodizer=apodizer, strehl=strehl, PCA=PCA, PCA_mask=PCA_mask, Nc=Nc)
-    return idx, planet_spectrum, planet_thermal, planet_reflected, star_spectrum, mag_p, name_band, SNR_planet, signal_planet, sigma_ns_planet, sigma_s_planet, DIT_band
+    name_band, SNR_planet, signal_planet, sigma_fund_planet, sigma_syst_planet, DIT_band = FastCurves(instru=instru, calculation="SNR", systematic=systematic, T_planet=float(planet["PlanetTeq"].value), lg_planet=float(planet["PlanetLogg"].value), mag_star=mag_s, band0=band0, T_star=float(planet["StarTeff"].value), lg_star=float(planet["StarLogg"].value), exposure_time=exposure_time, model="None", mag_planet=mag_p, separation_planet=float(planet["AngSep"].value/1000), planet_name="None", return_SNR_planet=True, show_plot=False, verbose=False, planet_spectrum=planet_spectrum.copy(), star_spectrum=star_spectrum.copy(), apodizer=apodizer, strehl=strehl, PCA=PCA, PCA_mask=PCA_mask, Nc=Nc)
+    return idx, planet_spectrum, planet_thermal, planet_reflected, star_spectrum, mag_p, name_band, SNR_planet, signal_planet, sigma_fund_planet, sigma_syst_planet, DIT_band
 
 
 
@@ -910,9 +1059,10 @@ def all_SNR_table(table="Archive"): # takes ~ 13 hours
     """
     To compute SNR for every instruments with different model spectra
     """
+
     time0 = time.time()
-    for instru in config_data_list:
-        instru = instru["name"] ; config_data = get_config_data(instru)
+    for config_data in config_data_list:
+        instru = config_data["name"]
         if config_data["lambda_range"]["lambda_max"] > 6:
             thermal_models = ["None", "BT-Settl", "Exo-REM"]
             reflected_models = ["None"]
@@ -926,17 +1076,18 @@ def all_SNR_table(table="Archive"): # takes ~ 13 hours
             strehls = ["NO_JQ"]
         for apodizer in apodizers:
             for strehl in strehls:
-                if (apodizer == "SP2" or apodizer == "SP3" or apodizer == "SP4" or apodizer == "SP_Prox") and strehl != "JQ1":
+                if instru == "HARMONI" and (apodizer == "SP2" or apodizer == "SP3" or apodizer == "SP4" or apodizer == "SP_Prox") and strehl != "JQ1":
                     continue
                 for thermal_model in thermal_models:
                     for reflected_model in reflected_models:
                         if thermal_model == "None" and reflected_model == "None":
-                            pass
+                            continue
                         else:
                             calculate_SNR_table(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, systematic=False)
                             if instru in instru_with_systematics:
                                 calculate_SNR_table(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, systematic=True)
                                 calculate_SNR_table(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, systematic=True, PCA=True, PCA_mask=True, Nc=20)
+    
     print('\n Calculating all SNR took {0:.3f} s'.format(time.time()-time0))
 
 
@@ -957,72 +1108,61 @@ def all_simulated_SNR_table():
 
 
 
-def archive_yield_instrus_plot(thermal_model="BT-Settl", reflected_model="PICASO", band="INSTRU", fraction=False):
-    if thermal_model == "None":
-        spectrum_contributions = "reflected"
-        name_model = reflected_model
-        if name_model == "PICASO":
-            name_model += "_reflected_only"
-    elif reflected_model == "None":
-        spectrum_contributions = "thermal"
-        name_model = thermal_model
-        if name_model == "PICASO":
-            name_model += "_thermal_only"
-    elif thermal_model == "None" and reflected_model == "None":
-        raise KeyError("PLEASE DEFINE A MODEL FOR THE THERMAL OR THE REFLECTED COMPONENT !")
-    elif thermal_model != "None" and reflected_model != "None":
-        spectrum_contributions = "thermal+reflected"
-        name_model = thermal_model+"+"+reflected_model
+def archive_yield_instrus_plot_texp(thermal_model="BT-Settl", reflected_model="PICASO", band="INSTRU", fraction=False):
     
-    exposure_time = np.logspace(np.log10(0.1), np.log10(1000), 100)
-    planet_table_harmoni = load_planet_table("Archive_Pull_HARMONI_NO_SP_JQ1_without_systematics_"+name_model+".ecsv")
-    planet_table_andes = load_planet_table("Archive_Pull_ANDES_NO_SP_MED_without_systematics_"+name_model+".ecsv")
-    planet_table_eris = load_planet_table("Archive_Pull_ERIS_NO_SP_JQ0_without_systematics_"+name_model+".ecsv")
+    spectrum_contributions, name_model = get_spectrum_contribution_name_model(thermal_model, reflected_model)
+    
+    planet_table_harmoni          = load_planet_table("Archive_Pull_HARMONI_SP_Prox_JQ1_without_systematics_"+name_model+".ecsv")
+    planet_table_andes            = load_planet_table("Archive_Pull_ANDES_NO_SP_MED_without_systematics_"+name_model+".ecsv")
+    planet_table_eris             = load_planet_table("Archive_Pull_ERIS_NO_SP_JQ0_without_systematics_"+name_model+".ecsv")
     planet_table_mirimrs_non_syst = load_planet_table("Archive_Pull_MIRIMRS_NO_SP_NO_JQ_without_systematics_"+thermal_model+".ecsv")
-    planet_table_mirimrs_syst = load_planet_table("Archive_Pull_MIRIMRS_NO_SP_NO_JQ_with_systematics_"+thermal_model+".ecsv")
+    planet_table_mirimrs_syst     = load_planet_table("Archive_Pull_MIRIMRS_NO_SP_NO_JQ_with_systematics_"+thermal_model+".ecsv")
     planet_table_mirimrs_syst_pca = load_planet_table("Archive_Pull_MIRIMRS_NO_SP_NO_JQ_with_systematics+PCA_"+thermal_model+".ecsv")
-    planet_table_nircam = load_planet_table("Archive_Pull_NIRCam_NO_SP_NO_JQ_without_systematics_"+name_model+".ecsv")
+    planet_table_nircam           = load_planet_table("Archive_Pull_NIRCam_NO_SP_NO_JQ_without_systematics_"+name_model+".ecsv")
     planet_table_nirspec_non_syst = load_planet_table("Archive_Pull_NIRSpec_NO_SP_NO_JQ_without_systematics_"+name_model+".ecsv")
-    planet_table_nirspec_syst = load_planet_table("Archive_Pull_NIRSpec_NO_SP_NO_JQ_with_systematics_"+name_model+".ecsv")
+    planet_table_nirspec_syst     = load_planet_table("Archive_Pull_NIRSpec_NO_SP_NO_JQ_with_systematics_"+name_model+".ecsv")
     planet_table_nirspec_syst_pca = load_planet_table("Archive_Pull_NIRSpec_NO_SP_NO_JQ_with_systematics+PCA_"+name_model+".ecsv") # à modifier
-    
-    yield_harmoni = np.zeros(len(exposure_time))
-    yield_andes = np.zeros(len(exposure_time))
-    yield_eris = np.zeros(len(exposure_time)) 
+        
+    exposure_time = np.logspace(np.log10(0.1), np.log10(1000), 100)
+    yield_harmoni          = np.zeros(len(exposure_time))
+    yield_andes            = np.zeros(len(exposure_time))
+    yield_eris             = np.zeros(len(exposure_time)) 
     yield_mirimrs_non_syst = np.zeros(len(exposure_time))
-    yield_mirimrs_syst = np.zeros(len(exposure_time))
+    yield_mirimrs_syst     = np.zeros(len(exposure_time))
     yield_mirimrs_syst_pca = np.zeros(len(exposure_time))
-    yield_nircam = np.zeros(len(exposure_time))
+    yield_nircam           = np.zeros(len(exposure_time))
     yield_nirspec_non_syst = np.zeros(len(exposure_time))
-    yield_nirspec_syst = np.zeros(len(exposure_time))
+    yield_nirspec_syst     = np.zeros(len(exposure_time))
     yield_nirspec_syst_pca = np.zeros(len(exposure_time))
     
     if fraction:
         ratio = 100 ; norm_harmoni = len(planet_table_harmoni) ; norm_andes = len(planet_table_andes) ; norm_eris = len(planet_table_eris) ; norm_mirimrs = len(planet_table_mirimrs_non_syst) ; norm_nircam = len(planet_table_nircam) ; norm_nirspec = len(planet_table_nirspec_non_syst)
     else:
         ratio = 1 ; norm_harmoni = 1 ; norm_andes = 1 ; norm_eris = 1 ; norm_mirimrs = 1 ; norm_nircam = 1 ; norm_nirspec = 1
+    
     for i in range(len(exposure_time)):
-        SNR_harmoni = np.sqrt(exposure_time[i]/planet_table_harmoni['DIT_'+band]) * planet_table_harmoni['signal_'+band] / np.sqrt(  planet_table_harmoni['sigma_non-syst_'+band]**2 + (exposure_time[i]/planet_table_harmoni['DIT_'+band])*planet_table_harmoni['sigma_syst_'+band]**2 )
-        yield_harmoni[i] = ratio*len(planet_table_harmoni[SNR_harmoni>5]) / norm_harmoni
-        SNR_andes = np.sqrt(exposure_time[i]/planet_table_andes['DIT_'+band]) * planet_table_andes['signal_'+band] / np.sqrt(  planet_table_andes['sigma_non-syst_'+band]**2 + (exposure_time[i]/planet_table_andes['DIT_'+band])*planet_table_andes['sigma_syst_'+band]**2 )
-        yield_andes[i] = ratio*len(planet_table_andes[SNR_andes>5]) / norm_andes
-        SNR_eris = np.sqrt(exposure_time[i]/planet_table_eris['DIT_'+band]) * planet_table_eris['signal_'+band] / np.sqrt(  planet_table_eris['sigma_non-syst_'+band]**2 + (exposure_time[i]/planet_table_eris['DIT_'+band])*planet_table_eris['sigma_syst_'+band]**2 )
-        yield_eris[i] = ratio*len(planet_table_eris[SNR_eris>5]) / norm_eris
-        SNR_mirimrs_non_syst = np.sqrt(exposure_time[i]/planet_table_mirimrs_non_syst['DIT_'+band]) * planet_table_mirimrs_non_syst['signal_'+band] / np.sqrt(  planet_table_mirimrs_non_syst['sigma_non-syst_'+band]**2 + (exposure_time[i]/planet_table_mirimrs_non_syst['DIT_'+band])*planet_table_mirimrs_non_syst['sigma_syst_'+band]**2 )
-        yield_mirimrs_non_syst[i] = ratio*len(planet_table_mirimrs_non_syst[SNR_mirimrs_non_syst>5]) / norm_mirimrs
-        SNR_mirimrs_syst = np.sqrt(exposure_time[i]/planet_table_mirimrs_syst['DIT_'+band]) * planet_table_mirimrs_syst['signal_'+band] / np.sqrt(  planet_table_mirimrs_syst['sigma_non-syst_'+band]**2 + (exposure_time[i]/planet_table_mirimrs_syst['DIT_'+band])*planet_table_mirimrs_syst['sigma_syst_'+band]**2 )
-        yield_mirimrs_syst[i] = ratio*len(planet_table_mirimrs_syst[SNR_mirimrs_syst>5]) / norm_mirimrs
-        SNR_mirimrs_syst_pca = np.sqrt(exposure_time[i]/planet_table_mirimrs_syst_pca['DIT_'+band]) * planet_table_mirimrs_syst_pca['signal_'+band] / np.sqrt(  planet_table_mirimrs_syst_pca['sigma_non-syst_'+band]**2 + (exposure_time[i]/planet_table_mirimrs_syst_pca['DIT_'+band])*planet_table_mirimrs_syst_pca['sigma_syst_'+band]**2 )
-        yield_mirimrs_syst_pca[i] = ratio*len(planet_table_mirimrs_syst_pca[SNR_mirimrs_syst_pca>5]) / norm_mirimrs
-        SNR_nircam = np.sqrt(exposure_time[i]/planet_table_nircam['DIT_'+band]) * planet_table_nircam['signal_'+band] / np.sqrt(  planet_table_nircam['sigma_non-syst_'+band]**2 + (exposure_time[i]/planet_table_nircam['DIT_'+band])*planet_table_nircam['sigma_syst_'+band]**2 )
-        yield_nircam[i] = ratio*len(planet_table_nircam[SNR_nircam>5]) / norm_nircam
-        SNR_nirspec_non_syst = np.sqrt(exposure_time[i]/planet_table_nirspec_non_syst['DIT_'+band]) * planet_table_nirspec_non_syst['signal_'+band] / np.sqrt(  planet_table_nirspec_non_syst['sigma_non-syst_'+band]**2 + (exposure_time[i]/planet_table_nirspec_non_syst['DIT_'+band])*planet_table_nirspec_non_syst['sigma_syst_'+band]**2 )
-        yield_nirspec_non_syst[i] = ratio*len(planet_table_nirspec_non_syst[SNR_nirspec_non_syst>5]) / norm_nirspec
-        SNR_nirspec_syst = np.sqrt(exposure_time[i]/planet_table_nirspec_syst['DIT_'+band]) * planet_table_nirspec_syst['signal_'+band] / np.sqrt(  planet_table_nirspec_syst['sigma_non-syst_'+band]**2 + (exposure_time[i]/planet_table_nirspec_syst['DIT_'+band])*planet_table_nirspec_syst['sigma_syst_'+band]**2 )
-        yield_nirspec_syst[i] = ratio*len(planet_table_nirspec_syst[SNR_nirspec_syst>5]) / norm_nirspec
-        SNR_nirspec_syst_pca = np.sqrt(exposure_time[i]/planet_table_nirspec_syst_pca['DIT_'+band]) * planet_table_nirspec_syst_pca['signal_'+band] / np.sqrt(  planet_table_nirspec_syst_pca['sigma_non-syst_'+band]**2 + (exposure_time[i]/planet_table_nirspec_syst_pca['DIT_'+band])*planet_table_nirspec_syst_pca['sigma_syst_'+band]**2 )
-        yield_nirspec_syst_pca[i] = ratio*len(planet_table_nirspec_syst_pca[SNR_nirspec_syst_pca>5]) / norm_nirspec
+        SNR_harmoni          = np.sqrt(exposure_time[i]/planet_table_harmoni['DIT_'+band]) * planet_table_harmoni['signal_'+band] / np.sqrt(  planet_table_harmoni['sigma_fund_'+band]**2 + (exposure_time[i]/planet_table_harmoni['DIT_'+band])*planet_table_harmoni['sigma_syst_'+band]**2 )
+        SNR_andes            = np.sqrt(exposure_time[i]/planet_table_andes['DIT_'+band]) * planet_table_andes['signal_'+band] / np.sqrt(  planet_table_andes['sigma_fund_'+band]**2 + (exposure_time[i]/planet_table_andes['DIT_'+band])*planet_table_andes['sigma_syst_'+band]**2 )
+        SNR_eris             = np.sqrt(exposure_time[i]/planet_table_eris['DIT_'+band]) * planet_table_eris['signal_'+band] / np.sqrt(  planet_table_eris['sigma_fund_'+band]**2 + (exposure_time[i]/planet_table_eris['DIT_'+band])*planet_table_eris['sigma_syst_'+band]**2 )
+        SNR_mirimrs_non_syst = np.sqrt(exposure_time[i]/planet_table_mirimrs_non_syst['DIT_'+band]) * planet_table_mirimrs_non_syst['signal_'+band] / np.sqrt(  planet_table_mirimrs_non_syst['sigma_fund_'+band]**2 + (exposure_time[i]/planet_table_mirimrs_non_syst['DIT_'+band])*planet_table_mirimrs_non_syst['sigma_syst_'+band]**2 )
+        SNR_mirimrs_syst     = np.sqrt(exposure_time[i]/planet_table_mirimrs_syst['DIT_'+band]) * planet_table_mirimrs_syst['signal_'+band] / np.sqrt(  planet_table_mirimrs_syst['sigma_fund_'+band]**2 + (exposure_time[i]/planet_table_mirimrs_syst['DIT_'+band])*planet_table_mirimrs_syst['sigma_syst_'+band]**2 )
+        SNR_mirimrs_syst_pca = np.sqrt(exposure_time[i]/planet_table_mirimrs_syst_pca['DIT_'+band]) * planet_table_mirimrs_syst_pca['signal_'+band] / np.sqrt(  planet_table_mirimrs_syst_pca['sigma_fund_'+band]**2 + (exposure_time[i]/planet_table_mirimrs_syst_pca['DIT_'+band])*planet_table_mirimrs_syst_pca['sigma_syst_'+band]**2 )
+        SNR_nircam           = np.sqrt(exposure_time[i]/planet_table_nircam['DIT_'+band]) * planet_table_nircam['signal_'+band] / np.sqrt(  planet_table_nircam['sigma_fund_'+band]**2 + (exposure_time[i]/planet_table_nircam['DIT_'+band])*planet_table_nircam['sigma_syst_'+band]**2 )
+        SNR_nirspec_non_syst = np.sqrt(exposure_time[i]/planet_table_nirspec_non_syst['DIT_'+band]) * planet_table_nirspec_non_syst['signal_'+band] / np.sqrt(  planet_table_nirspec_non_syst['sigma_fund_'+band]**2 + (exposure_time[i]/planet_table_nirspec_non_syst['DIT_'+band])*planet_table_nirspec_non_syst['sigma_syst_'+band]**2 )
+        SNR_nirspec_syst     = np.sqrt(exposure_time[i]/planet_table_nirspec_syst['DIT_'+band]) * planet_table_nirspec_syst['signal_'+band] / np.sqrt(  planet_table_nirspec_syst['sigma_fund_'+band]**2 + (exposure_time[i]/planet_table_nirspec_syst['DIT_'+band])*planet_table_nirspec_syst['sigma_syst_'+band]**2 )
+        SNR_nirspec_syst_pca = np.sqrt(exposure_time[i]/planet_table_nirspec_syst_pca['DIT_'+band]) * planet_table_nirspec_syst_pca['signal_'+band] / np.sqrt(  planet_table_nirspec_syst_pca['sigma_fund_'+band]**2 + (exposure_time[i]/planet_table_nirspec_syst_pca['DIT_'+band])*planet_table_nirspec_syst_pca['sigma_syst_'+band]**2 )
         
+        yield_harmoni[i]          = ratio*len(planet_table_harmoni[SNR_harmoni>5]) / norm_harmoni
+        yield_andes[i]            = ratio*len(planet_table_andes[SNR_andes>5]) / norm_andes
+        yield_eris[i]             = ratio*len(planet_table_eris[SNR_eris>5]) / norm_eris
+        yield_mirimrs_non_syst[i] = ratio*len(planet_table_mirimrs_non_syst[SNR_mirimrs_non_syst>5]) / norm_mirimrs
+        yield_mirimrs_syst[i]     = ratio*len(planet_table_mirimrs_syst[SNR_mirimrs_syst>5]) / norm_mirimrs
+        yield_mirimrs_syst_pca[i] = ratio*len(planet_table_mirimrs_syst_pca[SNR_mirimrs_syst_pca>5]) / norm_mirimrs
+        yield_nircam[i]           = ratio*len(planet_table_nircam[SNR_nircam>5]) / norm_nircam
+        yield_nirspec_non_syst[i] = ratio*len(planet_table_nirspec_non_syst[SNR_nirspec_non_syst>5]) / norm_nirspec
+        yield_nirspec_syst[i]     = ratio*len(planet_table_nirspec_syst[SNR_nirspec_syst>5]) / norm_nirspec
+        yield_nirspec_syst_pca[i] = ratio*len(planet_table_nirspec_syst_pca[SNR_nirspec_syst_pca>5]) / norm_nirspec
+
     plt.figure(dpi=300, figsize=(10, 7))
     plt.plot(exposure_time, yield_harmoni, 'b', label="ELT/HARMONI")
     plt.plot(exposure_time, yield_andes, 'gray', label="ELT/ANDES")
@@ -1039,6 +1179,7 @@ def archive_yield_instrus_plot(thermal_model="BT-Settl", reflected_model="PICASO
     plt.minorticks_on()
     plt.xscale('log')
     plt.xlabel('Exposure Time per Target [mn]', fontsize=14)
+    plt.xlim(exposure_time[0], exposure_time[-1])
     if fraction:
         plt.ylabel('Fraction of Planets Re-detected [%]', fontsize=14)
     else:
@@ -1046,6 +1187,7 @@ def archive_yield_instrus_plot(thermal_model="BT-Settl", reflected_model="PICASO
         plt.yscale('log')
     plt.title('Known Exoplanets Detection Yield', fontsize=16)
     plt.legend(loc="upper left", fontsize=10)
+    plt.tick_params(axis='both', labelsize=14)
     # Légende supplémentaire sur l'axe secondaire
     ax = plt.gca()
     ax_legend = ax.twinx()
@@ -1055,10 +1197,158 @@ def archive_yield_instrus_plot(thermal_model="BT-Settl", reflected_model="PICASO
     ax_legend.legend(loc='lower right', fontsize=10)
     ax_legend.tick_params(axis='y', colors='w')  # Masquer l'axe secondaire
     plt.tight_layout() ; plt.show()
+
+def archive_yield_instrus_plot_ptypes(exposure_time=120, thermal_model="BT-Settl", reflected_model="tellurics", band="INSTRU", fraction=False):
+    
+    snr_threshold = 5
+    
+    spectrum_contributions, name_model = get_spectrum_contribution_name_model(thermal_model, reflected_model)
+    
+    planet_table_harmoni          = load_planet_table("Archive_Pull_HARMONI_SP_Prox_JQ1_without_systematics_"+name_model+".ecsv")
+    planet_table_andes            = load_planet_table("Archive_Pull_ANDES_NO_SP_MED_without_systematics_"+name_model+".ecsv")
+    planet_table_eris             = load_planet_table("Archive_Pull_ERIS_NO_SP_JQ0_without_systematics_"+name_model+".ecsv")
+    planet_table_mirimrs_non_syst = load_planet_table("Archive_Pull_MIRIMRS_NO_SP_NO_JQ_without_systematics_"+thermal_model+".ecsv")
+    planet_table_mirimrs_syst     = load_planet_table("Archive_Pull_MIRIMRS_NO_SP_NO_JQ_with_systematics_"+thermal_model+".ecsv")
+    planet_table_mirimrs_syst_pca = load_planet_table("Archive_Pull_MIRIMRS_NO_SP_NO_JQ_with_systematics+PCA_"+thermal_model+".ecsv")
+    planet_table_nircam           = load_planet_table("Archive_Pull_NIRCam_NO_SP_NO_JQ_without_systematics_"+name_model+".ecsv")
+    planet_table_nirspec_non_syst = load_planet_table("Archive_Pull_NIRSpec_NO_SP_NO_JQ_without_systematics_"+name_model+".ecsv")
+    planet_table_nirspec_syst     = load_planet_table("Archive_Pull_NIRSpec_NO_SP_NO_JQ_with_systematics_"+name_model+".ecsv")
+    planet_table_nirspec_syst_pca = load_planet_table("Archive_Pull_NIRSpec_NO_SP_NO_JQ_with_systematics+PCA_"+name_model+".ecsv") # à modifier
+    
+    planet_table_harmoni["SNR"]          = np.sqrt(exposure_time/planet_table_harmoni['DIT_'+band]) * planet_table_harmoni['signal_'+band] / np.sqrt(  planet_table_harmoni['sigma_fund_'+band]**2 + (exposure_time/planet_table_harmoni['DIT_'+band])*planet_table_harmoni['sigma_syst_'+band]**2 )
+    planet_table_andes["SNR"]            = np.sqrt(exposure_time/planet_table_andes['DIT_'+band]) * planet_table_andes['signal_'+band] / np.sqrt(  planet_table_andes['sigma_fund_'+band]**2 + (exposure_time/planet_table_andes['DIT_'+band])*planet_table_andes['sigma_syst_'+band]**2 )
+    planet_table_eris["SNR"]             = np.sqrt(exposure_time/planet_table_eris['DIT_'+band]) * planet_table_eris['signal_'+band] / np.sqrt(  planet_table_eris['sigma_fund_'+band]**2 + (exposure_time/planet_table_eris['DIT_'+band])*planet_table_eris['sigma_syst_'+band]**2 )
+    planet_table_mirimrs_non_syst["SNR"] = np.sqrt(exposure_time/planet_table_mirimrs_non_syst['DIT_'+band]) * planet_table_mirimrs_non_syst['signal_'+band] / np.sqrt(  planet_table_mirimrs_non_syst['sigma_fund_'+band]**2 + (exposure_time/planet_table_mirimrs_non_syst['DIT_'+band])*planet_table_mirimrs_non_syst['sigma_syst_'+band]**2 )
+    planet_table_mirimrs_syst["SNR"]     = np.sqrt(exposure_time/planet_table_mirimrs_syst['DIT_'+band]) * planet_table_mirimrs_syst['signal_'+band] / np.sqrt(  planet_table_mirimrs_syst['sigma_fund_'+band]**2 + (exposure_time/planet_table_mirimrs_syst['DIT_'+band])*planet_table_mirimrs_syst['sigma_syst_'+band]**2 )
+    planet_table_mirimrs_syst_pca["SNR"] = np.sqrt(exposure_time/planet_table_mirimrs_syst_pca['DIT_'+band]) * planet_table_mirimrs_syst_pca['signal_'+band] / np.sqrt(  planet_table_mirimrs_syst_pca['sigma_fund_'+band]**2 + (exposure_time/planet_table_mirimrs_syst_pca['DIT_'+band])*planet_table_mirimrs_syst_pca['sigma_syst_'+band]**2 )
+    planet_table_nircam["SNR"]           = np.sqrt(exposure_time/planet_table_nircam['DIT_'+band]) * planet_table_nircam['signal_'+band] / np.sqrt(  planet_table_nircam['sigma_fund_'+band]**2 + (exposure_time/planet_table_nircam['DIT_'+band])*planet_table_nircam['sigma_syst_'+band]**2 )
+    planet_table_nirspec_non_syst["SNR"] = np.sqrt(exposure_time/planet_table_nirspec_non_syst['DIT_'+band]) * planet_table_nirspec_non_syst['signal_'+band] / np.sqrt(  planet_table_nirspec_non_syst['sigma_fund_'+band]**2 + (exposure_time/planet_table_nirspec_non_syst['DIT_'+band])*planet_table_nirspec_non_syst['sigma_syst_'+band]**2 )
+    planet_table_nirspec_syst["SNR"]     = np.sqrt(exposure_time/planet_table_nirspec_syst['DIT_'+band]) * planet_table_nirspec_syst['signal_'+band] / np.sqrt(  planet_table_nirspec_syst['sigma_fund_'+band]**2 + (exposure_time/planet_table_nirspec_syst['DIT_'+band])*planet_table_nirspec_syst['sigma_syst_'+band]**2 )
+    planet_table_nirspec_syst_pca["SNR"] = np.sqrt(exposure_time/planet_table_nirspec_syst_pca['DIT_'+band]) * planet_table_nirspec_syst_pca['signal_'+band] / np.sqrt(  planet_table_nirspec_syst_pca['sigma_fund_'+band]**2 + (exposure_time/planet_table_nirspec_syst_pca['DIT_'+band])*planet_table_nirspec_syst_pca['sigma_syst_'+band]**2 )
+
+    mp_harmoni          = {ptype: find_matching_planets(criteria, planet_table_harmoni.to_pandas(), "multi") for ptype, criteria in planet_types.items()}
+    mp_andes            = {ptype: find_matching_planets(criteria, planet_table_andes.to_pandas(), "multi") for ptype, criteria in planet_types.items()}
+    mp_eris             = {ptype: find_matching_planets(criteria, planet_table_eris.to_pandas(), "multi") for ptype, criteria in planet_types.items()}
+    mp_mirimrs_non_syst = {ptype: find_matching_planets(criteria, planet_table_mirimrs_non_syst.to_pandas(), "multi") for ptype, criteria in planet_types.items()}
+    mp_mirimrs_syst     = {ptype: find_matching_planets(criteria, planet_table_mirimrs_syst.to_pandas(), "multi") for ptype, criteria in planet_types.items()}
+    mp_mirimrs_syst_pca = {ptype: find_matching_planets(criteria, planet_table_mirimrs_syst_pca.to_pandas(), "multi") for ptype, criteria in planet_types.items()}
+    mp_nircam           = {ptype: find_matching_planets(criteria, planet_table_nircam.to_pandas(), "multi") for ptype, criteria in planet_types.items()}
+    mp_nirspec_non_syst = {ptype: find_matching_planets(criteria, planet_table_nirspec_non_syst.to_pandas(), "multi") for ptype, criteria in planet_types.items()}
+    mp_nirspec_syst     = {ptype: find_matching_planets(criteria, planet_table_nirspec_syst.to_pandas(), "multi") for ptype, criteria in planet_types.items()}
+    mp_nirspec_syst_pca = {ptype: find_matching_planets(criteria, planet_table_nirspec_syst_pca.to_pandas(), "multi") for ptype, criteria in planet_types.items()}
+    
+    planet_types_array     = np.array(list(planet_types.keys()))
+    yield_harmoni          = np.zeros(len(planet_types_array))
+    yield_andes            = np.zeros(len(planet_types_array))
+    yield_eris             = np.zeros(len(planet_types_array)) 
+    yield_mirimrs_non_syst = np.zeros(len(planet_types_array))
+    yield_mirimrs_syst     = np.zeros(len(planet_types_array))
+    yield_mirimrs_syst_pca = np.zeros(len(planet_types_array))
+    yield_nircam           = np.zeros(len(planet_types_array))
+    yield_nirspec_non_syst = np.zeros(len(planet_types_array))
+    yield_nirspec_syst     = np.zeros(len(planet_types_array))
+    yield_nirspec_syst_pca = np.zeros(len(planet_types_array))
+    N_harmoni              = np.zeros(len(planet_types_array))
+    N_andes                = np.zeros(len(planet_types_array))
+    N_eris                 = np.zeros(len(planet_types_array))
+    N_mirimrs              = np.zeros(len(planet_types_array))
+    N_nircam               = np.zeros(len(planet_types_array))
+    N_nirspec              = np.zeros(len(planet_types_array))
+
+    for i in range(len(planet_types_array)):
+        ptype = planet_types_array[i]
+        
+        N_harmoni[i] = len(mp_harmoni[ptype])
+        N_andes[i]   = len(mp_andes[ptype])
+        N_eris[i]    = len(mp_eris[ptype])
+        N_mirimrs[i] = len(mp_mirimrs_non_syst[ptype])
+        N_nircam[i]  = len(mp_nircam[ptype])
+        N_nirspec[i] = len(mp_nirspec_non_syst[ptype])
+
+        if fraction:
+            ratio = 100
+            norm_harmoni = N_harmoni[i]
+            norm_andes   = N_andes[i]
+            norm_eris    = N_eris[i]
+            norm_mirimrs = N_mirimrs[i]
+            norm_nircam  = N_nircam[i]
+            norm_nirspec = N_nirspec[i]
+        else:
+            ratio = 1
+            norm_harmoni = norm_andes = norm_eris = norm_mirimrs = norm_nircam = norm_nirspec = 1
+        
+        yield_harmoni[i]          = ratio * sum(planet["SNR"] > snr_threshold for planet in mp_harmoni[ptype]) / norm_harmoni if norm_harmoni > 0 else 0
+        yield_andes[i]            = ratio * sum(planet["SNR"] > snr_threshold for planet in mp_andes[ptype]) / norm_andes if norm_andes > 0 else 0
+        yield_eris[i]             = ratio * sum(planet["SNR"] > snr_threshold for planet in mp_eris[ptype]) / norm_eris if norm_eris > 0 else 0
+        yield_mirimrs_non_syst[i] = ratio * sum(planet["SNR"] > snr_threshold for planet in mp_mirimrs_non_syst[ptype]) / norm_mirimrs if norm_mirimrs > 0 else 0
+        yield_mirimrs_syst[i]     = ratio * sum(planet["SNR"] > snr_threshold for planet in mp_mirimrs_syst[ptype]) / norm_mirimrs if norm_mirimrs > 0 else 0
+        yield_mirimrs_syst_pca[i] = ratio * sum(planet["SNR"] > snr_threshold for planet in mp_mirimrs_syst_pca[ptype]) / norm_mirimrs if norm_mirimrs > 0 else 0
+        yield_nircam[i]           = ratio * sum(planet["SNR"] > snr_threshold for planet in mp_nircam[ptype]) / norm_nircam if norm_nircam > 0 else 0
+        yield_nirspec_non_syst[i] = ratio * sum(planet["SNR"] > snr_threshold for planet in mp_nirspec_non_syst[ptype]) / norm_nirspec if norm_nirspec > 0 else 0
+        yield_nirspec_syst[i]     = ratio * sum(planet["SNR"] > snr_threshold for planet in mp_nirspec_syst[ptype]) / norm_nirspec if norm_nirspec > 0 else 0
+        yield_nirspec_syst_pca[i] = ratio * sum(planet["SNR"] > snr_threshold for planet in mp_nirspec_syst_pca[ptype]) / norm_nirspec if norm_nirspec > 0 else 0
+
+    # Définition des couleurs et des styles (hachures pour différencier les cas avec systématiques)
+    colors = {"ELT/HARMONI":      "blue",
+              "ELT/ANDES":        "gray",
+              "VLT/ERIS":         "red",
+              "JWST/MIRI/MRS":    "green",
+              "JWST/NIRCam":      "magenta",
+              "JWST/NIRSpec/IFU": "cyan"}
+    
+    # Configuration du diagramme en barres groupées
+    n_series  = 10  # 3 instruments (ELT/HARMONI, ELT/ANDES, VLT/ERIS) + 3 (JWST/MIRI/MRS) + 1 (JWST/NIRCam) + 3 (JWST/NIRSpec/IFU)
+    bar_width = 0.08
+    indices   = np.arange(len(planet_types_array))
+    
+    plt.figure(figsize=(14, 8), dpi=300)
+    
+    if not fraction:
+        plt.bar(indices - 4.5*bar_width, N_harmoni, bar_width, edgecolor="black", color="white")
+        plt.bar(indices - 3.5*bar_width, N_andes,   bar_width, edgecolor="black", color="white")
+        plt.bar(indices - 2.5*bar_width, N_eris,    bar_width, edgecolor="black", color="white")
+        plt.bar(indices - 1.5*bar_width, N_mirimrs, bar_width, edgecolor="black", color="white")
+        plt.bar(indices - 0.5*bar_width, N_mirimrs, bar_width, edgecolor="black", color="white")
+        plt.bar(indices + 0.5*bar_width, N_mirimrs, bar_width, edgecolor="black", color="white")
+        plt.bar(indices + 1.5*bar_width, N_nircam,  bar_width, edgecolor="black", color="white")
+        plt.bar(indices + 2.5*bar_width, N_nirspec, bar_width, edgecolor="black", color="white")
+        plt.bar(indices + 3.5*bar_width, N_nirspec, bar_width, edgecolor="black", color="white")
+        plt.bar(indices + 4.5*bar_width, N_nirspec, bar_width, edgecolor="black", color="white")
+    
+    plt.bar(indices - 4.5*bar_width, yield_harmoni,          bar_width, edgecolor="black", color=colors["ELT/HARMONI"],      label="ELT/HARMONI")
+    plt.bar(indices - 3.5*bar_width, yield_andes,            bar_width, edgecolor="black", color=colors["ELT/ANDES"],        label="ELT/ANDES")
+    plt.bar(indices - 2.5*bar_width, yield_eris,             bar_width, edgecolor="black", color=colors["VLT/ERIS"],         label="VLT/ERIS")
+    plt.bar(indices - 1.5*bar_width, yield_mirimrs_non_syst, bar_width, edgecolor="black", color=colors["JWST/MIRI/MRS"],    label="JWST/MIRI/MRS")
+    plt.bar(indices - 0.5*bar_width, yield_mirimrs_syst,     bar_width, edgecolor="black", color=colors["JWST/MIRI/MRS"],    label="JWST/MIRI/MRS (with syst)",        hatch='//')
+    plt.bar(indices + 0.5*bar_width, yield_mirimrs_syst_pca, bar_width, edgecolor="black", color=colors["JWST/MIRI/MRS"],    label="JWST/MIRI/MRS (with syst+PCA)",    hatch='xx')
+    plt.bar(indices + 1.5*bar_width, yield_nircam,           bar_width, edgecolor="black", color=colors["JWST/NIRCam"],      label="JWST/NIRCam")
+    plt.bar(indices + 2.5*bar_width, yield_nirspec_non_syst, bar_width, edgecolor="black", color=colors["JWST/NIRSpec/IFU"], label="JWST/NIRSpec/IFU")
+    plt.bar(indices + 3.5*bar_width, yield_nirspec_syst,     bar_width, edgecolor="black", color=colors["JWST/NIRSpec/IFU"], label="JWST/NIRSpec/IFU (with syst)",     hatch='//')
+    plt.bar(indices + 4.5*bar_width, yield_nirspec_syst_pca, bar_width, edgecolor="black", color=colors["JWST/NIRSpec/IFU"], label="JWST/NIRSpec/IFU (with syst+PCA)", hatch='xx')
+    
+    
+    
+    plt.xticks(indices, planet_types_array, rotation=45, ha="right", fontsize=14)
+    plt.yticks(fontsize=14)
+    if fraction:
+        plt.ylabel('Fraction of Planets Re-detected [%]', fontsize=14)
+    else:
+        plt.ylabel('Number of Planets Re-detected', fontsize=14)
+        plt.yscale('log')
+    plt.title(f'Known Exoplanets Detection Yield for {int(round(exposure_time/60))} h per target', fontsize=18, fontweight='bold')
+    plt.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    plt.legend(loc="upper center", fontsize=10, frameon=True, edgecolor="black", ncol=2)
+    plt.tight_layout()
+    plt.show()
+    
+    
+    
     
 
+    
+    
 
-def archive_yield_bands_plot(instru="HARMONI", strehl="JQ1", thermal_model="BT-Settl", reflected_model="PICASO",
+def archive_yield_bands_plot_texp(instru="HARMONI", strehl="JQ1", thermal_model="BT-Settl", reflected_model="PICASO",
                              systematic=False, PCA=False, fraction=False):
     config_data = get_config_data(instru)
     # WORKING ANGLE
@@ -1068,21 +1358,7 @@ def archive_yield_bands_plot(instru="HARMONI", strehl="JQ1", thermal_model="BT-S
         pxscale = config_data["spec"]["pxscale"] * 1000 # mas
     iwa = pxscale
 
-    if thermal_model == "None":
-        spectrum_contributions = "reflected"
-        name_model = reflected_model
-        if name_model == "PICASO":
-            name_model += "_reflected_only"
-    elif reflected_model == "None":
-        spectrum_contributions = "thermal"
-        name_model = thermal_model
-        if name_model == "PICASO":
-            name_model += "_thermal_only"
-    elif thermal_model == "None" and reflected_model == "None":
-        raise KeyError("PLEASE DEFINE A MODEL FOR THE THERMAL OR THE REFLECTED COMPONENT !")
-    elif thermal_model != "None" and reflected_model != "None":
-        spectrum_contributions = "thermal+reflected"
-        name_model = thermal_model+"+"+reflected_model
+    spectrum_contributions, name_model = get_spectrum_contribution_name_model(thermal_model, reflected_model)
     
     apodizer = "NO_SP"
     if systematic:
@@ -1092,11 +1368,8 @@ def archive_yield_bands_plot(instru="HARMONI", strehl="JQ1", thermal_model="BT-S
             planet_table = load_planet_table("Archive_Pull_"+instru+"_"+apodizer+"_"+strehl+"_with_systematics_"+name_model+".ecsv")
     else:
         if instru=="HARMONI":
-            apodizers = ["NO_SP", "SP1", "SP_Prox"]
-
+            apodizers    = ["NO_SP", "SP1", "SP_Prox"]
             ls_apodizers = ["-", "--", ":"]
-        
-
             planet_table = []
             iwa = 30 # mas
             NbPlanet = np.zeros((len(apodizers)))
@@ -1121,14 +1394,14 @@ def archive_yield_bands_plot(instru="HARMONI", strehl="JQ1", thermal_model="BT-S
         if instru == "HARMONI":
             for na in range(len(apodizers)):
                 for j in range(len(exposure_time)):
-                    SNR = np.sqrt(exposure_time[j]/planet_table[na]['DIT_'+band]) * planet_table[na]['signal_'+band] / np.sqrt(  planet_table[na]['sigma_non-syst_'+band]**2 + (exposure_time[j]/planet_table[na]['DIT_'+band])*planet_table[na]['sigma_syst_'+band]**2 )
+                    SNR = np.sqrt(exposure_time[j]/planet_table[na]['DIT_'+band]) * planet_table[na]['signal_'+band] / np.sqrt(  planet_table[na]['sigma_fund_'+band]**2 + (exposure_time[j]/planet_table[na]['DIT_'+band])*planet_table[na]['sigma_syst_'+band]**2 )
                     if fraction :
                         yields[i, na, j] = len(planet_table[na][SNR>5]) * 100/NbPlanet[na]
                     else:
                         yields[i, na, j] = len(planet_table[na][SNR>5])
         else:
             for j in range(len(exposure_time)):
-                SNR = np.sqrt(exposure_time[j]/planet_table['DIT_'+band]) * planet_table['signal_'+band] / np.sqrt(  planet_table['sigma_non-syst_'+band]**2 + (exposure_time[j]/planet_table['DIT_'+band])*planet_table['sigma_syst_'+band]**2 )
+                SNR = np.sqrt(exposure_time[j]/planet_table['DIT_'+band]) * planet_table['signal_'+band] / np.sqrt(  planet_table['sigma_fund_'+band]**2 + (exposure_time[j]/planet_table['DIT_'+band])*planet_table['sigma_syst_'+band]**2 )
                 if fraction:
                     yields[i, j] = len(planet_table[SNR>5]) * 100/NbPlanet
                 else:
@@ -1171,7 +1444,7 @@ def archive_yield_bands_plot(instru="HARMONI", strehl="JQ1", thermal_model="BT-S
     # Afficher le graphique
     plt.tight_layout()
     plt.show()
-        
+
 
 
 
@@ -1207,21 +1480,7 @@ def detections_corner(instru="HARMONI", exposure_time=600, thermal_model="BT-Set
         owa = config_data["spec"]["FOV"]/2 * 1000 # en mas
 
     # MODELS NAME
-    if thermal_model == "None":
-        spectrum_contributions = "reflected"
-        name_model = reflected_model
-        if name_model == "PICASO":
-            name_model += "_reflected_only"
-    elif reflected_model == "None":
-        spectrum_contributions = "thermal"
-        name_model = thermal_model
-        if name_model == "PICASO":
-            name_model += "_thermal_only"
-    elif thermal_model == "None" and reflected_model == "None":
-        raise KeyError("PLEASE DEFINE A MODEL FOR THE THERMAL OR THE REFLECTED COMPONENT !")
-    elif thermal_model != "None" and reflected_model != "None":
-        spectrum_contributions = "thermal+reflected"
-        name_model = thermal_model+"+"+reflected_model
+    spectrum_contributions, name_model = get_spectrum_contribution_name_model(thermal_model, reflected_model)
 
     # RAW TABLE
     planet_table_raw = load_planet_table("Archive_Pull_for_FastCurves.ecsv")
@@ -1252,7 +1511,7 @@ def detections_corner(instru="HARMONI", exposure_time=600, thermal_model="BT-Set
     # DETECTIONS TABLE
     planet_table = load_planet_table("Archive_Pull_"+instru+"_"+apodizer+"_"+strehl+"_without_systematics_"+name_model+".ecsv")
     planet_table = planet_table[(planet_table["AngSep"]>iwa*u.mas)&(planet_table["AngSep"]<owa*u.mas)]
-    SNR = np.sqrt(exposure_time/planet_table['DIT_'+band]) * planet_table['signal_'+band] / np.sqrt(  planet_table['sigma_non-syst_'+band]**2 + (exposure_time/planet_table['DIT_'+band])*planet_table['sigma_syst_'+band]**2 )
+    SNR = np.sqrt(exposure_time/planet_table['DIT_'+band]) * planet_table['signal_'+band] / np.sqrt(  planet_table['sigma_fund_'+band]**2 + (exposure_time/planet_table['DIT_'+band])*planet_table['sigma_syst_'+band]**2 )
     planet_table = planet_table[SNR>5]
     data = np.zeros((len(planet_table), ndim))
     data[:, 0] = np.log10(np.array(planet_table["PlanetMass"].value))
@@ -1320,21 +1579,7 @@ def detections_corner_instrus_comparison(instru1="HARMONI", instru2="ANDES", apo
     iwa = np.nanmin(IWA) ; owa = np.nanmax(OWA)
     
     # MODELS NAME
-    if thermal_model == "None":
-        spectrum_contributions = "reflected"
-        name_model = reflected_model
-        if name_model == "PICASO":
-            name_model += "_reflected_only"
-    elif reflected_model == "None":
-        spectrum_contributions = "thermal"
-        name_model = thermal_model
-        if name_model == "PICASO":
-            name_model += "_thermal_only"
-    elif thermal_model == "None" and reflected_model == "None":
-        raise KeyError("PLEASE DEFINE A MODEL FOR THE THERMAL OR THE REFLECTED COMPONENT !")
-    elif thermal_model != "None" and reflected_model != "None":
-        spectrum_contributions = "thermal+reflected"
-        name_model = thermal_model+"+"+reflected_model
+    spectrum_contributions, name_model = get_spectrum_contribution_name_model(thermal_model, reflected_model)
     
     # RAW TABLE
     planet_table_raw = load_planet_table("Archive_Pull_for_FastCurves.ecsv")
@@ -1369,7 +1614,7 @@ def detections_corner_instrus_comparison(instru1="HARMONI", instru2="ANDES", apo
         strehl = strehls[ni]
         planet_table = load_planet_table("Archive_Pull_"+instru+"_"+apodizer+"_"+strehl+"_without_systematics_"+name_model+".ecsv")
         planet_table = planet_table[(planet_table["AngSep"]>IWA[ni]*u.mas)&(planet_table["AngSep"]<OWA[ni]*u.mas)]
-        SNR = np.sqrt(exposure_time/planet_table['DIT_'+band]) * planet_table['signal_'+band] / np.sqrt(  planet_table['sigma_non-syst_'+band]**2 + (exposure_time/planet_table['DIT_'+band])*planet_table['sigma_syst_'+band]**2 )
+        SNR = np.sqrt(exposure_time/planet_table['DIT_'+band]) * planet_table['signal_'+band] / np.sqrt(  planet_table['sigma_fund_'+band]**2 + (exposure_time/planet_table['DIT_'+band])*planet_table['sigma_syst_'+band]**2 )
         planet_table = planet_table[SNR>5]
         yields[ni] = len(planet_table)
         data = np.zeros((len(planet_table), ndim))
@@ -1497,7 +1742,7 @@ def detections_corner_models_comparison(model1="tellurics", model2="flat",
             name_model = model
         planet_table = load_planet_table("Archive_Pull_"+instru+"_"+apodizer+"_"+strehl+"_without_systematics_"+name_model+".ecsv")
         planet_table = planet_table[(planet_table["AngSep"]>iwa*u.mas)&(planet_table["AngSep"]<owa*u.mas)]
-        SNR = np.sqrt(exposure_time/planet_table['DIT_'+band]) * planet_table['signal_'+band] / np.sqrt(  planet_table['sigma_non-syst_'+band]**2 + (exposure_time/planet_table['DIT_'+band])*planet_table['sigma_syst_'+band]**2 )
+        SNR = np.sqrt(exposure_time/planet_table['DIT_'+band]) * planet_table['signal_'+band] / np.sqrt(  planet_table['sigma_fund_'+band]**2 + (exposure_time/planet_table['DIT_'+band])*planet_table['sigma_syst_'+band]**2 )
         planet_table = planet_table[SNR>5]
         yields[nm] = len(planet_table)
         data = np.zeros((len(planet_table), ndim))
@@ -1571,21 +1816,7 @@ def detections_corner_apodizers_comparison(exposure_time=600, thermal_model="BT-
     owa = config_data["spec"]["FOV"]/2 * 1000 # mas
 
     # MODELS NAME
-    if thermal_model == "None":
-        spectrum_contributions = "reflected"
-        name_model = reflected_model
-        if name_model == "PICASO":
-            name_model += "_reflected_only"
-    elif reflected_model == "None":
-        spectrum_contributions = "thermal"
-        name_model = thermal_model
-        if name_model == "PICASO":
-            name_model += "_thermal_only"
-    elif thermal_model == "None" and reflected_model == "None":
-        raise KeyError("PLEASE DEFINE A MODEL FOR THE THERMAL OR THE REFLECTED COMPONENT !")
-    elif thermal_model != "None" and reflected_model != "None":
-        spectrum_contributions = "thermal+reflected"
-        name_model = thermal_model+"+"+reflected_model
+    spectrum_contributions, name_model = get_spectrum_contribution_name_model(thermal_model, reflected_model)
     
     # RAW TABLE
     planet_table_raw = load_planet_table("Archive_Pull_for_FastCurves.ecsv")
@@ -1619,7 +1850,7 @@ def detections_corner_apodizers_comparison(exposure_time=600, thermal_model="BT-
         strehl = strehls[ni]
         planet_table = load_planet_table("Archive_Pull_"+instru+"_"+apodizer+"_"+strehl+"_without_systematics_"+name_model+".ecsv")
         planet_table = planet_table[(planet_table["AngSep"]>IWA[ni]*u.mas)&(planet_table["AngSep"]<owa*u.mas)]
-        SNR = np.sqrt(exposure_time/planet_table['DIT_'+band]) * planet_table['signal_'+band] / np.sqrt(  planet_table['sigma_non-syst_'+band]**2 + (exposure_time/planet_table['DIT_'+band])*planet_table['sigma_syst_'+band]**2 )
+        SNR = np.sqrt(exposure_time/planet_table['DIT_'+band]) * planet_table['signal_'+band] / np.sqrt(  planet_table['sigma_fund_'+band]**2 + (exposure_time/planet_table['DIT_'+band])*planet_table['sigma_syst_'+band]**2 )
         planet_table = planet_table[SNR>5]
         yields[ni] = len(planet_table)
         data = np.zeros((len(planet_table), ndim))
@@ -1745,24 +1976,10 @@ def contrast_detection_plot(instru="ANDES", exposure_time=600, thermal_model="BT
         R += config_data["gratings"][b].R/N # mean resolution
 
     # MODELS NAME
-    if thermal_model == "None":
-        spectrum_contributions = "reflected"
-        name_model = reflected_model
-        if name_model == "PICASO":
-            name_model += "_reflected_only"
-    elif reflected_model == "None":
-        spectrum_contributions = "thermal"
-        name_model = thermal_model
-        if name_model == "PICASO":
-            name_model += "_thermal_only"
-    elif thermal_model == "None" and reflected_model == "None":
-        raise KeyError("PLEASE DEFINE A MODEL FOR THE THERMAL OR THE REFLECTED COMPONENT !")
-    elif thermal_model != "None" and reflected_model != "None":
-        spectrum_contributions = "thermal+reflected"
-        name_model = thermal_model+"+"+reflected_model
+    spectrum_contributions, name_model = get_spectrum_contribution_name_model(thermal_model, reflected_model)
 
     planet_table = load_planet_table("Archive_Pull_"+instru+"_"+apodizer+"_"+strehl+"_without_systematics_"+name_model+".ecsv")
-    SNR = np.sqrt(exposure_time/planet_table['DIT_'+band]) * planet_table['signal_'+band] / np.sqrt(  planet_table['sigma_non-syst_'+band]**2 + (exposure_time/planet_table['DIT_'+band])*planet_table['sigma_syst_'+band]**2 )
+    SNR = np.sqrt(exposure_time/planet_table['DIT_'+band]) * planet_table['signal_'+band] / np.sqrt(  planet_table['sigma_fund_'+band]**2 + (exposure_time/planet_table['DIT_'+band])*planet_table['sigma_syst_'+band]**2 )
     planet_table = planet_table[SNR>5]
     x = np.array(planet_table["AngSep"].value) # sep axis [mas]
     if config_data["sep_unit"]=="arcsec":

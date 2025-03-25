@@ -22,7 +22,7 @@ def get_config_data(instrument_name):
 
 
 
-GratingInfo = collections.namedtuple('GratingInfo', 'lmin, lmax, R')
+GratingInfo  = collections.namedtuple('GratingInfo', 'lmin, lmax, R')
 ApodizerInfo = collections.namedtuple('ApodizerInfo', 'transmission, sep')
 
 
@@ -256,9 +256,11 @@ config_data_VIPAPYRUS = {
 
 
 config_data_list = [config_data_HARMONI, config_data_ANDES, config_data_ERIS, config_data_MIRIMRS, config_data_NIRCam, config_data_NIRSpec, config_data_HiRISE, config_data_VIPAPYRUS]
-instru_name_list = ["HARMONI", "ANDES", "ERIS", "MIRIMRS", "NIRCam", "NIRSpec", "HiRISE", "VIPAPYRUS"]
+instru_name_list = [config_data["name"] for config_data in config_data_list]
 
+instru_with_systematics = ["MIRIMRS", "NIRSpec"]
 
+R0_max = 300_000
 
 # ALL BANDS
 LMIN    = 1 # µm
@@ -266,14 +268,14 @@ LMAX    = 1 # µm
 bands   = []
 instrus = []
 for config_data in config_data_list:
-    instrus.append(config_data["name"])
-    globals()["lmin_"+config_data["name"]] = config_data["lambda_range"]["lambda_min"]
-    globals()["lmax_"+config_data["name"]] = config_data["lambda_range"]["lambda_max"]
-    if LMIN > get_config_data(config_data["name"])["lambda_range"]["lambda_min"]:
-        LMIN = get_config_data(config_data["name"])["lambda_range"]["lambda_min"]
-    if LMAX < get_config_data(config_data["name"])["lambda_range"]["lambda_max"]:
-        LMAX = get_config_data(config_data["name"])["lambda_range"]["lambda_max"]
-    config_data = get_config_data(config_data["name"])
+    instru = config_data["name"]
+    instrus.append(instru)
+    globals()["lmin_"+instru] = config_data["lambda_range"]["lambda_min"]
+    globals()["lmax_"+instru] = config_data["lambda_range"]["lambda_max"]
+    if LMIN > config_data["lambda_range"]["lambda_min"]:
+        LMIN = config_data["lambda_range"]["lambda_min"]
+    if LMAX < config_data["lambda_range"]["lambda_max"]:
+        LMAX = config_data["lambda_range"]["lambda_max"]
     for name_band in config_data["gratings"]:
         if name_band not in bands:
             bands.append(name_band)

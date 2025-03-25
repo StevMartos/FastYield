@@ -50,10 +50,10 @@ class Spectrum:
         lmax: float [µm]
             lambda max value
         """
-        self.flux = self.flux[(self.wavelength >= lmin) & (self.wavelength <= lmax)]
+        self.flux       = self.flux[(self.wavelength >= lmin) & (self.wavelength <= lmax)]
         self.wavelength = self.wavelength[(self.wavelength >= lmin) & (self.wavelength <= lmax)]
-        dwl = self.wavelength - np.roll(self.wavelength, 1) ; dwl[0] = dwl[1] ; dwl[dwl == 0] = np.nanmean(dwl) # delta lambda array
-        Rnew = np.nanmean(self.wavelength/(2*dwl)) # calculating the new resolution (2*R => Nyquist sampling / Shannon)
+        dl     = self.wavelength - np.roll(self.wavelength, 1) ; dl[0] = dl[1] ; dl[dl == 0] = np.nanmean(dl) # delta lambda array
+        Rnew   = np.nanmean(self.wavelength/(2*dl)) # calculating the new resolution (2*R => Nyquist sampling / Shannon)
         self.R = Rnew
     
     def crop_nan(self):
@@ -69,8 +69,8 @@ class Spectrum:
         """
         self.wavelength = self.wavelength[~np.isnan(self.flux)]
         self.flux       = self.flux[~np.isnan(self.flux)]
-        dwl             = self.wavelength - np.roll(self.wavelength, 1) ; dwl[0] = dwl[1] ; dwl[dwl == 0] = np.nanmean(dwl) # delta lambda array
-        Rnew            = np.nanmean(self.wavelength/(2*dwl)) # calculating the new resolution (2*R => Nyquist sampling / Shannon)
+        dl              = self.wavelength - np.roll(self.wavelength, 1) ; dl[0] = dl[1] ; dl[dl == 0] = np.nanmean(dl) # delta lambda array
+        Rnew            = np.nanmean(self.wavelength/(2*dl)) # calculating the new resolution (2*R => Nyquist sampling / Shannon)
         self.R          = Rnew
     
     #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -106,14 +106,14 @@ class Spectrum:
         spectrum: class Spectrum
             spectrum converted into nb of photons/min
         """
-        dwl                 = wave - np.roll(wave, 1) ; dwl[0] = dwl[1] ; dwl[dwl == 0] = np.nanmean(dwl) # delta lambda en µm
-        Rnew                = np.nanmean(wave/(2*dwl)) # calculating the new resolution
+        dl                  = wave - np.roll(wave, 1) ; dl[0] = dl[1] ; dl[dl == 0] = np.nanmean(dl) # delta lambda en µm
+        Rnew                = np.nanmean(wave/(2*dl)) # calculating the new resolution
         spectrum_flux       = self.interpolate_wavelength(wave, renorm=False).flux # reinterpolating the flux (in density) on wave
         spectrum            = self.copy()
         spectrum.wavelength = wave
         spectrum.flux       = spectrum_flux
         spectrum.flux       = spectrum.flux * wave*1e-6 / (h*c) # J/s/m²/µm => photons/s/m2/µm
-        spectrum.flux       = spectrum.flux*config_data["telescope"]["area"]*dwl*60 # photons/s/m2/µm => photons/mn
+        spectrum.flux       = spectrum.flux*config_data["telescope"]["area"]*dl*60 # photons/s/m2/µm => photons/mn
         return spectrum
 
     #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -137,28 +137,27 @@ class Spectrum:
         spectrum: class Spectrum
             degrated spectrum
         """
-        valid    = np.where((self.wavelength >= wave_output[0]) & (self.wavelength <= wave_output[-1])) # flux[valid] => returns a (smaller) array that stores flux values for a wavelength
+        valid = (self.wavelength >= wave_output[0]) & (self.wavelength <= wave_output[-1]) # flux[valid] => returns a (smaller) array that stores flux values for a wavelength
         
-        dwl      = self.wavelength[valid] - np.roll(self.wavelength[valid], 1) ; dwl[0] = dwl[1] ; dwl[dwl == 0] = np.nanmean(dwl) # delta lambda array
-        R_old    = np.nanmean(self.wavelength[valid]/(2*dwl))   # old Resolution (assuming Nyquist sampling)
-        R_interp = np.nanmax(self.wavelength[valid]/(2*dwl)) # interpolation Resolution (need to be the max res to avoid nan with cg.downbin)
-        if R_interp > 300_000: # fixing the upper limit of resolution in order to speeds up the calculation (it also need to be high enough for instruments with very high resolution)
-            R_interp = 300_000
-        dl        = np.nanmean(self.wavelength[valid]/(2*R_interp)) 
-        wave_band = np.arange(0.98*wave_output[0], 1.02*wave_output[-1], dl) # constant and linear input wavelength array
-        flr       = self.interpolate_wavelength(wave_band, renorm=renorm).flux # reinterpolate the flux on wave_band
+        dl_old = self.wavelength[valid] - np.roll(self.wavelength[valid], 1) ; dl_old[0] = dl_old[1] ; dl_old[dl_old == 0] = np.nanmean(dl_old) # delta lambda array
+        R_old  = np.nanmean(self.wavelength[valid]/(2*dl_old))   # old Resolution (assuming Nyquist sampling)
         
-        dwl   = wave_output - np.roll(wave_output, 1) ; dwl[0] = dwl[1] ; dwl[dwl == 0] = np.nanmean(dwl) # delta lambda array
-        R_new = np.nanmean(wave_output/(2*dwl)) # calculating the new resolution
+        dl_new = wave_output - np.roll(wave_output, 1) ; dl_new[0] = dl_new[1] ; dl_new[dl_new == 0] = np.nanmean(dl_new) # delta lambda array
+        R_new  = np.nanmean(wave_output/(2*dl_new)) # calculating the new resolution
+        
+        spectrum_interp = self.evenly_spaced(renorm=renorm, wave_output=wave_output) # reinterpolate the flux on regular and linear wavelength array
+        flux_interp     = spectrum_interp.flux
+        wave_interp     = spectrum_interp.wavelength
+        
         if gaussian_filtering: # convolution + down binning
             if R_output is None:
                 fwhm = R_old / R_new # https://github.com/spacetelescope/pysynphot/issues/78
             elif R_output is not None:
                 fwhm = R_old / R_output # https://github.com/spacetelescope/pysynphot/issues/78
-            flr_conv = gaussian_filter(flr[~np.isnan(flr)], sigma=fwhm) # convoluted flux
-            flr[~np.isnan(flr)] = flr_conv # ignoring the NaN values
+            flux_conv = gaussian_filter(flux_interp[~np.isnan(flux_interp)], sigma=fwhm) # convoluted flux
+            flux_interp[~np.isnan(flux_interp)] = flux_conv # ignoring the NaN values
         
-        flr = cg.downbin_spec(flr, wave_band, wave_output, dlam=dwl) # down binned flux
+        flux_lr = cg.downbin_spec(flux_interp, wave_interp, wave_output, dlam=dl_new) # down binned flux
         
         spectrum            = self.copy()
         spectrum.wavelength = wave_output
@@ -166,10 +165,10 @@ class Spectrum:
         if renorm:
             # conserving the flux
             flux_tot      = np.nansum(self.flux[valid])
-            spectrum.flux = flux_tot * flr / np.nansum(flr)
+            spectrum.flux = flux_tot * flux_lr / np.nansum(flux_lr)
         else:
             # not convserving the flux (e.g. for spectra in density or for transmissions)
-            spectrum.flux = flr
+            spectrum.flux = flux_lr
         return spectrum
     
     #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -188,14 +187,13 @@ class Spectrum:
         Returns: class Spectrum
             Spectrum with the interpolated flux on the new wavelength axis
         """
-        
         if wave_input is None: # wave_input is only usefull for the doppler_shift() function
             wave_input = np.copy(self.wavelength)
         
         f           = interp1d(wave_input, self.flux, bounds_error=False, fill_value=fill_value)
         flux_interp = f(wave_output) # interpolates flux values on the new axis (wave_output)
-        dwl         = wave_output - np.roll(wave_output, 1) ; dwl[0] = dwl[1] ; dwl[dwl == 0] = np.nanmean(dwl) # delta lambda array
-        R_new       = np.nanmean(wave_output/(2*dwl)) # calculating the new resolution
+        dl_new      = wave_output - np.roll(wave_output, 1) ; dl_new[0] = dl_new[1] ; dl_new[dl_new == 0] = np.nanmean(dl_new) # delta lambda array
+        R_new       = np.nanmean(wave_output/(2*dl_new)) # calculating the new resolution
         
         spectrum            = self.copy()
         spectrum.wavelength = wave_output
@@ -208,9 +206,37 @@ class Spectrum:
             # not convserving the flux (e.g. for spectra in density or for transmissions)
             spectrum.flux = flux_interp
         return spectrum
+    
+    #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+    def evenly_spaced(self, renorm=True, fill_value=np.nan, wave_output=None):
+        """
+        Re-interpolates the flux on a regular and linear wavelength axis
         
-    
-    
+        Parameters
+        ----------
+        renorm: bool, optional
+            for renormalisation (True => flux must not be in density eg. J/s/m²/µm) . The default is True.
+
+        Returns: class Spectrum
+            Spectrum with the interpolated flux on the new wavelength axis
+        """
+        if wave_output is not None:
+            valid = (self.wavelength >= wave_output[0]) & (self.wavelength <= wave_output[-1]) # flux[valid] => returns a (smaller) array that stores flux values for a wavelength
+        else:
+            valid = np.full(len(self.wavelength), True)
+        
+        dl_old   = self.wavelength[valid] - np.roll(self.wavelength[valid], 1) ; dl_old[0] = dl_old[1] ; dl_old[dl_old == 0] = np.nanmean(dl_old) # delta lambda array
+        R_interp = np.nanmax(self.wavelength[valid]/(2*dl_old)) # interpolation Resolution (need to be the max res to avoid nan with cg.downbin)
+        if R_interp > R0_max: # fixing the upper limit of resolution in order to speeds up the calculation (it also need to be high enough for instruments with very high resolution)
+            R_interp = R0_max
+        dl = np.nanmean((self.wavelength[valid][0]+self.wavelength[valid][-1])/2/(2*R_interp)) 
+        if wave_output is not None:
+            wave_interp = np.arange(0.98*wave_output[0], 1.02*wave_output[-1], dl) # constant and linear input wavelength array
+        else:
+            wave_interp = np.arange(self.wavelength[valid][0], self.wavelength[valid][-1], dl) # constant and linear input wavelength array
+        return self.interpolate_wavelength(wave_interp, renorm=renorm, fill_value=fill_value) 
+        
     #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
     def doppler_shift(self, rv, renorm=False, fill_value=np.nan):
@@ -338,7 +364,6 @@ def calc_psd(wave, flux, R, smooth=0):
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 
-
 def get_T_lg_valid(T, lg, model, instru=None):
     """
     Retrieve the closest valid values of T and lg in the model-grid
@@ -356,68 +381,15 @@ def get_T_lg_valid(T, lg, model, instru=None):
         Closest valid values of T and lg in the model-grid
 
     """
-    if model == "BT-Settl" or model == "PICASO": # https://articles.adsabs.harvard.edu/pdf/2013MSAIS..24..128A
-        T0  = np.append([200, 220, 240, 250, 260, 280, 300, 320, 340, 360, 380, 400, 450], np.append(np.arange(500, 1000, 50), np.arange(1000, 3100, 100))) # available values
-        lg0 = np.array([3.0, 3.5, 4.0, 4.5, 5.0])
-
-    elif model == "BT-Dusty": # https://arxiv.org/pdf/1112.3591
-        T0  = np.arange(1400, 3100, 100)
-        lg0 = np.array([4.5, 5.0])
-
-    elif model == "Exo-REM": # https://iopscience.iop.org/article/10.3847/1538-4357/aaac7d/pdf
-        if instru is None or get_config_data(instru)["lambda_range"]["lambda_min"] < 4: # low res
-            lg0 = np.arange(3.0, 5.5, 0.5) # valeur possible # PUBLIC
-            T0  = np.arange(400, 2050, 50)
-        else: # high res (mais commmence à 4 µm) # NOT PUBLIC
-            lg0 = np.array([3.5, 4.0]) # valeur possible
-            T0  = np.array([400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000])
-        
-    elif model == "Morley": # 2012 + 2014 with clouds (https://www.carolinemorley.com/models)
-        T0 = np.array([200, 225, 250, 275, 300, 325, 350, 375, 400, 450, 500, 550, 600, 700, 800, 900, 1000, 1100, 1200, 1300]) # K
-        if T < 500: 
-            g0 = np.array([10, 30, 100, 300, 1000]) # m/s²
-        else:
-            g0 = np.array([100, 300, 1000, 3000]) # m/s² 
-        lg0 = np.round(np.log10(g0*1e2), 4) # dex(cm/s2)
-
-    elif model == "Saumon": # https://www.ucolick.org/~cmorley/cmorley/Models.html
-        T0  = np.arange(400, 1250, 50)
-        g0  = np.array([10, 30, 100, 300, 1000]) # m/s²
-        lg0 = np.round(np.log10(g0*1e2), 4) # dex(cm/s2)
-
-    elif model == "SONORA": # https://zenodo.org/records/5063476
-        T0  = np.append(np.arange(200, 1050, 50), np.arange(1100, 2500, 100))
-        g0  = np.array([10, 31, 100, 316, 1000, 3160]) # m/s²
-        lg0 = np.round(np.log10(g0*1e2), 4) # dex(cm/s2)
-
-    elif model[:4] == "mol_": # https://hitran.org/lbl/
-        T0 = np.append(np.arange(200, 1000, 50), np.arange(1000, 3100, 100))
-        
-    elif model == "Jupiter" or model == "Saturn" or model == "Uranus" or model == "Neptune": # private ?
-        if model == "Jupiter":
-            T0 = np.array([88]) ; lg0 = np.array([3.4]) # np.log10(24.79*100) # https://en.wikipedia.org/wiki/Jupiter
-        elif model == "Saturn":
-            T0 = np.array([81])  ; lg0 = np.array([3.0]) # np.log10(10.44*100) # https://en.wikipedia.org/wiki/Saturn
-        elif model == "Uranus":
-            T0 = np.array([49])  ; lg0 = np.array([2.9]) # np.log10(8.69*100) # https://en.wikipedia.org/wiki/Uranus
-        elif model == "Neptune":
-            T0 = np.array([47])  ; lg0 = np.array([3.0]) # np.log10(11.15*100) # https://en.wikipedia.org/wiki/Neptune
-        
-    elif model == "BT-NextGen":
-        lg0 = np.array([3.0, 3.5, 4.0, 4.5])
-        T0  = np.append(np.arange(3000, 10000, 200), np.arange(10000, 41000, 1000))
-
-    else:
-        raise KeyError(model+" IS NOT A VALID THERMAL MODEL: BT-NextGen, BT-Settl, BT-Dusty, Exo-REM, PICASO, Morley, Saumon or SONORA.")
-    
-    T_valid = T0[(np.abs(T0-T)).argmin()] # closest available value
+    T_grid, lg_grid = get_model_grid(model, instru=instru)
+    T_valid         = T_grid[(np.abs(T_grid-T)).argmin()] # closest available value
     if model[:4] == "mol_":
-        lg_valid = lg # closest lg value
+        if model[4:] not in lg_grid:
+            raise KeyError(f"{lg} is not a valid molecule, please choose among: {lg_grid}")
+        lg_valid = lg
     else:
-        lg_valid = lg0[(np.abs(lg0-lg)).argmin()] # closest lg value
+        lg_valid = lg_grid[(np.abs(lg_grid-lg)).argmin()] # closest lg value
     return T_valid, lg_valid
-
-
 
 def get_model_grid(model, instru=None):
     """
@@ -435,46 +407,69 @@ def get_model_grid(model, instru=None):
         Surface gravity values of the model grid.
     """
         
-    if model=="BT-Settl" or model=="PICASO":
-        T_grid = np.append([200, 220, 240, 250, 260, 280, 300, 320, 340, 360, 380, 400, 450], np.append(np.arange(500, 1000, 50), np.arange(1000, 3100, 100)))
+    if model == "BT-Settl" or model == "PICASO":
+        T_grid  = np.append([200, 220, 240, 250, 260, 280, 300, 320, 340, 360, 380, 400, 450], np.append(np.arange(500, 1000, 50), np.arange(1000, 3100, 100)))
         lg_grid = np.array([3.0, 3.5, 4.0, 4.5, 5.0])
 
     elif model == "BT-Dusty": # https://arxiv.org/pdf/1112.3591
-        T_grid = np.arange(1400, 3100, 100)
+        T_grid  = np.arange(1400, 3100, 100)
         lg_grid = np.array([4.5, 5.0])
 
     elif model == "Exo-REM": # https://iopscience.iop.org/article/10.3847/1538-4357/aaac7d/pdf
-        if instru is None or get_config_data(instru)["lambda_range"]["lambda_min"] < 4: # low res
-            T_grid = np.arange(400, 2050, 50)
+        if instru is None: # low res
+            T_grid  = np.arange(400, 2050, 50)
             lg_grid = np.arange(3.0, 5.5, 0.5)
-        else: # high res (mais commmence à 4 µm) # NOT PUBLIC
-            T_grid = np.array([400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000])
-            lg_grid = np.array([3.5, 4.0]) 
+        else:
+            if globals()["lmin_"+instru] >= 1 and globals()["lmax_"+instru] <= 5.3: # very high res
+                T_grid  = np.arange(200, 1950, 50)
+                lg_grid = np.arange(3.0, 5.5, 0.5)
+            elif globals()["lmin_"+instru] <= 4: # low res
+                T_grid  = np.arange(400, 2050, 50)
+                lg_grid = np.arange(3.0, 5.5, 0.5) 
+            elif globals()["lmin_"+instru] >= 4: # high res (mais commmence à 4 µm) # NOT PUBLIC
+                T_grid  = np.array([400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000])
+                lg_grid = np.array([3.5, 4.0]) 
 
     elif model == "Morley": # 2012 + 2014 with clouds (https://www.carolinemorley.com/models)
-        T_grid = np.array([200, 225, 250, 275, 300, 325, 350, 375, 400, 450, 500, 550, 600, 700, 800, 900, 1000, 1100, 1200, 1300]) # K
-        g_grid = np.array([10, 30, 100, 300, 1000, 3000]) # m/s² 
+        T_grid  = np.array([200, 225, 250, 275, 300, 325, 350, 375, 400, 450, 500, 550, 600, 700, 800, 900, 1000, 1100, 1200, 1300]) # K
+        g_grid  = np.array([10, 30, 100, 300, 1000, 3000]) # m/s² 
         lg_grid = np.round(np.log10(g_grid*1e2), 4) # dex(cm/s2)
 
     elif model == "Saumon": # https://www.ucolick.org/~cmorley/cmorley/Models.html
-        T_grid = np.arange(400, 1250, 50)
-        g_grid = np.array([10, 30, 100, 300, 1000]) # m/s²
+        T_grid  = np.arange(400, 1250, 50)
+        g_grid  = np.array([10, 30, 100, 300, 1000]) # m/s²
         lg_grid = np.round(np.log10(g_grid*1e2), 4) # dex(cm/s2)
 
     elif model == "SONORA": # https://zenodo.org/records/5063476
-        T_grid = np.append(np.arange(200, 1050, 50), np.arange(1100, 2500, 100))
-        g_grid = np.array([10, 31, 100, 316, 1000, 3160]) # m/s²
+        T_grid  = np.append(np.arange(200, 1050, 50), np.arange(1100, 2500, 100))
+        g_grid  = np.array([10, 31, 100, 316, 1000, 3160]) # m/s²
         lg_grid = np.round(np.log10(g_grid*1e2), 4) # dex(cm/s2)
 
-
     elif model[:4] == "mol_": # https://hitran.org/lbl/
-        T_grid = np.append(np.arange(200, 1000, 50), np.arange(1000, 3100, 100))
+        T_grid  = np.append(np.arange(200, 1000, 50), np.arange(1000, 3100, 100))
         lg_grid = np.array(["H2O","CO2","O3","N2O","CO","CH4","O2","NO","SO2","NO2","NH3"])
         
     elif model == "BT-NextGen":
-        T_grid= np.append(np.arange(3000, 10000, 200), np.arange(10000, 41000, 1000))
+        T_grid  = np.append(np.arange(3000, 10000, 200), np.arange(10000, 41000, 1000))
         lg_grid = np.array([3.0, 3.5, 4.0, 4.5])
-
+    
+    elif model == "Husser":
+        T_grid  = np.append(np.arange(2300, 7100, 100), np.arange(7200, 12200, 200))
+        lg_grid = np.arange(0.00, 6.50, 0.50)
+        
+    elif model == "Jupiter" or model == "Saturn" or model == "Uranus" or model == "Neptune": # private ?
+        if model == "Jupiter":
+            T_grid = np.array([88]) ; lg_grid = np.array([3.4]) # np.log10(24.79*100) # https://en.wikipedia.org/wiki/Jupiter
+        elif model == "Saturn":
+            T_grid = np.array([81])  ; lg_grid = np.array([3.0]) # np.log10(10.44*100) # https://en.wikipedia.org/wiki/Saturn
+        elif model == "Uranus":
+            T_grid = np.array([49])  ; lg_grid = np.array([2.9]) # np.log10(8.69*100) # https://en.wikipedia.org/wiki/Uranus
+        elif model == "Neptune":
+            T_grid = np.array([47])  ; lg_grid = np.array([3.0]) # np.log10(11.15*100) # https://en.wikipedia.org/wiki/Neptune
+    
+    else:
+        raise KeyError(model+" IS NOT A VALID THERMAL MODEL: BT-NextGen, BT-Settl, BT-Dusty, Exo-REM, PICASO, Morley, Saumon or SONORA.")
+    
     return T_grid, lg_grid
 
 
@@ -498,31 +493,28 @@ def load_spectrum(T, lg, model, instru=None, load_path=load_path):
         Loaded pectrum (in J/s/m²/µm)
     """
     try:
-        if model == "BT-Settl": # https://articles.adsabs.harvard.edu/pdf/2013MSAIS..24..128A
-            if T >= 1000: # convert to file name compatible value
-                str_T = "0"+str(T)[:2] ; str_lg = str(lg) 
-            else:
-                str_T = "00"+str(T)[0] ; str_lg = str(lg)
-            if str(T)[-2]!="0":
-                str_T += "."+str(T)[-2]                
-            wave, flux = fits.getdata(load_path+'/planet_spectrum/'+model+"/lte"+str_T+"-"+str_lg+"-0.0a+0.0.BT-Settl.fits")
+        if model == "BT-Settl": # https://articles.adsabs.harvard.edu/pdf/2013MSAIS..24..128A              
+            wave, flux = fits.getdata(load_path+f"/planet_spectrum/{model}/lte{T/100:03.0f}-{lg:.1f}-0.0a+0.0.{model}.fits")
         
         elif model == "BT-Dusty": # https://arxiv.org/pdf/1112.3591
-            if T >= 1000:
-                str_T = "0"+str(T)[:2] ; str_lg = str(lg)
-            else:
-                str_T = "00"+str(T)[0] ; str_lg = str(lg)
-            if str(T)[-2]!="0":
-                str_T += "."+str(T)[-2]
-            wave, flux = fits.getdata(load_path+'/planet_spectrum/'+model+"/lte"+str_T+"-"+str_lg+"-0.0a+0.0.BT-Dusty.fits")
+            wave, flux = fits.getdata(load_path+f"/planet_spectrum/{model}/lte{T/100:03.0f}-{lg:.1f}-0.0a+0.0.{model}.fits")
             
         elif model == "Exo-REM": # https://iopscience.iop.org/article/10.3847/1538-4357/aaac7d/pdf
-            if instru is None or get_config_data(instru)["lambda_range"]["lambda_min"] < 4: # low res
+            if instru is None: # low res
                 load_path += '/planet_spectrum/'+model+'/low_res/'
                 load_path += "spectra_YGP_"+str(T)+"K_logg"+str(float(lg))+"_met1.00_CO0.50.fits"
-            else: # high res (mais commmence à 4 µm) # NOT PUBLIC
-                load_path += '/planet_spectrum/'+model+'/high_res/lte-g' + str(float(lg)) + '/'
-                load_path +="spectra_YGP_"+str(T)+"K_logg"+str(float(lg))+"_met1.00_CO0.50.fits"
+            else:
+                if globals()["lmin_"+instru] >= 1 and globals()["lmax_"+instru] <= 5.3: # very high res
+                    FeH = 0.0     # Métallicité
+                    CO  = 0.65     # Ratio C/O
+                    load_path += '/planet_spectrum/'+model+'/very_high_res/'
+                    load_path += f"spect_Teff={T:04.0f}K_logg={lg:.1f}_FeH={FeH:+.1f}_CO={CO:.2f}.fits"
+                elif globals()["lmin_"+instru] <= 4: # low res
+                    load_path += '/planet_spectrum/'+model+'/low_res/'
+                    load_path += "spectra_YGP_"+str(T)+"K_logg"+str(float(lg))+"_met1.00_CO0.50.fits"
+                elif globals()["lmin_"+instru] >= 4: # high res (mais commmence à 4 µm) # NOT PUBLIC
+                    load_path += '/planet_spectrum/'+model+'/high_res/'
+                    load_path +="spectra_YGP_"+str(T)+"K_logg"+str(float(lg))+"_met1.00_CO0.50.fits"
             wave, flux = fits.getdata(load_path)
             
         elif model == "PICASO": # https://iopscience.iop.org/article/10.3847/1538-4357/ab1b51/pdf + https://github.com/natashabatalha/picaso
@@ -549,23 +541,21 @@ def load_spectrum(T, lg, model, instru=None, load_path=load_path):
             wave, flux = fits.getdata("sim_data/Spectra/planet_spectrum/solar system/psg_"+model+"_rad.fits")
             
         elif model == "BT-NextGen":
-            if T >= 10000:
-                str_T = str(T)[:3] ; str_lg = str(lg)
-            elif T >= 1000:
-                str_T = "0"+str(T)[:2] ; str_lg = str(lg)
-            else:
-                str_T = "00"+str(T)[0] ; str_lg = str(lg)
-            wave, flux = fits.getdata(load_path+'/star_spectrum/'+model+"/lte"+str_T+"-"+str_lg+"-0.0a+0.0."+model+".fits")
+            wave, flux = fits.getdata(load_path+f"/star_spectrum/{model}/lte{T/100:03.0f}-{lg:.1f}-0.0a+0.0.{model}.fits")
+        
+        elif model == "Husser":
+            wave = fits.getdata(load_path+f"/star_spectrum/{model}/WAVE_PHOENIX-ACES-AGSS-COND-2011.fits")
+            flux = fits.getdata(load_path+f"/star_spectrum/{model}/lte{T:05.0f}-{lg:4.2f}-0.0.PHOENIX-ACES-AGSS-COND-2011-HiRes.fits")
         
         else:
             raise KeyError(model+" IS NOT A VALID THERMAL MODEL: BT-NextGen, BT-Settl, BT-Dusty, Exo-REM, PICASO, Morley, Saumon or SONORA.")
             
-        dwl  = wave - np.roll(wave, 1) ; dwl[0] = dwl[1] ; dwl[dwl == 0] = np.nanmean(dwl) # delta lambda array
-        R    = np.nanmean(wave/(2*dwl)) # calculating the resolution of the raw spectrum
+        dl   = wave - np.roll(wave, 1) ; dl[0] = dl[1] ; dl[dl == 0] = np.nanmean(dl) # delta lambda array
+        R    = np.nanmean(wave/(2*dl)) # calculating the resolution of the raw spectrum
         spec = Spectrum(wave, flux, R, T, lg, model)
         return spec # in J/s/m²/µm
-    except:
-        raise KeyError(f"{T}K or {lg} are not valid parameters of the {model} grid.")
+    except Exception as e:
+        raise KeyError(f"{T}K or {lg} are not valid parameters of the {model} grid: {e}")
 
 
 
@@ -637,8 +627,8 @@ def interpolate_T_lg_spectrum(T_valid, lg_valid, T, lg, model, load_path=load_pa
         else:  # No interpolation along T and lg
             spec = load_spectrum(T_valid, lg_valid, model=model, load_path=load_path, instru=instru)
             wave = spec.wavelength ; flux = spec.flux
-    dwl = wave - np.roll(wave, 1) ; dwl[0] = dwl[1] ; dwl[dwl==0] = np.nanmean(dwl) # delta lambda array
-    R = np.nanmean(wave/(2*dwl)) # calculating the resolution of the raw spectrum
+    dl   = wave - np.roll(wave, 1) ; dl[0] = dl[1] ; dl[dl==0] = np.nanmean(dl) # delta lambda array
+    R    = np.nanmean(wave/(2*dl)) # calculating the resolution of the raw spectrum
     spec = Spectrum(wave, flux, R, T, lg, model)
     return spec
 
@@ -713,7 +703,7 @@ def load_vega_spectrum(vega_path=vega_path):
     """
     f         = fits.getdata(os.path.join(vega_path))
     wave      = f[:, 0]*1e-3 # nm => µm
-    flux      = f[:, 1]*10 # 10 = 1e4 * 1e4 * 1e-7: erg/s/cm2/A -> erg/s/cm2/µm -> erg/s/m2/µm -> J/s/m2/µm
+    flux      = f[:, 1]*10   # 10 = 1e4 * 1e4 * 1e-7: erg/s/cm2/A -> erg/s/cm2/µm -> erg/s/m2/µm -> J/s/m2/µm
     vega_spec = Spectrum(wave, flux, None, None)
     return vega_spec
         
@@ -746,7 +736,10 @@ def spectrum_instru(band0, R, config_data, mag, spectrum):
         instrumental-wavelength-range-restricted and magnitude-adjusted spectrum in photons/min received
     """
     try:
-        lmin_band0 = globals()["lmin_"+band0] ; lmax_band0 = globals()["lmax_"+band0]
+        if band0 == "instru":
+            lmin_band0 = globals()["lmin_"+config_data["name"]] ; lmax_band0 = globals()["lmax_"+config_data["name"]]
+        else:
+            lmin_band0 = globals()["lmin_"+band0] ; lmax_band0 = globals()["lmax_"+band0]
     except:
         raise KeyError(f"{band0} is not a considered band to define the magnitude, please choose among: {bands}, {instrus}")
     
@@ -854,7 +847,9 @@ def filtered_flux(flux, R, Rc, filter_type="gaussian", show=False):
             fft *= smoothstep(res, Rc)
             flux_LF_valid = np.real(np.fft.ifft(fft))
         elif filter_type == "savitzky_golay": # Savitzky-Golay filter
-            window_length = min(len(flux[~np.isnan(flux)]), int(round(2 * 2 * R / Rc)) + 1)  # set window length based on Rc
+            sigma = 2 * R / (np.pi * Rc) * np.sqrt(np.log(2) / 2) # see Appendix A of Martos et al. (2024)
+            N = 4 * sigma # gaussian approximation (sigma = N/4 is an empirical approximation) 
+            window_length = min(len(flux[~np.isnan(flux)]), int(round(N)) + 1)  # set window length based on Rc
             if window_length % 2 == 0:
                 window_length += 1  # window length must be odd
             flux_LF_valid = savgol_filter(flux[~np.isnan(flux)], window_length=window_length, polyorder=3)
@@ -918,7 +913,7 @@ def get_fraction_noise_filtered(wave, R, Rc, filter_type, empirical=False):
             elif filter_type == "smoothstep":
                 K_LF *= smoothstep(res, Rc)
                 K_HF *= (1-smoothstep(res, Rc))
-            fn_LF = np.nansum(K_LF)/np.nansum(K) # power fraction of the noise being filtered
+            fn_LF = np.nansum(K_LF)/np.nansum(K) # power fraction of the fundamental noise being filtered
             fn_HF = np.nansum(K_HF)/np.nansum(K)
     return fn_HF, fn_LF
 
@@ -972,9 +967,9 @@ def thermal_reflected_spectrum(planet, instru=None, thermal_model="BT-Settl", re
         config_data = get_config_data(instru)
         lmin_instru = config_data["lambda_range"]["lambda_min"] # in µm
         lmax_instru = config_data["lambda_range"]["lambda_max"] # in µm
-        R_instru    = 300_000 # abritrary resolution (needs to be high enough)
+        R_instru    = R0_max # abritrary resolution (needs to be high enough)
         dl_instru   = ((lmin_instru+lmax_instru)/2)/(2*R_instru)
-        wave_instru  = np.arange(0.98*lmin_instru, 1.02*lmax_instru, dl_instru)
+        wave_instru = np.arange(0.98*lmin_instru, 1.02*lmax_instru, dl_instru)
         
     if vega_spectrum_K is None: # in case a vega spectrum is not input, create one
         vega_spectrum   = load_vega_spectrum()
@@ -987,7 +982,7 @@ def thermal_reflected_spectrum(planet, instru=None, thermal_model="BT-Settl", re
     ratio_star            = np.nanmean(vega_spectrum_K.flux)*10**(-0.4*float(planet["StarKmag"])) / np.nanmean(star_spectrum_K.flux) # renormalizing the star spectrum to the correct magnitude
     star_spectrum.flux   *= ratio_star
     star_spectrum_K.flux *= ratio_star
-
+        
     if thermal_model != "None": # load, reinterpolates and renormalizes the thermal contribution of the planet spectrum
         planet_thermal         = load_planet_spectrum(float(planet["PlanetTeq"].value), float(planet["PlanetLogg"].value), model=thermal_model, interpolated_spectrum=True)
         planet_thermal_K       = planet_thermal.interpolate_wavelength(wave_K, renorm = False)
@@ -997,7 +992,8 @@ def thermal_reflected_spectrum(planet, instru=None, thermal_model="BT-Settl", re
         planet_thermal_K.flux *= planet_scaling_factor
 
     elif thermal_model == "None":
-        planet_thermal = Spectrum(wave_instru, np.zeros_like(wave_instru), star_spectrum.R, float(planet["PlanetTeq"].value), float(planet["PlanetLogg"].value), thermal_model)
+        planet_thermal   = Spectrum(wave_instru, np.zeros_like(wave_instru), star_spectrum.R, float(planet["PlanetTeq"].value), float(planet["PlanetLogg"].value), thermal_model)
+        planet_thermal_K = Spectrum(wave_K, np.zeros_like(wave_K), star_spectrum_K.R, float(planet["PlanetTeq"].value), float(planet["PlanetLogg"].value), thermal_model)
 
     albedo     = load_albedo(planet_thermal.T, planet_thermal.lg)
     albedo_geo = np.nanmean(albedo.flux) # mean value of the geometric albedo given by PICASO
@@ -1021,11 +1017,11 @@ def thermal_reflected_spectrum(planet, instru=None, thermal_model="BT-Settl", re
         planet_reflected_K = np.zeros_like(wave_K)*u.dimensionless_unscaled
     else:
         raise KeyError(reflected_model+" IS NOT A VALID REFLECTED MODEL: tellurics, flat, PICASO or None")
-    planet_reflected   = Spectrum(wave_instru, np.nan_to_num(np.array(planet_reflected.value)), max(star_spectrum.R, albedo.R), albedo.T, float(planet["PlanetLogg"].value), reflected_model)
-    planet_reflected_K = Spectrum(wave_K, np.nan_to_num(np.array(planet_reflected_K.value)), max(star_spectrum_K.R, albedo_K.R), albedo_K.T, float(planet["PlanetLogg"].value), reflected_model)
+    planet_reflected   = Spectrum(wave_instru, np.nan_to_num(np.array(planet_reflected.value)), star_spectrum.R, float(planet["PlanetTeq"].value), float(planet["PlanetLogg"].value), reflected_model)
+    planet_reflected_K = Spectrum(wave_K, np.nan_to_num(np.array(planet_reflected_K.value)), star_spectrum_K.R, float(planet["PlanetTeq"].value), float(planet["PlanetLogg"].value), reflected_model)
     
-    planet_spectrum   = Spectrum(wave_instru, planet_thermal.flux+planet_reflected.flux, max(planet_thermal.R, planet_reflected.R), planet_thermal.T, planet_thermal.lg, thermal_model+"+"+reflected_model)
-    planet_spectrum_K = Spectrum(wave_K, planet_thermal_K.flux+planet_reflected_K.flux, max(planet_thermal_K.R, planet_reflected_K.R), planet_thermal_K.T, planet_thermal_K.lg, thermal_model+"+"+reflected_model)
+    planet_spectrum   = Spectrum(wave_instru, planet_thermal.flux+planet_reflected.flux, star_spectrum.R, float(planet["PlanetTeq"].value), float(planet["PlanetLogg"].value), thermal_model+"+"+reflected_model)
+    planet_spectrum_K = Spectrum(wave_K, planet_thermal_K.flux+planet_reflected_K.flux, star_spectrum_K.R, float(planet["PlanetTeq"].value), float(planet["PlanetLogg"].value), thermal_model+"+"+reflected_model)
 
     # broadening the planet spectrum
     if thermal_model!="None":
@@ -1046,7 +1042,7 @@ def thermal_reflected_spectrum(planet, instru=None, thermal_model="BT-Settl", re
 
     if in_im_mag and planet["DiscoveryMethod"] == "Imaging" and thermal_model != "None": # To inject the known magnitudes of planets detected by direct imaging
         if not np.isnan(planet["PlanetKmag(thermal+reflected)"]): # the magnitude is already known by definition => renormalization in K-band
-            ratio                 = np.nanmean(vega_spectrum_K.flux)*10**(-0.4*float(planet["PlanetKmag(thermal+reflected)"])) / np.nanmean(planet_spectrum.flux)
+            ratio                 = np.nanmean(vega_spectrum_K.flux)*10**(-0.4*float(planet["PlanetKmag(thermal+reflected)"])) / np.nanmean(planet_spectrum_K.flux)
             planet_spectrum.flux  = np.copy(planet_spectrum.flux) * ratio
             planet_thermal.flux   = np.copy(planet_thermal.flux) * ratio
             planet_reflected.flux = np.copy(planet_reflected.flux) * ratio
@@ -1221,8 +1217,8 @@ def load_albedo(T_planet, lg_planet, grid=True):
         idx = (np.abs(lg0 - lg_planet)).argmin()
         lg_planet=lg0[idx]
     wave, albedo = fits.getdata(f"sim_data/Spectra/planet_spectrum/albedo/albedo_gas_giant_{T_planet}K_lg{lg_planet}.fits")
-    dwl = wave - np.roll(wave, 1) ; dwl[0] = dwl[1] # array de delta Lambda
-    R = np.nanmean(wave/(2*dwl)) # calcule de la nouvelle résolution
+    dl     = wave - np.roll(wave, 1) ; dl[0] = dl[1] # array de delta Lambda
+    R      = np.nanmean(wave/(2*dl)) # calcule de la nouvelle résolution
     albedo = Spectrum(wave, albedo, R, T_planet, lg_planet, "PICASO")
     return albedo
 
