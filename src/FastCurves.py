@@ -7,7 +7,7 @@ path_file = os.path.dirname(__file__)
 # FastCurves Function
 #------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_spectrum, star_spectrum, tellurics, apodizer, strehl, coronagraph, systematic, PCA, PCA_mask, Nc, channel, planet_name, separation_planet, mag_planet, show_plot, verbose, post_processing, sep_unit, bkgd, Rc, filter_type, input_DIT, band_only):
+def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_spectrum, star_spectrum, tellurics, apodizer, strehl, coronagraph, systematic, PCA, PCA_mask, Nc, channel, planet_name, separation_planet, mag_planet, show_plot, verbose, post_processing, sep_unit, bkgd, Rc, filter_type, input_DIT, band_only, return_SNR_planet):
     """
     See the function "FastCurves" below.
     """
@@ -40,7 +40,6 @@ def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_
     saturation_e       = config_data["spec"]["saturation_e"] # full well capacity of the detector (in e-)
     min_DIT            = config_data["spec"]["minDIT"] # minimal integration time (in mn)
     max_DIT            = config_data["spec"]["maxDIT"] # maximal integration time (in mn)
-    quantum_efficiency = config_data["spec"]["Q_eff"] # quantum efficiency (in e-/ph)
     RON                = config_data["spec"]["RON"] # read out noise (in e-/DIT)
     dark_current       = config_data["spec"]["dark_current"] # dark current (in e-/s)
     
@@ -101,10 +100,23 @@ def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_
     wave_instru = planet_spectrum_instru.wavelength
     vega_spectrum = load_vega_spectrum() # vega spectrum in J/s/m²/µm
     vega_spectrum = vega_spectrum.interpolate_wavelength(wave_instru, renorm = False) # interpolating the vega spectrum on the instrumental wavelength axis
-    mag_star_instru = -2.5*np.log10(np.nanmean(star_spectrum_density.flux)/np.nanmean(vega_spectrum.flux)) # star magnitude on the instrumental band
+    mag_star_instru   = -2.5*np.log10(np.nanmean(star_spectrum_density.flux)/np.nanmean(vega_spectrum.flux)) # star magnitude on the instrumental band
     mag_planet_instru = -2.5*np.log10(np.nanmean(planet_spectrum_density.flux)/np.nanmean(vega_spectrum.flux)) # planet magnitude on the instrumental band
     if show_plot and band_only is None: # plot stellar and planetary spectra on the instrument band 
-        plt.figure(dpi=300) ; plt.yscale("log") ; plt.plot(planet_spectrum_instru.wavelength, planet_spectrum_instru.flux, 'g', label=f'planet, {model} with $T$={round(T_planet)}K and mag(instru)={np.round(mag_planet_instru, 1)}') ; plt.plot(star_spectrum_instru.wavelength, star_spectrum_instru.flux, 'k', label=f'star, {star_model} with $T$={T_star}K and mag(instru)={np.round(mag_star_instru, 1)}') ; plt.title(f"Star and planet spectra on the instrumental bandwitdh (R = {round(round(R, -3))})"+'\n with $rv_{*}$'+f' = {round(rv_star, 1)} km/s & '+'$rv_{p}$'+f' = {round(rv_planet, 1)} km/s', fontsize = 14) ; plt.xlabel("wavelength [µm]", fontsize = 14) ; plt.ylabel("flux [ph/mn]", fontsize = 14) ; plt.legend() ; plt.show()
+        plt.figure(figsize=(10, 6), dpi=300)
+        plt.yscale("log")
+        plt.xlim(wave_instru[0], wave_instru[-1])        
+        plt.xlabel("wavelength [µm]", fontsize=14)
+        plt.ylabel(r"flux [J/s/$m^2$/µm]", fontsize=14)
+        plt.title(f"Star and planet spectra on the instrumental bandwidth (R = {round(round(R, -3))})" + f"\n with $rv_*$ = {round(rv_star, 1)} km/s & $rv_p$ = {round(rv_planet, 1)} km/s", fontsize=16)
+        plt.grid(which='both', linestyle=':', color='gray', alpha=0.5) 
+        plt.plot(wave_instru, planet_spectrum_density.flux, color='green', linestyle='-', linewidth=2, alpha=0.8, label=f'Planet, {model} with $T$={int(round(T_planet))}K\nmag (instru)={round(mag_planet_instru, 1)}')        
+        plt.plot(wave_instru, star_spectrum_density.flux, color='black', linestyle='-', linewidth=2, alpha=0.8, label=f'Star, {star_model} with $T$={int(round(T_star))}K\nmag (instru)={round(mag_star_instru, 1)}')        
+        plt.legend(fontsize=12, frameon=True, fancybox=True, shadow=True, borderpad=1)  
+        plt.gca().yaxis.set_ticks_position('both')
+        plt.minorticks_on()
+        plt.tight_layout()        
+        plt.show()
     if verbose:
         print("\n"+"\033[4m" + "ON THE INSTRUMENTAL BANDWIDTH"+":"+"\033[0m")
         print(" Cp(ph) = {0:.2e}".format(np.nansum(planet_spectrum_instru.flux)/np.nansum(star_spectrum_instru.flux)), ' & \u0394'+'mag = ', round(mag_planet_instru-mag_star_instru, 2))
@@ -115,11 +127,20 @@ def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_
     #------------------------------------------------------------------------------------------------
     
     if show_plot: # plotting the planet (if SNR calculation) or the star (if contrast calculation) on each band (in e-/mn)
-        f1 = plt.figure(dpi=300) ; band_flux = f1.add_subplot(111) ; band_flux.set_yscale("log") ; band_flux.set_xlabel("wavelength [µm]") ;  band_flux.set_ylabel("flux [e-/mn]") ; band_flux.grid(True) ; ymin = 1e9 ; ymax = 1
+        f1 = plt.figure(figsize=(10, 6), dpi=300)
+        band_flux = f1.add_subplot(111)
+        band_flux.set_yscale("log")
+        band_flux.set_xlim(wave_instru[0], wave_instru[-1])        
+        band_flux.set_xlabel("wavelength [µm]", fontsize=14)
+        band_flux.set_ylabel("flux [e-/mn]", fontsize=14)
+        band_flux.grid(which='both', linestyle=':', color='gray', alpha=0.5) 
+        band_flux.yaxis.set_ticks_position('both')
+        band_flux.minorticks_on()
+        ymin = 1e9 ; ymax = 1
         if calculation == "SNR" or calculation == "corner plot":
-            band_flux.set_title(f"Planet flux ({model}) through {instru} bands \n with $T_p$ = {int(round(planet_spectrum_instru.T))}K, $lg_p$ = {round(planet_spectrum_instru.lg,1)} and $mag_p$({band0}) = {round(mag_planet, 2)}")
+            band_flux.set_title(f"Planet flux ({model}) through {instru} bands \n with $T_p$ = {int(round(planet_spectrum_instru.T))}K, $lg_p$ = {round(planet_spectrum_instru.lg,1)} and $mag_p$({band0}) = {round(mag_planet, 2)}", fontsize=16)
         elif calculation == "contrast":
-            band_flux.set_title(f"Star flux through {instru} with $mag_*$({band0}) = {round(mag_star, 2)}")
+            band_flux.set_title(f"Star flux through {instru} with $mag_*$({band0}) = {round(mag_star, 2)}", fontsize=16)
     for nb, band in enumerate(config_data['gratings']): # For each band
         if band_only is not None and band != band_only :
             continue # If you want to calculate for band_only only
@@ -147,7 +168,7 @@ def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_
             sigma = None # sigma width of gaussian convolution of the filtering
         else:
             sigma = 2*R/(np.pi*Rc)*np.sqrt(np.log(2)/2)
-        mag_star_band   = -2.5*np.log10(np.nanmean(star_spectrum_density.flux[(wave_instru>config_data['gratings'][band].lmin)&(wave_instru<config_data['gratings'][band].lmax)])/np.nanmean(vega_spectrum.flux[(wave_instru>config_data['gratings'][band].lmin)&(wave_instru<config_data['gratings'][band].lmax)])) # star magnitude on the band
+        mag_star_band   = -2.5*np.log10(np.nanmean(star_spectrum_density.flux[(wave_instru>config_data['gratings'][band].lmin)&(wave_instru<config_data['gratings'][band].lmax)])/np.nanmean(vega_spectrum.flux[(wave_instru>config_data['gratings'][band].lmin)&(wave_instru<config_data['gratings'][band].lmax)]))   # star magnitude on the band
         mag_planet_band = -2.5*np.log10(np.nanmean(planet_spectrum_density.flux[(wave_instru>config_data['gratings'][band].lmin)&(wave_instru<config_data['gratings'][band].lmax)])/np.nanmean(vega_spectrum.flux[(wave_instru>config_data['gratings'][band].lmin)&(wave_instru<config_data['gratings'][band].lmax)])) # planet magnitude on the band
 
         #------------------------------------------------------------------------------------------------
@@ -160,10 +181,10 @@ def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_
         
         # Reading PSF profiles (fraction_PSF = fraction of photons in the PSF core/FWHM)
         
-        PSF_profile, fraction_PSF, separation, pxscale = get_PSF_profile(band, strehl, apodizer, coronagraph, instru, config_data, sep_unit)
+        PSF_profile, fraction_PSF, separation, pxscale = get_PSF_profile(band, strehl, apodizer, coronagraph, instru, config_data, sep_unit, separation_planet, return_SNR_planet)
         separation_bands.append(separation) # adds the separation axis to the list
         if separation_planet is not None:
-            idx = (np.abs(separation - separation_planet)).argmin()
+            idx = np.where(separation==separation_planet)[0][0]
                 
         #--------------------------------------------------------------------------------------------------------------------------------------------------------
         
@@ -269,7 +290,7 @@ def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_
         
         # DIT and RON_eff calculation
         
-        DIT, RON_eff = get_DIT_RON(instru, config_data, apodizer, PSF_profile, separation, star_spectrum_band, exposure_time, min_DIT, max_DIT, trans, quantum_efficiency, RON, saturation_e, input_DIT, verbose)
+        DIT, RON_eff = get_DIT_RON(instru, config_data, apodizer, PSF_profile, separation, star_spectrum_band, exposure_time, min_DIT, max_DIT, trans, RON, saturation_e, input_DIT, verbose)
         NDIT         = exposure_time/DIT # number of integrations
         DIT_bands.append(DIT)            # adds the DIT value of the band to the list
         
@@ -277,26 +298,26 @@ def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_
         
         # Spectra through the system
         
-        star_spectrum_band.flux   *= trans*DIT*quantum_efficiency # stellar spectrum through the system in the considered band (in e-/DIT)
-        planet_spectrum_band.flux *= trans*DIT*quantum_efficiency # planet spectrum through the system in the considered band (in e-/DIT)
-
+        star_spectrum_band.flux   *= trans*DIT # stellar spectrum through the system in the considered band (in e-/DIT)
+        planet_spectrum_band.flux *= trans*DIT # planet spectrum through the system in the considered band (in e-/DIT)
+        
         #------------------------------------------------------------------------------------------------------------------------------------------------
         
         # plotting the spectrum on each band
         if show_plot:
             if post_processing == "molecular mapping": # plotting the spectrum on each band
                 if calculation == "SNR" or calculation == "corner plot":
-                    band_flux.plot(wave_band, planet_spectrum_band.flux/DIT, c=cmap(nb), label=band+f" (R={int(round(R))})") ; band_flux.legend() ; ymin = min(ymin, np.nanmin(planet_spectrum_band.flux/DIT)/2) ; ymax = max(ymax, np.nanmax(planet_spectrum_band.flux/DIT)*2) ; band_flux.set_ylim(ymin=max(ymin, 1e-3), ymax=ymax)
+                    band_flux.plot(wave_band, planet_spectrum_band.flux/DIT, color=cmap(nb), linestyle='-', linewidth=2, alpha=0.8, label=band+f" (R={int(round(R))})") ; band_flux.legend(fontsize=12, frameon=True, fancybox=True, shadow=True, borderpad=1) ; ymin = min(ymin, np.nanmin(planet_spectrum_band.flux/DIT)/2) ; ymax = max(ymax, np.nanmax(planet_spectrum_band.flux/DIT)*2) ; band_flux.set_ylim(ymin=max(ymin, 1e-3), ymax=ymax)
                 elif calculation == "contrast":
-                    band_flux.plot(wave_band, star_spectrum_band.flux/DIT, c=cmap(nb), label=band+f" (R={int(round(R))})") ; band_flux.legend() ; ymin = min(ymin, np.nanmin(star_spectrum_band.flux/DIT)/2) ; ymax = max(ymax, np.nanmax(star_spectrum_band.flux/DIT)*2) ; band_flux.set_ylim(ymin=max(ymin, 1e-3), ymax=ymax)
+                    band_flux.plot(wave_band, star_spectrum_band.flux/DIT, color=cmap(nb), linestyle='-', linewidth=2, alpha=0.8, label=band+f" (R={int(round(R))})") ; band_flux.legend(fontsize=12, frameon=True, fancybox=True, shadow=True, borderpad=1) ; ymin = min(ymin, np.nanmin(star_spectrum_band.flux/DIT)/2) ; ymax = max(ymax, np.nanmax(star_spectrum_band.flux/DIT)*2) ; band_flux.set_ylim(ymin=max(ymin, 1e-3), ymax=ymax)
             elif post_processing == "ADI+RDI":
                 if calculation == "SNR":
-                    band_flux.plot(planet_spectrum_band.wavelength, planet_spectrum_band.flux/DIT, label=band+f" ({round(np.nansum(planet_spectrum_band.flux/DIT))} e-/mn)") ; band_flux.legend() ; ymin = min(ymin, np.nanmin(planet_spectrum_band.flux/DIT)/2) ; ymax = max(ymax, np.nanmax(planet_spectrum_band.flux/DIT)*2) ; band_flux.set_ylim(ymin=max(ymin, 1e-3), ymax=ymax)
+                    band_flux.plot(wave_band, planet_spectrum_band.flux/DIT, color=cmap(nb), linestyle='-', linewidth=2, alpha=0.8, label=band+f" ({round(np.nansum(planet_spectrum_band.flux/DIT))} e-/mn)") ; band_flux.legend(fontsize=12, frameon=True, fancybox=True, shadow=True, borderpad=1) ; ymin = min(ymin, np.nanmin(planet_spectrum_band.flux/DIT)/2) ; ymax = max(ymax, np.nanmax(planet_spectrum_band.flux/DIT)*2) ; band_flux.set_ylim(ymin=max(ymin, 1e-3), ymax=ymax)
                 elif calculation == "contrast":
                     if coronagraph is not None:
-                        band_flux.plot(star_spectrum_band.wavelength, star_spectrum_band.flux*star_transmission/DIT, label=band+f" ({round(np.nansum(star_transmission*star_spectrum_band.flux/DIT))} e-/mn)") ; band_flux.legend() ; ymin = min(ymin, np.nanmin(star_spectrum_band.flux*star_transmission/DIT)/2) ; ymax = max(ymax, np.nanmax(star_spectrum_band.flux*star_transmission/DIT)*2) ; band_flux.set_ylim(ymin=max(ymin, 1e-3), ymax=ymax)
+                        band_flux.plot(wave_band, star_spectrum_band.flux*star_transmission/DIT, color=cmap(nb), linestyle='-', linewidth=2, alpha=0.8, label=band+f" ({round(np.nansum(star_transmission*star_spectrum_band.flux/DIT))} e-/mn)") ; band_flux.legend(fontsize=12, frameon=True, fancybox=True, shadow=True, borderpad=1) ; ymin = min(ymin, np.nanmin(star_spectrum_band.flux*star_transmission/DIT)/2) ; ymax = max(ymax, np.nanmax(star_spectrum_band.flux*star_transmission/DIT)*2) ; band_flux.set_ylim(ymin=max(ymin, 1e-3), ymax=ymax)
                     else:
-                        band_flux.plot(star_spectrum_band.wavelength, star_spectrum_band.flux/DIT, label=band+f" ({round(np.nansum(star_spectrum_band.flux/DIT))} e-/mn)") ; band_flux.legend() ; ymin = min(ymin, np.nanmin(star_spectrum_band.flux/DIT)/2) ; ymax = max(ymax, np.nanmax(star_spectrum_band.flux/DIT)*2) ; band_flux.set_ylim(ymin=max(ymin, 1e-3), ymax=ymax)
+                        band_flux.plot(wave_band, star_spectrum_band.flux/DIT, color=cmap(nb), linestyle='-', linewidth=2, alpha=0.8, label=band+f" ({round(np.nansum(star_spectrum_band.flux/DIT))} e-/mn)") ; band_flux.legend(fontsize=12, frameon=True, fancybox=True, shadow=True, borderpad=1) ; ymin = min(ymin, np.nanmin(star_spectrum_band.flux/DIT)/2) ; ymax = max(ymax, np.nanmax(star_spectrum_band.flux/DIT)*2) ; band_flux.set_ylim(ymin=max(ymin, 1e-3), ymax=ymax)
             
         #------------------------------------------------------------------------------------------------------------------------------------------------
         # Calculation of band contrast or SNR curves:
@@ -306,19 +327,13 @@ def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_
         
         contrast = np.zeros_like(separation) ; contrast_wo_syst = np.zeros_like(separation) ; SNR = np.zeros_like(separation) ; t_syst = np.zeros_like(separation) ; cos_theta_est = np.zeros_like(separation) ; norm_d = np.zeros_like(separation)
         
-        if instru=="MIRIMRS" or instru == "ANDES": # for instruments with varying pxscales
-            sep_min = min(config_data["pxscale"].values()) # mas
-            if config_data["sep_unit"] == "mas":
-                sep_min *= 1e3
-        else:
-            sep_min = config_data["apodizers"][apodizer].sep
-            sep_min = max(sep_min, pxscale)
-                    
+        iwa, owa = get_wa(config_data=config_data, band="INSTRU", apodizer=apodizer, sep_unit=config_data["sep_unit"])
+                            
         if post_processing == "molecular mapping": # Molecular Mapping
-            signal = (alpha*cos_p - beta)*DIT*quantum_efficiency # total number of useful e- for molecular mapping /DIT (in the FWHM or "fraction_core") (in e-/DIT/FWHM)
+            signal = (alpha*cos_p - beta)*DIT # total number of useful e- for molecular mapping /DIT (in the FWHM or "fraction_core") (in e-/DIT/FWHM)
             if instru=="HARMONI" or apodizer != "NO_SP":
-                PSF_profile[separation <= sep_min] *= 1e-4
-                signal[separation <= sep_min] *= 1e-4 # Flux attenuated by a factor of 1e-4 due to Focal Plane Mask for HARMONI 
+                PSF_profile[separation < iwa] *= 1e-4
+                signal[separation < iwa] *= 1e-4 # Flux attenuated by a factor of 1e-4 due to Focal Plane Mask for HARMONI 
                     
         elif post_processing == "ADI+RDI": # ADI+RDI
             if coronagraph is not None:
@@ -433,22 +448,26 @@ def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_
             if show_plot and show_contributions: # NOISE CONTRIBUTIONS PLOTS
                 if post_processing == "molecular mapping": # Molecular Mapping
                     plt.figure(dpi=300) ; plt.xlabel(f'separation [{sep_unit}]', fontsize = 14) ; plt.ylabel(r'contrast 5$\sigma_{CCF}$ / $\alpha_0$', fontsize = 14) ; plt.title(instru+f" noise contributions on {band}"+for_planet_name+"\n with "+"$t_{exp}$=" + str(round(exposure_time)) + "mn, $mag_*$("+band0+")=" + str(round(mag_star, 2)) + f', $T_p$={int(round(T_planet))}K and $R_c$ = {Rc}', fontsize = 14)
-                    plt.plot(separation[separation>sep_min], contrast[separation>sep_min], 'k-', label=r"$\sigma_{CCF}$")
-                    plt.plot(separation[separation>sep_min], (5*np.sqrt(R_corr*A_FWHM*(sigma_halo_prime_2)*(NDIT))/(signal*NDIT))[separation>sep_min], 'r--', label=r"$\sigma'_{halo}$")
-                    plt.plot(separation[separation>sep_min], (5*np.sqrt(R_corr*A_FWHM*(sigma_ron_2)*(NDIT))/(signal*NDIT))[separation>sep_min], 'g--', label=r"$\sigma_{ron}$")
-                    plt.plot(separation[separation>sep_min], (5*np.sqrt(R_corr*A_FWHM*(sigma_dc_2)*(NDIT))/(signal*NDIT))[separation>sep_min], 'm--', label=r"$\sigma_{dc}$")
-                    plt.plot(separation[separation>sep_min], (5*np.sqrt(R_corr*A_FWHM*(sigma_bkgd_prime_2)*(NDIT))/(signal*NDIT))[separation>sep_min], 'b--', label=r"$\sigma'_{bkgd}$")
+                    plt.plot(separation[separation>=iwa], contrast[separation>=iwa], 'k-', label=r"$\sigma_{CCF}$")
+                    plt.plot(separation[separation>=iwa], (5*np.sqrt(R_corr*A_FWHM*(sigma_halo_prime_2)*(NDIT))/(signal*NDIT))[separation>=iwa], 'r--', label=r"$\sigma'_{halo}$")
+                    plt.plot(separation[separation>=iwa], (5*np.sqrt(R_corr*A_FWHM*(sigma_ron_2)*(NDIT))/(signal*NDIT))[separation>=iwa], 'g--', label=r"$\sigma_{ron}$")
+                    plt.plot(separation[separation>=iwa], (5*np.sqrt(R_corr*A_FWHM*(sigma_dc_2)*(NDIT))/(signal*NDIT))[separation>=iwa], 'm--', label=r"$\sigma_{dc}$")
+                    plt.plot(separation[separation>=iwa], (5*np.sqrt(R_corr*A_FWHM*(sigma_bkgd_prime_2)*(NDIT))/(signal*NDIT))[separation>=iwa], 'b--', label=r"$\sigma'_{bkgd}$")
                     if systematic:
-                        plt.plot(separation[separation>sep_min], (5*np.sqrt(sigma_syst_prime_2)/(signal))[separation>sep_min], 'c--', label=r"$\sigma'_{syst}$")
-                    plt.xlim(0, separation[-1]) ; plt.legend(fontsize=12) ; plt.yscale('log') ; plt.grid(True, which='both', linestyle='--', linewidth=0.5) ; plt.minorticks_on() ; plt.axvspan(0, sep_min, color='k', alpha=0.5, lw=0)
+                        plt.plot(separation[separation>=iwa], (5*np.sqrt(sigma_syst_prime_2)/(signal))[separation>=iwa], 'c--', label=r"$\sigma'_{syst}$")
+                    plt.xlim(0, separation[-1]) ; plt.legend(fontsize=12) ; plt.yscale('log') ; plt.grid(True, which='both', linestyle='--', linewidth=0.5) ; plt.minorticks_on() ; plt.axvspan(0, iwa, color='k', alpha=0.5, lw=0)
+                    if separation_planet is not None and separation_planet > 2*owa:
+                        plt.xscale('log') ; plt.xlim(iwa, separation[-1])
                 elif post_processing == "ADI+RDI": # RDI+ADI+RDI
                     plt.figure(dpi=300) ; plt.xlabel(f'separation [{sep_unit}]', fontsize = 14) ; plt.ylabel(r'contrast 5$\sigma$ / $F_{max}$', fontsize = 14) ; plt.title(instru+f" noise contributions on {band}"+for_planet_name+" \n with "+"$t_{exp}$=" + str(round(exposure_time)) + "mn and $mag_*$("+band0+")=" + str(round(mag_star, 2)), fontsize = 14)
-                    plt.plot(separation[separation>sep_min], contrast[separation>sep_min], 'k-', label=r"$\sigma_{tot}$")
-                    plt.plot(separation[separation>sep_min], (5*np.sqrt(R_corr*A_FWHM*(sigma_halo_2)*(NDIT))/(signal*NDIT))[separation>sep_min], 'r--', label=r"$\sigma_{halo}$")
-                    plt.plot(separation[separation>sep_min], (5*np.sqrt(R_corr*A_FWHM*(sigma_ron_2)*(NDIT))/(signal*NDIT))[separation>sep_min], 'g--', label=r"$\sigma_{ron}$")
-                    plt.plot(separation[separation>sep_min], (5*np.sqrt(R_corr*A_FWHM*(sigma_dc_2)*(NDIT))/(signal*NDIT))[separation>sep_min], 'm--', label=r"$\sigma_{dc}$")
-                    plt.plot(separation[separation>sep_min], (5*np.sqrt(R_corr*A_FWHM*(sigma_bkgd_2)*(NDIT))/(signal*NDIT))[separation>sep_min], 'b--', label=r"$\sigma_{bkgd}$")
-                    plt.xlim(0, separation[-1]) ; plt.legend(fontsize=12) ; plt.yscale('log') ; plt.grid(True, which='both', linestyle='--', linewidth=0.5) ; plt.minorticks_on() ; plt.axvspan(0, sep_min, color='k', alpha=0.5, lw=0)
+                    plt.plot(separation[separation>=iwa], contrast[separation>=iwa], 'k-', label=r"$\sigma_{tot}$")
+                    plt.plot(separation[separation>=iwa], (5*np.sqrt(R_corr*A_FWHM*(sigma_halo_2)*(NDIT))/(signal*NDIT))[separation>=iwa], 'r--', label=r"$\sigma_{halo}$")
+                    plt.plot(separation[separation>=iwa], (5*np.sqrt(R_corr*A_FWHM*(sigma_ron_2)*(NDIT))/(signal*NDIT))[separation>=iwa], 'g--', label=r"$\sigma_{ron}$")
+                    plt.plot(separation[separation>=iwa], (5*np.sqrt(R_corr*A_FWHM*(sigma_dc_2)*(NDIT))/(signal*NDIT))[separation>=iwa], 'm--', label=r"$\sigma_{dc}$")
+                    plt.plot(separation[separation>=iwa], (5*np.sqrt(R_corr*A_FWHM*(sigma_bkgd_2)*(NDIT))/(signal*NDIT))[separation>=iwa], 'b--', label=r"$\sigma_{bkgd}$")
+                    plt.xlim(0, separation[-1]) ; plt.legend(fontsize=12) ; plt.yscale('log') ; plt.grid(True, which='both', linestyle='--', linewidth=0.5) ; plt.minorticks_on() ; plt.axvspan(0, iwa, color='k', alpha=0.5, lw=0)
+                    if separation_planet is not None and separation_planet > 2*owa:
+                        plt.xscale('log') ; plt.xlim(iwa, separation[-1])
             contrast_bands.append(contrast) # adds the contrast curve of the band to the list
         
         #
@@ -543,30 +562,77 @@ def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_
     # Contrast:
         
     if calculation == "contrast" and show_plot:
-        plt.figure(dpi=300) ; ax1 = plt.gca() ; ax1.grid(True) ; ax1.set_yscale('log') ; ax1.axvspan(0, sep_min, color='k', alpha=0.5, lw=0) ; ax1.set_xlim(0, separation[-1])
-        ax1.set_title(instru + " contrast curves"+for_planet_name+f" with {post_processing}"+" \n with $t_{exp}$=" + str(round(exposure_time, 1)) + "mn, $mag_*$("+band0+")=" + str(round(mag_star, 1)) + f' and $T_p$={int(round(T_planet))}K', fontsize = 14) ; ax1.set_xlabel(f"separation [{sep_unit}]", fontsize=12) ; ax1.set_ylabel(r'5$\sigma$ contrast (on instru-band)', fontsize=12)
+        plt.figure(figsize=(10, 6), dpi=300)        
+        ax1 = plt.gca()
+        ax1.set_yscale('log')        
+        ax1.grid(which='both', linestyle=':', color='gray', alpha=0.5)        
+        ax1.set_xlim(0, max(np.max(arr) for arr in separation_bands))
+        ax1.set_title(f"{instru} contrast curves{for_planet_name} with {post_processing}\n" + f"with $t_{{exp}}$ = {int(round(exposure_time))} mn, $mag_*$({band0}) = {round(mag_star, 1)}" + f" and $T_p$ = {int(round(T_planet))} K", fontsize=16)        
+        ax1.set_xlabel(f"separation [{sep_unit}]", fontsize=14)
+        ax1.set_ylabel(r'5$\sigma$ contrast (on instru-band)', fontsize=14)
+        ax1.tick_params(axis='both', labelsize=12)        
+        ax2 = ax1.twinx()
+        ax2.set_yscale('log')
+        ax2.set_xlim(0, separation[-1])
+        ax2.axvspan(0, iwa, color='black', alpha=0.5, lw=0)
+        ax2.get_yaxis().set_visible(False)
+        ax2.get_xaxis().set_visible(False)        
         for i in range(len(contrast_bands)):
             if band_only is not None:
-                ax1.plot(separation_bands[i][separation_bands[i]>sep_min], contrast_bands[i][separation_bands[i]>sep_min], label=name_bands[i], color=cmap([nb for nb, band in enumerate(config_data["gratings"]) if band == band_only][0]))
+                color_idx = [nb for nb, band in enumerate(config_data["gratings"]) if band == band_only][0]
+                ax1.plot(separation_bands[i][separation_bands[i] >= iwa], contrast_bands[i][separation_bands[i] >= iwa], label=name_bands[i], color=cmap(color_idx), linewidth=2, alpha=0.8)
             else:
-                ax1.plot(separation_bands[i][separation_bands[i]>sep_min], contrast_bands[i][separation_bands[i]>sep_min], label=name_bands[i], color=cmap(i))
-        if separation_planet is not None  and separation_planet < np.nanmax(separation):
+                ax1.plot(separation_bands[i][separation_bands[i] >= iwa], contrast_bands[i][separation_bands[i] >= iwa], label=name_bands[i], color=cmap(i), linewidth=2, alpha=0.8)
+        if separation_planet is not None:
+            if separation_planet > 2 * owa:
+                ax1.set_xscale('log')
+                ax1.set_xlim(iwa, max(np.max(arr) for arr in separation_bands))
             if mag_planet is None:
-                ax1.axvline(separation_planet, c="k", linestyle="--", label=f'{planet_name}')
+                ax1.axvline(separation_planet, color="black", linestyle="--", label=f'{planet_name}')
             else:
-                star_spectrum_instru, star_spectrum_density = spectrum_instru(band0, R, config_data, mag_star, star_spectrum) # spectre de l'étoile en photons/min ajusté à la bonne magnitude
-                planet_spectrum_instru, planet_spectrum_density = spectrum_instru(band0, R, config_data, mag_planet, planet_spectrum) # spectre de la planète en ph/min ajusté à la bonne magnitude
-                flux_ratio = np.nanmean(planet_spectrum_instru.flux/star_spectrum_instru.flux)
+                star_spectrum_instru, star_spectrum_density     = spectrum_instru(band0, R, config_data, mag_star, star_spectrum)
+                planet_spectrum_instru, planet_spectrum_density = spectrum_instru(band0, R, config_data, mag_planet, planet_spectrum)
+                flux_ratio = np.nanmean(planet_spectrum_instru.flux / star_spectrum_instru.flux)
+                if flux_ratio > ax1.get_ylim()[1] or (flux_ratio > ax1.get_ylim()[0] and flux_ratio < ax1.get_ylim()[1]):
+                    y_text    = flux_ratio/1.5
+                    if separation_planet > (iwa+owa)/2:
+                        x_text    = separation_planet - 0.1 * max(np.max(arr) for arr in separation_bands)
+                        leg_y_pos = "upper"
+                        leg_x_pos = "center"
+                    else:
+                        x_text    = separation_planet + 0.025 * max(np.max(arr) for arr in separation_bands)
+                        leg_y_pos = "upper"
+                        leg_x_pos = "right"
+                else :
+                    y_text = flux_ratio*1.5
+                    if separation_planet > (iwa+owa)/2:
+                        x_text    = separation_planet - 0.1 * max(np.max(arr) for arr in separation_bands)
+                        leg_y_pos = "upper"
+                        leg_x_pos = "right"
+                    else:
+                        x_text    = separation_planet + 0.025 * max(np.max(arr) for arr in separation_bands)
+                        leg_y_pos = "lower"
+                        leg_x_pos = "right"
+                leg_loc = leg_y_pos + " " + leg_x_pos
                 ax1.plot([separation_planet, separation_planet], [flux_ratio, flux_ratio], 'ko')
-                ax1.annotate(f"{planet_name}", (separation_planet+0.025*separation[-1], flux_ratio))
-        ax2 = ax1.twinx() ; ax2.invert_yaxis() ; ax2.set_ylabel(r'$\Delta$mag', fontsize=12, labelpad=20, rotation=270) ; ax2.tick_params(axis='y')
-        ymin, ymax = ax1.get_ylim() ; ax2.set_ylim(-2.5*np.log10(ymin), -2.5*np.log10(ymax))
-        ax1.legend(loc="upper right") ; ax1.set_zorder(1) ; plt.show()
+                ax1.annotate(f"{planet_name}", (x_text, y_text), fontsize=12)
+        else:
+            leg_loc = "upper right"
+        ax3 = ax1.twinx()
+        ax3.invert_yaxis()
+        ax3.set_ylabel(r'$\Delta$mag', fontsize=14, labelpad=20, rotation=270)
+        ax3.tick_params(axis='y', labelsize=12)        
+        ymin, ymax = ax1.get_ylim()
+        ax3.set_ylim(-2.5 * np.log10(ymin), -2.5 * np.log10(ymax))        
+        ax1.legend(loc=leg_loc, fontsize=12, frameon=True, fancybox=True, shadow=True, borderpad=1)  
+        plt.minorticks_on()
+        plt.tight_layout()        
+        plt.show()
     
     #------------------------------------------------------------------------------------------------
 
     # SNR:
-    
+            
     elif calculation == "SNR" and show_plot:
         if separation_planet is not None  and verbose:
             print('\n') ; print(f' MAX S/N (at {round(separation_planet, 1)} {sep_unit}) = ', round(SNR_max_planet, 1), "for "+name_max_SNR)
@@ -576,22 +642,45 @@ def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_
             SNR_chan.append(np.sqrt(np.nansum(np.array(SNR_bands[:3])**2, 0))) ; SNR_chan.append(np.sqrt(np.nansum(np.array(SNR_bands[3:])**2, 0))) ; SNR_max=max(max(SNR_chan[0]), max(SNR_chan[1]))
             if separation_planet is not None:
                 for i in range(len(SNR_chan)):
-                    idx = (np.abs(separation_chan[i] - separation_planet)).argmin()
+                    idx = np.where(separation_chan[i]==separation_planet)[0][0]
                     if  SNR_chan[i][idx] > SNR_max_planet:
-                        SNR_max_planetb= SNR_chan[i][idx] ; name_max_SNR = name_bands[i]
+                        SNR_max_planet = SNR_chan[i][idx]
+                        name_max_SNR   = name_bands[i]
                 print(f'MAX S/N (at {separation_planet}") = ', round(SNR_max_planet, 2), "for "+name_max_SNR)
-            separation_bands=separation_chan ; SNR_bands=SNR_chan
-        plt.figure(dpi=300) ; plt.grid(True, which='both', linestyle='--', linewidth=0.5) ; plt.minorticks_on()
-        plt.title(instru + " S/N curves"+for_planet_name+" with $t_{exp}$=" + str(round(exposure_time)) + "mn, \n $mag_*$("+band0+")=" + str(round(mag_star, 2)) + ", $mag_p$("+band0+")=" + str(round(mag_planet, 2))+f' and $T_p$ = {int(round(T_planet))}K ('+model+')', fontsize = 14)
+            separation_bands = separation_chan
+            SNR_bands        = SNR_chan
+        
+        plt.figure(figsize=(10, 6), dpi=300) 
+        ax1 = plt.gca()
+        ax1.grid(which='both', linestyle=':', color='gray', alpha=0.5)     
+        ax1.set_xlim(0, max(np.max(arr) for arr in separation_bands))
+        ax1.set_title(f"{instru} S/N curves {for_planet_name} with $t_{{exp}}$ = {round(exposure_time)} mn,\n" + f"$mag_*$({band0}) = {round(mag_star, 2)}, $mag_p$({band0}) = {round(mag_planet, 2)}, " + f"$T_p$ = {int(round(T_planet))}K ({model})", fontsize=16)
+        ax1.set_xlabel(f"separation [{sep_unit}]", fontsize=14)
+        ax1.set_ylabel('S/N', fontsize=14)        
+        ax1.yaxis.set_ticks_position('both')
+        ax1.tick_params(axis='both', labelsize=12)  
+        ax1.axvspan(0, iwa, color='black', alpha=0.5, lw=0)
         for i in range(len(SNR_bands)):
             if band_only is not None:
-                plt.plot(separation_bands[i][separation_bands[i]>sep_min], SNR_bands[i][separation_bands[i]>sep_min], label=name_bands[i], color=cmap([nb for nb, band in enumerate(config_data["gratings"]) if band == band_only][0]))
+                color_idx = [nb for nb, band in enumerate(config_data["gratings"]) if band == band_only][0]
+                ax1.plot(separation_bands[i][separation_bands[i] >= iwa], SNR_bands[i][separation_bands[i] >= iwa], label=name_bands[i], color=cmap(color_idx), linewidth=2, alpha=0.8)
             else:
-                plt.plot(separation_bands[i][separation_bands[i]>sep_min], SNR_bands[i][separation_bands[i]>sep_min], label=name_bands[i], color=cmap(i))
-        plt.legend(loc='upper left') ; plt.xlim(0, separation[-1]) ; plt.ylim(0) ; plt.axvspan(0, sep_min, color='k', alpha=0.5, lw=0) ; plt.xlabel(f"separation [{sep_unit}]", fontsize=12) ; plt.ylabel('S/N', fontsize=14) ; ax = plt.gca() ; ax.yaxis.set_ticks_position('both') ; plt.tight_layout()
-        if separation_planet is not None  and separation_planet < np.nanmax(separation):
-            plt.plot([separation_planet, separation_planet], [0., SNR_max], 'k--') ; plt.plot([separation_planet, separation_planet], [SNR_max_planet, SNR_max_planet], 'rX', ms=11)
-            ax_legend = ax.twinx() ; ax_legend.plot([], [], '--', c='k', label=f'angular separation{for_planet_name}'); ax_legend.plot([], [], 'X', c='r', label='max S/N'+for_planet_name+' ('+str(round(SNR_max_planet, 2))+')') ; ax_legend.legend(loc='lower right') ; ax_legend.tick_params(axis='y', colors='w')
+                ax1.plot(separation_bands[i][separation_bands[i] >= iwa], SNR_bands[i][separation_bands[i] >= iwa],label=name_bands[i], color=cmap(i), linewidth=2, alpha=0.8)
+        if separation_planet is not None:
+            if separation_planet > 2 * owa:
+                ax1.set_xscale('log')
+                ax1.set_xlim(iwa, max(np.max(arr) for arr in separation_bands))
+            ax1.plot([separation_planet, separation_planet], [0., SNR_max], 'k--', linewidth=1.5)
+            ax1.plot([separation_planet], [SNR_max_planet], 'rX', ms=11)        
+            ax_legend = ax1.twinx()
+            ax_legend.plot([], [], '--', c='k', label=f'Angular separation {for_planet_name}')
+            ax_legend.plot([], [], 'X', c='r', label=f'Max S/N {for_planet_name} ({round(SNR_max_planet, 2)})')
+            ax_legend.legend(loc='lower right', fontsize=12, frameon=True, fancybox=True, shadow=True, borderpad=1)
+            ax_legend.tick_params(axis='y', colors='w')
+        ax1.set_ylim(0)
+        ax1.legend(loc="upper left", fontsize=12, frameon=True, fancybox=True, shadow=True, borderpad=1)  
+        plt.minorticks_on()
+        plt.tight_layout()        
         plt.show()
         
     #------------------------------------------------------------------------------------------------
@@ -721,7 +810,7 @@ def FastCurves(calculation="contrast", instru="HARMONI", exposure_time=120, mag_
     # FastCurves calculation
     name_bands, separation, curves, signal_bands, sigma_syst_2_bands, sigma_fund_2_bands, sigma_halo_2_bands, sigma_det_2_bands, sigma_bkg_2_bands, DIT_bands, planet_flux_bands, star_flux_bands, wave_bands = FastCurves_main(calculation=calculation, instru=instru, exposure_time=exposure_time, mag_star=mag_star, band0=band0, planet_spectrum=planet_spectrum, star_spectrum=star_spectrum, tellurics=tellurics, 
                                                                                                                                                                  apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, systematic=systematic, PCA=PCA, PCA_mask=PCA_mask, Nc=Nc, channel=channel, planet_name=planet_name, separation_planet=separation_planet, mag_planet=mag_planet, show_plot=show_plot, verbose=verbose, 
-                                                                                                                                                                 post_processing=post_processing, sep_unit=sep_unit, bkgd=bkgd, Rc=Rc, filter_type=filter_type, input_DIT=input_DIT, band_only=band_only)
+                                                                                                                                                                 post_processing=post_processing, sep_unit=sep_unit, bkgd=bkgd, Rc=Rc, filter_type=filter_type, input_DIT=input_DIT, band_only=band_only, return_SNR_planet=return_SNR_planet)
     
     if verbose:
         print(f'\n FastCurves {calculation} calculation took {round(time.time()-time1, 1)} s')
@@ -733,10 +822,10 @@ def FastCurves(calculation="contrast", instru="HARMONI", exposure_time=120, mag_
         if separation_planet is None:
             raise KeyError("PLEASE INPUT A SEPARATION FOR THE PLANET FOR THE SNR CALCULATION !")
         if sep_unit == "mas":
-            separation_planet *= 1e3 # switching the angular separation unit
+            separation_planet *= 1e3 # switching the angular separation unit (from arcsec to mas)
         SNR_planet = np.zeros((len(name_bands))) ; signal_planet = np.zeros((len(name_bands))) ; sigma_fund_planet = np.zeros((len(name_bands))) ; sigma_syst_planet = np.zeros((len(name_bands)))
         for nb, band in enumerate(name_bands): # retrieving the values at the planet separation
-            idx = np.abs(separation[nb]-separation_planet).argmin()
+            idx = np.where(separation[nb]==separation_planet)[0][0]
             SNR_planet[nb]        = curves[nb][idx]
             signal_planet[nb]     = signal_bands[nb][idx]
             sigma_fund_planet[nb] = np.sqrt(sigma_fund_2_bands[nb][idx])

@@ -80,7 +80,12 @@ def linear_interpolate(y1, y2, x1, x2, x):
     b = y1 - a * x1
     return a * x + b
 
+def power_law_extrapolation(x, x0, y0, alpha):
+    return y0 * (x / x0) ** (-alpha)
 
+def improved_power_law_extrapolation(x, x0, y0, alpha, rc):
+    """ Modèle hybride : loi de puissance + décroissance exponentielle """
+    return y0 * (x / x0) ** (-abs(alpha)) * np.exp(-x / rc)
 
 def gaussian(x, mu, sig):
     return 1./(np.sqrt(2.*np.pi)*sig)*np.exp(-np.power((x - mu)/sig, 2.)/2)
@@ -637,6 +642,7 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R, Rc, fil
     # wavelength axis properties
     lmin = wave0[0]
     lmax = wave0[-1]
+    # lmin = 1.468/0.98 ; lmax = 1.73/1.02 # Cropping first and last order
     dl0  = wave0 - np.roll(wave0, 1) ; dl0[0] = dl0[1] ; dl0[dl0==0] = np.nanmedian(dl0) # delta lambda array
     R0   = np.nanmedian(wave0/(2*dl0)) # calculating the resolution => assuming a Nyquist sampling
     dl0  = np.nanmedian(dl0)

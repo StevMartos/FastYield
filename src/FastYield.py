@@ -317,52 +317,55 @@ def inject_known_values(planet_table):
     """
     Injects K-band magnitude values of planets detected by direct imaging from a variety of references, (may need to be updated as required)
     """
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "GJ 504 b"] = 19.4 # https://arxiv.org/pdf/1807.00657.pdf (page 6)            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "2MASS J01225093-2439505 b"] = 14.53 #  https://iopscience.iop.org/article/10.1088/0004-637X/774/1/55/pdf (page 4)            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "HD 206893 b"] = 15.05 # https://iopscience.iop.org/article/10.3847/1538-3881/abc263/pdf (page 5)            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "GSC 06214-00210 b"] = 14.87 # https://arxiv.org/pdf/1503.07586.pdf (page 6)
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "1RXS J160929.1-210524 b"] = 16.15 # https://arxiv.org/pdf/1503.07586.pdf (page 6)            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "HIP 78530 b"] = 14.18 # https://arxiv.org/pdf/1503.07586.pdf (page 6)              
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "HR 2562 b"] = (5.02+10.5) # https://arxiv.org/pdf/1608.06660.pdf (page 4)            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "HIP 65426 b"] = (6.771+9.85) # https://arxiv.org/pdf/1707.01413.pdf (page 8)            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "PDS 70 c"] = (8.542+8.8) # https://arxiv.org/ftp/arxiv/papers/1906/1906.01486.pdf (page 10)            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "PDS 70 b"] = (8.542+8.0) # https://arxiv.org/ftp/arxiv/papers/1906/1906.01486.pdf (page 10)            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "HIP 21152 b"] = 16.55 # https://iopscience.iop.org/article/10.3847/2041-8213/ac772f/pdf (page 3 bas)            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "bet Pic b"] = (3.48+9.2) # https://www.aanda.org/articles/aa/pdf/2011/04/aa16224-10.pdf (page 3)            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "HR 8799 b"] = 14.05 # https://arxiv.org/pdf/0811.2606.pdf (page 16)            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "HR 8799 c"] = 13.13 # https://arxiv.org/pdf/0811.2606.pdf (page 16)            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "HR 8799 d"] = 13.11 # https://arxiv.org/pdf/0811.2606.pdf (page 16)            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "HR 8799 e"] = (5.24+10.67) # https://arxiv.org/ftp/arxiv/papers/1011/1011.4918.pdf (page 10)            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "HD 95086 b"] = (6.789+12.2) # https://www.aanda.org/articles/aa/pdf/2022/08/aa43097-22.pdf (page 5)            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "USco1621 b"] = 14.67 # https://www.aanda.org/articles/aa/pdf/2020/01/aa36130-19.pdf (page 5)            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "USco1556 b"] = 14.85 # https://www.aanda.org/articles/aa/pdf/2020/01/aa36130-19.pdf (page 5)            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "Oph 11 b"] = 14.44 # https://arxiv.org/pdf/astro-ph/0608574.pdf (page 27)            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "FU Tau b"] = 13.329 # http://cdsportal.u-strasbg.fr/?target=FU%20Tau%20b            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "2MASS J12073346-3932539 b"] = 16.93 # https://www.aanda.org/articles/aa/pdf/2004/38/aagg222.pdf (page 3)            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "AF Lep b"] = (4.926+11.7) # https://arxiv.org/pdf/2302.06213.pdf (page 5)            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "DH Tau b"] = 14.19 # https://iopscience.iop.org/article/10.1086/427086/pdf (page 3 bas)            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "WD 0806-661 b"] = 27 # https://arxiv.org/pdf/1605.06655.pdf (page 10)          
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "HIP 79098 AB b"] = 14.15  # https://arxiv.org/pdf/1906.02787.pdf (page 5)            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "VHS J125601.92-125723.9 b"] = 14.57  # https://www.aanda.org/articles/aa/pdf/2023/02/aa44494-22.pdf (page 2)            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "ROXs 42 B b"] = 15.01 # https://iopscience.iop.org/article/10.1088/0004-637X/787/2/104/pdf (page 3)            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "2M0437 b"] = 17.21 # https://arxiv.org/pdf/2110.08655.pdf (page 1)            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "kap And b"] = 14.32 # https://www.aanda.org/articles/aa/pdf/2014/02/aa22119-13.pdf (page 14)            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "GU Psc b"] = 17.40 # https://iopscience.iop.org/article/10.1088/0004-637X/787/1/5/pdf (page 16)            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "GQ Lup b"] = 13.5 # https://watermark.silverchair.com/stu1586.pdf?token=AQECAHi208BE49Ooan9kkhW_Ercy7Dm3ZL_9Cf3qfKAc485ysgAAA4IwggN-BgkqhkiG9w0BBwagggNvMIIDawIBADCCA2QGCSqGSIb3DQEHATAeBglghkgBZQMEAS4wEQQMe5lHC4E6oNfCKjMnAgEQgIIDNRBTyFAcCWw3I5edmpWsquUEeYqTdh9wSPyRjFSX8zAixWA69s-k7R2eYl4nU2vHPc3e6fOztwAJo0-QCF5tTT93oOxjfr7Ta533fcPZpjUiVYqKJttEITYHUEq2dKrhTepyhTRI08y-k09vTdzHLx-P61HYl12Xu5WB01fVn0_Ch21J-vy2C0mcMJt_wIAsBLvA6IUqf4dyiRljVQmL74dhgJhpSUOJnL3g2xMd0G-YN1JyWOtjTpjuCsczmncHC0vDIJmVuvgamYfR5E2BNeyY5QMjnb584CExKWTGOl4ON_CIrKNlvJI0gaInIvfLc_N_0ylQE5bPFlqe_j6bT7UuqzT7deIS4E-xnRV7t3PTA7JVo6WNKyhIs0n158LGaZMBdnxopxwHXhfmIlmkwr5mKfMYVPItmZXWJK3yGLPirvXard_TY0u34glhbsYXszUjvlQSTji58elFaTZBb9-eban2Jiz8hVsJ9JKnxE4tAKFNTWYXbEf-mxlFTQ0kh0X9sGIhMkunV5eW0VCiFtN_7DDYPROCCEKwTSWQSTz0JUH4eIzSGc7UN1gKbxjcbz5ZKpXc9oqh78ny1MigT9dX8qNpiP5AAzFohNGc1hYI_pjcF-XoJsudCR1Ig6YOQhRfxJ-EFFeAwdDOWpff2ffRp_A5scAVlSwTRqW6BPX22m99ocwwFJu4Nso4UxFzJ0d100Eszm5W792c3ZKwUcnKw2bccZz0sCk_VXCZLGVQG5vcPQY1KD1xDng9LFOkxIhIkhkRuR-o0TYZM7eIf039l8WzWsncCpQ8aV_oeMaA5Cq_qZ96H9fxSO6d3XPk9aV8KrUHsC77Ox2REXCjbusBy7wlgBgTjk01csXRuh5CDSHXLLy5GTMHAsrzh7XDfpbPhVIkVn9oOT7-KjuIAwZPErtct0tu2tBmsKO9DxQa8hCBwv0Zw2I3-yGY7IqqK4w5owijpuOo-Fk5hGCf8RMqI9eR7SWRl6FgA5CgP3nv_ZcgpJUAhMDBjwHKWds9F0rmrIU7y4dIb5pxM_JkOx8tYdM2bqwzSnJrcT2umGMCtHYoua3K0qLMCoJOUbSKfqjzpeYW (page 6)            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "CT Cha b"] = 14.9 # https://www.aanda.org/articles/aa/pdf/2008/43/aa8840-07.pdf (page 4)            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "HD 206893 c"] = 15.2 # https://www.aanda.org/articles/aa/pdf/2021/08/aa40749-21.pdf     
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "TYC 8998-760-1 c"] = (8.3+9.8) # https://iopscience.iop.org/article/10.3847/2041-8213/aba27e/pdf (page 4)            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "COCONUTS-2 b"] = 20.030 # https://iopscience.iop.org/article/10.3847/2041-8213/ac1123/pdf (table 1) 
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "51 Eri b"] = 15.8 # https://www.aanda.org/articles/aa/pdf/2023/05/aa44826-22.pdf
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "HD 106906 b"] = 15.46 # https://iopscience.iop.org/article/10.1088/2041-8205/780/1/L4/pdf (page 4)            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "CFHTWIR-Oph 98 b"] = 16.408 # https://arxiv.org/pdf/2011.08871.pdf (page 6)            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "HD 203030 b"] = 16.21 # https://iopscience.iop.org/article/10.3847/1538-3881/aa9711/pdf (page 5)            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "BD+60 1417 b"] = 15.645 # https://iopscience.iop.org/article/10.3847/1538-4357/ac2499/pdf (page 5)            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "HIP 75056 A b"] = (7.3+6.8) # https://arxiv.org/pdf/2009.08537.pdf (page 3)            
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "MWC 758 c"] = 20 # https://iopscience.iop.org/article/10.3847/1538-3881/ad11d5/pdf        
-    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "HD 284149 AB b"] = 14.332 # https://iopscience.iop.org/article/10.3847/1538-3881/ace442/pdf (page 7) 
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "GJ 504 b"]                  = 19.4         # https://arxiv.org/pdf/1807.00657.pdf (page 6)            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "2MASS J01225093-2439505 b"] = 14.53        # https://iopscience.iop.org/article/10.1088/0004-637X/774/1/55/pdf (page 4)            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "HD 206893 b"]               = 15.05        # https://iopscience.iop.org/article/10.3847/1538-3881/abc263/pdf (page 5)            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "GSC 06214-00210 b"]         = 14.87        # https://arxiv.org/pdf/1503.07586.pdf (page 6)
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "1RXS J160929.1-210524 b"]   = 16.15        # https://arxiv.org/pdf/1503.07586.pdf (page 6)            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "HIP 78530 b"]               = 14.18        # https://arxiv.org/pdf/1503.07586.pdf (page 6)              
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "HR 2562 b"]                 = (5.02+10.5)  # https://arxiv.org/pdf/1608.06660.pdf (page 4)            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "HIP 65426 b"]               = (6.771+9.85) # https://arxiv.org/pdf/1707.01413.pdf (page 8)            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "PDS 70 c"]                  = (8.542+8.8)  # https://arxiv.org/ftp/arxiv/papers/1906/1906.01486.pdf (page 10)            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "PDS 70 b"]                  = (8.542+8.0)  # https://arxiv.org/ftp/arxiv/papers/1906/1906.01486.pdf (page 10)            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "HIP 21152 b"]               = 16.55        # https://iopscience.iop.org/article/10.3847/2041-8213/ac772f/pdf (page 3 bas)            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "bet Pic b"]                 = (3.48+9.2)   # https://www.aanda.org/articles/aa/pdf/2011/04/aa16224-10.pdf (page 3)            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "HR 8799 b"]                 = 14.05        # https://arxiv.org/pdf/0811.2606.pdf (page 16)            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "HR 8799 c"]                 = 13.13        # https://arxiv.org/pdf/0811.2606.pdf (page 16)            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "HR 8799 d"]                 = 13.11        # https://arxiv.org/pdf/0811.2606.pdf (page 16)            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "HR 8799 e"]                 = (5.24+10.67) # https://arxiv.org/ftp/arxiv/papers/1011/1011.4918.pdf (page 10)            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "HD 95086 b"]                = (6.789+12.2) # https://www.aanda.org/articles/aa/pdf/2022/08/aa43097-22.pdf (page 5)            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "USco1621 b"]                = 14.67        # https://www.aanda.org/articles/aa/pdf/2020/01/aa36130-19.pdf (page 5)            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "USco1556 b"]                = 14.85        # https://www.aanda.org/articles/aa/pdf/2020/01/aa36130-19.pdf (page 5)            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "Oph 11 b"]                  = 14.44        # https://arxiv.org/pdf/astro-ph/0608574.pdf (page 27)            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "FU Tau b"]                  = 13.329       # http://cdsportal.u-strasbg.fr/?target=FU%20Tau%20b            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "2MASS J12073346-3932539 b"] = 16.93        # https://www.aanda.org/articles/aa/pdf/2004/38/aagg222.pdf (page 3)            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "AF Lep b"]                  = (4.926+11.7) # https://arxiv.org/pdf/2302.06213.pdf (page 5)            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "DH Tau b"]                  = 14.19        # https://iopscience.iop.org/article/10.1086/427086/pdf (page 3 bas)            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "WD 0806-661 b"]             = 27           # https://arxiv.org/pdf/1605.06655.pdf (page 10)          
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "HIP 79098 AB b"]            = 14.15        # https://arxiv.org/pdf/1906.02787.pdf (page 5)            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "VHS J125601.92-125723.9 b"] = 14.57        # https://www.aanda.org/articles/aa/pdf/2023/02/aa44494-22.pdf (page 2)            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "ROXs 42 B b"]               = 15.01        # https://iopscience.iop.org/article/10.1088/0004-637X/787/2/104/pdf (page 3)            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "2M0437 b"]                  = 17.21        # https://arxiv.org/pdf/2110.08655.pdf (page 1)            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "kap And b"]                 = 14.32        # https://www.aanda.org/articles/aa/pdf/2014/02/aa22119-13.pdf (page 14)            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "GU Psc b"]                  = 17.40        # https://iopscience.iop.org/article/10.1088/0004-637X/787/1/5/pdf (page 16)            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "GQ Lup b"]                  = 13.5         # https://watermark.silverchair.com/stu1586.pdf?token=AQECAHi208BE49Ooan9kkhW_Ercy7Dm3ZL_9Cf3qfKAc485ysgAAA4IwggN-BgkqhkiG9w0BBwagggNvMIIDawIBADCCA2QGCSqGSIb3DQEHATAeBglghkgBZQMEAS4wEQQMe5lHC4E6oNfCKjMnAgEQgIIDNRBTyFAcCWw3I5edmpWsquUEeYqTdh9wSPyRjFSX8zAixWA69s-k7R2eYl4nU2vHPc3e6fOztwAJo0-QCF5tTT93oOxjfr7Ta533fcPZpjUiVYqKJttEITYHUEq2dKrhTepyhTRI08y-k09vTdzHLx-P61HYl12Xu5WB01fVn0_Ch21J-vy2C0mcMJt_wIAsBLvA6IUqf4dyiRljVQmL74dhgJhpSUOJnL3g2xMd0G-YN1JyWOtjTpjuCsczmncHC0vDIJmVuvgamYfR5E2BNeyY5QMjnb584CExKWTGOl4ON_CIrKNlvJI0gaInIvfLc_N_0ylQE5bPFlqe_j6bT7UuqzT7deIS4E-xnRV7t3PTA7JVo6WNKyhIs0n158LGaZMBdnxopxwHXhfmIlmkwr5mKfMYVPItmZXWJK3yGLPirvXard_TY0u34glhbsYXszUjvlQSTji58elFaTZBb9-eban2Jiz8hVsJ9JKnxE4tAKFNTWYXbEf-mxlFTQ0kh0X9sGIhMkunV5eW0VCiFtN_7DDYPROCCEKwTSWQSTz0JUH4eIzSGc7UN1gKbxjcbz5ZKpXc9oqh78ny1MigT9dX8qNpiP5AAzFohNGc1hYI_pjcF-XoJsudCR1Ig6YOQhRfxJ-EFFeAwdDOWpff2ffRp_A5scAVlSwTRqW6BPX22m99ocwwFJu4Nso4UxFzJ0d100Eszm5W792c3ZKwUcnKw2bccZz0sCk_VXCZLGVQG5vcPQY1KD1xDng9LFOkxIhIkhkRuR-o0TYZM7eIf039l8WzWsncCpQ8aV_oeMaA5Cq_qZ96H9fxSO6d3XPk9aV8KrUHsC77Ox2REXCjbusBy7wlgBgTjk01csXRuh5CDSHXLLy5GTMHAsrzh7XDfpbPhVIkVn9oOT7-KjuIAwZPErtct0tu2tBmsKO9DxQa8hCBwv0Zw2I3-yGY7IqqK4w5owijpuOo-Fk5hGCf8RMqI9eR7SWRl6FgA5CgP3nv_ZcgpJUAhMDBjwHKWds9F0rmrIU7y4dIb5pxM_JkOx8tYdM2bqwzSnJrcT2umGMCtHYoua3K0qLMCoJOUbSKfqjzpeYW (page 6)            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "CT Cha b"]                  = 14.9         # https://www.aanda.org/articles/aa/pdf/2008/43/aa8840-07.pdf (page 4)            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "HD 206893 c"]               = 15.2         # https://www.aanda.org/articles/aa/pdf/2021/08/aa40749-21.pdf     
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "TYC 8998-760-1 c"]          = (8.3+9.8)    # https://iopscience.iop.org/article/10.3847/2041-8213/aba27e/pdf (page 4)            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "COCONUTS-2 b"]              = 20.030       # https://iopscience.iop.org/article/10.3847/2041-8213/ac1123/pdf (table 1) 
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "51 Eri b"]                  = 15.8         # https://www.aanda.org/articles/aa/pdf/2023/05/aa44826-22.pdf
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "HD 106906 b"]               = 15.46        # https://iopscience.iop.org/article/10.1088/2041-8205/780/1/L4/pdf (page 4)            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "CFHTWIR-Oph 98 b"]          = 16.408       # https://arxiv.org/pdf/2011.08871.pdf (page 6)            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "HD 203030 b"]               = 16.21        # https://iopscience.iop.org/article/10.3847/1538-3881/aa9711/pdf (page 5)            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "BD+60 1417 b"]              = 15.645       # https://iopscience.iop.org/article/10.3847/1538-4357/ac2499/pdf (page 5)            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "HIP 75056 A b"]             = (7.3+6.8)    # https://arxiv.org/pdf/2009.08537.pdf (page 3)            
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "MWC 758 c"]                 = 20           # https://iopscience.iop.org/article/10.3847/1538-3881/ad11d5/pdf        
+    planet_table['PlanetKmag(thermal+reflected)'][planet_table["PlanetName"] == "HD 284149 AB b"]            = 14.332       # https://iopscience.iop.org/article/10.3847/1538-3881/ace442/pdf (page 7) 
+    
     planet_table['PlanetTeq'][planet_table["PlanetName"] == "bet Pic c"] = 1250 * planet_table['PlanetTeq'].unit # https://www.aanda.org/articles/aa/pdf/2020/10/aa39039-20.pdf
+    
     planet_table['StarRadialVelocity'][planet_table["PlanetName"] == "Proxima Cen b"] = - 22.2 * planet_table["StarRadialVelocity"].unit # https://arxiv.org/pdf/1611.03495
+    
     return planet_table
 
 def inject_dace_values(planet_table): # https://dace-query.readthedocs.io/en/latest/output_format.html
@@ -459,15 +462,9 @@ def get_planet_type(planet):
 
     # Loop through planet types to find a match
     for ptype, criteria in planet_types.items():
-        mass_match = ("mass_min" not in criteria or mass >= criteria["mass_min"]) and \
-                     ("mass_max" not in criteria or mass <= criteria["mass_max"])
-        
-        radius_match = ("radius_min" not in criteria or radius >= criteria["radius_min"]) and \
-                       ("radius_max" not in criteria or radius <= criteria["radius_max"])
-
-        teq_match = teq is None or (("teq_min" not in criteria or teq >= criteria["teq_min"]) and \
-                                    ("teq_max" not in criteria or teq <= criteria["teq_max"]))
-
+        mass_match   = ("mass_min" not in criteria or mass >= criteria["mass_min"]) and ("mass_max" not in criteria or mass <= criteria["mass_max"])
+        radius_match = ("radius_min" not in criteria or radius >= criteria["radius_min"]) and ("radius_max" not in criteria or radius <= criteria["radius_max"])
+        teq_match    = teq is None or (("teq_min" not in criteria or teq >= criteria["teq_min"]) and ("teq_max" not in criteria or teq <= criteria["teq_max"]))
         if mass_match and radius_match and teq_match:
             return ptype  # Return the first matching type
 
@@ -941,13 +938,7 @@ def calculate_SNR_table(instru, table="Archive", thermal_model="None", reflected
     config_data = get_config_data(instru)
     
     # WORKING ANGLE
-    lambda_c = (config_data["lambda_range"]["lambda_min"] + config_data["lambda_range"]["lambda_max"])/2 * 1e-6
-    diameter = config_data['telescope']['diameter']
-    try:
-        pxscale = min(config_data["pxscale"].values()) * 1000 # mas
-    except:
-        pxscale = config_data["spec"]["pxscale"] * 1000 # mas
-    iwa = max(pxscale, config_data["apodizers"][apodizer].sep)
+    iwa, owa = get_wa(config_data=config_data, band="INSTRU", apodizer=apodizer, sep_unit="mas")
     planet_table = planet_table[planet_table['AngSep'] > iwa * u.mas] # filtering planets with SMA below IWA
     
     if thermal_model == "Exo-REM": # filtering to the Exo-REM temperature range (if needed)

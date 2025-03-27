@@ -46,7 +46,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         self.title("FastYield")
         
         try:
-            self.state('zoomed') #works fine on Windows!
+            self.state('zoomed') # works fine on Windows!
         except:  
             # Obtenir la taille de l'écran
             screen_width = self.winfo_screenwidth()
@@ -355,19 +355,19 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
             time_utc = Time.now() ; time_local = time_utc.to_datetime(pytz.utc).astimezone(local_tz)        
             target = SkyCoord(ra=float(self.planet["RA"].value)*u.deg, dec=float(self.planet["Dec"].value)*u.deg)       
             date_obs_local = datetime.strptime(self.date_obs.get(), "%d/%m/%Y").astimezone(local_tz)    
-            midnight = date_obs_local.replace(hour=0, minute=0, second=0)
+            midnight       = date_obs_local.replace(hour=0, minute=0, second=0)
             delta_midnight = np.linspace(-12, 12, 500) * u.hour  # 24-hour period divided into intervals
-            times_utc = Time(midnight) + delta_midnight
+            times_utc   = Time(midnight) + delta_midnight
             times_local = [t.to_datetime(pytz.utc).astimezone(local_tz) for t in times_utc]
             frame = AltAz(obstime=times_utc, location=location)
             target_altaz = target.transform_to(frame)
-            sun_altaz = get_body("sun", time=times_utc).transform_to(frame)
-            moon_altaz = get_body("moon", time=times_utc).transform_to(frame)
+            sun_altaz    = get_body("sun", time=times_utc).transform_to(frame)
+            moon_altaz   = get_body("moon", time=times_utc).transform_to(frame)
             plt.figure(dpi=300) ; plt.axhline(0, color='black', lw=2) ; plt.axhline(self.min_elevation.get(), color='black', linestyle=":", lw=1, label="min elevation") ; plt.title(f'Visibility of {self.planet["PlanetName"]} with {self.instru} on {self.date_obs.get()} \n (RA: {round(float(self.planet["RA"].value), 2)}°, DEC: {round(float(self.planet["Dec"].value), 2)}°)') ; plt.xlabel('Local Time') ; plt.ylabel('Elevation (°)')
-            is_night = sun_altaz.alt < 0 * u.deg
-            twilight = sun_altaz.alt < -6 * u.deg  # Crépuscule astronomique
-            deep_twilight = sun_altaz.alt < -12 * u.deg  # Crépuscule profond
-            deep_night = sun_altaz.alt < -18 * u.deg  # Nuit astronomique
+            is_night        = sun_altaz.alt < 0 * u.deg
+            twilight        = sun_altaz.alt < -6 * u.deg  # Crépuscule astronomique
+            deep_twilight   = sun_altaz.alt < -12 * u.deg  # Crépuscule profond
+            deep_night      = sun_altaz.alt < -18 * u.deg  # Nuit astronomique
             very_deep_night = sun_altaz.alt < -24 * u.deg  # Nuit très profonde
             plt.fill_between(times_local, -90, 90, where=is_night, color='#5060ff', alpha=0.1)  # Nuit légère
             plt.fill_between(times_local, -90, 90, where=twilight, color='#5060ff', alpha=0.3)  # Crépuscule
@@ -407,7 +407,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         if self.config_data["base"]=="ground":
             self.get_coords()
         if self.only_visible_targets: # on filtre les planètes non-visibles depuis le site d'observation
-            planet_table_raw = planet_table_raw[(90-np.abs(self.latitude-planet_table_raw["Dec"].value))>self.min_elevation.get()]
+            planet_table_raw = planet_table_raw[(90 - np.abs(self.latitude-planet_table_raw["Dec"].value))>self.min_elevation.get()]
             obs_mask = are_planets_observable(latitude=self.latitude, longitude=self.longitude, altitude=self.altitude, planet_table=self.planet_table, date_obs=self.date_obs.get(), min_elevation=self.min_elevation.get())
             self.planet_table = self.planet_table[obs_mask]
         if self.units == "Physical":
@@ -415,34 +415,13 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
             self.planet_table = self.planet_table[~get_mask(self.planet_table, "PlanetMass")]
             planet_table_raw = planet_table_raw[~get_mask(planet_table_raw, "SMA")]
             self.planet_table = self.planet_table[~get_mask(self.planet_table, "SMA")]
+        # WORKING ANGLE
+        iwa, owa = get_wa(config_data=self.config_data, band=self.band, apodizer=self.apodizer, sep_unit="mas")
+        planet_table_raw  = planet_table_raw[planet_table_raw["AngSep"] <= iwa * u.mas]
+        self.planet_table = self.planet_table[self.planet_table["AngSep"] >= iwa * u.mas]
         # calcul du SNR de chaque planète sur la bande
         self.SNR = np.copy(np.sqrt(self.exposure_time.get()/self.planet_table['DIT_'+self.band]) * self.planet_table['signal_'+self.band] / np.sqrt( self.planet_table['sigma_fund_'+self.band]**2 + (self.exposure_time.get()/self.planet_table['DIT_'+self.band])*self.planet_table['sigma_syst_'+self.band]**2 ))
         z_instru = np.copy(self.SNR) ; z_instru[z_instru>=5] = 5 ; nb_detected = len(self.SNR[self.SNR>=5])
-        # WORKING ANGLE
-        lambda_c = (self.config_data["lambda_range"]["lambda_min"]+self.config_data["lambda_range"]["lambda_max"])/2 * 1e-6
-        diameter = self.config_data['telescope']['diameter']
-        if self.band == "INSTRU":
-            try:
-                pxscale = min(self.config_data["pxscale"].values()) * 1000 # mas
-            except:
-                pxscale = self.config_data["spec"]["pxscale"] * 1000 # mas
-        else:
-            try:
-                pxscale = self.config_data["pxscale"][self.band] * 1000 # mas
-            except:
-                pxscale = self.config_data["spec"]["pxscale"] * 1000 # mas
-        iwa = max(pxscale, self.config_data["apodizers"][self.apodizer].sep)
-        if self.config_data["type"] == "IFU_fiber":
-            try: 
-                if self.band == "INSTRU":
-                    owa = self.config_data["FOV_fiber"]/2 * max(self.config_data["pxscale"].values()) * 1000 # en mas
-                else:
-                    owa = self.config_data["FOV_fiber"]/2 * self.config_data["pxscale"][self.band] * 1000 # en mas
-            except:
-                owa = self.config_data["spec"]["FOV"]/2 * 1000 # en mas
-        else:
-            owa = self.config_data["spec"]["FOV"]/2 * 1000 # en mas
-        planet_table_raw = planet_table_raw[planet_table_raw["AngSep"] <= iwa * u.mas]
         # Definition des vecteurs x, y et z
         if self.units == "Observational":
             x_raw = planet_table_raw["AngSep"] ; self.x_instru = self.planet_table["AngSep"]
@@ -640,7 +619,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
                 band_only = None 
             else:
                 band_only = self.band
-            FastCurves(instru=self.instru, band_only=band_only, calculation=self.calculation, T_planet=float(self.planet["PlanetTeq"].value), lg_planet=float(self.planet["PlanetLogg"].value), mag_star=mag_s, band0=band0, T_star=float(self.planet["StarTeff"].value), lg_star=float(self.planet["StarLogg"].value), exposure_time=self.exposure_time.get(), model=self.model, mag_planet=mag_p, separation_planet=float(self.planet["AngSep"].value/1000), planet_name=self.planet["PlanetName"], systematic=self.systematics, PCA=self.PCA, show_plot=True, verbose=True, star_spectrum=star_spectrum, planet_spectrum=planet_spectrum, apodizer=self.apodizer, strehl=self.strehl)
+            FastCurves(return_SNR_planet=True, instru=self.instru, band_only=band_only, calculation=self.calculation, T_planet=float(self.planet["PlanetTeq"].value), lg_planet=float(self.planet["PlanetLogg"].value), mag_star=mag_s, band0=band0, T_star=float(self.planet["StarTeff"].value), lg_star=float(self.planet["StarLogg"].value), exposure_time=self.exposure_time.get(), model=self.model, mag_planet=mag_p, separation_planet=float(self.planet["AngSep"].value/1000), planet_name=self.planet["PlanetName"], systematic=self.systematics, PCA=self.PCA, show_plot=True, verbose=True, star_spectrum=star_spectrum, planet_spectrum=planet_spectrum, apodizer=self.apodizer, strehl=self.strehl)
 
     def destroy_lower_buttons(self):
         try:

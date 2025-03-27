@@ -45,7 +45,7 @@ def get_transmission(instru, wave_band, band, tellurics, apodizer, fill_value=np
 
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-def get_PSF_profile(band, strehl, apodizer, coronagraph, instru, config_data, sep_unit):
+def get_PSF_profile(band, strehl, apodizer, coronagraph, instru, config_data, sep_unit, separation_planet=None, return_SNR_planet=False):
     """
     Gives the PSF profile, the fraction of flux contained in the PSF core (or coronagraphic transmission) and the separation array.
     
@@ -78,27 +78,71 @@ def get_PSF_profile(band, strehl, apodizer, coronagraph, instru, config_data, se
     else:
         file = "sim_data/PSF/PSF_"+instru+"/PSF_"+band+"_"+coronagraph+"_"+strehl+"_"+apodizer+".fits"
     fraction_PSF = fits.getheader(file)['FC'] # fraction of flux contained in the FWHM (or the coronagraphic stellar transmission)
+    
     try:
         pxscale = config_data["pxscale"][band] # in arcsec/px (dithered effective pixelscale)
     except:
         pxscale = config_data["spec"]["pxscale"] # in arcsec/px
-    if config_data["type"] == "IFU_fiber":
-        try:
-            FOV = config_data["FOV_fiber"]*pxscale # in arcsec
-        except:
-            FOV = config_data["spec"]["FOV"] # in arcsec
-    else:
-        FOV = config_data["spec"]["FOV"] # in arcsec
     if sep_unit == "mas":
-        pxscale *= 1e3 ; FOV *= 1e3 # arcsec => mas (if wanted)
+        pxscale *= 1e3
+    iwa, owa = get_wa(config_data=config_data, band=band, apodizer=apodizer, sep_unit=config_data["sep_unit"])
+    
     profile = fits.getdata(file) # in fraction/arcsec**2 or fraction/mas**2
-    separation = np.arange(pxscale/10, FOV/2+pxscale/10, pxscale/10) # in arcsec or mas (/10 doesn't change the result but gives smoother curves)
-    #separation = np.arange(pxscale, FOV/2+pxscale, pxscale) # FOR FASTER CALCULATIONS (t_syst calculations)
-    f = interp1d(profile[0], profile[1], bounds_error=False, fill_value=np.nan)
-    if instru == "MIRIMRS":
-        PSF_profile = f(separation) * config_data["pxscale0"][band[0]]**2 # pxscale (non-dithered) (because all the values are considered in the detector space in the first place, then multiplied by R_corr, to take into account the transformation into 3D cube sapce)
+    f       = interp1d(profile[0], profile[1], bounds_error=False, fill_value=np.nan)
+    
+    if return_SNR_planet and separation_planet is not None: 
+        separation = np.array([iwa, separation_planet, owa])
     else:
-        PSF_profile = f(separation) * pxscale**2
+        separation = np.arange(pxscale/10, owa+pxscale/10, pxscale/10) # in arcsec or mas (/10 doesn't change the result but gives smoother curves)
+        if iwa not in separation:
+            separation = np.sort(np.append(separation, iwa))
+        if owa not in separation:
+            separation = np.sort(np.append(separation, owa))
+        if separation_planet is not None and separation_planet > separation[-1]: # extension of the separation axis to the planet's separation
+            extension  = np.linspace(separation[-1]+pxscale, separation_planet, len(separation))
+            extension  = np.append(extension, separation_planet+pxscale)
+            separation = np.append(separation, extension)
+        elif separation_planet is not None and separation_planet not in separation:
+            separation = np.sort(np.append(separation, separation_planet))
+        
+    # extrapolation of the separation axis to the planet's separation
+    if separation_planet is not None and separation_planet > profile[0][-1]:
+        if profile[0][-1]+pxscale/10 not in separation: # adding a point for continuity
+            separation = np.sort(np.append(separation, profile[0][-1]+pxscale/10))
+        x_tail = profile[0][-len(profile[0])//4:]  # last points of the profile
+        y_tail = profile[1][-len(profile[0])//4:]        
+        log_x_tail = np.log(x_tail)
+        log_y_tail = np.log(y_tail)        
+        alpha, log_y0 = np.polyfit(log_x_tail, log_y_tail, 1) # adjustment of exponential power law
+        y0            = np.exp(log_y0)        
+        rc = np.median(x_tail)  # Paramètre de décroissance exponentielle (adaptatif)        
+        if alpha > 0: # sanity on alpha coeff sign (needs to be negative for decreasing flux)
+            alpha = -alpha
+        profile_interp = np.where(separation > profile[0][-1], improved_power_law_extrapolation(separation, profile[0][-1], profile[1][-1], -alpha, rc), f(separation))        
+        profile_interp[separation > profile[0][-1]] *= profile[1][-1] / profile_interp[separation > profile[0][-1]][0] # forcing continuity
+        # # Sanity check Plot
+        # plt.figure(dpi=300)
+        # plt.plot(separation, profile_interp, label="Extrapolation", color='orange')
+        # plt.plot(separation, f(separation), label="Profil PSF initial")
+        # plt.xlabel("separation [mas]")
+        # plt.ylabel("PSF profile")
+        # plt.yscale('log')
+        # plt.xscale('log')
+        # plt.legend()
+        # plt.show()
+        if return_SNR_planet:
+            profile_interp = profile_interp[(separation==iwa)|(separation==separation_planet)|(separation==owa)]
+            separation     = separation[(separation==iwa)|(separation==separation_planet)|(separation==owa)]
+    
+    # No extrapolation of the PSF profile
+    else:
+        profile_interp = f(separation)
+
+    if instru == "MIRIMRS":
+        PSF_profile = profile_interp * config_data["pxscale0"][band[0]]**2 # pxscale (non-dithered) (because all the values are considered in the detector space in the first place, then multiplied by R_corr, to take into account the transformation into 3D cube sapce)
+    else:
+        PSF_profile = profile_interp * pxscale**2
+    
     return PSF_profile, fraction_PSF, separation, pxscale
 
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -156,7 +200,7 @@ def get_beta(star_spectrum_band, planet_spectrum_band, template, Rc, R, fraction
 
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-def get_DIT_RON(instru, config_data, apodizer, PSF_profile, separation, star_spectrum_band, exposure_time, min_DIT, max_DIT, trans, quantum_efficiency, RON, saturation_e, input_DIT, verbose=True):
+def get_DIT_RON(instru, config_data, apodizer, PSF_profile, separation, star_spectrum_band, exposure_time, min_DIT, max_DIT, trans, RON, saturation_e, input_DIT, verbose=True):
     """
     Gives DIT and effective reading noise
 
@@ -178,8 +222,6 @@ def get_DIT_RON(instru, config_data, apodizer, PSF_profile, separation, star_spe
         minimum integration exposure_time
     max_DIT: float (in min)
         maximum integration time
-    quantum_efficiency: float
-        quantum efficiency (in e-/ph)
     RON: float
         Read-Out Noise (in e-)
     saturation_e: float
@@ -192,11 +234,11 @@ def get_DIT_RON(instru, config_data, apodizer, PSF_profile, separation, star_spe
     RON_eff: TYPE
         effective Read-Out Noise (e-)
     """
-    if instru == "NIRCam": # Calculating the DIT and the saturing DIT
-        max_flux_e = np.nanmax(PSF_profile) * np.nansum(star_spectrum_band.flux) * trans * quantum_efficiency
+    if config_data["type"] == "imager": # Calculating the DIT and the saturing DIT
+        max_flux_e = np.nanmax(PSF_profile) * np.nansum(star_spectrum_band.flux) * trans
     else: # maximum number of e-/mn in the considered band
         sep_min    = config_data["apodizers"][apodizer].sep # separation where the PSF starts
-        max_flux_e = np.nanmax(PSF_profile[separation>sep_min]) * star_spectrum_band.flux * trans * quantum_efficiency  
+        max_flux_e = np.nanmax(PSF_profile[separation>=sep_min]) * star_spectrum_band.flux * trans  
     saturating_DIT = saturation_e/np.nanmax(max_flux_e) # in mn
     if saturating_DIT > max_DIT: # The max DIT is determined by saturation or smearing DIT (the fact that the planet must not move too much angularly during the integration) or by the maximum detector integration time
         DIT = max_DIT
@@ -223,10 +265,46 @@ def get_DIT_RON(instru, config_data, apodizer, PSF_profile, separation, star_spe
     if RON_eff < 0.5: # achieved lower limit in laboratory
         RON_eff = 0.5
     if verbose:
-        print(" DIT =", round(DIT*60, 2), "s / Saturating DIT =", round(saturating_DIT, 1), " mn / ", "RON =", round(RON_eff, 3), "e-/DIT")
+        print(" DIT =", round(DIT*60, 2), "s / Saturating DIT =", round(saturating_DIT, 1), " mn / RON =", round(RON_eff, 3), "e-/DIT")
     return DIT, RON_eff
 
+#---------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+def get_wa(config_data, band, apodizer, sep_unit):
+    """
+    Returns iwa and owa in sep_unit.
+    """
+    # WORKING ANGLE
+    lambda_c = (config_data["lambda_range"]["lambda_min"]+config_data["lambda_range"]["lambda_max"])/2 * 1e-6
+    diameter = config_data['telescope']['diameter']
+    if band == "INSTRU":
+        try:
+            pxscale = min(config_data["pxscale"].values()) * 1000 # mas
+        except:
+            pxscale = config_data["spec"]["pxscale"] * 1000 # mas
+    else:
+        try:
+            pxscale = config_data["pxscale"][band] * 1000 # mas
+        except:
+            pxscale = config_data["spec"]["pxscale"] * 1000 # mas
+    iwa = max(pxscale, config_data["apodizers"][apodizer].sep)
+    if config_data["type"] == "IFU_fiber":
+        try: 
+            if band == "INSTRU":
+                owa = config_data["FOV_fiber"]/2 * max(config_data["pxscale"].values()) * 1000 # mas
+            else:
+                owa = config_data["FOV_fiber"]/2 * config_data["pxscale"][band] * 1000 # mas
+        except:
+            owa = config_data["spec"]["FOV"]/2 * 1000 # mas
+    else:
+        owa = config_data["spec"]["FOV"]/2 * 1000 # mas
+    if sep_unit == "arcsec":
+        iwa /= 1000 # arcsec
+        owa /= 1000 # arcsec
+    elif sep_unit != "mas":
+        raise KeyError("Please define for other separation units")
+    return iwa, owa
+    
 
 #######################################################################################################################
 ##################################### SYSTEMATIC NOISE PROFILE CALCULATION: ###########################################

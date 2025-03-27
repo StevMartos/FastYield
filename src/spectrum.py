@@ -27,8 +27,8 @@ class Spectrum:
         self.T          = T          # temperature of the spectrum
         self.lg         = lg         # surface gravity of the spectrum
         self.model      = model      # model of the spectrum
-        self.rv         = rv         # radial velocity of the system (star)
-        self.vsini      = vsini
+        self.rv         = rv         # radial velocity 
+        self.vsini      = vsini      # rotationnal velocity
         
     #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
         
@@ -956,8 +956,6 @@ def thermal_reflected_spectrum(planet, instru=None, thermal_model="BT-Settl", re
     
     # K-band
     if wave_K is None:
-        lmin_K = 1.951
-        lmax_K = 2.469
         R_K    = 10_000 # only for photometric purposes (does not need more resolution)
         dl_K   = ((lmin_K+lmax_K)/2)/(2*R_K)
         wave_K = np.arange(lmin_K, lmax_K, dl_K)
@@ -1049,27 +1047,27 @@ def thermal_reflected_spectrum(planet, instru=None, thermal_model="BT-Settl", re
 
     # plotting the contributions
     if show:
-        lmin_K      = 1.951
-        lmax_K      = 2.469
         band0       = "K"
         mag_p_total = -2.5 * np.log10(np.mean(planet_spectrum_K.flux) / np.nanmean(vega_spectrum_K.flux))
-        plt.figure(figsize=(8, 6), dpi=300)
-        plt.xlabel("Wavelength [µm]", fontsize=16)
-        plt.ylabel("Flux [J/s/m²/µm]", fontsize=16)
+        plt.figure(figsize=(10, 7), dpi=300)
+        plt.xlabel("wavelength [µm]", fontsize=18, labelpad=10)
+        plt.ylabel("flux [contrast unit]", fontsize=18, labelpad=10)
         plt.yscale('log')
-        plt.title(f"Spectrum Contributions for {planet['PlanetName']} \n"f"at {round(float(planet_spectrum.T))}K", fontsize=18, pad=15)    
-        plt.plot(wave_instru, planet_spectrum.flux, 'g', lw=2.5, label=f"Thermal+Reflected ({planet_spectrum.model}), mag({band0}) = {round(mag_p_total, 2)}")
+        plt.xlim(wave_instru[0], wave_instru[-1])
+        plt.title(f"Spectrum Contributions for {planet['PlanetName']} \n"f"at {round(float(planet_spectrum.T))}K", fontsize=20, pad=20)            
+        plt.plot(wave_instru, planet_spectrum.flux / star_spectrum.flux, color='green', lw=2, linestyle='-', label=f"Thermal+Reflected ({planet_spectrum.model}), mag({band0}) = {round(mag_p_total, 2)}")
         if thermal_model != "None":
             mag_p_thermal = -2.5 * np.log10(np.mean(planet_thermal_K.flux) / np.nanmean(vega_spectrum_K.flux))
-            plt.plot(wave_instru, planet_thermal.flux, 'r', lw=2.5, linestyle='dashed', label=f"Thermal ({thermal_model}), mag({band0}) = {round(mag_p_thermal, 2)}")
+            plt.plot(wave_instru, planet_thermal.flux / star_spectrum.flux, color='red', lw=2, linestyle='--', label=f"Thermal ({thermal_model}), mag({band0}) = {round(mag_p_thermal, 2)}")
         if reflected_model != "None":
             mag_p_reflected = -2.5 * np.log10(np.mean(planet_reflected_K.flux) / np.nanmean(vega_spectrum_K.flux))
-            plt.plot(wave_instru, planet_reflected.flux, 'b', lw=2.5, linestyle='dotted', label=f"Reflected ({reflected_model}+BT-NextGen), mag({band0}) = {round(mag_p_reflected, 2)}")    
+            plt.plot(wave_instru, planet_reflected.flux / star_spectrum.flux, color='blue', lw=2, linestyle='--', label=f"Reflected ({reflected_model}+BT-NextGen), mag({band0}) = {round(mag_p_reflected, 2)}")        
         if np.nanmax(wave_instru) > lmin_K and np.nanmin(wave_instru) < lmax_K:
-            plt.axvspan(lmin_K, lmax_K, color='gray', alpha=0.3, lw=0, label="K-band")    
-        plt.ylim(np.nanmin(planet_spectrum.flux) / 10, np.nanmax(planet_spectrum.flux) * 10)
-        plt.legend(fontsize=12, loc='best', frameon=True, facecolor='white', framealpha=0.8)
-        plt.grid(True, which="both", linestyle="--", linewidth=0.5, alpha=0.7)
+            plt.axvspan(lmin_K, lmax_K, color='gray', alpha=0.2, lw=0, label="K-band")        
+        plt.ylim(np.nanmin(planet_spectrum.flux / star_spectrum.flux) / 10, np.nanmax(planet_spectrum.flux / star_spectrum.flux) * 10)        
+        plt.ylim(max(1e-15, np.nanmin(planet_spectrum.flux / star_spectrum.flux) / 10))        
+        plt.legend(fontsize=14, loc='best', frameon=True, facecolor='white', framealpha=0.9)        
+        plt.grid(True, which="both", linestyle="--", linewidth=0.5, alpha=0.5)
         plt.tight_layout()
         plt.show()
 
@@ -1114,7 +1112,6 @@ def simulate_picaso_spectrum(instru, planet_table_entry, spectrum_contributions=
     config_data = get_config_data(instru)
     lmin_instru = config_data["lambda_range"]["lambda_min"] # en µm
     lmax_instru = config_data["lambda_range"]["lambda_max"] # en µm
-    lmin_K = 1.974 ; lmax_K = 2.384
     if opacity is None: # opacity file to load
         wvrng = [0.98*min(lmin_K, lmin_instru), 1.02*max(lmax_K, lmax_instru)] # opacity file goes from 0.6 to 6 µm with R ~ 30 000
         opacity_folder = os.path.join(os.getenv("picaso_refdata"), 'opacities')
