@@ -619,7 +619,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
                 band_only = None 
             else:
                 band_only = self.band
-            FastCurves(return_SNR_planet=True, instru=self.instru, band_only=band_only, calculation=self.calculation, T_planet=float(self.planet["PlanetTeq"].value), lg_planet=float(self.planet["PlanetLogg"].value), mag_star=mag_s, band0=band0, T_star=float(self.planet["StarTeff"].value), lg_star=float(self.planet["StarLogg"].value), exposure_time=self.exposure_time.get(), model=self.model, mag_planet=mag_p, separation_planet=float(self.planet["AngSep"].value/1000), planet_name=self.planet["PlanetName"], systematic=self.systematics, PCA=self.PCA, show_plot=True, verbose=True, star_spectrum=star_spectrum, planet_spectrum=planet_spectrum, apodizer=self.apodizer, strehl=self.strehl)
+            FastCurves(instru=self.instru, band_only=band_only, calculation=self.calculation, T_planet=float(self.planet["PlanetTeq"].value), lg_planet=float(self.planet["PlanetLogg"].value), mag_star=mag_s, band0=band0, T_star=float(self.planet["StarTeff"].value), lg_star=float(self.planet["StarLogg"].value), exposure_time=self.exposure_time.get(), model=self.model, mag_planet=mag_p, separation_planet=float(self.planet["AngSep"].value/1000), planet_name=self.planet["PlanetName"], systematic=self.systematics, PCA=self.PCA, show_plot=True, verbose=True, star_spectrum=star_spectrum, planet_spectrum=planet_spectrum, apodizer=self.apodizer, strehl=self.strehl)
 
     def destroy_lower_buttons(self):
         try:

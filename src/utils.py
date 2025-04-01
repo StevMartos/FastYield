@@ -9,9 +9,9 @@ from scipy.ndimage.filters import gaussian_filter, gaussian_filter1d
 from scipy.special import comb
 from scipy.signal import savgol_filter
 from scipy.ndimage import shift
+from scipy.stats import binned_statistic
 from PyAstronomy import pyasl
 import pandas as pd
-import coronagraph as cg
 from astropy.io import fits, ascii
 from astropy import constants as const
 from astropy import units as u
@@ -69,6 +69,46 @@ def instru_thermal_background(temperature, emissivity, wavelengths_um):
     sr_to_arcsec2 = 4.25e10
     flux = emissivity * B_lambda_ph / sr_to_arcsec2  # ph/s/µm/arcsec²
     return flux
+
+
+
+def downbin_spec(specHR, lamHR, lamLR, dlam=None):
+    """
+    from : https://github.com/jlustigy/coronagraph/blob/master/coronagraph/degrade_spec.py
+    Re-bin spectum to lower resolution using :py:obj:`scipy.binned_statistic`
+    with ``statistic = 'mean'``. This is a "top-hat" convolution.
+
+    Parameters
+    ----------
+    specHR : array-like
+        Spectrum to be degraded
+    lamHR : array-like
+        High-res wavelength grid
+    lamLR : array-like
+        Low-res wavelength grid
+    dlam : array-like, optional
+        Low-res wavelength width grid
+
+    Returns
+    -------
+    specLR : :py:obj:`numpy.ndarray`
+        Low-res spectrum
+    """
+    if dlam is None:
+        ValueError("Please supply dlam in downbin_spec()")
+    # Reverse ordering if wl vector is decreasing with index
+    if len(lamLR) > 1:
+        if lamHR[0] > lamHR[1]:
+            lamHI = np.array(lamHR[::-1])
+            spec = np.array(specHR[::-1])
+        if lamLR[0] > lamLR[1]:
+            lamLO = np.array(lamLR[::-1])
+            dlamLO = np.array(dlam[::-1])
+    # Calculate bin edges
+    LRedges = np.hstack([lamLR - 0.5*dlam, lamLR[-1]+0.5*dlam[-1]])
+    # Call scipy.stats.binned_statistic()
+    specLR = binned_statistic(lamHR, specHR, statistic="mean", bins=LRedges)[0]
+    return specLR
 
 
 
@@ -255,32 +295,83 @@ def dither(cube, factor=10):
                 cube_dither[l, int(i*factor):int((i+1)*factor), int(j*factor):int((j+1)*factor)] = cube[l, i, j]
     return cube_dither
 
-def find_centroid(image):
+def align_HC_bench_psf(cube_desat, cube, model="airy_disk", dpx=10, wave=None):
     """
-    Trouve le centre de la PSF en utilisant un ajustement gaussien 2D.
+    Align each slice of the HC bench cubes. 
     """
-    y, x = np.mgrid[:image.shape[0], :image.shape[1]]
-    # Modèle gaussien 2D
-    gaussian = models.Gaussian2D(amplitude=np.max(image), x_mean=image.shape[1]//2, y_mean=image.shape[0]//2)
-    fit_p = fitting.LevMarLSQFitter()
-    fitted_model = fit_p(gaussian, x, y, image)
-    return fitted_model.x_mean.value, fitted_model.y_mean.value
-
-def align_psf(cube_desat, cube):
-    """
-    Aligne chaque slice d'un cube de PSF en fonction de leur centre.
-    """
-    n_slices           = cube.shape[0]
+    import vip_hci as vip
+    cube_desat_med = np.nanmedian(cube_desat, axis=0)
+    Y0, X0         = np.unravel_index(np.argmax(np.nan_to_num(cube_desat_med), axis=None), cube_desat_med.shape)
     aligned_cube       = np.zeros_like(cube)
     aligned_cube_desat = np.zeros_like(cube_desat)
-    # Trouver le centre moyen (référence)
-    centers     = np.array([find_centroid(cube_desat[i]) for i in range(n_slices)])
-    mean_center = np.mean(centers, axis=0)
-    # Aligner chaque slice
-    for i in range(n_slices):
-        dx, dy = mean_center - centers[i]
+    NbChannel, NbLine, NbColumn = cube_desat.shape
+    y0         = np.zeros((NbChannel))
+    x0         = np.zeros((NbChannel))
+    y0_err     = np.zeros((NbChannel))
+    x0_err     = np.zeros((NbChannel))
+    fwhm_y     = np.zeros((NbChannel))
+    fwhm_x     = np.zeros((NbChannel))
+    fwhm_y_err = np.zeros((NbChannel))
+    fwhm_x_err = np.zeros((NbChannel))
+    for i in range(NbChannel):
+        img = cube_desat[i]
+        ymin = max(Y0-2*dpx, 0)
+        ymax = min(Y0+2*dpx+1, NbLine-1)
+        xmin = max(X0-2*dpx, 0)
+        xmax = min(X0+2*dpx+1, NbColumn-1)
+        img_cropped = img[ymin:ymax, xmin:xmax]
+        if model == "gaussian":
+            results = vip.var.fit_2d.fit_2dgaussian(img_cropped, fwhmx=2.77, fwhmy=2.69, threshold=True, full_output=True, debug=(i == 0))
+            fwhm_y[i]     = results["fwhm_y"][0]
+            fwhm_x[i]     = results["fwhm_x"][0]
+            fwhm_y_err[i] = results["fwhm_y_err"][0]
+            fwhm_x_err[i] = results["fwhm_x_err"][0]
+        elif model == "airy_disk":
+            results = vip.var.fit_2d.fit_2dairydisk(img_cropped, fwhm=2.81, threshold=True, full_output=True, debug=(i == 0))
+            fwhm_y[i]     = results["fwhm"][0]
+            fwhm_y_err[i] = results["fwhm_err"][0]
+        elif model == "moffat":
+            results = vip.var.fit_2d.fit_2dmoffat(img_cropped, fwhm=2.81, threshold=True, full_output=True, debug=(i == 0))
+            fwhm_y[i]     = results["fwhm"][0]
+            fwhm_y_err[i] = results["fwhm_err"][0]
+        y0_err[i]  = results["centroid_y_err"][0]
+        x0_err[i]  = results["centroid_x_err"][0]
+        centroid_y = results["centroid_y"][0]
+        centroid_x = results["centroid_x"][0]
+        y0[i] = centroid_y + ymin
+        x0[i] = centroid_x + ymin
+        dy = Y0 - y0[i]
+        dx = X0 - x0[i]
         aligned_cube[i]       = shift(cube[i], shift=(dy, dx), mode='constant', cval=0)
         aligned_cube_desat[i] = shift(cube_desat[i], shift=(dy, dx), mode='constant', cval=0)
+    if wave is not None:        
+        plt.figure(figsize=(14, 7), dpi=300)
+        plt.suptitle("PSF Fitting and Alignment", fontsize=22, fontweight="bold", color="#333")                
+        plt.subplot(1, 2, 1)
+        plt.fill_between(wave, y0 - y0_err, y0 + y0_err, color="#1f77b4", alpha=0.3)
+        plt.fill_between(wave, x0 - x0_err, x0 + x0_err, color="#ff7f0e", alpha=0.3)
+        plt.plot(wave, y0, label=f"y ("r"$\mu$"f" = {round(np.nanmean(y0), 2)} px, "r"$\sigma$"f" = {round(np.nanmean(y0_err), 3)} px)", linewidth=2.5, color="#1f77b4")
+        plt.plot(wave, x0, label=f"x ("r"$\mu$"f" = {round(np.nanmean(x0), 2)} px, "r"$\sigma$"f" = {round(np.nanmean(x0_err), 3)} px)", linewidth=2.5, color="#ff7f0e")
+        plt.ylabel("PSF Centroid Position [px]", fontsize=16)
+        plt.xlabel("Wavelength [µm]", fontsize=16)
+        plt.title("Centroid Position as a Function of Wavelength", fontsize=18, pad=10)
+        plt.legend(loc="best", fontsize=14, fancybox=True, shadow=True)
+        plt.grid(True, linestyle="--", alpha=0.5)
+        plt.subplot(1, 2, 2)
+        if model == "gaussian":
+            plt.fill_between(wave, fwhm_y - fwhm_y_err, fwhm_y + fwhm_y_err, color="#1f77b4", alpha=0.3)
+            plt.fill_between(wave, fwhm_x - fwhm_x_err, fwhm_x + fwhm_x_err, color="#ff7f0e", alpha=0.3)
+            plt.plot(wave, fwhm_y, label=f"y FWHM ("r"$\mu$"f" = {round(np.nanmean(fwhm_y), 2)} px, "r"$\sigma$"f" = {round(np.nanmean(fwhm_y_err), 2)} px)", linewidth=2.5, color="#1f77b4")
+            plt.plot(wave, fwhm_x, label=f"x FWHM ("r"$\mu$"f" = {round(np.nanmean(fwhm_x), 2)} px, "r"$\sigma$"f" = {round(np.nanmean(fwhm_x_err), 2)} px)", linewidth=2.5, color="#ff7f0e")
+        else:
+            plt.fill_between(wave, fwhm_y - fwhm_y_err, fwhm_y + fwhm_y_err, color="black", alpha=0.3)
+            plt.plot(wave, fwhm_y, label=f"FWHM ("r"$\mu$"f" = {round(np.nanmean(fwhm_y), 2)} px, "r"$\sigma$"f" = {round(np.nanmean(fwhm_y_err), 2)} px)", linewidth=2.5, color="black")
+        plt.ylabel("PSF FWHM [px]", fontsize=16)
+        plt.xlabel("Wavelength [µm]", fontsize=16)
+        plt.title("FWHM as a Function of Wavelength", fontsize=18, pad=10)
+        plt.legend(loc="best", fontsize=14, fancybox=True, shadow=True)
+        plt.grid(True, linestyle="--", alpha=0.5)
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     return aligned_cube_desat, aligned_cube
 
 def correlation_PSF(cube_M, CCF):
@@ -572,7 +663,7 @@ def extract_vipa_data(instru, target_name, gain, label_fiber, interpolate=True, 
 
 
 
-def extract_hirise_data(target_name, interpolate, degrade_resolution, R, Rc, filter_type, order_by_order, outliers, sigma_outliers, only_high_pass=False, cut_fringes=False, Rmin=None, Rmax=None, use_weight=True, mask_nan_values=False, keep_only_good=False, wave_input=None, reference_fibers=True, verbose=True): # OPENING DATA AND DEGRADATING THE RESOLUTION (if wanted)
+def extract_hirise_data(target_name, interpolate, degrade_resolution, R, Rc, filter_type, order_by_order, outliers, sigma_outliers, only_high_pass=False, cut_fringes=False, Rmin=None, Rmax=None, use_weight=True, mask_nan_values=False, keep_only_good=False, wave_input=None, reference_fibers=True, crop_tell_orders=False, verbose=True): # OPENING DATA AND DEGRADATING THE RESOLUTION (if wanted)
     from src.spectrum import Spectrum, filtered_flux
     
     # hard coded values
@@ -610,8 +701,8 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R, Rc, fil
         star_flux0      = data_star["signal"]                        # in e-
         star_wave0      = data_star["wave"]*1e-3                     # in µm
         star_weight0    = data_star["weight"]                        # no unit
-        star_sigma_tot0 = data_star["noise"]                   # e-
-        star_sigma_bkg0 = data_star["noise_background"]                     # e-
+        star_sigma_tot0 = data_star["noise"]                         # e-
+        star_sigma_bkg0 = data_star["noise_background"]              # e-
         #star_sigma_bkg0 = np.sqrt(star_sigma_tot0**2 - star_flux0)   # e-
         for iref in range(nrefs):
             data_star_ref = f[f.index_of(f'STAR,OFFSET{ioff},REF{iref}')].data
@@ -621,8 +712,8 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R, Rc, fil
         planet_flux0      = data_planet["signal"]                          # in e-
         planet_wave0      = data_planet["wave"]*1e-3                       # in µm
         planet_weight0    = data_planet["weight"]                          # no unit
-        planet_sigma_tot0 = data_planet["noise"]                     # e-
-        planet_sigma_bkg0 = data_planet["noise_background"]                       # e-
+        planet_sigma_tot0 = data_planet["noise"]                           # e-
+        planet_sigma_bkg0 = data_planet["noise_background"]                # e-
         #planet_sigma_bkg0 = np.sqrt(planet_sigma_tot0**2 - planet_flux0)   # e-
         for iref in range(nrefs):
             data_planet_ref = f[f.index_of(f'COMP,OFFSET{ioff},REF{iref}')].data
@@ -638,11 +729,14 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R, Rc, fil
 
     # calib_name = "HD_26820"
     # wave0      = fits.open("data/HiRISE/"+calib_name+".fits")[1].data["recalibrated"]*1e-3      # in µm
-        
+
     # wavelength axis properties
-    lmin = wave0[0]
-    lmax = wave0[-1]
-    # lmin = 1.468/0.98 ; lmax = 1.73/1.02 # Cropping first and last order
+    if crop_tell_orders:
+        lmin = 1.505/0.98
+        lmax = 1.73/1.02 # Cropping two firsts and one last order
+    else:
+        lmin = wave0[0]
+        lmax = wave0[-1]
     dl0  = wave0 - np.roll(wave0, 1) ; dl0[0] = dl0[1] ; dl0[dl0==0] = np.nanmedian(dl0) # delta lambda array
     R0   = np.nanmedian(wave0/(2*dl0)) # calculating the resolution => assuming a Nyquist sampling
     dl0  = np.nanmedian(dl0)
@@ -946,7 +1040,9 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R, Rc, fil
             d_planet = cut_spectral_frequencies(input_flux=d_planet, R=R, Rmin=Rmin, Rmax=Rmax, show=verbose, target_name=target_name, force_new_calc=True)
         else:
             d_planet = cut_spectral_frequencies(input_flux=d_planet, R=R, Rmin=Rmin, Rmax=Rmax, show=False, target_name=target_name[:-7], force_new_calc=False)
-
+    
+    d_bkg.append(d_star)
+    
     return wave, star_flux, d_star, planet_flux, d_planet, trans, trans_model, R, planet_sigma, planet_weight, T_star, lg_star, rv_star, vsini_star, hdr, d_bkg, wave_raw
 
 

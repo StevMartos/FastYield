@@ -157,7 +157,7 @@ class Spectrum:
             flux_conv = gaussian_filter(flux_interp[~np.isnan(flux_interp)], sigma=fwhm) # convoluted flux
             flux_interp[~np.isnan(flux_interp)] = flux_conv # ignoring the NaN values
         
-        flux_lr = cg.downbin_spec(flux_interp, wave_interp, wave_output, dlam=dl_new) # down binned flux
+        flux_lr = downbin_spec(flux_interp, wave_interp, wave_output, dlam=dl_new) # down binned flux
         
         spectrum            = self.copy()
         spectrum.wavelength = wave_output

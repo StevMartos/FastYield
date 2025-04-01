@@ -1054,31 +1054,32 @@ def all_SNR_table(table="Archive"): # takes ~ 13 hours
     time0 = time.time()
     for config_data in config_data_list:
         instru = config_data["name"]
-        if config_data["lambda_range"]["lambda_max"] > 6:
-            thermal_models = ["None", "BT-Settl", "Exo-REM"]
-            reflected_models = ["None"]
-        else:
-            thermal_models = ["None", "BT-Settl", "Exo-REM", "PICASO"]
-            reflected_models = ["None", "tellurics", "flat", "PICASO"]
-        apodizers = [apodizer for apodizer in config_data["apodizers"]]
-        if config_data["base"] == "ground":
-            strehls = config_data["strehls"]
-        elif config_data["base"] == "space":
-            strehls = ["NO_JQ"]
-        for apodizer in apodizers:
-            for strehl in strehls:
-                if instru == "HARMONI" and (apodizer == "SP2" or apodizer == "SP3" or apodizer == "SP4" or apodizer == "SP_Prox") and strehl != "JQ1":
-                    continue
-                for thermal_model in thermal_models:
-                    for reflected_model in reflected_models:
-                        if thermal_model == "None" and reflected_model == "None":
-                            continue
-                        else:
-                            calculate_SNR_table(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, systematic=False)
-                            if instru in instru_with_systematics:
-                                calculate_SNR_table(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, systematic=True)
-                                calculate_SNR_table(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, systematic=True, PCA=True, PCA_mask=True, Nc=20)
-    
+        if config_data["base"] == "space":
+            if config_data["lambda_range"]["lambda_max"] > 6:
+                thermal_models = ["None", "BT-Settl", "Exo-REM"]
+                reflected_models = ["None"]
+            else:
+                thermal_models = ["None", "BT-Settl", "Exo-REM", "PICASO"]
+                reflected_models = ["None", "tellurics", "flat", "PICASO"]
+            apodizers = [apodizer for apodizer in config_data["apodizers"]]
+            if config_data["base"] == "ground":
+                strehls = config_data["strehls"]
+            elif config_data["base"] == "space":
+                strehls = ["NO_JQ"]
+            for apodizer in apodizers:
+                for strehl in strehls:
+                    if instru == "HARMONI" and (apodizer == "SP2" or apodizer == "SP3" or apodizer == "SP4" or apodizer == "SP_Prox") and strehl != "JQ1":
+                        continue
+                    for thermal_model in thermal_models:
+                        for reflected_model in reflected_models:
+                            if thermal_model == "None" and reflected_model == "None":
+                                continue
+                            else:
+                                calculate_SNR_table(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, systematic=False)
+                                if instru in instru_with_systematics:
+                                    calculate_SNR_table(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, systematic=True)
+                                    calculate_SNR_table(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, systematic=True, PCA=True, PCA_mask=True, Nc=20)
+        
     print('\n Calculating all SNR took {0:.3f} s'.format(time.time()-time0))
 
 

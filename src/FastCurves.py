@@ -35,13 +35,14 @@ def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_
         cmap = plt.get_cmap("Spectral", len(config_data["gratings"])+1)
     else:
         cmap = plt.get_cmap("Spectral", len(config_data["gratings"]))
-    size_core          = config_data["size_core"] ; # aperture size on which the signal is integrated (A_FWHM = Afwhm) (in pixels)
-    A_FWHM             = size_core**2 ; 
+    size_core          = config_data["size_core"]            # aperture size on which the signal is integrated (A_FWHM = Afwhm) (in pixels)
+    A_FWHM             = size_core**2
     saturation_e       = config_data["spec"]["saturation_e"] # full well capacity of the detector (in e-)
-    min_DIT            = config_data["spec"]["minDIT"] # minimal integration time (in mn)
-    max_DIT            = config_data["spec"]["maxDIT"] # maximal integration time (in mn)
-    RON                = config_data["spec"]["RON"] # read out noise (in e-/DIT)
-    dark_current       = config_data["spec"]["dark_current"] # dark current (in e-/s)
+    min_DIT            = config_data["spec"]["minDIT"]       # minimal integration time (in mn)
+    max_DIT            = config_data["spec"]["maxDIT"]       # maximal integration time (in mn)
+    RON                = config_data["spec"]["RON"]          # read out noise (in e-/px/DIT)
+    dark_current       = config_data["spec"]["dark_current"] # dark current (in e-/px/s)
+    IWA, OWA           = get_wa(config_data=config_data, band="INSTRU", apodizer=apodizer, sep_unit=config_data["sep_unit"])
     
     #------------------------------------------------------------------------------------------------
     
@@ -141,6 +142,7 @@ def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_
             band_flux.set_title(f"Planet flux ({model}) through {instru} bands \n with $T_p$ = {int(round(planet_spectrum_instru.T))}K, $lg_p$ = {round(planet_spectrum_instru.lg,1)} and $mag_p$({band0}) = {round(mag_planet, 2)}", fontsize=16)
         elif calculation == "contrast":
             band_flux.set_title(f"Star flux through {instru} with $mag_*$({band0}) = {round(mag_star, 2)}", fontsize=16)
+    
     for nb, band in enumerate(config_data['gratings']): # For each band
         if band_only is not None and band != band_only :
             continue # If you want to calculate for band_only only
@@ -155,6 +157,8 @@ def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_
                 continue
         
         name_bands.append(band) # adds the band name to the list
+        
+        iwa, owa = get_wa(config_data=config_data, band=band, apodizer=apodizer, sep_unit=config_data["sep_unit"])
         
         #------------------------------------------------------------------------------------------------
         
@@ -192,10 +196,16 @@ def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_
         
         if coronagraph is not None and instru == "NIRCam":
             data = fits.getdata("sim_data/PSF/PSF_"+instru+"/fraction_PSF_"+band+"_"+coronagraph+"_"+strehl+"_"+apodizer+".fits") # flux fraction at the PSF peak as a function of separation 
-            f = interp1d(data[0], data[1], bounds_error=False, fill_value=np.nan) ; g = interp1d(data[0], data[2], bounds_error=False, fill_value=np.nan)
+            f = interp1d(data[0], data[1], bounds_error=False, fill_value=np.nan)
+            g = interp1d(data[0], data[2], bounds_error=False, fill_value=np.nan)
+            f_interp = f(separation)
+            g_interp = g(separation)
+            f_interp[separation > data[0][-1]] = data[1][-1]
+            g_interp[separation > data[0][-1]] = data[2][-1]
             correction_transmission_ETC = 0.9 # correction factor (relative to ETC)
-            fraction_PSF = f(separation) ; radial_transmission = g(separation)*correction_transmission_ETC
-            star_transmission = g(0)*correction_transmission_ETC # = total stellar flux transmitted by the coronagraph (+Lyot stop) when the star is perfectly aligned with it (i.e. at 0 separation)
+            fraction_PSF        = f_interp
+            radial_transmission = g_interp * correction_transmission_ETC
+            star_transmission   = g(0) * correction_transmission_ETC # = total stellar flux transmitted by the coronagraph (+Lyot stop) when the star is perfectly aligned with it (i.e. at 0 separation)
             PSF_profile *= star_transmission
             
         #------------------------------------------------------------------------------------------------
@@ -205,8 +215,11 @@ def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_
         R_corr = np.zeros_like(separation) + 1.
         if instru == "MIRIMRS" or instru == "NIRSpec": # 4pt dithering
             sep, r_corr = fits.getdata("sim_data/R_corr/R_corr_"+instru+"/R_corr_" + band + ".fits")
-            f           = interp1d(sep, r_corr, bounds_error=False, fill_value="extrapolate")
-            R_corr      = f(separation)
+            sep    = sep[~np.isnan(r_corr)]
+            r_corr = r_corr[~np.isnan(r_corr)]
+            f      = interp1d(sep, r_corr, bounds_error=False, fill_value="extrapolate")
+            R_corr = f(separation)
+            R_corr[separation > sep[-1]] = r_corr[-1]
         
         if post_processing == "molecular mapping": # power fraction of the white noise filtered
             fn_HF, _ = get_fraction_noise_filtered(wave=wave_band, R=R, Rc=Rc, filter_type=filter_type)
@@ -223,10 +236,19 @@ def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_
             if systematic: # calculating systematic noise profiles
                 sigma_syst_prime_2, sep, m_HF, Mp, M_pca, wave, pca = get_systematic_profile(config_data, band, trans, Rc, R, star_spectrum_instru, planet_spectrum_instru, planet_spectrum, wave_band, size_core, filter_type, show_cos_theta_est=show_cos_theta_est, PCA=PCA, PCA_mask=PCA_mask, Nc=Nc, mag_planet=mag_planet, band0=band0, separation_planet=separation_planet, mag_star=mag_star, target_name=planet_name, exposure_time=exposure_time, band_only=band_only, verbose=verbose)
                 planet_spectrum_band.flux *= M_pca # M_pca = signal loss ratio due to the PCA (if wanted)
+                sep                = sep[~np.isnan(sigma_syst_prime_2)]
+                sigma_syst_prime_2 = sigma_syst_prime_2[~np.isnan(sigma_syst_prime_2)]
                 f = interp1d(sep, np.sqrt(sigma_syst_prime_2), bounds_error=False, fill_value="extrapolate")
-                sigma_syst_prime_2 = f(separation)**2 # systematic noise profile projected in the CCF (in e-/Flux_stell_tot/spaxel)
+                f_interp = f(separation)
+                f_interp[separation < sep[0]] = np.sqrt(sigma_syst_prime_2[0])
+                if separation[-1] > sep[-1]: # systematic profile extrapolation
+                    f_extension  = PSF_profile[separation >= sep[-1]] # same extrapolation profile (propto stellar flux)
+                    f_extension *= np.sqrt(sigma_syst_prime_2[-1]) / f_extension[0] # forcing continuity
+                    f_interp[separation >= sep[-1]] = f_extension
+                sigma_syst_prime_2 = f_interp**2 # systematic noise profile projected in the CCF (in e-/Flux_stell_tot/spaxel)
                 mask_M = (wave_band>=wave[0]) & (wave_band<=wave[-1]) # effective wavelength axis (from data)
-                planet_spectrum_band.crop(wave[0], wave[-1]) ; star_spectrum_band.crop(wave[0], wave[-1])
+                planet_spectrum_band.crop(wave[0], wave[-1])
+                star_spectrum_band.crop(wave[0], wave[-1])
                 trans = trans[mask_M] ; wave_band = wave_band[mask_M] ; Mp = Mp[mask_M]
                 if show_cos_theta_est: # for cos theta est. : high-frequency modulations (creating systematic noise...)
                     M_HF = np.zeros((len(separation), len(wave_band)))
@@ -326,9 +348,7 @@ def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_
         # Signal and detector noises
         
         contrast = np.zeros_like(separation) ; contrast_wo_syst = np.zeros_like(separation) ; SNR = np.zeros_like(separation) ; t_syst = np.zeros_like(separation) ; cos_theta_est = np.zeros_like(separation) ; norm_d = np.zeros_like(separation)
-        
-        iwa, owa = get_wa(config_data=config_data, band="INSTRU", apodizer=apodizer, sep_unit=config_data["sep_unit"])
-                            
+                                    
         if post_processing == "molecular mapping": # Molecular Mapping
             signal = (alpha*cos_p - beta)*DIT # total number of useful e- for molecular mapping /DIT (in the FWHM or "fraction_core") (in e-/DIT/FWHM)
             if instru=="HARMONI" or apodizer != "NO_SP":
@@ -338,9 +358,9 @@ def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_
         elif post_processing == "ADI+RDI": # ADI+RDI
             if coronagraph is not None:
                 if calculation == "contrast":
-                    signal = np.nansum(star_spectrum_band.flux)*fraction_PSF*radial_transmission ###
+                    signal = np.nansum(star_spectrum_band.flux) * fraction_PSF * radial_transmission ###
                 elif calculation == "SNR":
-                    signal = np.nansum(planet_spectrum_band.flux)*fraction_PSF*radial_transmission # planet flux in the PSF peak as a function of separation (in e-/DIT/pixel)
+                    signal = np.nansum(planet_spectrum_band.flux) * fraction_PSF * radial_transmission # planet flux in the PSF peak as a function of separation (in e-/DIT/pixel)
                     
         sigma_dc_2  = dark_current * DIT * 60 # dark current photon noise (in e-/DIT/pixel)
         sigma_ron_2 = RON_eff**2 # effective read out noise (in e-/DIT/pixel)
@@ -387,9 +407,9 @@ def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_
             sigma_bkgd_prime_2 = np.nansum(sigma_bkgd_2 * template**2) # background photon noise projected in the CCF (in e-/DIT/spaxel)
         elif post_processing == "ADI+RDI": # ADI+RDI
             if coronagraph is not None:
-                sigma_bkgd_2 = np.nansum(sigma_bkgd_2)*radial_transmission # background photon noise per spectral channel (in e-/DIT/pixel) for each separation  (radial_transmission due to the coronagraph)
+                sigma_bkgd_2 = np.nansum(sigma_bkgd_2) * radial_transmission # background photon noise per spectral channel (in e-/DIT/pixel) for each separation (radial_transmission due to the coronagraph)
             else:
-                sigma_bkgd_2 = np.nansum(sigma_bkgd_2) # background photon noise per spectral channel (in e-/DIT/pixel) for each separation  (radial_transmission due to the coronagraph)
+                sigma_bkgd_2 = np.nansum(sigma_bkgd_2) # background photon noise per spectral channel (in e-/DIT/pixel) for each separation
 
         #------------------------------------------------------------------------------------------------------------------------------------------------
         
@@ -558,7 +578,7 @@ def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_
     #------------------------------------------------------------------------------------------------
     # PLOTS:
     #------------------------------------------------------------------------------------------------
-    
+        
     # Contrast:
         
     if calculation == "contrast" and show_plot:
@@ -574,19 +594,19 @@ def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_
         ax2 = ax1.twinx()
         ax2.set_yscale('log')
         ax2.set_xlim(0, separation[-1])
-        ax2.axvspan(0, iwa, color='black', alpha=0.5, lw=0)
+        ax2.axvspan(0, IWA, color='black', alpha=0.5, lw=0)
         ax2.get_yaxis().set_visible(False)
         ax2.get_xaxis().set_visible(False)        
         for i in range(len(contrast_bands)):
             if band_only is not None:
                 color_idx = [nb for nb, band in enumerate(config_data["gratings"]) if band == band_only][0]
-                ax1.plot(separation_bands[i][separation_bands[i] >= iwa], contrast_bands[i][separation_bands[i] >= iwa], label=name_bands[i], color=cmap(color_idx), linewidth=2, alpha=0.8)
+                ax1.plot(separation_bands[i][separation_bands[i] >= IWA], contrast_bands[i][separation_bands[i] >= IWA], label=name_bands[i], color=cmap(color_idx), linewidth=2, alpha=0.8)
             else:
-                ax1.plot(separation_bands[i][separation_bands[i] >= iwa], contrast_bands[i][separation_bands[i] >= iwa], label=name_bands[i], color=cmap(i), linewidth=2, alpha=0.8)
+                ax1.plot(separation_bands[i][separation_bands[i] >= IWA], contrast_bands[i][separation_bands[i] >= IWA], label=name_bands[i], color=cmap(i), linewidth=2, alpha=0.8)
         if separation_planet is not None:
-            if separation_planet > 2 * owa:
+            if separation_planet > 2 * OWA:
                 ax1.set_xscale('log')
-                ax1.set_xlim(iwa, max(np.max(arr) for arr in separation_bands))
+                ax1.set_xlim(IWA, max(np.max(arr) for arr in separation_bands))
             if mag_planet is None:
                 ax1.axvline(separation_planet, color="black", linestyle="--", label=f'{planet_name}')
             else:
@@ -595,7 +615,7 @@ def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_
                 flux_ratio = np.nanmean(planet_spectrum_instru.flux / star_spectrum_instru.flux)
                 if flux_ratio > ax1.get_ylim()[1] or (flux_ratio > ax1.get_ylim()[0] and flux_ratio < ax1.get_ylim()[1]):
                     y_text    = flux_ratio/1.5
-                    if separation_planet > (iwa+owa)/2:
+                    if separation_planet > (IWA+OWA)/2:
                         x_text    = separation_planet - 0.1 * max(np.max(arr) for arr in separation_bands)
                         leg_y_pos = "upper"
                         leg_x_pos = "center"
@@ -605,7 +625,7 @@ def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_
                         leg_x_pos = "right"
                 else :
                     y_text = flux_ratio*1.5
-                    if separation_planet > (iwa+owa)/2:
+                    if separation_planet > (IWA+OWA)/2:
                         x_text    = separation_planet - 0.1 * max(np.max(arr) for arr in separation_bands)
                         leg_y_pos = "upper"
                         leg_x_pos = "right"
@@ -659,18 +679,18 @@ def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_
         ax1.set_ylabel('S/N', fontsize=14)        
         ax1.yaxis.set_ticks_position('both')
         ax1.tick_params(axis='both', labelsize=12)  
-        ax1.axvspan(0, iwa, color='black', alpha=0.5, lw=0)
+        ax1.axvspan(0, IWA, color='black', alpha=0.5, lw=0)
         for i in range(len(SNR_bands)):
             if band_only is not None:
                 color_idx = [nb for nb, band in enumerate(config_data["gratings"]) if band == band_only][0]
-                ax1.plot(separation_bands[i][separation_bands[i] >= iwa], SNR_bands[i][separation_bands[i] >= iwa], label=name_bands[i], color=cmap(color_idx), linewidth=2, alpha=0.8)
+                ax1.plot(separation_bands[i][separation_bands[i] >= IWA], SNR_bands[i][separation_bands[i] >= IWA], label=name_bands[i], color=cmap(color_idx), linewidth=2, alpha=0.8)
             else:
-                ax1.plot(separation_bands[i][separation_bands[i] >= iwa], SNR_bands[i][separation_bands[i] >= iwa],label=name_bands[i], color=cmap(i), linewidth=2, alpha=0.8)
+                ax1.plot(separation_bands[i][separation_bands[i] >= IWA], SNR_bands[i][separation_bands[i] >= IWA],label=name_bands[i], color=cmap(i), linewidth=2, alpha=0.8)
         if separation_planet is not None:
-            if separation_planet > 2 * owa:
+            if separation_planet > 2 * OWA:
                 ax1.set_xscale('log')
-                ax1.set_xlim(iwa, max(np.max(arr) for arr in separation_bands))
-            ax1.plot([separation_planet, separation_planet], [0., SNR_max], 'k--', linewidth=1.5)
+                ax1.set_xlim(IWA, max(np.max(arr) for arr in separation_bands))
+            ax1.axvline(x=separation_planet, color='k', linestyle='--', linewidth=1.5)
             ax1.plot([separation_planet], [SNR_max_planet], 'rX', ms=11)        
             ax_legend = ax1.twinx()
             ax_legend.plot([], [], '--', c='k', label=f'Angular separation {for_planet_name}')

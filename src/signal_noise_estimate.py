@@ -86,7 +86,7 @@ def get_PSF_profile(band, strehl, apodizer, coronagraph, instru, config_data, se
     if sep_unit == "mas":
         pxscale *= 1e3
     iwa, owa = get_wa(config_data=config_data, band=band, apodizer=apodizer, sep_unit=config_data["sep_unit"])
-    
+        
     profile = fits.getdata(file) # in fraction/arcsec**2 or fraction/mas**2
     f       = interp1d(profile[0], profile[1], bounds_error=False, fill_value=np.nan)
     
@@ -142,7 +142,7 @@ def get_PSF_profile(band, strehl, apodizer, coronagraph, instru, config_data, se
         PSF_profile = profile_interp * config_data["pxscale0"][band[0]]**2 # pxscale (non-dithered) (because all the values are considered in the detector space in the first place, then multiplied by R_corr, to take into account the transformation into 3D cube sapce)
     else:
         PSF_profile = profile_interp * pxscale**2
-    
+        
     return PSF_profile, fraction_PSF, separation, pxscale
 
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -305,6 +305,65 @@ def get_wa(config_data, band, apodizer, sep_unit):
         raise KeyError("Please define for other separation units")
     return iwa, owa
     
+#---------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+def plot_dark_noise_budget(instru, noise_level=None):
+    RON_min = 0.5 # e-/px/DIT (achieved laboratory limit)
+    config_data  = get_config_data(instru)
+    min_DIT      = config_data["spec"]["minDIT"]       # minimal integration time (in mn)
+    max_DIT      = config_data["spec"]["maxDIT"]       # maximal integration time (in mn)
+    RON          = config_data["spec"]["RON"]          # read out noise (in e-/px/DIT)
+    dark_current = config_data["spec"]["dark_current"] # dark current (in e-/px/s)
+    DIT       = np.logspace(np.log10(min_DIT), np.log10(200*max_DIT), 100)
+    sigma_dc  = np.zeros_like(DIT)
+    sigma_ron = np.zeros_like(DIT)
+    for i in range(len(DIT)):
+        dit = DIT[i]
+        sigma_dc[i] = dark_current * dit * 60 # e-/px/DOT
+        nb_min_DIT = 1 # "Up the ramp" reading mode: the pose is sequenced in several non-destructive readings to reduce reading noise (see https://en.wikipedia.org/wiki/Signal_averaging).
+        if dit > nb_min_DIT*min_DIT: # choose 4 min_DIT because if intermittent readings are too short, the detector will heat up too quickly => + dark current
+            N_i     = dit / (nb_min_DIT*min_DIT) # number of intermittent readings
+            sigma_ron[i] = RON / np.sqrt(N_i) # effective read out noise (in e-/px/DIT)
+        else:
+            sigma_ron[i] = RON
+        if instru == 'ERIS' and sigma_ron[i] < 7: # effective RON lower limit for ERIS
+            sigma_ron[i] = 7
+        if sigma_ron[i] < RON_min: # achieved lower limit in laboratory
+            sigma_ron[i] = RON_min
+    sigma_tot = np.sqrt(sigma_ron**2 + sigma_dc**2)
+    plt.figure(figsize=(8, 6), dpi=300)
+    plt.plot(DIT, sigma_ron, "g--", label=f"RON ($RON_0$ = {RON} e-/px/DIT)")
+    plt.plot(DIT, sigma_dc, "m--", label=f"dark current ({dark_current*60:.3f} e-/px/mn)")
+    plt.plot(DIT, sigma_tot, "k-", label="total")
+    if noise_level is not None:
+        plt.axhline(noise_level, color='r', ls='--', label=f"noise level = {noise_level} e-/px/DIT")    
+        intersections = []
+        for i in range(len(DIT) - 1):
+            y0, y1 = sigma_tot[i], sigma_tot[i+1]
+            if (y0 - noise_level) * (y1 - noise_level) < 0:
+                x0, x1 = DIT[i], DIT[i+1]
+                frac = (noise_level - y0) / (y1 - y0)  # interpolation linéaire
+                x_cross = x0 + frac * (x1 - x0)
+                intersections.append(x_cross)
+        for x_cross in intersections:
+            plt.axvline(x_cross, color='r', ls=':', alpha=0.7)
+            plt.annotate(f"{x_cross:.2f} mn", xy=(x_cross, noise_level), xycoords='data', xytext=(0, 0), textcoords='offset points', ha='center', va='bottom', color='r', rotation=0, bbox=dict(boxstyle="round", fc="white", ec="r", alpha=1))
+    plt.axhspan(0, RON_min, facecolor='gray', alpha=0.3, label=f"Laboratory limit (< {RON_min} e-/px/DIT)")
+    plt.title(f"Dark noise budget for {instru}", fontsize=16, fontweight='bold')
+    plt.xscale('log')
+    plt.xlabel("DIT [mn]", fontsize=14)
+    plt.ylabel("Noise [e-/px/DIT]", fontsize=14)
+    plt.xlim(DIT[0], DIT[-1])
+    plt.ylim(0)
+    plt.grid(which='both', alpha=0.4)
+    plt.minorticks_on()
+    plt.legend(loc='best', fontsize=12)
+    plt.tight_layout()
+    plt.gca().yaxis.set_ticks_position('both')
+    plt.gca().tick_params(axis='both', labelsize=12)
+    plt.show()
+
+
 
 #######################################################################################################################
 ##################################### SYSTEMATIC NOISE PROFILE CALCULATION: ###########################################

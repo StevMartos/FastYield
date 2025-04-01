@@ -63,7 +63,7 @@ def stellar_high_filtering(cube, R, Rc, filter_type, outliers=False, sigma_outli
             if show:
                 ax[0].plot(Y[:, k]/np.sqrt(np.nansum(Y[:, k]**2)), "b") ; Y_spectrum = Spectrum(None, Y[:, k][~np.isnan(Y[:, k])], R, None) ; res, psd = Y_spectrum.get_psd(smooth=0) ; ax[1].plot(res, psd, "b", label="post MM filtering method") ; plt.legend() ; plt.show()
     if verbose:
-        print("\n norme de M =", round(m/(NbChannel), 3)) # must be ~ 1
+        print("\nsum(M) =", round(m/(NbChannel), 3)) # must be ~ 1
     cube_res =  Y.reshape((NbChannel, NbLine, NbColumn))
     cube_M = cube_M.reshape((NbChannel, NbLine, NbColumn))
     cube_res[cube_res == 0] = np.nan ; cube_M[cube_M == 0] = np.nan
@@ -539,7 +539,7 @@ def plot_CCF_rv(instru, band, target_name, d_planet, d_bkg, star_flux, wave, tra
     # Compute the radial velocity and cross-correlation functions for the planet and background
     rv, CCF_planet, corr_planet, CCF_bkg, corr_auto, logL_planet, sigma_planet = correlation_rv(instru=instru, d_planet=d_planet, d_bkg=d_bkg, star_flux=star_flux, wave=wave, trans=trans, T_planet=T_planet, lg_planet=lg_planet, model=model, R=R, Rc=Rc, filter_type=filter_type, large_rv=large_rv, rv=rv, rv_planet=rv_planet, vsini_planet=vsini_planet, pca=pca, template=template, epsilon=epsilon, fastbroad=fastbroad, logL=logL, method_logL=method_logL, sigma_l=sigma_l, weight=weight, stellar_component=stellar_component, degrade_resolution=degrade_resolution, disable_tqdm=disable_tqdm, show=show, smooth_PSD=smooth_PSD, target_name=target_name, compare_data=compare_data, cut_fringes=cut_fringes, Rmin=Rmin, Rmax=Rmax)
     # Refine the radial velocity estimate for the planet
-    rv_planet = rv[(rv < rv_planet + 25) & (rv > rv_planet - 25)][CCF_planet[(rv < rv_planet + 25) & (rv > rv_planet - 25)].argmax()]
+    rv_planet = rv[(rv < rv_planet + 25) & (rv > rv_planet - 25)][np.abs(CCF_planet[(rv < rv_planet + 25) & (rv > rv_planet - 25)]).argmax()]
     if np.nanmax(np.abs(rv))/2 > 200: # https://arxiv.org/pdf/2405.13469: std(rv_planet +- 200 km/s)
         mask_rv = (rv > rv_planet + 200) | (rv < rv_planet - 200)
         # Remove the offset introduced by the residual stellar component and systematic effects
