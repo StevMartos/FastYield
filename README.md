@@ -61,10 +61,6 @@ pip install astropy
 ```
 pip install pandas
 ```
-* [coronagraph](https://github.com/jlustigy/coronagraph)
-```
-pip install coronagraph
-```
 * [statsmodels](https://github.com/statsmodels/statsmodels)
 ```
 pip install statsmodels
