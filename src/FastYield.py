@@ -920,7 +920,7 @@ def make_table_serializable(table):
 
 
 
-def calculate_SNR_table(instru, table="Archive", thermal_model="None", reflected_model="None", apodizer="NO_SP", strehl="NO_JQ", systematic=False, PCA=False, PCA_mask=False, Nc=20):
+def calculate_SNR_table(instru, table="Archive", thermal_model="None", reflected_model="None", apodizer="NO_SP", strehl="NO_JQ", systematic=False, PCA=False, Nc=20):
     """
     Compute every SNR for every valid planet inside "table" for "instru"
     """
@@ -988,7 +988,7 @@ def calculate_SNR_table(instru, table="Archive", thermal_model="None", reflected
     
     if PCA: # if PCA, no multiprocessing (otherwise it crashes ?)
         for idx in tqdm(range(len(planet_table))):
-            args = (idx, planet_table[idx]["StarINSTRUmag("+instru+")"], make_table_serializable(planet_table[idx]), instru, thermal_model, reflected_model, wave_instru, wave_K, vega_spectrum, vega_spectrum_K, lmin_instru, lmax_instru, band0, exposure_time, name_model, systematic, apodizer, strehl, PCA, PCA_mask, Nc)
+            args = (idx, planet_table[idx]["StarINSTRUmag("+instru+")"], make_table_serializable(planet_table[idx]), instru, thermal_model, reflected_model, wave_instru, wave_K, vega_spectrum, vega_spectrum_K, lmin_instru, lmax_instru, band0, exposure_time, name_model, systematic, apodizer, strehl, PCA, Nc)
             idx, planet_spectrum, planet_thermal, planet_reflected, star_spectrum, mag_p, name_band, SNR_planet, signal_planet, sigma_fund_planet, sigma_syst_planet, DIT_band = process_SNR_table(args)
             # Recalculates the magnitude in case the thermal model is no longer BT-Settl or the reflected model is no longer PICASO (the mag changes with regards to the raw archive table with the estimated magnbitudes)
             planet_table[idx]['PlanetINSTRUmag('+instru+')('+spectrum_contributions+')'] = mag_p
@@ -1009,7 +1009,7 @@ def calculate_SNR_table(instru, table="Archive", thermal_model="None", reflected
     
     else: # if no PCA, uses multiprocessing
         with Pool(processes=cpu_count()//2) as pool: # Utilisation de multiprocessing pour paralléliser les combinaisons i, j
-            results = list(tqdm(pool.imap(process_SNR_table, [(idx, planet_table[idx]["StarINSTRUmag("+instru+")"], make_table_serializable(planet_table[idx]), instru, thermal_model, reflected_model, wave_instru, wave_K, vega_spectrum, vega_spectrum_K, lmin_instru, lmax_instru, band0, exposure_time, name_model, systematic, apodizer, strehl, PCA, PCA_mask, Nc) for idx in range(len(planet_table))]), total=len(planet_table)))
+            results = list(tqdm(pool.imap(process_SNR_table, [(idx, planet_table[idx]["StarINSTRUmag("+instru+")"], make_table_serializable(planet_table[idx]), instru, thermal_model, reflected_model, wave_instru, wave_K, vega_spectrum, vega_spectrum_K, lmin_instru, lmax_instru, band0, exposure_time, name_model, systematic, apodizer, strehl, PCA, Nc) for idx in range(len(planet_table))]), total=len(planet_table)))
             for (idx, planet_spectrum, planet_thermal, planet_reflected, star_spectrum, mag_p, name_band, SNR_planet, signal_planet, sigma_fund_planet, sigma_syst_planet, DIT_band) in results:
                 # Recalculates the magnitude in case the thermal model is no longer BT-Settl or the reflected model is no longer PICASO (the mag changes with regards to the raw archive table with the estimated magnbitudes)
                 planet_table[idx]['PlanetINSTRUmag('+instru+')('+spectrum_contributions+')'] = mag_p
@@ -1038,10 +1038,10 @@ def calculate_SNR_table(instru, table="Archive", thermal_model="None", reflected
         planet_table.write(path+table+"_Pull_"+instru+"_"+apodizer+"_"+strehl+"_without_systematics_"+name_model+".ecsv", format='ascii.ecsv', overwrite=True)
 
 def process_SNR_table(args):
-    idx, mag_s, planet, instru, thermal_model, reflected_model, wave_instru, wave_K, vega_spectrum, vega_spectrum_K, lmin_instru, lmax_instru, band0, exposure_time, name_model, systematic, apodizer, strehl, PCA, PCA_mask, Nc = args
+    idx, mag_s, planet, instru, thermal_model, reflected_model, wave_instru, wave_K, vega_spectrum, vega_spectrum_K, lmin_instru, lmax_instru, band0, exposure_time, name_model, systematic, apodizer, strehl, PCA, Nc = args
     planet_spectrum, planet_thermal, planet_reflected, star_spectrum = thermal_reflected_spectrum(planet=planet, instru=instru, thermal_model=thermal_model, reflected_model=reflected_model, wave_instru=wave_instru, wave_K=wave_K, vega_spectrum_K=vega_spectrum_K, show=False)
     mag_p = -2.5*np.log10(np.nanmean(planet_spectrum.flux[(wave_instru>lmin_instru)&(wave_instru<lmax_instru)])/np.nanmean(vega_spectrum.flux[(wave_instru>lmin_instru) & (wave_instru<lmax_instru)]))
-    name_band, SNR_planet, signal_planet, sigma_fund_planet, sigma_syst_planet, DIT_band = FastCurves(instru=instru, calculation="SNR", systematic=systematic, T_planet=float(planet["PlanetTeq"].value), lg_planet=float(planet["PlanetLogg"].value), mag_star=mag_s, band0=band0, T_star=float(planet["StarTeff"].value), lg_star=float(planet["StarLogg"].value), exposure_time=exposure_time, model="None", mag_planet=mag_p, separation_planet=float(planet["AngSep"].value/1000), planet_name="None", return_SNR_planet=True, show_plot=False, verbose=False, planet_spectrum=planet_spectrum.copy(), star_spectrum=star_spectrum.copy(), apodizer=apodizer, strehl=strehl, PCA=PCA, PCA_mask=PCA_mask, Nc=Nc)
+    name_band, SNR_planet, signal_planet, sigma_fund_planet, sigma_syst_planet, DIT_band = FastCurves(instru=instru, calculation="SNR", systematic=systematic, T_planet=float(planet["PlanetTeq"].value), lg_planet=float(planet["PlanetLogg"].value), mag_star=mag_s, band0=band0, T_star=float(planet["StarTeff"].value), lg_star=float(planet["StarLogg"].value), exposure_time=exposure_time, model="None", mag_planet=mag_p, separation_planet=float(planet["AngSep"].value/1000), planet_name="None", return_SNR_planet=True, show_plot=False, verbose=False, planet_spectrum=planet_spectrum.copy(), star_spectrum=star_spectrum.copy(), apodizer=apodizer, strehl=strehl, PCA=PCA, Nc=Nc)
     return idx, planet_spectrum, planet_thermal, planet_reflected, star_spectrum, mag_p, name_band, SNR_planet, signal_planet, sigma_fund_planet, sigma_syst_planet, DIT_band
 
 
@@ -1054,32 +1054,31 @@ def all_SNR_table(table="Archive"): # takes ~ 13 hours
     time0 = time.time()
     for config_data in config_data_list:
         instru = config_data["name"]
-        if config_data["base"] == "space":
-            if config_data["lambda_range"]["lambda_max"] > 6:
-                thermal_models = ["None", "BT-Settl", "Exo-REM"]
-                reflected_models = ["None"]
-            else:
-                thermal_models = ["None", "BT-Settl", "Exo-REM", "PICASO"]
-                reflected_models = ["None", "tellurics", "flat", "PICASO"]
-            apodizers = [apodizer for apodizer in config_data["apodizers"]]
-            if config_data["base"] == "ground":
-                strehls = config_data["strehls"]
-            elif config_data["base"] == "space":
-                strehls = ["NO_JQ"]
-            for apodizer in apodizers:
-                for strehl in strehls:
-                    if instru == "HARMONI" and (apodizer == "SP2" or apodizer == "SP3" or apodizer == "SP4" or apodizer == "SP_Prox") and strehl != "JQ1":
-                        continue
-                    for thermal_model in thermal_models:
-                        for reflected_model in reflected_models:
-                            if thermal_model == "None" and reflected_model == "None":
-                                continue
-                            else:
-                                calculate_SNR_table(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, systematic=False)
-                                if instru in instru_with_systematics:
-                                    calculate_SNR_table(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, systematic=True)
-                                    calculate_SNR_table(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, systematic=True, PCA=True, PCA_mask=True, Nc=20)
-        
+        if config_data["lambda_range"]["lambda_max"] > 6:
+            thermal_models   = ["None", "BT-Settl", "Exo-REM"]
+            reflected_models = ["None"]
+        else:
+            thermal_models   = ["None", "BT-Settl", "Exo-REM", "PICASO"]
+            reflected_models = ["None", "tellurics", "flat", "PICASO"]
+        apodizers = [apodizer for apodizer in config_data["apodizers"]]
+        if config_data["base"] == "ground":
+            strehls = config_data["strehls"]
+        elif config_data["base"] == "space":
+            strehls = ["NO_JQ"]
+        for apodizer in apodizers:
+            for strehl in strehls:
+                if instru == "HARMONI" and (apodizer == "SP2" or apodizer == "SP3" or apodizer == "SP4" or apodizer == "SP_Prox") and strehl != "JQ1":
+                    continue
+                for thermal_model in thermal_models:
+                    for reflected_model in reflected_models:
+                        if thermal_model == "None" and reflected_model == "None":
+                            continue
+                        else:
+                            calculate_SNR_table(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, systematic=False)
+                            if instru in instru_with_systematics:
+                                calculate_SNR_table(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, systematic=True)
+                                calculate_SNR_table(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, systematic=True, PCA=True, Nc=20)
+    
     print('\n Calculating all SNR took {0:.3f} s'.format(time.time()-time0))
 
 
@@ -1155,7 +1154,7 @@ def archive_yield_instrus_plot_texp(thermal_model="BT-Settl", reflected_model="P
         yield_nirspec_syst[i]     = ratio*len(planet_table_nirspec_syst[SNR_nirspec_syst>5]) / norm_nirspec
         yield_nirspec_syst_pca[i] = ratio*len(planet_table_nirspec_syst_pca[SNR_nirspec_syst_pca>5]) / norm_nirspec
 
-    plt.figure(dpi=300, figsize=(10, 7))
+    plt.figure(dpi=300, figsize=(9, 6))
     plt.plot(exposure_time, yield_harmoni, 'b', label="ELT/HARMONI")
     plt.plot(exposure_time, yield_andes, 'gray', label="ELT/ANDES")
     plt.plot(exposure_time, yield_eris, 'r', label="VLT/ERIS")
@@ -1166,7 +1165,6 @@ def archive_yield_instrus_plot_texp(thermal_model="BT-Settl", reflected_model="P
     plt.plot(exposure_time, yield_nirspec_non_syst, 'c', label="JWST/NIRSpec/IFU")
     plt.plot(exposure_time, yield_nirspec_syst, 'c--')
     plt.plot(exposure_time, yield_nirspec_syst_pca, 'c:')
-    # Paramètres du graphique
     plt.grid(True, which='both', linestyle='--', linewidth=0.5)
     plt.minorticks_on()
     plt.xscale('log')
@@ -1178,17 +1176,39 @@ def archive_yield_instrus_plot_texp(thermal_model="BT-Settl", reflected_model="P
         plt.ylabel('Number of Planets Re-detected', fontsize=14)
         plt.yscale('log')
     plt.title('Known Exoplanets Detection Yield', fontsize=16)
-    plt.legend(loc="upper left", fontsize=10)
+    plt.legend(loc="upper left", fontsize=12)
     plt.tick_params(axis='both', labelsize=14)
-    # Légende supplémentaire sur l'axe secondaire
     ax = plt.gca()
     ax_legend = ax.twinx()
     ax_legend.plot([], [], 'k-', label='Without Systematics', linewidth=1.5)
     ax_legend.plot([], [], 'k--', label='With Systematics', linewidth=1.5)
     ax_legend.plot([], [], 'k:', label='With Systematics + PCA', linewidth=1.5)
-    ax_legend.legend(loc='lower right', fontsize=10)
+    ax_legend.legend(loc='lower right', fontsize=12)
     ax_legend.tick_params(axis='y', colors='w')  # Masquer l'axe secondaire
-    plt.tight_layout() ; plt.show()
+    plt.tight_layout()
+    plt.show()
+    
+    
+    plt.figure(dpi=300, figsize=(9, 6))
+    plt.plot(exposure_time, yield_mirimrs_non_syst, 'g', label="JWST/MIRI/MRS")
+    plt.plot(exposure_time, yield_mirimrs_syst, 'g--')
+    plt.plot(exposure_time, yield_mirimrs_syst_pca, 'g:')
+    plt.minorticks_on()
+    plt.xscale('log')
+    plt.xlabel('Exposure Time per Target [mn]', fontsize=14)
+    plt.xlim(exposure_time[0], exposure_time[-1])
+    plt.ylabel('Number of Planets Re-detected', fontsize=14)
+    plt.legend(loc="upper left", fontsize=12)
+    plt.tick_params(axis='both', labelsize=14)
+    ax = plt.gca()
+    ax_legend = ax.twinx()
+    ax_legend.plot([], [], 'k-', label='Without Systematics', linewidth=1.5)
+    ax_legend.plot([], [], 'k--', label='With Systematics', linewidth=1.5)
+    ax_legend.plot([], [], 'k:', label='With Systematics + PCA', linewidth=1.5)
+    ax_legend.legend(loc='lower right', fontsize=12)
+    ax_legend.tick_params(axis='y', colors='w')  # Masquer l'axe secondaire
+    plt.tight_layout()
+    plt.show()
 
 def archive_yield_instrus_plot_ptypes(exposure_time=120, thermal_model="BT-Settl", reflected_model="tellurics", band="INSTRU", fraction=False):
     

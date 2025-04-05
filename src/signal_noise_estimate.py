@@ -26,14 +26,14 @@ def get_transmission(instru, wave_band, band, tellurics, apodizer, fill_value=np
     transmission: 1d array (same size as wave_band)
         total system transmission 
     """
-    wave, trans = fits.getdata("sim_data/Transmission/"+instru+"/transmission_" + band + ".fits") # instrumental transmission on the considered band
+    wave, trans = fits.getdata(f"sim_data/Transmission/{instru}/transmission_{band}.fits") # instrumental transmission on the considered band
     f = interp1d(wave, trans, bounds_error=False, fill_value=fill_value)
     trans = f(wave_band) # interpolated instrumental transmission on the considered band
     config_data = get_config_data(instru) # get instrument specs
     apodizer_trans = config_data["apodizers"][str(apodizer)].transmission # get apodizer transmission, if any
     trans *= apodizer_trans
     if instru == "MIRIMRS" or instru == "NIRSpec":
-        trans *= fits.getheader("sim_data/PSF/PSF_"+instru+"/PSF_"+band+"_NO_JQ_NO_SP.fits")['AC'] # aperture corrective factor (the fact that not all the incident flux reaches the FOV)
+        trans *= fits.getheader(f"sim_data/PSF/PSF_{instru}/PSF_{band}_NO_JQ_NO_SP.fits")['AC'] # aperture corrective factor (the fact that not all the incident flux reaches the FOV)
     if tellurics: # if ground-based observation
         sky_transmission_path = os.path.join("sim_data/Transmission/sky_transmission_airmass_1.0.fits")
         sky_trans             = fits.getdata(sky_transmission_path)
@@ -74,9 +74,9 @@ def get_PSF_profile(band, strehl, apodizer, coronagraph, instru, config_data, se
         separation vector (in arcsec or mas)
     """
     if coronagraph is None: # Coronographic (stellar) PSF profile
-        file = "sim_data/PSF/PSF_"+instru+"/PSF_"+band+"_"+strehl+"_"+apodizer+".fits"
+        file = f"sim_data/PSF/PSF_{instru}/PSF_{band}_{strehl}_{apodizer}.fits"
     else:
-        file = "sim_data/PSF/PSF_"+instru+"/PSF_"+band+"_"+coronagraph+"_"+strehl+"_"+apodizer+".fits"
+        file = f"sim_data/PSF/PSF_{instru}/PSF_{band}_{coronagraph}_{strehl}_{apodizer}.fits"
     fraction_PSF = fits.getheader(file)['FC'] # fraction of flux contained in the FWHM (or the coronagraphic stellar transmission)
     
     try:
@@ -89,15 +89,13 @@ def get_PSF_profile(band, strehl, apodizer, coronagraph, instru, config_data, se
         
     profile = fits.getdata(file) # in fraction/arcsec**2 or fraction/mas**2
     f       = interp1d(profile[0], profile[1], bounds_error=False, fill_value=np.nan)
-    
+        
     if return_SNR_planet and separation_planet is not None: 
-        separation = np.array([iwa, separation_planet, owa])
+        separation = np.sort(np.array([0, iwa, separation_planet]))
     else:
-        separation = np.arange(pxscale/10, owa+pxscale/10, pxscale/10) # in arcsec or mas (/10 doesn't change the result but gives smoother curves)
+        separation = np.arange(0, owa+pxscale/10, pxscale/10) # in arcsec or mas (/10 doesn't change the result but gives smoother curves)
         if iwa not in separation:
             separation = np.sort(np.append(separation, iwa))
-        if owa not in separation:
-            separation = np.sort(np.append(separation, owa))
         if separation_planet is not None and separation_planet > separation[-1]: # extension of the separation axis to the planet's separation
             extension  = np.linspace(separation[-1]+pxscale, separation_planet, len(separation))
             extension  = np.append(extension, separation_planet+pxscale)
@@ -416,38 +414,35 @@ def get_systematic_profile(config_data, band, trans, Rc, R, star_spectrum_instru
         correction = "all_corrected" # correction = "with_fringes_straylight" # correction applied to the simulated MIRISim noiseless data
         T_star_sim_arr = np.array([4000, 6000, 8000]) # available values for the star temperature for MIRSim noiseless data
         T_star_sim     = T_star_sim_arr[np.abs(star_spectrum_instru.T - T_star_sim_arr).argmin()]
-        file = "data/MIRIMRS/MIRISim/star_center/star_center_T"+str(T_star_sim)+"K_mag7_s3d_"+band+"_"+correction ; sigma_outliers = None # simulated MIRISim noiseless data file
-        #file = 'data/MIRIMRS/MAST/HD 159222_ch'+band[0]+'-shortmediumlong_s3d' ; data = True ; sigma_outliers = 3 # CALIBRATION DATA => High S/N per spectral channel => M_data 
+        file = f"data/MIRIMRS/MIRISim/star_center/star_center_T{T_star_sim}K_mag7_s3d_{band}_{correction}.fits" ; sigma_outliers = None # simulated MIRISim noiseless data file
+        #file = f"data/MIRIMRS/MAST/HD 159222_ch{band[0]}-shortmediumlong_s3d.fits" ; data = True ; sigma_outliers = 3 # CALIBRATION DATA => High S/N per spectral channel => M_data 
     elif instru == "NIRSpec":
-        file = 'data/NIRSpec/MAST/HD 163466_nirspec_'+band+'_s3d' ; data = True ; sigma_outliers = 3 # CALIBRATION DATA => High S/N per spectral channel => M_data: see Section 2.3 + 3.3 of Martos et al. 2025
+        file = f"data/NIRSpec/MAST/HD 163466_nirspec_{band}_s3d.fits" ; data = True ; sigma_outliers = 3 # CALIBRATION DATA => High S/N per spectral channel => M_data: see Section 2.3 + 3.3 of Martos et al. 2025
     try: # if the files already exist
         if data: 
-            S_noiseless = fits.getdata("sim_data/Systematics/"+instru+"/S_data_star_center_s3d_"+band+".fits") # on-sky data cube used to estimate the modulations (in e-/mn)
-            pxscale     = fits.getheader("sim_data/Systematics/"+instru+"/S_data_star_center_s3d_"+band+".fits")['pxscale'] # in arcsec/px
-            wave        = fits.getdata("sim_data/Systematics/"+instru+"/wave_data_star_center_s3d_"+band+".fits") # wavelength array of the data
+            S_noiseless = fits.getdata(f"sim_data/Systematics/{instru}/S_data_star_center_s3d_{band}.fits") # on-sky data cube used to estimate the modulations (in e-/mn)
+            pxscale     = fits.getheader(f"sim_data/Systematics/{instru}/S_data_star_center_s3d_{band}.fits")['pxscale'] # in arcsec/px
+            wave        = fits.getdata(f"sim_data/Systematics/{instru}/wave_data_star_center_s3d_{band}.fits") # wavelength array of the data
         else:
-            S_noiseless = fits.getdata("sim_data/Systematics/"+instru+"/S_noiseless_star_center_T"+str(T_star_sim)+"K_mag7_s3d_"+band+"_"+correction+".fits")  # MIRISim noiseless data cube used to estimate the modulations (in e-/mn)
-            pxscale     = fits.getheader("sim_data/Systematics/"+instru+"/S_noiseless_star_center_T"+str(T_star_sim)+"K_mag7_s3d_"+band+"_"+correction+".fits")['pxscale'] # in arcsec/px
-            wave        = fits.getdata("sim_data/Systematics/"+instru+"/wave_noiseless_star_center_T"+str(T_star_sim)+"K_mag7_s3d_"+band+"_"+correction+".fits") # wavelength array of the data
+            S_noiseless = fits.getdata(f"sim_data/Systematics/{instru}/S_noiseless_star_center_T{T_star_sim}K_mag7_s3d_{band}_{correction}.fits")  # MIRISim noiseless data cube used to estimate the modulations (in e-/mn)
+            pxscale     = fits.getheader(f"sim_data/Systematics/{instru}/S_noiseless_star_center_T{T_star_sim}K_mag7_s3d_{band}_{correction}.fits")['pxscale'] # in arcsec/px
+            wave        = fits.getdata(f"sim_data/Systematics/{instru}/wave_noiseless_star_center_T{T_star_sim}K_mag7_s3d_{band}_{correction}.fits") # wavelength array of the data
     except: # in case they don't, create them (but the raw data are needed)
-        file += ".fits"
-        S_noiseless, wave, pxscale, _, _, exposure_time, _ = extract_jwst_data(instru, "sim", band, crop_band=True, cosmic=data, sigma_cosmic=sigma_outliers, file=file, X0=None, Y0=None, R_crop=None, verbose=False)
-        S_noiseless /= exposure_time # in e-/mn
+        S_noiseless, wave, pxscale, _, _, exposure_time, _ = extract_jwst_data(instru, "sim", band, crop_band=True, outliers=data, sigma_outliers=sigma_outliers, file=file, X0=None, Y0=None, R_crop=None, verbose=False)
         hdr = fits.Header() ; hdr['pxscale'] = pxscale
         if data: # writing the data for systematics estimation purposes
-            fits.writeto("sim_data/Systematics/"+instru+"/S_data_star_center_s3d_"+band+".fits", S_noiseless, header=hdr, overwrite=True)
-            fits.writeto("sim_data/Systematics/"+instru+"/wave_data_star_center_s3d_"+band+".fits", wave, overwrite=True)
+            fits.writeto(f"sim_data/Systematics/{instru}/S_data_star_center_s3d_{band}.fits", S_noiseless, header=hdr, overwrite=True)
+            fits.writeto(f"sim_data/Systematics/{instru}/wave_data_star_center_s3d_{band}.fits", wave, overwrite=True)
         else:
-            fits.writeto("sim_data/Systematics/"+instru+"/S_noiseless_star_center_T"+str(T_star_sim)+"K_mag7_s3d_"+band+"_"+correction+".fits", S_noiseless, header=hdr, overwrite=True)
-            fits.writeto("sim_data/Systematics/"+instru+"/wave_noiseless_star_center_T"+str(T_star_sim)+"K_mag7_s3d_"+band+"_"+correction+".fits", wave, overwrite=True)
+            fits.writeto(f"sim_data/Systematics/{instru}/S_noiseless_star_center_T{T_star_sim}K_mag7_s3d_{band}_{correction}.fits", S_noiseless, header=hdr, overwrite=True)
+            fits.writeto(f"sim_data/Systematics/{instru}/wave_noiseless_star_center_T{T_star_sim}K_mag7_s3d_{band}_{correction}.fits", wave, overwrite=True)
 
-    f     = interp1d(wave_band, trans, bounds_error=False, fill_value=np.nan)
-    trans = f(wave) # interpolating the transmission on the wavelength array of the data
+    trans = get_transmission(instru, wave, band, tellurics=False, apodizer="NO_SP")
     NbChannel, NbLine, NbColumn = S_noiseless.shape # size of the cube
     y_center = NbLine//2
     x_center = NbColumn//2 # spatial center position of the cube
     S_noiseless *= annular_mask(0, int(round(config_data["spec"]["FOV"]/2/pxscale))+1, size=(NbLine,NbColumn))
-    star_flux_FC   = star_spectrum_instru.degrade_resolution(wave, renorm=True).flux * trans # star spectrum considered in FastCurves (in e-/mn)
+    star_flux_FC   = trans * star_spectrum_instru.degrade_resolution(wave, renorm=True).flux # star spectrum considered in FastCurves (in e-/mn)
     total_flux     = np.nansum(star_flux_FC) # total stellar flux (in e-/mn)
     star_flux_data = np.nansum(S_noiseless, (1, 2)) # gamma x S* of the data cube (in e-/mn)     
     star_flux_data[star_flux_data==0] = np.nan # e-/mn
@@ -455,9 +450,13 @@ def get_systematic_profile(config_data, band, trans, Rc, R, star_spectrum_instru
     sigma_syst_prime_2 = np.zeros_like(sep) # systematic noise profile array estimated
     M_HF               = np.zeros((len(sep), len(wave_band))) # high frequency systematic modulations as function of the separation [M(lambda, rho)]_HF
     
-    if instru == "MIRIMRS" and not data: # for MIRISim data, the injected star spectra is known
-        input_flux     = np.loadtxt('sim_data/Systematics/MIRIMRS/star_'+str(T_star_sim)+'_mag7_J.txt', skiprows=1) ; input_flux = Spectrum(input_flux[:, 0], input_flux[:, 1], None, None) ; input_flux = input_flux.degrade_resolution(wave, renorm=False) ; input_flux = input_flux.set_nbphotons_min(config_data, wave) ; input_flux.flux *= trans # en e-/mn
-        star_flux_data = input_flux.flux * np.nanmean(star_flux_data) / np.nanmean(input_flux.flux) # S_* en e-/mn
+    if not data: # for MIRISim data, the injected star spectra is known
+        input_flux       = np.loadtxt(f"sim_data/Systematics/{instru}/star_{T_star_sim}_mag7_J.txt", skiprows=1)
+        input_flux       = Spectrum(input_flux[:, 0], input_flux[:, 1], None, None)
+        input_flux       = input_flux.degrade_resolution(wave, renorm=False)
+        input_flux       = input_flux.set_nbphotons_min(config_data, wave)
+        input_flux.flux *= trans # en e-/mn
+        star_flux_data   = input_flux.flux * np.nanmean(star_flux_data) / np.nanmean(input_flux.flux) # S_* en e-/mn
     
     cube_wo_planet = np.zeros_like(S_noiseless) + np.nan
     for i in range(NbChannel): # renormalizing the cube with the star spectra considered
@@ -467,13 +466,13 @@ def get_systematic_profile(config_data, band, trans, Rc, R, star_spectrum_instru
     
     if PCA: # applying PCA as it would be applied on real data
         if Rc == 100: # For all FastYield calculations (with Rc = 100)
-            T_star_t_syst_arr = np.array([3000, 6000, 9000])
-            T_star_t_syst     = T_star_t_syst_arr[np.abs(star_spectrum_instru.T-T_star_t_syst_arr).argmin()] 
+            T_star_t_syst_arr   = np.array([3000, 6000, 9000])
+            T_star_t_syst       = T_star_t_syst_arr[np.abs(star_spectrum_instru.T-T_star_t_syst_arr).argmin()] 
             T_planet_t_syst_arr = np.arange(500, 3000+100, 100)
             T_planet_t_syst     = T_planet_t_syst_arr[np.abs(planet_spectrum_instru.T-T_planet_t_syst_arr).argmin()] 
-            t_syst            = fits.getdata("sim_data/Systematics/"+instru+"/t_syst/t_syst_"+instru+"_"+band+"_Tp"+str(T_planet_t_syst)+"K_Ts"+str(T_star_t_syst)+"K_Rc"+str(Rc))
-            separation_t_syst = fits.getdata("sim_data/Systematics/"+instru+"/t_syst/separation_"+instru+"_"+band+"_Tp"+str(T_planet_t_syst)+"K_Ts"+str(T_star_t_syst)+"K_Rc"+str(Rc))
-            mag_star_t_syst   = fits.getdata("sim_data/Systematics/"+instru+"/t_syst/mag_star_"+instru+"_"+band+"_Tp"+str(T_planet_t_syst)+"K_Ts"+str(T_star_t_syst)+"K_Rc"+str(Rc))
+            t_syst            = fits.getdata(f"sim_data/Systematics/{instru}/t_syst/t_syst_{instru}_{band}_Tp{T_planet_t_syst}K_Ts{T_star_t_syst}K_Rc{Rc}")
+            separation_t_syst = fits.getdata(f"sim_data/Systematics/{instru}/t_syst/separation_{instru}_{band}_Tp{T_planet_t_syst}K_Ts{T_star_t_syst}K_Rc{Rc}")
+            mag_star_t_syst   = fits.getdata(f"sim_data/Systematics/{instru}/t_syst/mag_star_{instru}_{band}_Tp{T_planet_t_syst}K_Ts{T_star_t_syst}K_Rc{Rc}")
             mag_star          = np.clip(mag_star, np.nanmin(mag_star_t_syst), np.nanmax(mag_star_t_syst))
             separation_planet = np.clip(separation_planet, np.nanmin(separation_t_syst), np.nanmax(separation_t_syst))
             interp_func = RegularGridInterpolator((mag_star_t_syst, separation_t_syst), t_syst, method='linear')
@@ -576,13 +575,18 @@ def get_systematic_profile(config_data, band, trans, Rc, R, star_spectrum_instru
             if show_cos_theta_est: # to estimate the correlation that would be measured, the high frequency modulation is needed at each separation
                 f            = interp1d(wave, Sres_wo_planet[:, y_center+1-r, x_center+1]/star_flux_FC, bounds_error=False, fill_value=np.nan)
                 M_HF[r-1, :] = f(wave_band)
-        
-    Mp  = np.nanmean(cube_wo_planet[:, y_center-size_core//2:y_center+size_core//2+1, x_center-size_core//2:x_center+size_core//2+1], axis=(1, 2))/star_flux_FC 
-    Mp /= np.nanmean(Mp) # estimating the planet modulation function on the FWHM of the star (it's actually a bad estimation, but it's not significant for the performance estimates, only for the estimation of the correlation that would be measured cos_theta_est)
-    #Mp = fits.getdata("utils/Mp/Mp_"+band+"_"+str(planet_spectrum_instru.T_planet)+"K.fits")
+    
+    # Estimation of the planetary modulation function (~stellar modulation function across the FWHM)
+    Mp  = np.nanmean(cube_wo_planet[:, y_center-size_core//2:y_center+size_core//2+1, x_center-size_core//2:x_center+size_core//2+1], axis=(1, 2)) / star_flux_FC 
+    Mp /= np.nanmean(Mp) # estimating the planet modulation function on the FWHM of the star (it's actually a bad estimation, but it's not significant for the performance estimates, only for the estimation of the correlation that would be measured cos_theta_est)    
+    #Mp = fits.getdata("utils/Mp/Mp_{band}_"+str(planet_spectrum_instru.T_planet)+"K.fits")
     f  = interp1d(wave, Mp, bounds_error=False, fill_value=np.nan)
     Mp = f(wave_band)
     #plt.figure(dpi=300) ; plt.plot(wave_band, Mp) ; plt.title(f"{band}") ; plt.show()
+    
+    # # CCF sanity check
+    # plt.figure(dpi=300) ; plt.imshow(CCF_wo_planet*annular_mask(size_core, max(NbLine, NbColumn)//2, size=(NbLine, NbColumn))) ; plt.title(f"{band}") ; plt.show()
+    
     return sigma_syst_prime_2, sep, M_HF, Mp, M_pca, wave, pca
 
 

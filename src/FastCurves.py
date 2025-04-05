@@ -67,7 +67,7 @@ def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_
             print('\n ADI and/or RDI considered as post-processing method')
         if systematic:
             if PCA:
-                print(' With systematics + PCA')
+                print(f' With systematics + PCA (with {Nc} components)')
             else:
                 print(' With systematics')
         else:
@@ -594,7 +594,7 @@ def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_
         ax2 = ax1.twinx()
         ax2.set_yscale('log')
         ax2.set_xlim(0, separation[-1])
-        ax2.axvspan(0, IWA, color='black', alpha=0.5, lw=0)
+        ax2.axvspan(0, IWA, color='black', alpha=0.3, lw=0)
         ax2.get_yaxis().set_visible(False)
         ax2.get_xaxis().set_visible(False)        
         for i in range(len(contrast_bands)):
@@ -677,9 +677,7 @@ def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_
         ax1.set_title(f"{instru} S/N curves {for_planet_name} with $t_{{exp}}$ = {round(exposure_time)} mn,\n" + f"$mag_*$({band0}) = {round(mag_star, 2)}, $mag_p$({band0}) = {round(mag_planet, 2)}, " + f"$T_p$ = {int(round(T_planet))}K ({model})", fontsize=16)
         ax1.set_xlabel(f"separation [{sep_unit}]", fontsize=14)
         ax1.set_ylabel('S/N', fontsize=14)        
-        ax1.yaxis.set_ticks_position('both')
-        ax1.tick_params(axis='both', labelsize=12)  
-        ax1.axvspan(0, IWA, color='black', alpha=0.5, lw=0)
+        ax1.axvspan(0, IWA, color='black', alpha=0.3, lw=0)
         for i in range(len(SNR_bands)):
             if band_only is not None:
                 color_idx = [nb for nb, band in enumerate(config_data["gratings"]) if band == band_only][0]
@@ -699,7 +697,9 @@ def FastCurves_main(calculation, instru, exposure_time, mag_star, band0, planet_
             ax_legend.tick_params(axis='y', colors='w')
         ax1.set_ylim(0)
         ax1.legend(loc="upper left", fontsize=12, frameon=True, fancybox=True, shadow=True, borderpad=1)  
-        plt.minorticks_on()
+        ax1.minorticks_on()
+        ax1.yaxis.set_ticks_position('both')
+        ax1.tick_params(axis='both', labelsize=12)  
         plt.tight_layout()        
         plt.show()
         

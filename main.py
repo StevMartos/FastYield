@@ -5,11 +5,12 @@ from src.FastYield_interface import *
 from src.DataAnalysis_interface import *
 
 
+
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
 # Graphic Interface :
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-#FastYield_interface()
+FastYield_interface()
 
 
 
@@ -60,8 +61,8 @@ from src.DataAnalysis_interface import *
 # FastCurves (real data cases) :
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-# Chameleon  (DIT = 138.75 s) / SNR(1MEDIUM) = 11.98
-FastCurves(instru="MIRIMRS", systematic=True, input_DIT=138.75/60, model="BT-Settl", calculation="SNR", separation_planet=2.5, T_planet=2600, lg_planet=3.5, planet_name="CT Cha b", mag_star=8.66, mag_planet=14.9, band0='K', T_star=4400, lg_star=3.5, exposure_time=56.426, rv_star=-2.9, rv_planet=15, vsini_star=10, vsini_planet=10, channel=False)
+# Chameleon  (DIT = 138.75 s) / SNR(1MEDIUM) = 12.46
+#FastCurves(instru="MIRIMRS", systematic=True, input_DIT=138.75/60, model="BT-Settl", calculation="SNR", separation_planet=2.5, T_planet=2600, lg_planet=3.5, planet_name="CT Cha b", mag_star=8.66, mag_planet=14.9, band0='K', T_star=4400, lg_star=3.5, exposure_time=56.426, rv_star=-2.9, rv_planet=15, vsini_star=10, vsini_planet=10, channel=False)
 #FastCurves(band_only="1SHORT", instru="MIRIMRS", systematic=False, input_DIT=138.75/60, model="BT-Settl", calculation="corner plot", separation_planet=2.5, T_planet=2600, lg_planet=3.5, planet_name="CT Cha b", mag_star=8.66, mag_planet=14.9, band0='K', T_star=4400, lg_star=3.5, exposure_time=56.426, rv_star=-2.9, rv_planet=15, channel=False)
 
 

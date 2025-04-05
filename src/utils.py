@@ -1,5 +1,6 @@
 from src.config import * # + numpy as np
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 from matplotlib.colors import LogNorm
 from matplotlib.cm import get_cmap
 import matplotlib.colors as mcolors
@@ -10,6 +11,7 @@ from scipy.special import comb
 from scipy.signal import savgol_filter
 from scipy.ndimage import shift
 from scipy.stats import binned_statistic
+from scipy.optimize import curve_fit
 from PyAstronomy import pyasl
 import pandas as pd
 from astropy.io import fits, ascii
@@ -214,13 +216,12 @@ def annular_mask(R_int, R_ext, size, value=np.nan):
     return mask
 
 def crop(data, Y0=None, X0=None, R_crop=None, return_center=False):
-    data = np.nan_to_num(data)
     # Calcul du centre global sur la médiane du cube si non fourni
     if Y0 is None or X0 is None:
         if data.ndim == 3:
-            A = np.nanmedian(data, axis=0)
+            A = np.nanmedian(np.nan_to_num(data), axis=0)
         else:
-            A = data
+            A = np.nan_to_num(data)
         Y0, X0 = np.unravel_index(np.argmax(A, axis=None), A.shape)
     # Calcul du rayon de recadrage si non fourni
     if R_crop is None:
@@ -248,14 +249,12 @@ def crop(data, Y0=None, X0=None, R_crop=None, return_center=False):
         return B
     
 def crop_both(data1, data2, Y0=None, X0=None, R_crop=None, return_center=False):
-    data1 = np.nan_to_num(data1)
-    data2 = np.nan_to_num(data2)
     # Calcul du centre global sur la médiane du cube si non fourni
     if Y0 is None or X0 is None:
         if data1.ndim == 3:
-            A = np.nanmedian(data1, axis=0)
+            A = np.nanmedian(np.nan_to_num(data1), axis=0)
         else:
-            A = data1
+            A = np.nan_to_num(data1)
         Y0, X0 = np.unravel_index(np.argmax(A, axis=None), A.shape)
     # Calcul du rayon de recadrage si non fourni
     if R_crop is None:
@@ -299,6 +298,8 @@ def align_HC_bench_psf(cube_desat, cube, model="airy_disk", dpx=10, wave=None):
     """
     Align each slice of the HC bench cubes. 
     """
+    cube_desat = np.nan_to_num(cube_desat)
+    cube       = np.nan_to_num(cube)
     import vip_hci as vip
     cube_desat_med = np.nanmedian(cube_desat, axis=0)
     Y0, X0         = np.unravel_index(np.argmax(np.nan_to_num(cube_desat_med), axis=None), cube_desat_med.shape)
@@ -376,9 +377,10 @@ def align_HC_bench_psf(cube_desat, cube, model="airy_disk", dpx=10, wave=None):
 
 def correlation_PSF(cube_M, CCF):
     idx_PSF_centroid = np.unravel_index(np.nanargmax(PSF, axis=None), PSF.shape)    
-    i_PSF_centroid = idx_PSF_centroid[0] ; j_PSF_centroid = idx_PSF_centroid[1]
-    PSF_shift = np.copy(PSF)*0
-    CCF_conv = np.copy(CCF)*np.nan
+    i_PSF_centroid = idx_PSF_centroid[0]
+    j_PSF_centroid = idx_PSF_centroid[1]
+    PSF_shift = np.copy(PSF) * 0
+    CCF_conv  = np.copy(CCF) * np.nan
     for i_shift in range(CCF_conv.shape[0]):
         for j_shift in range(CCF_conv.shape[1]): 
             if not np.isnan(CCF[i_shift, j_shift]):
@@ -436,18 +438,31 @@ def qqplot(map_w, show=True):
     sm.qqplot(list_cn_w, ax=ax, line='45')
     plt.title('Q-Q plots of the CCF', fontsize = 14) ; plt.ylabel("sample quantiles", fontsize = 14) ; plt.xlabel("theoritical quantiles", fontsize = 14) ; plt.grid(True) ; plt.show()
     
-def qqplot2(map1, map2, band, target_name):
-    plt.figure(dpi=300) ; ax = plt.gca()
+def qqplot2(CCF_map, sep_lim, sep_unit, pxscale, band, target_name):
+    NbLine, NbColumn = CCF_map.shape
+    map1 = CCF_map*annular_mask(0, int(round(sep_lim/pxscale)), size=(NbLine, NbColumn))
     map1 = map1[~np.isnan(map1)] # filtrage nan
     map1 = (map1-np.mean(map1))/np.std(map1) #loi normale centrée (std=1)
-    sm.qqplot(map1, ax=ax, marker='o', markerfacecolor='b', markeredgecolor='b', alpha=1, label='below 1"')
+    map2 = CCF_map*annular_mask(int(round(sep_lim/pxscale))+1, max(NbLine//2, NbColumn//2)-3, size=(NbLine, NbColumn))
     map2 = map2[~np.isnan(map2)] # filtrage nan
     map2 = (map2-np.mean(map2))/np.std(map2) #loi normale centrée (std=1)
-    sm.qqplot(map2, ax=ax, marker='o', markerfacecolor='r', markeredgecolor='r', alpha=1, label='above 1"')
-    sm.qqline(ax=ax, line='45', fmt='k')
-    plt.legend()
-    plt.title(f'Q-Q plots of the CCF of {target_name} on {band}', fontsize = 14) ; plt.ylabel("sample quantiles", fontsize = 14) ; plt.xlabel("theoritical quantiles", fontsize = 14) ; plt.grid(True) ; plt.show()
-
+    
+    plt.figure(dpi=300, figsize=(6, 6))
+    ax = plt.gca()    
+    sm.qqplot(map1, line=None, ax=ax, marker='o', markerfacecolor='royalblue', markeredgecolor='royalblue', alpha=0.6, label=f'sep < {sep_lim} {sep_unit}', lw=1)
+    sm.qqplot(map2, line=None, ax=ax, marker='o', markerfacecolor='crimson', markeredgecolor='crimson', alpha=0.6, label=f'sep > {sep_lim} {sep_unit}', lw=1)    
+    sm.qqline(ax=ax, line='45', fmt='k--', lw=2)    
+    plt.title(f"Q-Q plot of the CCF of {target_name} on {band}", fontsize=15, pad=12)
+    plt.xlabel("Theoretical quantiles", fontsize=14)
+    plt.ylabel("Sample quantiles", fontsize=14)
+    plt.legend(loc='best', fontsize=12, frameon=True)
+    plt.grid(True, linestyle='--', linewidth=0.5, alpha=0.7)
+    plt.minorticks_on()
+    plt.xticks(fontsize=12)
+    plt.yticks(fontsize=12)
+    plt.tight_layout()
+    plt.show()
+    
 def qqplot2_hirise(CCF_signal, CCF_bkgd, band, target_name):
     plt.figure(dpi=300) ; ax = plt.gca()
     CCF_signal = CCF_signal[~np.isnan(CCF_signal)] # filtrage nan
@@ -466,74 +481,115 @@ def qqplot2_hirise(CCF_signal, CCF_bkgd, band, target_name):
 
 
 
-def extract_jwst_data(instru, target_name, band, crop_band=True, cosmic=False, sigma_cosmic=5, file=None, X0=None, Y0=None, R_crop=None, verbose=True):
+def extract_jwst_data(instru, target_name, band, crop_band=True, outliers=False, sigma_outliers=5, file=None, X0=None, Y0=None, R_crop=None, verbose=True):
+    
+    # Instrument specs
     config_data = get_config_data(instru)
+    area        = config_data['telescope']['area'] # aire collectrice m²
+
+    # Opening file
     if file is None :
         if instru=="MIRIMRS" : 
-            if target_name=="HR8799" or target_name=="Bpic" or "SIM Bpic" in target_name or target_name=="GJ504":
-                file = 'data/MIRIMRS/MIRISim/'+target_name+'_'+band+'_s3d.fits'
+            if "sim" in target_name.lower():
+                file = f"data/MIRIMRS/MIRISim/{target_name}_{band}_s3d.fits"
             else :
-                file = 'data/MIRIMRS/MAST/'+target_name+'_ch'+band[0]+'-shortmediumlong_s3d.fits'
+                file = f"data/MIRIMRS/MAST/{target_name}_ch{band[0]}-shortmediumlong_s3d.fits"
         elif instru=="NIRSpec":
-            file = 'data/NIRSpec/MAST/'+target_name+'_nirspec_'+band+'_s3d.fits'
+            file = f"data/NIRSpec/MAST/{target_name}_nirspec_{band}_s3d.fits"
     f = fits.open(file)
-    hdr = f[1].header ; hdr0 = f[0].header
-    pxsteradian = hdr['PIXAR_SR'] # Nominal pixel area in steradians
+    
+    # Retrieving header values
+    hdr0 = f[0].header
+    hdr  = f[1].header
     if instru=="MIRIMRS" :
-        if target_name == "HR8799" or target_name == "GJ504" or target_name == "Bpic" or "SIM Bpic" in target_name or "sim" in target_name : # les données MIRISIM sont déjà par bande (et non par channel)
-            exposure_time=f[0].header['EFFEXPTM']/60 # in mn / Effective exposure time
-        elif crop_band :
-            target_name = hdr0['TARGNAME']
-            exposure_time=f[0].header['EFFEXPTM']/3/60 # in mn / Effective exposure time
+        if "sim" in target_name.lower(): # les données MIRISIM sont déjà par bande (et non par channel)
+            exposure_time = f[0].header['EFFEXPTM']/60 # in mn / Effective exposure time
+        elif crop_band:
+            target_name   = hdr0['TARGNAME']
+            exposure_time = f[0].header['EFFEXPTM']/3/60 # in mn / Effective exposure time
         else:
-            target_name = hdr0['TARGNAME']
-            exposure_time=f[0].header['EFFEXPTM']/60 # in mn / Effective exposure time
+            target_name   = hdr0['TARGNAME']
+            exposure_time = f[0].header['EFFEXPTM']/60 # in mn / Effective exposure time
     elif instru == "NIRSpec":
-        target_name = hdr0['TARGNAME']
-        exposure_time=f[0].header['EFFEXPTM']/60 # in mn / Effective exposure time
-    DIT = f[0].header['EFFINTTM']/60 # in mn
-    pxscale = hdr['CDELT1']*3600 # data pixel scale in "/px
-    step = hdr['CDELT3'] # delta_lambda in µm
+        target_name   = hdr0['TARGNAME']
+        exposure_time = f[0].header['EFFEXPTM']/60 # in mn / Effective exposure time
+    DIT         = f[0].header['EFFINTTM']/60 # in mn
+    pxsteradian = hdr['PIXAR_SR'] # Nominal pixel area in steradians
+    pxscale     = hdr['CDELT1']*3600 # data pixel scale in "/px
+    step        = hdr['CDELT3'] # delta_lambda in µm
+    wave        = (np.arange(hdr['NAXIS3'])+hdr['CRPIX3']-1)*hdr['CDELT3']+hdr['CRVAL3'] # axe de longueur d'onde des données en µm
+
+    # Retrieving data
     cube = f[1].data # en MJy/Steradian (densité "angulaire" de flux mesurée dans chaque pixel)
+    err  = f[2].data # erreur sur le flux en MJy/Sr
+    cube, err = crop_both(cube, err, X0=X0, Y0=Y0, R_crop=R_crop)
     NbChannel, NbLine, NbColumn = cube.shape
-    err = f[2].data # erreur sur le flux en MJy/Sr
-    wave = (np.arange(hdr['NAXIS3'])+hdr['CRPIX3']-1)*hdr['CDELT3']+hdr['CRVAL3'] # axe de longueur d'onde des données en µm
-    area = config_data['telescope']['area'] # aire collectrice m²
-    cube *= pxsteradian*1e6 ; err *= pxsteradian*1e6 # MJy/Steradian => Jy/px
-    cube *= 1e-26 ; err *= 1e-26 # Jy/pixel => J/s/m²/Hz/px
-    for i in range(cube.shape[0]):
-        cube[i] *= c/((wave[i]*1e-6)**2) ; err[i] *= c/((wave[i]*1e-6)**2) # J/s/m²/Hz/px => J/s/m²/m/px
-    cube *= step*1e-6 ; err *= step*1e-6 # J/s/m²/m/px => J/s/m²/px
-    for i in range(cube.shape[0]):
-        cube[i] *= wave[i]*1e-6/(h*c) ; err[i] *= wave[i]*1e-6/(h*c) # J/s/m²/px => ph/s/m²/px
-    cube *= area ; err *= area # ph/s/m²/px => photons/s/px
-    if crop_band : 
+    
+    # Converting data in total e- (or ph if crop_band) / px
+    cube *= pxsteradian*1e6              # MJy/Steradian => Jy/px
+    err  *= pxsteradian*1e6
+    cube *= 1e-26                        # Jy/pixel => J/s/m²/Hz/px
+    err  *= 1e-26
+    for i in range(NbChannel):
+        cube[i] *= c/((wave[i]*1e-6)**2) # J/s/m²/Hz/px => J/s/m²/m/px
+        err[i]  *= c/((wave[i]*1e-6)**2)
+    cube *= step*1e-6                    # J/s/m²/m/px => J/s/m²/px
+    err  *= step*1e-6
+    for i in range(NbChannel):
+        cube[i] *= wave[i]*1e-6/(h*c)    # J/s/m²/px => ph/s/m²/px
+        err[i] *= wave[i]*1e-6/(h*c)
+    cube *= area                         # ph/s/m²/px => photons/s/px
+    err  *= area
+    if crop_band: 
         cube = cube[(wave>config_data['gratings'][band].lmin) & (wave<config_data['gratings'][band].lmax)]
-        err = err[(wave>config_data['gratings'][band].lmin) & (wave<config_data['gratings'][band].lmax)]
+        err  = err[(wave>config_data['gratings'][band].lmin) & (wave<config_data['gratings'][band].lmax)]
         wave = wave[(wave>config_data['gratings'][band].lmin) & (wave<config_data['gratings'][band].lmax)]
+        NbChannel = cube.shape[0]
         from src.signal_noise_estimate import get_transmission
         trans = get_transmission(instru, wave, band, tellurics=False, apodizer="NO_SP") / fits.getheader("sim_data/PSF/PSF_"+instru+"/PSF_"+band+"_NO_JQ_NO_SP.fits")['AC'] # AC is obviously already taken into account
-        for i in range(cube.shape[0]):
-            cube[i] *= trans[i] ; err[i] *= trans[i] # e-/s/pixel
-    else :
+        for i in range(NbChannel):
+            cube[i] *= trans[i]
+            err[i]  *= trans[i] # e-/s/pixel
+    else:
         trans = 1
-    cube *= exposure_time*60 ; err *= exposure_time*60 # e-/pixel or ph/pixel
-    cube, err = crop_both(cube, err, X0=X0, Y0=Y0, R_crop=R_crop) # on met l'étoile au centre du cube
-    cube[cube==0] = np.nan ; err[err==0] = np.nan
-    if cosmic :
+    cube *= exposure_time*60
+    err  *= exposure_time*60 # e-/pixel or ph/pixel
+    
+    # Cropping empty slices
+    valid_slices = np.array([np.any(np.isfinite(cube[i]) & (cube[i] != 0)) for i in range(NbChannel)])
+    wave  = wave[valid_slices]
+    cube  = cube[valid_slices]
+    err   = err[valid_slices]
+    trans = trans[valid_slices]
+    NbChannel = cube.shape[0]
+    
+    # Flagging bad pixels
+    if instru == "MIRIMRS": # flagging edge effects
+        bad_pixels  = np.sum(cube, axis=(0))
+        bad_pixels *= 0
+    else:
+        bad_pixels = np.zeros((NbLine, NbColumn))        
+    cube += bad_pixels
+    err  += bad_pixels
+
+    cube[cube==0] = np.nan
+    err[err==0]   = np.nan
+    
+    # Flagging outliers
+    if outliers :
         NbChannel, NbLine, NbColumn = cube.shape
         Y = np.reshape(cube, (NbChannel, NbLine*NbColumn))
         Z = np.reshape(err, (NbChannel, NbLine*NbColumn))
         for k in range(Y.shape[1]):
             if not all(np.isnan(Y[:, k])):
-                sg = sigma_clip(Y[:, k], sigma=sigma_cosmic)
+                sg = sigma_clip(Y[:, k], sigma=sigma_outliers)
                 Y[:, k] = np.array(np.ma.masked_array(Y[:, k], mask=sg.mask).filled(np.nan))
                 Z[:, k] = np.array(np.ma.masked_array(Z[:, k], mask=sg.mask).filled(np.nan))
-                sg = sigma_clip(Z[:, k], sigma=sigma_cosmic)
+                sg = sigma_clip(Z[:, k], sigma=sigma_outliers)
                 Y[:, k] = np.array(np.ma.masked_array(Y[:, k], mask=sg.mask).filled(np.nan))
                 Z[:, k] = np.array(np.ma.masked_array(Z[:, k], mask=sg.mask).filled(np.nan))
         cube = Y.reshape((NbChannel, NbLine, NbColumn))
-        err = Z.reshape((NbChannel, NbLine, NbColumn))
+        err  = Z.reshape((NbChannel, NbLine, NbColumn))
     
     degrade_resolution = False # Crash test (does not seems better with it)
     if degrade_resolution:
@@ -551,16 +607,15 @@ def extract_jwst_data(instru, target_name, band, crop_band=True, cosmic=False, s
         print(' target name =', target_name, " / pixelscale =", round(pxscale, 3), ' "/px')
         if instru=="MIRIMRS":
             print(" DATE :", hdr0["DATE-OBS"])
-        try :
+        try:
             print(" TITLE :", hdr0["TITLE"])
-        except : 
+        except: 
             pass
         dwl = wave - np.roll(wave, 1) ; dwl[0] = dwl[1] ; dwl[dwl==0] = np.nanmean(dwl) # delta lambda array
-        R = np.nanmean(wave/(2*dwl)) # calculating the resolution
-        print(' R = ', round(R))        
-    
+        R   = np.nanmean(wave/(2*dwl)) # calculating the resolution
+        print(' R = ', round(R))     
+        
     return cube, wave, pxscale, err, trans, exposure_time, DIT
-
 
 
 
@@ -1227,7 +1282,7 @@ def PCA_subtraction(Sres, n_comp_sub, y0=None, x0=None, size_core=None, PCA_annu
                 
                 m_HF_spectrum = Spectrum(wave, pca_comp, R, None)
                 m_HF_spectrum.wavelength = m_HF_spectrum.wavelength[~np.isnan(m_HF_spectrum.flux)]
-                m_HF_spectrum.flux = m_HF_spectrum.flux[~np.isnan(m_HF_spectrum.flux)]
+                m_HF_spectrum.flux       = m_HF_spectrum.flux[~np.isnan(m_HF_spectrum.flux)]
                 res, psd = m_HF_spectrum.get_psd(smooth=0)
                 ax[k, 1].plot(res, psd, c=cmap(k))
                 if k==Nk-1:
@@ -1246,14 +1301,13 @@ def PCA_subtraction(Sres, n_comp_sub, y0=None, x0=None, size_core=None, PCA_annu
                 cax = ax[k, 2].imshow(CCF, extent=[-(CCF.shape[0]+1)//2*pxscale, (CCF.shape[0])//2*pxscale, -(CCF.shape[1]-2)//2*pxscale, (CCF.shape[1])//2*pxscale], zorder=3)
                 cbar = fig.colorbar(cax, ax=ax[k, 2], orientation='vertical', shrink=0.8) ; cbar.set_label("correlation", fontsize=14, labelpad=20, rotation=270)
                 if k==Nk-1:
-                    
                     #ax[k, 2].set_xlim(-3, 3)
                     #ax[k, 2].set_ylim(-3, 3)
                     ax[k, 2].set_xlabel('x offset (in ")', fontsize=14)
                 ax[k, 2].set_ylabel('y offset (in ")', fontsize=14)
                 ax[k, 2].grid(True)
             plt.show()
-            
+        
         if scree_plot :
             X = np.reshape(Sres, (NbChannel, NbColumn * NbLine)).transpose()
             X[np.isnan(X)] = 0

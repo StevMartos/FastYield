@@ -992,24 +992,25 @@ def thermal_reflected_spectrum(planet, instru=None, thermal_model="BT-Settl", re
     elif thermal_model == "None":
         planet_thermal   = Spectrum(wave_instru, np.zeros_like(wave_instru), star_spectrum.R, float(planet["PlanetTeq"].value), float(planet["PlanetLogg"].value), thermal_model)
         planet_thermal_K = Spectrum(wave_K, np.zeros_like(wave_K), star_spectrum_K.R, float(planet["PlanetTeq"].value), float(planet["PlanetLogg"].value), thermal_model)
-
-    albedo     = load_albedo(planet_thermal.T, planet_thermal.lg)
-    albedo_geo = np.nanmean(albedo.flux) # mean value of the geometric albedo given by PICASO
-    if reflected_model == "PICASO": # see Eq.(1) of Lovis et al. (2017): https://arxiv.org/pdf/1609.03082
-        albedo_K           = albedo.interpolate_wavelength(wave_K, renorm = False)
-        planet_reflected_K = star_spectrum_K.flux * albedo_K.flux * planet["g_alpha"] * (planet['PlanetRadius']/planet['SMA']).decompose()**2
-        albedo             = albedo.interpolate_wavelength(wave_instru, renorm = False)
-        planet_reflected   = star_spectrum.flux * albedo.flux * planet["g_alpha"] * (planet['PlanetRadius']/planet['SMA']).decompose()**2
-    elif reflected_model == "flat":
-        planet_reflected_K = star_spectrum_K.flux * albedo_geo * planet["g_alpha"] * (planet['PlanetRadius']/planet['SMA']).decompose()**2
-        planet_reflected   = star_spectrum.flux * albedo_geo * planet["g_alpha"] * (planet['PlanetRadius']/planet['SMA']).decompose()**2
-    elif reflected_model == "tellurics":
-        wave_tell, tell  = fits.getdata("sim_data/Transmission/sky_transmission_airmass_2.5.fits")
-        f                  = interp1d(wave_tell, tell, bounds_error=False, fill_value=np.nan)
-        albedo_tell_K      = albedo_geo/np.nanmean(tell) * f(wave_K)
-        planet_reflected_K = star_spectrum_K.flux * albedo_tell_K * planet["g_alpha"] * (planet['PlanetRadius']/planet['SMA']).decompose()**2
-        albedo_tell        = albedo_geo/np.nanmean(tell) * f(wave_instru)
-        planet_reflected   = star_spectrum.flux * albedo_tell * planet["g_alpha"] * (planet['PlanetRadius']/planet['SMA']).decompose()**2
+    
+    if reflected_model != "None":
+        albedo     = load_albedo(planet_thermal.T, planet_thermal.lg)
+        albedo_geo = np.nanmean(albedo.flux) # mean value of the geometric albedo given by PICASO
+        if reflected_model == "PICASO": # see Eq.(1) of Lovis et al. (2017): https://arxiv.org/pdf/1609.03082
+            albedo_K           = albedo.interpolate_wavelength(wave_K, renorm = False)
+            planet_reflected_K = star_spectrum_K.flux * albedo_K.flux * planet["g_alpha"] * (planet['PlanetRadius']/planet['SMA']).decompose()**2
+            albedo             = albedo.interpolate_wavelength(wave_instru, renorm = False)
+            planet_reflected   = star_spectrum.flux * albedo.flux * planet["g_alpha"] * (planet['PlanetRadius']/planet['SMA']).decompose()**2
+        elif reflected_model == "flat":
+            planet_reflected_K = star_spectrum_K.flux * albedo_geo * planet["g_alpha"] * (planet['PlanetRadius']/planet['SMA']).decompose()**2
+            planet_reflected   = star_spectrum.flux * albedo_geo * planet["g_alpha"] * (planet['PlanetRadius']/planet['SMA']).decompose()**2
+        elif reflected_model == "tellurics":
+            wave_tell, tell  = fits.getdata("sim_data/Transmission/sky_transmission_airmass_2.5.fits")
+            f                  = interp1d(wave_tell, tell, bounds_error=False, fill_value=np.nan)
+            albedo_tell_K      = albedo_geo/np.nanmean(tell) * f(wave_K)
+            planet_reflected_K = star_spectrum_K.flux * albedo_tell_K * planet["g_alpha"] * (planet['PlanetRadius']/planet['SMA']).decompose()**2
+            albedo_tell        = albedo_geo/np.nanmean(tell) * f(wave_instru)
+            planet_reflected   = star_spectrum.flux * albedo_tell * planet["g_alpha"] * (planet['PlanetRadius']/planet['SMA']).decompose()**2
     elif reflected_model == "None":
         planet_reflected   = np.zeros_like(wave_instru)*u.dimensionless_unscaled
         planet_reflected_K = np.zeros_like(wave_K)*u.dimensionless_unscaled

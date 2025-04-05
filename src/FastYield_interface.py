@@ -411,12 +411,12 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
             obs_mask = are_planets_observable(latitude=self.latitude, longitude=self.longitude, altitude=self.altitude, planet_table=self.planet_table, date_obs=self.date_obs.get(), min_elevation=self.min_elevation.get())
             self.planet_table = self.planet_table[obs_mask]
         if self.units == "Physical":
-            planet_table_raw = planet_table_raw[~get_mask(planet_table_raw, "PlanetMass")]
+            planet_table_raw  = planet_table_raw[~get_mask(planet_table_raw, "PlanetMass")]
             self.planet_table = self.planet_table[~get_mask(self.planet_table, "PlanetMass")]
-            planet_table_raw = planet_table_raw[~get_mask(planet_table_raw, "SMA")]
+            planet_table_raw  = planet_table_raw[~get_mask(planet_table_raw, "SMA")]
             self.planet_table = self.planet_table[~get_mask(self.planet_table, "SMA")]
         # WORKING ANGLE
-        iwa, owa = get_wa(config_data=self.config_data, band=self.band, apodizer=self.apodizer, sep_unit="mas")
+        iwa, owa          = get_wa(config_data=self.config_data, band=self.band, apodizer=self.apodizer, sep_unit="mas")
         planet_table_raw  = planet_table_raw[planet_table_raw["AngSep"] <= iwa * u.mas]
         self.planet_table = self.planet_table[self.planet_table["AngSep"] >= iwa * u.mas]
         # calcul du SNR de chaque planète sur la bande
@@ -619,7 +619,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
                 band_only = None 
             else:
                 band_only = self.band
-            FastCurves(instru=self.instru, band_only=band_only, calculation=self.calculation, T_planet=float(self.planet["PlanetTeq"].value), lg_planet=float(self.planet["PlanetLogg"].value), mag_star=mag_s, band0=band0, T_star=float(self.planet["StarTeff"].value), lg_star=float(self.planet["StarLogg"].value), exposure_time=self.exposure_time.get(), model=self.model, mag_planet=mag_p, separation_planet=float(self.planet["AngSep"].value/1000), planet_name=self.planet["PlanetName"], systematic=self.systematics, PCA=self.PCA, show_plot=True, verbose=True, star_spectrum=star_spectrum, planet_spectrum=planet_spectrum, apodizer=self.apodizer, strehl=self.strehl)
+            FastCurves(PCA_mask=True, instru=self.instru, band_only=band_only, calculation=self.calculation, T_planet=float(self.planet["PlanetTeq"].value), lg_planet=float(self.planet["PlanetLogg"].value), mag_star=mag_s, band0=band0, T_star=float(self.planet["StarTeff"].value), lg_star=float(self.planet["StarLogg"].value), exposure_time=self.exposure_time.get(), model=self.model, mag_planet=mag_p, separation_planet=float(self.planet["AngSep"].value/1000), planet_name=self.planet["PlanetName"], systematic=self.systematics, PCA=self.PCA, show_plot=True, verbose=True, star_spectrum=star_spectrum, planet_spectrum=planet_spectrum, apodizer=self.apodizer, strehl=self.strehl)
 
     def destroy_lower_buttons(self):
         try:

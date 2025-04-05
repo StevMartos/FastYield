@@ -156,8 +156,8 @@ def molecular_mapping_rv(instru, S_res, star_flux, T_planet, lg_planet, model, w
     for k in range(len(rv)):
         if verbose:
             print(" CCF for: rv = ", rv[k], " km/s & Tp =", T_planet, "K & lg = ", lg_planet)
-        template_HF_shift = template_HF.doppler_shift(rv[k]).flux # shifting the tempalte
-        template_LF_shift = template_LF.doppler_shift(rv[k]).flux # shifting the tempalte
+        template_HF_shift = template_HF.doppler_shift(rv[k], renorm=False).flux # shifting the tempalte
+        template_LF_shift = template_LF.doppler_shift(rv[k], renorm=False).flux # shifting the tempalte
         template_shift = trans*template_HF_shift # it should be almost the same thing with or without the residual star flux, for the 2D CCF it is not considered by default beacause this residual term could project on systematics and accentuate the spatial systematic noise contribution
         if stellar_component and Rc is not None: # adding the stellar component (if required)
             template_shift += -trans * star_HF * template_LF_shift / star_LF
@@ -278,7 +278,7 @@ def correlation_rv(instru, d_planet, d_bkg, star_flux, wave, trans, T_planet, lg
             star_HF, star_LF = filtered_flux(sf, R, Rc, filter_type)
         # Shift the template at the known planet RV in order to mimic the data and to calculate/estimate the auto-correlation
         if rv_planet is not None:
-            template_shift = template_raw.doppler_shift(rv_planet)
+            template_shift = template_raw.doppler_shift(rv_planet, renorm=False)
             if degrade_resolution:
                 template_shift = template_shift.degrade_resolution(wave, renorm=False)
             else:
@@ -306,12 +306,12 @@ def correlation_rv(instru, d_planet, d_bkg, star_flux, wave, trans, T_planet, lg
             template_shift *= weight
     # Loop through RV values and compute correlations
     for i in tqdm(range(len(rv)), desc="correlation_rv()", disable=disable_tqdm):
-        template_HF_shift = template_HF.doppler_shift(rv[i]).flux
+        template_HF_shift = template_HF.doppler_shift(rv[i], renorm=False).flux
         if not compare_data:
             t = trans * template_HF_shift
             # adding the stellar component (if required)
             if stellar_component and Rc is not None:
-                template_LF_shift = template_LF.doppler_shift(rv[i]).flux
+                template_LF_shift = template_LF.doppler_shift(rv[i], renorm=False).flux
                 t += -trans * star_HF * template_LF_shift / star_LF
             # Subtract PCA components (if required)
             if pca is not None:
@@ -969,7 +969,7 @@ def get_template(instru, wave, model, T_planet, lg_planet, vsini_planet, rv_plan
     # Broadening the spectrum
     template = template.broad(vsini_planet, epsilon=epsilon, fastbroad=fastbroad)
     # Doppler shifting the spectrum [km/s]
-    template = template.doppler_shift(rv_planet)
+    template = template.doppler_shift(rv_planet, renorm=False)
     if model[:4] != "mol_": # if it is not a molecular template
         template.flux *= wave_inter # for the template to be homogenous to photons or e- or ADU
     return template
@@ -1366,10 +1366,10 @@ def process_parameters_estimation(args):
                 template_auto *= weight
             template_auto /= np.sqrt(np.nansum(template_auto**2)) # normalizing
         for l in range(len(rv_arr)):
-            template_HF_broad_shift = template_HF_broad.doppler_shift(rv_arr[l]).flux
+            template_HF_broad_shift = template_HF_broad.doppler_shift(rv_arr[l], renorm=False).flux
             t = trans*template_HF_broad_shift
             if stellar_component and Rc is not None:
-                template_LF_broad_shift = template_LF_broad.doppler_shift(rv_arr[l]).flux
+                template_LF_broad_shift = template_LF_broad.doppler_shift(rv_arr[l], renorm=False).flux
                 t += - trans * star_HF * template_LF_broad_shift/star_LF
             if pca is not None: # subtracting PCA modes (if any)
                 t0 = np.copy(t)

@@ -159,7 +159,7 @@ config_data_MIRIMRS = {
                   "4MEDIUM": GratingInfo(20.69, 24.385, (1680.+1770.)/2), 
                   "4LONG":   GratingInfo(24.19, 27.9, (1630.+1330.)/2)}, 
     'lambda_range': {"lambda_min": 4.90, "lambda_max": 27.9}, #pas plus car le spectre des planètes va jusqu'à 12 µm
-    'pxscale': {"1SHORT":0.13, "1MEDIUM":0.13, "1LONG":0.17, "2SHORT":0.17, "2MEDIUM":0.17, "2LONG":0.17, "3SHORT":0.20, "3MEDIUM":0.20, "3LONG":0.20, "4SHORT":0.35, "4MEDIUM":0.35, "4LONG":0.35}, # en arcsec/px (avec dithering)
+    'pxscale': {"1SHORT":0.13, "1MEDIUM":0.13, "1LONG":0.13, "2SHORT":0.17, "2MEDIUM":0.17, "2LONG":0.17, "3SHORT":0.20, "3MEDIUM":0.20, "3LONG":0.20, "4SHORT":0.35, "4MEDIUM":0.35, "4LONG":0.35}, # en arcsec/px (avec dithering)
     'pxscale0': {"1":0.196, "2":0.196, "3":0.245, "4":0.273}, # en arcsec/px (sans dithering)
     'size_core': 3, # taille du coté de la boite correspondant à la FWHM
     'R_cov': 2.4, # facteur de covariance avec size_core = 3 (1.55**2 = R_corr/R_dith (R_dith = R_corr_perpx))
