@@ -116,7 +116,8 @@ def get_PSF_profile(band, strehl, apodizer, coronagraph, instru, config_data, se
         rc = np.median(x_tail)  # Paramètre de décroissance exponentielle (adaptatif)        
         if alpha > 0: # sanity on alpha coeff sign (needs to be negative for decreasing flux)
             alpha = -alpha
-        profile_interp = np.where(separation > profile[0][-1], improved_power_law_extrapolation(separation, profile[0][-1], profile[1][-1], -alpha, rc), f(separation))        
+        profile_interp = f(separation)
+        profile_interp[separation > profile[0][-1]] = improved_power_law_extrapolation(separation[separation > profile[0][-1]], profile[0][-1], profile[1][-1], -alpha, rc) # extrapolation
         profile_interp[separation > profile[0][-1]] *= profile[1][-1] / profile_interp[separation > profile[0][-1]][0] # forcing continuity
         # # Sanity check Plot
         # plt.figure(dpi=300)

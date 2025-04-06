@@ -65,10 +65,10 @@ config_data_ANDES = {
     'altitude': 2635, # Altitude de Paranal en mètres
     'sep_unit': "mas", 
     'telescope': {"diameter": 38.452, "area": 980.}, # all-glass diameter in m, including central hole, secondary and spider obscuration in m^2, K, Armazones coord.
-    'gratings': {"YJH_HR_5mas":  GratingInfo(0.95, 1.8, 100000), 
-                 "YJH_HR_10mas": GratingInfo(0.95, 1.8, 100000),}, 
+    'gratings': {"YJH_5mas":  GratingInfo(0.95, 1.8, 100000), 
+                 "YJH_10mas": GratingInfo(0.95, 1.8, 100000),}, 
     'lambda_range': {"lambda_min":0.95, "lambda_max": 1.8}, #ANDES
-    'pxscale': {"YJH_HR_5mas":0.005, "YJH_UHR_5mas":0.005, "YJH_HR_10mas":0.010, "YJH_UHR_10mas":0.010, }, # in arcsec/px 
+    'pxscale': {"YJH_5mas":0.005, "YJH_10mas":0.010}, # in arcsec/px 
     'size_core': 1, # 1 fiber on the planet
     'FOV_fiber': 10, # nb of fiber/spaxel across the FOV (the FOV is then given by FOV_fiber*pxscale)
     'pixel_detector_projection': 10, # nb of pixels on which the fiber's signal is projected along the direction perpendicular to spectral dispersion

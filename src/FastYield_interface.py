@@ -29,7 +29,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         self.min_elevation          = DoubleVar(value=30)
         self.thermal_model          = "BT-Settl"
         self.reflected_model        = "PICASO"
-        self.model                  = self.thermal_model+"+"+self.reflected_model
+        self.model_planet           = self.thermal_model+"+"+self.reflected_model
         self.spectrum_contributions = "thermal+reflected"
         self.band                   = "INSTRU"
         self.only_visible_targets   = False
@@ -158,10 +158,10 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         if self.config_data["lambda_range"]["lambda_max"] < 6:
             self.thermal_model = "BT-Settl"
             self.reflected_model = "PICASO"
-            self.model = self.thermal_model+"+"+self.reflected_model
+            self.model_planet = self.thermal_model+"+"+self.reflected_model
             self.spectrum_contributions = "thermal+reflected"
         else:
-            self.model = "BT-Settl"
+            self.model_planet = "BT-Settl"
             self.thermal_model = "BT-Settl"
             self.reflected_model = "None"
             self.spectrum_contributions = "thermal"
@@ -309,19 +309,19 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
             pass
         if self.thermal_model != "None" and self.reflected_model != "None":
             self.spectrum_contributions = "thermal+reflected"
-            self.model = self.thermal_model+"+"+self.reflected_model
+            self.model_planet = self.thermal_model+"+"+self.reflected_model
         elif self.thermal_model != "None" and self.reflected_model == "None":
             self.spectrum_contributions = "thermal"
             if self.thermal_model == "PICASO":
-                self.model = self.thermal_model+"_thermal_only"
+                self.model_planet = self.thermal_model+"_thermal_only"
             else:
-                self.model = self.thermal_model
+                self.model_planet = self.thermal_model
         elif self.thermal_model == "None" and self.reflected_model != "None":
             self.spectrum_contributions = "reflected"
             if self.reflected_model == "PICASO":
-                self.model = self.reflected_model+"_reflected_only"
+                self.model_planet = self.reflected_model+"_reflected_only"
             else:
-                self.model = self.reflected_model
+                self.model_planet = self.reflected_model
         self.draw_table_plot()
         
     def create_button_visisble_targets(self):
@@ -398,11 +398,11 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
             planet_table_raw = planet_table_raw[np.logical_not(planet_table_raw['AngSep'].mask)]
         if self.systematics:
             if self.PCA:
-                self.planet_table = load_planet_table(self.table+"_Pull_"+self.instru+"_"+self.apodizer+"_"+self.strehl+"_with_systematics+PCA_"+self.model+".ecsv")
+                self.planet_table = load_planet_table(self.table+"_Pull_"+self.instru+"_"+self.apodizer+"_"+self.strehl+"_with_systematics+PCA_"+self.model_planet+".ecsv")
             else:
-                self.planet_table = load_planet_table(self.table+"_Pull_"+self.instru+"_"+self.apodizer+"_"+self.strehl+"_with_systematics_"+self.model+".ecsv")
+                self.planet_table = load_planet_table(self.table+"_Pull_"+self.instru+"_"+self.apodizer+"_"+self.strehl+"_with_systematics_"+self.model_planet+".ecsv")
         else:
-            self.planet_table = load_planet_table(self.table+"_Pull_"+self.instru+"_"+self.apodizer+"_"+self.strehl+"_without_systematics_"+self.model+".ecsv")
+            self.planet_table = load_planet_table(self.table+"_Pull_"+self.instru+"_"+self.apodizer+"_"+self.strehl+"_without_systematics_"+self.model_planet+".ecsv")
         # Filtrage les planètes non-visibles depuis le site d'observation
         if self.config_data["base"]=="ground":
             self.get_coords()
@@ -475,9 +475,9 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         else:
             txt_syst = "(without systematics)"
         if self.instru == "NIRCam":
-            self.__plt.set_title(f'Known exoplanets detection yield with {self.instru} ({self.spectrum_contributions} light with {self.model})'+'\n on '+self.band+'-band (from '+str(round(self.lmin, 1))+' to '+str(round(self.lmax, 1))+f' µm) with '+'$t_{exp}$=' + str(round(self.exposure_time.get())) + 'mn ' + txt_syst, fontsize=18)
+            self.__plt.set_title(f'Known exoplanets detection yield with {self.instru} ({self.spectrum_contributions} light with {self.model_planet})'+'\n on '+self.band+'-band (from '+str(round(self.lmin, 1))+' to '+str(round(self.lmax, 1))+f' µm) with '+'$t_{exp}$=' + str(round(self.exposure_time.get())) + 'mn ' + txt_syst, fontsize=18)
         else:
-            self.__plt.set_title(f'Known exoplanets detection yield with {self.instru} ({self.spectrum_contributions} light with {self.model})'+'\n on '+self.band+'-band (from '+str(round(self.lmin, 1))+' to '+str(round(self.lmax, 1))+f' µm with R ~ {int(round(self.R, -2))}) with '+'$t_{exp}$=' + str(round(self.exposure_time.get())) + 'mn ' + txt_syst, fontsize=18)
+            self.__plt.set_title(f'Known exoplanets detection yield with {self.instru} ({self.spectrum_contributions} light with {self.model_planet})'+'\n on '+self.band+'-band (from '+str(round(self.lmin, 1))+' to '+str(round(self.lmax, 1))+f' µm with R ~ {int(round(self.R, -2))}) with '+'$t_{exp}$=' + str(round(self.exposure_time.get())) + 'mn ' + txt_syst, fontsize=18)
         if self.units == "Observational":
             self.__plt.set_xlabel(f'Angular separation (in {x_raw.unit})', fontsize=18)
             self.__plt.set_ylabel(f'Contrast (on {self.band}-band)', fontsize=18)
@@ -611,7 +611,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
             else:
                 band_only = self.band
             try:
-                FastCurves(instru=self.instru, band_only=band_only, calculation=self.calculation, T_planet=float(self.planet["PlanetTeq"].value), lg_planet=float(self.planet["PlanetLogg"].value), mag_star=mag_s, band0=band0, T_star=float(self.planet["StarTeff"].value), lg_star=float(self.planet["StarLogg"].value), exposure_time=self.exposure_time.get(), model=planet_spectrum.model, mag_planet=mag_p, separation_planet=float(self.planet["AngSep"].value/1000), planet_name=self.planet["PlanetName"], systematic=self.systematics, PCA=self.PCA, show_plot=True, verbose=True, star_spectrum=star_spectrum, planet_spectrum=planet_spectrum, apodizer=self.apodizer, strehl=self.strehl)
+                FastCurves(instru=self.instru, band_only=band_only, calculation=self.calculation, T_planet=float(self.planet["PlanetTeq"].value), lg_planet=float(self.planet["PlanetLogg"].value), mag_star=mag_s, band0=band0, T_star=float(self.planet["StarTeff"].value), lg_star=float(self.planet["StarLogg"].value), exposure_time=self.exposure_time.get(), model_planet=planet_spectrum.model, mag_planet=mag_p, separation_planet=float(self.planet["AngSep"].value/1000), planet_name=self.planet["PlanetName"], systematic=self.systematics, PCA=self.PCA, show_plot=True, verbose=True, star_spectrum=star_spectrum, planet_spectrum=planet_spectrum, apodizer=self.apodizer, strehl=self.strehl)
             except Exception as e:
                 print(f"The S/N ({round(self.SNR[self.planet_index])}) is sufficiently high for the precision of the parameter estimation to be likely limited by systematic effects rather than fundamental noises.")
         else:
@@ -619,7 +619,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
                 band_only = None 
             else:
                 band_only = self.band
-            FastCurves(PCA_mask=True, instru=self.instru, band_only=band_only, calculation=self.calculation, T_planet=float(self.planet["PlanetTeq"].value), lg_planet=float(self.planet["PlanetLogg"].value), mag_star=mag_s, band0=band0, T_star=float(self.planet["StarTeff"].value), lg_star=float(self.planet["StarLogg"].value), exposure_time=self.exposure_time.get(), model=self.model, mag_planet=mag_p, separation_planet=float(self.planet["AngSep"].value/1000), planet_name=self.planet["PlanetName"], systematic=self.systematics, PCA=self.PCA, show_plot=True, verbose=True, star_spectrum=star_spectrum, planet_spectrum=planet_spectrum, apodizer=self.apodizer, strehl=self.strehl)
+            FastCurves(PCA_mask=True, instru=self.instru, band_only=band_only, calculation=self.calculation, T_planet=float(self.planet["PlanetTeq"].value), lg_planet=float(self.planet["PlanetLogg"].value), mag_star=mag_s, band0=band0, T_star=float(self.planet["StarTeff"].value), lg_star=float(self.planet["StarLogg"].value), exposure_time=self.exposure_time.get(), model_planet=self.model_planet, mag_planet=mag_p, separation_planet=float(self.planet["AngSep"].value/1000), planet_name=self.planet["PlanetName"], systematic=self.systematics, PCA=self.PCA, show_plot=True, verbose=True, star_spectrum=star_spectrum, planet_spectrum=planet_spectrum, apodizer=self.apodizer, strehl=self.strehl)
 
     def destroy_lower_buttons(self):
         try:
