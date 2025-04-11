@@ -600,7 +600,6 @@ def plot_CCF_rv(instru, band, target_name, d_planet, d_bkg, star_flux, wave, tra
         ax1.axvline(rv_planet, c='r', ls='--', label=f"$rv_{{obs}}$ = {round(rv_planet, 1)} km/s", alpha=0.5, linewidth=1.5)
         ax1.axvline(0, c='k', ls='-', alpha=0.5, linewidth=1)
         
-        ymin, _ = ax1.get_ylim()
         ymax = 1.2 * np.nanmax(SNR_planet)
         ymin = -1.5 * np.abs(np.nanmin(SNR_planet))
         ax1.set_ylim(ymin, ymax)

@@ -26,20 +26,20 @@ def get_transmission(instru, wave_band, band, tellurics, apodizer, fill_value=np
     transmission: 1d array (same size as wave_band)
         total system transmission 
     """
-    wave, trans = fits.getdata(f"sim_data/Transmission/{instru}/transmission_{band}.fits") # instrumental transmission on the considered band
-    f = interp1d(wave, trans, bounds_error=False, fill_value=fill_value)
-    trans = f(wave_band) # interpolated instrumental transmission on the considered band
-    config_data = get_config_data(instru) # get instrument specs
+    wave, trans    = fits.getdata(f"sim_data/Transmission/{instru}/transmission_{band}.fits") # instrumental transmission on the considered band
+    f              = interp1d(wave, trans, bounds_error=False, fill_value=fill_value)
+    trans          = f(wave_band)                                         # interpolated instrumental transmission on the considered band
+    config_data    = get_config_data(instru)                              # get instrument specs
     apodizer_trans = config_data["apodizers"][str(apodizer)].transmission # get apodizer transmission, if any
-    trans *= apodizer_trans
+    trans         *= apodizer_trans
     if instru == "MIRIMRS" or instru == "NIRSpec":
-        trans *= fits.getheader(f"sim_data/PSF/PSF_{instru}/PSF_{band}_NO_JQ_NO_SP.fits")['AC'] # aperture corrective factor (the fact that not all the incident flux reaches the FOV)
+        trans *= fits.getheader(f"sim_data/PSF/PSF_{instru}/PSF_{band}_NO_JQ_NO_SP.fits")['AC'] # aperture corrective factor (fact that not all the incident flux reaches inside the FoV)
     if tellurics: # if ground-based observation
         sky_transmission_path = os.path.join("sim_data/Transmission/sky_transmission_airmass_1.0.fits")
         sky_trans             = fits.getdata(sky_transmission_path)
         trans_tell_band       = Spectrum(sky_trans[0, :], sky_trans[1, :], None, None)
         trans_tell_band       = trans_tell_band.degrade_resolution(wave_band, renorm=False).flux # degraded tellurics transmission on the considered band
-        trans                *= trans_tell_band # total system throughput (instru x atmo)
+        trans                *= trans_tell_band                                                  # total system throughput (instru x atmo)
     trans[trans<=0] = np.nan # ignoring negatives values (if any)
     return trans
 
@@ -80,12 +80,12 @@ def get_PSF_profile(band, strehl, apodizer, coronagraph, instru, config_data, se
     fraction_PSF = fits.getheader(file)['FC'] # fraction of flux contained in the FWHM (or the coronagraphic stellar transmission)
     
     try:
-        pxscale = config_data["pxscale"][band] # in arcsec/px (dithered effective pixelscale)
+        pxscale = config_data["pxscale"][band]   # in arcsec/px (dithered effective pixelscale)
     except:
         pxscale = config_data["spec"]["pxscale"] # in arcsec/px
     if sep_unit == "mas":
         pxscale *= 1e3
-    iwa, owa = get_wa(config_data=config_data, band=band, apodizer=apodizer, sep_unit=config_data["sep_unit"])
+    iwa, owa = get_wa(config_data=config_data, band=band, apodizer=apodizer, sep_unit=sep_unit)
         
     profile = fits.getdata(file) # in fraction/arcsec**2 or fraction/mas**2
     f       = interp1d(profile[0], profile[1], bounds_error=False, fill_value=np.nan)
@@ -99,7 +99,7 @@ def get_PSF_profile(band, strehl, apodizer, coronagraph, instru, config_data, se
         if separation_planet is not None and separation_planet > separation[-1]: # extension of the separation axis to the planet's separation
             extension  = np.linspace(separation[-1]+pxscale, separation_planet, len(separation))
             extension  = np.append(extension, separation_planet+pxscale)
-            separation = np.append(separation, extension)
+            separation = np.sort(np.append(separation, extension))
         elif separation_planet is not None and separation_planet not in separation:
             separation = np.sort(np.append(separation, separation_planet))
         
@@ -163,14 +163,14 @@ def get_alpha(planet_spectrum_band, template, Rc, R, fraction_PSF, trans, separa
     Returns
     -------
     alpha: float/int
-        amount of useful photons
+        amount of useful photo-electrons
     """
     Sp = planet_spectrum_band.flux*fraction_PSF # planetary flux integrated in the FWHM (in ph/mn)
     Sp_HF, _ = filtered_flux(Sp, R, Rc, filter_type) # high_pass filtered planetary flux
     Sp_HF   *= trans # gamma x [Sp]_HF
     alpha = np.nansum(Sp_HF*template) # alpha x cos theta lim (if systematic)
     alpha = np.zeros_like(separation) + alpha # constant as function of the separation
-    return alpha # in ph/mn
+    return alpha # in e-/mn
 
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -191,11 +191,14 @@ def get_beta(star_spectrum_band, planet_spectrum_band, template, Rc, R, fraction
     trans: 1d-array
         total-systemm transmission
     """
-    star_HF, star_LF     = filtered_flux(star_spectrum_band.flux, R, Rc, filter_type) # star filtered spectra
-    planet_HF, planet_LF = filtered_flux(planet_spectrum_band.flux*fraction_PSF, R, Rc, filter_type) # planet filtered spectra
-    beta = np.nansum(trans*star_HF*planet_LF/star_LF * template) # self-subtraction term
+    if Rc is None:
+        beta = 0
+    else:
+        star_HF, star_LF     = filtered_flux(star_spectrum_band.flux, R, Rc, filter_type) # star filtered spectra
+        planet_HF, planet_LF = filtered_flux(planet_spectrum_band.flux*fraction_PSF, R, Rc, filter_type) # planet filtered spectra
+        beta = np.nansum(trans*star_HF*planet_LF/star_LF * template) # self-subtraction term
     beta = np.zeros_like(separation) + beta # constant as function of the separation
-    return beta # in ph/mn
+    return beta # in e-/mn
 
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
 

@@ -1,4 +1,3 @@
-# Some parts of this script are taken from PSISIM (see: https://github.com/planetarysystemsimager/psisim)
 from src.FastCurves import *
 
 
@@ -32,7 +31,7 @@ simulated_path = os.path.join(os.path.dirname(path_file), "sim_data/Simulated_ta
 
     
 class ExoArchive_Universe():
-    
+    # Some parts of this class are taken from PSISIM (see: https://github.com/planetarysystemsimager/psisim)
     def __init__(self, table_filename):
         super(ExoArchive_Universe, self).__init__()
         self.filename = table_filename
@@ -836,11 +835,11 @@ def create_fastcurves_table(table="Archive"): # take ~ 3 minutes for Archive and
     planet_table["PlanetType"] = np.full(len(planet_table), "Unidentified", dtype="<U32")
 
     # creating magnitudes columns
-    for instru in config_data_list:
-        planet_table['StarINSTRUmag('+instru["name"]+')']                      = np.full(len(planet_table), np.nan)
-        planet_table['PlanetINSTRUmag('+instru["name"]+')(thermal+reflected)'] = np.full(len(planet_table), np.nan)
-        planet_table['PlanetINSTRUmag('+instru["name"]+')(thermal)']           = np.full(len(planet_table), np.nan)
-        planet_table['PlanetINSTRUmag('+instru["name"]+')(reflected)']         = np.full(len(planet_table), np.nan)
+    for instru in instru_name_list:
+        planet_table['StarINSTRUmag('+instru+')']                      = np.full(len(planet_table), np.nan)
+        planet_table['PlanetINSTRUmag('+instru+')(thermal+reflected)'] = np.full(len(planet_table), np.nan)
+        planet_table['PlanetINSTRUmag('+instru+')(thermal)']           = np.full(len(planet_table), np.nan)
+        planet_table['PlanetINSTRUmag('+instru+')(reflected)']         = np.full(len(planet_table), np.nan)
     for band in bands:
         if band == "K":
             planet_table['StarKmag'] = planet_table['StarKmag'].value
@@ -866,12 +865,12 @@ def create_fastcurves_table(table="Archive"): # take ~ 3 minutes for Archive and
         results = list(tqdm(pool.imap(process_fastcurves_table, [(idx, make_table_serializable(planet_table[idx]), wave_instru, wave_K, vega_spectrum_K) for idx in range(len(planet_table))]), total=len(planet_table), desc="Estimating magnitudes..."))
         for (idx, ptype, planet_spectrum, planet_thermal, planet_reflected, star_spectrum) in results:
             planet_table[idx]['PlanetType'] = ptype
-            for instru in config_data_list:
-                planet_table[idx]['StarINSTRUmag('+instru["name"]+')']                      = -2.5*np.log10(np.nanmean(star_spectrum.flux[(wave_instru>globals()["lmin_"+instru["name"]])&(wave_instru<globals()["lmax_"+instru["name"]])])/np.nanmean(vega_spectrum.flux[(wave_instru>globals()["lmin_"+instru["name"]]) & (wave_instru<globals()["lmax_"+instru["name"]])]))
-                planet_table[idx]['PlanetINSTRUmag('+instru["name"]+')(thermal+reflected)'] = -2.5*np.log10(np.nanmean(planet_spectrum.flux[(wave_instru>globals()["lmin_"+instru["name"]])&(wave_instru<globals()["lmax_"+instru["name"]])])/np.nanmean(vega_spectrum.flux[(wave_instru>globals()["lmin_"+instru["name"]]) & (wave_instru<globals()["lmax_"+instru["name"]])]))
-                planet_table[idx]['PlanetINSTRUmag('+instru["name"]+')(thermal)']           = -2.5*np.log10(np.nanmean(planet_thermal.flux[(wave_instru>globals()["lmin_"+instru["name"]])&(wave_instru<globals()["lmax_"+instru["name"]])])/np.nanmean(vega_spectrum.flux[(wave_instru>globals()["lmin_"+instru["name"]]) & (wave_instru<globals()["lmax_"+instru["name"]])]))
-                if globals()["lmin_"+instru["name"]] < 6: # above 6 µm, we neglect the reflected contribution
-                    planet_table[idx]['PlanetINSTRUmag('+instru["name"]+')(reflected)'] = -2.5*np.log10(np.nanmean(planet_reflected.flux[(wave_instru>globals()["lmin_"+instru["name"]])&(wave_instru<globals()["lmax_"+instru["name"]])])/np.nanmean(vega_spectrum.flux[(wave_instru>globals()["lmin_"+instru["name"]]) & (wave_instru<globals()["lmax_"+instru["name"]])]))
+            for instru in instru_name_list:
+                planet_table[idx]['StarINSTRUmag('+instru+')']                      = -2.5*np.log10(np.nanmean(star_spectrum.flux[(wave_instru>globals()["lmin_"+instru])&(wave_instru<globals()["lmax_"+instru])])/np.nanmean(vega_spectrum.flux[(wave_instru>globals()["lmin_"+instru]) & (wave_instru<globals()["lmax_"+instru])]))
+                planet_table[idx]['PlanetINSTRUmag('+instru+')(thermal+reflected)'] = -2.5*np.log10(np.nanmean(planet_spectrum.flux[(wave_instru>globals()["lmin_"+instru])&(wave_instru<globals()["lmax_"+instru])])/np.nanmean(vega_spectrum.flux[(wave_instru>globals()["lmin_"+instru]) & (wave_instru<globals()["lmax_"+instru])]))
+                planet_table[idx]['PlanetINSTRUmag('+instru+')(thermal)']           = -2.5*np.log10(np.nanmean(planet_thermal.flux[(wave_instru>globals()["lmin_"+instru])&(wave_instru<globals()["lmax_"+instru])])/np.nanmean(vega_spectrum.flux[(wave_instru>globals()["lmin_"+instru]) & (wave_instru<globals()["lmax_"+instru])]))
+                if globals()["lmin_"+instru] < 6: # above 6 µm, we neglect the reflected contribution
+                    planet_table[idx]['PlanetINSTRUmag('+instru+')(reflected)'] = -2.5*np.log10(np.nanmean(planet_reflected.flux[(wave_instru>globals()["lmin_"+instru])&(wave_instru<globals()["lmax_"+instru])])/np.nanmean(vega_spectrum.flux[(wave_instru>globals()["lmin_"+instru]) & (wave_instru<globals()["lmax_"+instru])]))
             for band in bands:
                 if band != "K":
                     planet_table[idx]['Star'+band+'mag']                  = -2.5*np.log10(np.nanmean(star_spectrum.flux[(wave_instru>globals()["lmin_"+band])&(wave_instru<globals()["lmax_"+band])])/np.nanmean(vega_spectrum.flux[(wave_instru>globals()["lmin_"+band]) & (wave_instru<globals()["lmax_"+band])]))
@@ -1052,8 +1051,8 @@ def all_SNR_table(table="Archive"): # takes ~ 13 hours
     """
 
     time0 = time.time()
-    for config_data in config_data_list:
-        instru = config_data["name"]
+    for instru in instru_name_list:
+        config_data = get_config_data(instru)
         if config_data["lambda_range"]["lambda_max"] > 6:
             thermal_models   = ["None", "BT-Settl", "Exo-REM"]
             reflected_models = ["None"]

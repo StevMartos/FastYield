@@ -1234,58 +1234,125 @@ def keep_true_chunks(nan_values, N):
 
 
 
+def PCA_subtraction(Sres, n_comp_sub, y0=None, x0=None, size_core=None, 
+                    PCA_annular=False, PCA_mask=False, scree_plot=False, 
+                    PCA_plots=False, PCA_plots_PDF=False, path_PDF=None, wave=None, R=None, pxscale=None):
+    """
+    Perform PCA subtraction on the input data cube.
 
+    This function applies Principal Component Analysis (PCA) to subtract signal
+    components from the input data cube (Sres). Optionally, it masks out regions 
+    around a specified planet location before performing the PCA. It can also display 
+    plots for the first few PCA components interactively, and if a file path is provided, 
+    it saves plots of all PCA components to a PDF (one per page).
 
+    Parameters
+    ----------
+    Sres : numpy.ndarray
+        Input data cube with dimensions (NbChannel, NbColumn, NbLine).
+    n_comp_sub : int
+        Number of PCA components to subtract. If 0, no PCA subtraction is performed.
+    y0 : int, optional
+        Y-coordinate of the planet location.
+    x0 : int, optional
+        X-coordinate of the planet location.
+    size_core : int, optional
+        Size parameter for masking around the planet (FWHM size in px).
+    PCA_annular : bool, optional
+        If True, applies PCA on an annular mask around the planet location.
+    PCA_mask : bool, optional
+        If True, applies a rectangular mask (of size_core x size_core) around the planet location.
+    scree_plot : bool, optional
+        If True, displays a scree plot of the eigenvalues.
+    PCA_plots : bool, optional
+        If True, displays plots for up to the first 5 PCA components.
+    PCA_plots_PDF : bool, optional
+        If True, saves plots of all PCA components into a PDF.
+    path_PDF : str, optional
+        If provided, saves plots of all PCA components into a PDF at this path.
+    wave : numpy.ndarray, optional
+        Array of wavelengths used for plotting the PCA component curves.
+    R : int or float, optional
+        Resolution parameter used for plotting the Power Spectral Density (PSD).
+    pxscale : float, optional
+        Pixel scale used for plotting the correlation maps.
 
-
-
-def PCA_subtraction(Sres, n_comp_sub, y0=None, x0=None, size_core=None, PCA_annular=False, PCA_mask=False, scree_plot=False, PCA_plots=False, wave=None, R=None, pxscale=None):
-    if n_comp_sub != 0 :
+    Returns
+    -------
+    Sres_sub : numpy.ndarray
+        Data cube after PCA subtraction.
+    pca : PCA object or None
+        The fitted PCA object if n_comp_sub is not 0; otherwise, None.
+    """
+    
+    if n_comp_sub != 0:
         from sklearn.decomposition import PCA
-        NbChannel, NbColumn, NbLine = Sres.shape
+        NbChannel, NbColumn, NbLine = Sres.shape # Retrieve the shape of the data cube
         pca = PCA(n_components=n_comp_sub)
-        Sres_wo_planet = np.copy(Sres)
-        if y0 is not None and x0 is not None : 
-            if PCA_annular :
-                planet_sep = int(round(np.sqrt((y0-NbLine//2)**2+(x0-NbColumn//2)**2)))
-                Sres_wo_planet *= annular_mask(max(1, planet_sep-size_core-1), planet_sep+size_core, value=np.nan, size=(NbLine, NbColumn))
-            if PCA_mask :
-                Sres_wo_planet[:, y0-size_core//2:y0+size_core//2+1, x0-size_core//2:x0+size_core//2+10] = np.nan 
+        Sres_wo_planet = np.copy(Sres) # Create a copy of the input data for masking purposes
+        
+        # If planet coordinates are provided, apply the masks if specified
+        if y0 is not None and x0 is not None:
+            if PCA_annular:
+                # Calculate the separation from the center to the planet
+                planet_sep = int(round(np.sqrt((y0 - NbLine // 2) ** 2 + (x0 - NbColumn // 2) ** 2)))
+                # Apply an annular mask with a given core size
+                Sres_wo_planet *= annular_mask(max(1, planet_sep - size_core - 1), planet_sep + size_core, value=np.nan, size=(NbLine, NbColumn))
+            if PCA_mask:
+                # Apply a rectangular mask around the planet location
+                Sres_wo_planet[:, y0 - size_core // 2:y0 + size_core // 2 + 1, x0 - size_core // 2:x0 + size_core // 2 + 10] = np.nan 
+        
+        # Reshape the cube to 2D (pixels x channels) and replace NaNs with 0
         Sres_wo_planet = np.reshape(Sres_wo_planet, (NbChannel, NbColumn * NbLine)).transpose()
         Sres_wo_planet[np.isnan(Sres_wo_planet)] = 0
+        
+        # Fit the PCA on the masked data
         pca.fit(Sres_wo_planet)
+        
+        # Prepare the data for subtraction (reshape and replace NaNs)
         Sres_sub = np.reshape(np.copy(Sres), (NbChannel, NbColumn * NbLine)).transpose()
         Sres_sub[np.isnan(Sres_sub)] = 0
+        
+        # Transform and inverse transform to obtain the PCA model reconstruction
         X = pca.transform(Sres_sub)
         X = pca.inverse_transform(X)
+        
+        # Subtract the PCA reconstruction from the original data
         Sres_sub = (Sres_sub - X).transpose()
         Sres_sub = np.reshape(Sres_sub, (NbChannel, NbColumn, NbLine))
         Sres_sub[Sres_sub == 0] = np.nan
         
-        if PCA_plots :
-            Nk =  min(n_comp_sub, 5) # nb de modes à plot
+        # ---------------------------
+        # PCA plots
+        # ---------------------------
+        if PCA_plots:
+            # Display up to the first 5 components interactively
+            Nk = min(n_comp_sub, 5)
             from src.spectrum import Spectrum
-            cmap = get_cmap("Spectral", Nk)
-            fig, ax = plt.subplots(Nk, 3, figsize=(16, Nk*3), sharex='col', sharey='col', layout="constrained", gridspec_kw={'wspace': 0.05, 'hspace':0}, dpi=300)
-            for k in range(0, Nk):
-                
+            cmap = plt.get_cmap("Spectral", Nk)
+            fig, ax = plt.subplots(Nk, 3, figsize=(16, Nk * 3), sharex='col', sharey='col',
+                                   layout="constrained", gridspec_kw={'wspace': 0.05, 'hspace': 0}, dpi=300)
+            for k in range(Nk):
+                # Retrieve the k-th PCA component and replace zeros with NaN for plotting
                 pca_comp = pca.components_[k]
-                pca_comp[pca_comp==0] = np.nan
+                pca_comp[pca_comp == 0] = np.nan
                 
+                # First column: PCA component curve
                 ax[k, 0].plot(wave, pca_comp, c=cmap(k), label=f"$n_k$ = {k+1}")
                 ax[k, 0].legend(fontsize=14, loc="upper center")
-                if k==Nk-1:
+                if k == Nk - 1:
                     ax[k, 0].set_xlim(wave[0], wave[-1])
                     ax[k, 0].set_xlabel("wavelength (in µm)", fontsize=14)
                 ax[k, 0].set_ylabel("modulation (normalized)", fontsize=14)
                 ax[k, 0].grid(True)
                 
+                # Second column: Plot the Power Spectral Density (PSD)
                 m_HF_spectrum = Spectrum(wave, pca_comp, R, None)
                 m_HF_spectrum.wavelength = m_HF_spectrum.wavelength[~np.isnan(m_HF_spectrum.flux)]
-                m_HF_spectrum.flux       = m_HF_spectrum.flux[~np.isnan(m_HF_spectrum.flux)]
+                m_HF_spectrum.flux = m_HF_spectrum.flux[~np.isnan(m_HF_spectrum.flux)]
                 res, psd = m_HF_spectrum.get_psd(smooth=0)
                 ax[k, 1].plot(res, psd, c=cmap(k))
-                if k==Nk-1:
+                if k == Nk - 1:
                     ax[k, 1].set_xlim(10, R)
                     ax[k, 1].set_xlabel("resolution", fontsize=14)
                     ax[k, 1].set_xscale('log')
@@ -1293,45 +1360,103 @@ def PCA_subtraction(Sres, n_comp_sub, y0=None, x0=None, size_core=None, PCA_annu
                 ax[k, 1].set_ylabel("PSD", fontsize=14)
                 ax[k, 1].grid(True)
                 
-                CCF = np.zeros((Sres.shape[1], Sres.shape[2])) + np.nan
-                for i in range(Sres.shape[1]):
-                    for j in range(Sres.shape[2]):
-                        if not (np.isnan(Sres[:, i, j])).all():
-                            CCF[i, j] = np.nan_to_num(np.nansum(Sres[:, i, j]*pca_comp))/np.sqrt(np.nansum(Sres[:, i, j]**2))
-                cax = ax[k, 2].imshow(CCF, extent=[-(CCF.shape[0]+1)//2*pxscale, (CCF.shape[0])//2*pxscale, -(CCF.shape[1]-2)//2*pxscale, (CCF.shape[1])//2*pxscale], zorder=3)
-                cbar = fig.colorbar(cax, ax=ax[k, 2], orientation='vertical', shrink=0.8) ; cbar.set_label("correlation", fontsize=14, labelpad=20, rotation=270)
-                if k==Nk-1:
-                    #ax[k, 2].set_xlim(-3, 3)
-                    #ax[k, 2].set_ylim(-3, 3)
+                # Third column: Vectorized computation and plot of the correlation map
+                numerator = np.nansum(Sres * pca_comp[:, None, None], axis=0)
+                denom = np.sqrt(np.nansum(Sres ** 2, axis=0))
+                mask = ~np.all(np.isnan(Sres), axis=0)
+                CCF = np.full(Sres.shape[1:], np.nan)
+                CCF[mask] = np.nan_to_num(numerator[mask]) / denom[mask]
+                cax = ax[k, 2].imshow(CCF, extent=[-(CCF.shape[0] + 1) // 2 * pxscale, (CCF.shape[0]) // 2 * pxscale,
+                                                    -(CCF.shape[1] - 2) // 2 * pxscale, (CCF.shape[1]) // 2 * pxscale],
+                                      zorder=3)
+                cbar = fig.colorbar(cax, ax=ax[k, 2], orientation='vertical', shrink=0.8)
+                cbar.set_label("correlation", fontsize=14, labelpad=20, rotation=270)
+                if k == Nk - 1:
                     ax[k, 2].set_xlabel('x offset (in ")', fontsize=14)
                 ax[k, 2].set_ylabel('y offset (in ")', fontsize=14)
                 ax[k, 2].grid(True)
             plt.show()
         
-        if scree_plot :
+        # ---------------------------
+        # Save PCA component plots to a PDF (grouping several components per page)
+        # ---------------------------
+        if PCA_plots_PDF and path_PDF is not None:
+            from matplotlib.backends.backend_pdf import PdfPages
+            pdf = PdfPages(path_PDF)
+            # Create a colormap with n_comp_sub distinct colors
+            N = min(n_comp_sub, 100)
+            cmap_pdf = get_cmap("Spectral", N)
+            from src.spectrum import Spectrum
+            for k in tqdm(range(N), desc="Saving PCA components in PDF"):
+                pca_comp = pca.components_[k]
+                pca_comp[pca_comp == 0] = np.nan
+                
+                fig, ax = plt.subplots(1, 3, figsize=(16, 3), dpi=100)
+                
+                # First column: PCA component curve
+                ax[0].plot(wave, pca_comp, c=cmap_pdf(k), label=f"$n_k$ = {k+1}")
+                ax[0].legend(fontsize=14, loc="upper center")
+                ax[0].set_xlim(wave[0], wave[-1])
+                ax[0].set_xlabel("wavelength (in µm)", fontsize=14)
+                ax[0].set_ylabel("modulation (normalized)", fontsize=14)
+                ax[0].grid(True)
+                
+                # Second column: PSD plot
+                m_HF_spectrum = Spectrum(wave, pca_comp, R, None)
+                m_HF_spectrum.wavelength = m_HF_spectrum.wavelength[~np.isnan(m_HF_spectrum.flux)]
+                m_HF_spectrum.flux = m_HF_spectrum.flux[~np.isnan(m_HF_spectrum.flux)]
+                res, psd = m_HF_spectrum.get_psd(smooth=0)
+                ax[1].plot(res, psd, c=cmap_pdf(k))
+                ax[1].set_xlim(10, R)
+                ax[1].set_xlabel("resolution", fontsize=14)
+                ax[1].set_xscale('log')
+                ax[1].set_yscale('log')
+                ax[1].set_ylabel("PSD", fontsize=14)
+                ax[1].grid(True)
+                
+                # Third column: Vectorized computation for the correlation map
+                numerator = np.nansum(Sres * pca_comp[:, None, None], axis=0)
+                denom = np.sqrt(np.nansum(Sres ** 2, axis=0))
+                mask = ~np.all(np.isnan(Sres), axis=0)
+                CCF = np.full(Sres.shape[1:], np.nan)
+                CCF[mask] = np.nan_to_num(numerator[mask]) / denom[mask]
+                cax = ax[2].imshow(CCF, extent=[-(CCF.shape[0] + 1) // 2 * pxscale, (CCF.shape[0]) // 2 * pxscale, -(CCF.shape[1] - 2) // 2 * pxscale, (CCF.shape[1]) // 2 * pxscale], zorder=3)
+                cbar = fig.colorbar(cax, ax=ax[2], orientation='vertical', shrink=0.8)
+                cbar.set_label("correlation", fontsize=14, labelpad=20, rotation=270)
+                ax[2].set_xlabel('x offset (in ")', fontsize=14)
+                ax[2].set_ylabel('y offset (in ")', fontsize=14)
+                ax[2].grid(True)
+                
+                pdf.savefig(fig, bbox_inches='tight')
+                plt.close(fig)
+                
+            pdf.close()
+            print(f"PCA PDF saved in {path_PDF}")
+
+        # ---------------------------
+        # Scree plot (Eigenvalues)
+        # ---------------------------
+        if scree_plot:
             X = np.reshape(Sres, (NbChannel, NbColumn * NbLine)).transpose()
             X[np.isnan(X)] = 0
-            # Effectuer la
             pca = PCA(n_components=n_comp_sub)
             pca.fit_transform(X)
-            # Obtenir les valeurs propres
             eigenvalues = pca.explained_variance_
-            # Calculer la proportion de variance expliquée par chaque composante
-            explained_variance_ratio = pca.explained_variance_ratio_
-            # Tracer le scree plot
             plt.figure(figsize=(8, 6))
             plt.plot(np.arange(1, len(eigenvalues) + 1), eigenvalues, marker='o', linestyle='-')
-            plt.xlabel('Composantes principales')
-            plt.ylabel('Valeurs propres')
+            plt.xlabel('Principal Components')
+            plt.ylabel('Eigenvalues')
             plt.title('Scree Plot')
-            #plt.xticks(np.arange(1, len(eigenvalues) + 1))
             plt.yscale('log')
             plt.grid(True)
             plt.show()
+            
     elif n_comp_sub == 0:
         Sres_sub = np.copy(Sres)
         pca = None
+        
     return Sres_sub, pca
+
 
 
 
