@@ -1,145 +1,93 @@
-from src.config import * # + numpy as np
+# import instru configs
+from src.config import *
+
+# import astropy modules
+from astropy import constants as const
+from astropy import units as u
+from astropy.io import fits, ascii
+from astropy.coordinates import EarthLocation, AltAz, get_body, SkyCoord
+from astropy.convolution import Gaussian1DKernel
+from astropy.modeling import models, fitting
+from astropy.stats import sigma_clip
+from astropy.time import Time
+from astropy.table import QTable, Table, Column, MaskedColumn
+from astropy.utils.masked.core import Masked
+from astropy.units import Quantity
+
+# import matplotlib modules
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+import matplotlib.colors as mcolors
 from matplotlib.colors import LogNorm
 from matplotlib.cm import get_cmap
-import matplotlib.colors as mcolors
-import matplotlib
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes, mark_inset
+
+# import scipy modules
 from scipy.interpolate import interp1d, interp2d, RegularGridInterpolator
+from scipy.ndimage import shift, zoom
 from scipy.ndimage.filters import gaussian_filter, gaussian_filter1d
 from scipy.special import comb
 from scipy.signal import savgol_filter
-from scipy.ndimage import shift
 from scipy.stats import binned_statistic
 from scipy.optimize import curve_fit
-from PyAstronomy import pyasl
-import pandas as pd
-from astropy.io import fits, ascii
-from astropy import constants as const
-from astropy import units as u
-from astropy.convolution import Gaussian1DKernel
-from astropy.stats import sigma_clip
-from astropy.utils.masked.core import Masked
-from astropy.units import Quantity
-from astropy.coordinates import EarthLocation, AltAz, get_body, SkyCoord
-from astropy.time import Time
-from astropy.modeling import models, fitting
-from astropy.table import QTable, Table, Column, MaskedColumn
-import warnings
-import os
+
+# import other modules
 import time
-import statsmodels.api as sm
-from tqdm import tqdm
-import emcee
-from itertools import combinations
-from mpl_toolkits.axes_grid1.inset_locator import inset_axes, mark_inset
 import copy
+import emcee
+import os
+import pandas as pd
+import pyvo as vo
+import statsmodels.api as sm
+import warnings
+from PyAstronomy import pyasl
+from tqdm import tqdm
+from itertools import combinations
 from numba import njit, prange
 from multiprocessing import Pool, cpu_count
-import pyvo as vo
-
-
 
 warnings.filterwarnings('ignore', category=UserWarning, append=True)
 
+# Defining constants
 h  = const.h.value # J.s
 c  = const.c.value # m/s
 kB = const.k_B.value # J/K
-rad2arcsec = 180/np.pi*3600 # arcsec / rad
+rad2arcsec = 180/np.pi*3600 # arcsec  / rad # rad => arcsec
+sr2arcsec2 = 4.25e10        # arcsec2 / sr  # steradians => arcsec2
 
 
-
-
-def instru_thermal_background(temperature, emissivity, wavelengths_um):
-    """
-    Calcule le flux thermique en ph/s/µm/arcsec².
-
-    Parameters:
-        temperature (float): Température du télescope (K).
-        emissivity (float): Émissivité du télescope.
-        wavelengths_um (array): Longueurs d'onde (µm).
-    
-    Returns:
-        flux_photon (array): Flux thermique en ph/s/µm/arcsec².
-    """
-    wavelengths_m = wavelengths_um * 1e-6  # Conversion µm -> m
-    B_lambda = (2 * h * c**2) / (wavelengths_m**5) / (np.exp((h * c) / (wavelengths_m * kB * temperature)) - 1)  # W/m²/m/sr
-    # Conversion en ph/s/µm/sr
-    energy_per_photon = (h * c) / wavelengths_m
-    B_lambda_ph = B_lambda / energy_per_photon * 1e-6  # ph/s/m²/µm/sr
-    # Conversion sr -> arcsec²
-    sr_to_arcsec2 = 4.25e10
-    flux = emissivity * B_lambda_ph / sr_to_arcsec2  # ph/s/µm/arcsec²
-    return flux
-
-
-
-def downbin_spec(specHR, lamHR, lamLR, dlam=None):
-    """
-    from : https://github.com/jlustigy/coronagraph/blob/master/coronagraph/degrade_spec.py
-    Re-bin spectum to lower resolution using :py:obj:`scipy.binned_statistic`
-    with ``statistic = 'mean'``. This is a "top-hat" convolution.
-
-    Parameters
-    ----------
-    specHR : array-like
-        Spectrum to be degraded
-    lamHR : array-like
-        High-res wavelength grid
-    lamLR : array-like
-        Low-res wavelength grid
-    dlam : array-like, optional
-        Low-res wavelength width grid
-
-    Returns
-    -------
-    specLR : :py:obj:`numpy.ndarray`
-        Low-res spectrum
-    """
-    if dlam is None:
-        ValueError("Please supply dlam in downbin_spec()")
-    # Reverse ordering if wl vector is decreasing with index
-    if len(lamLR) > 1:
-        if lamHR[0] > lamHR[1]:
-            lamHI = np.array(lamHR[::-1])
-            spec = np.array(specHR[::-1])
-        if lamLR[0] > lamLR[1]:
-            lamLO = np.array(lamLR[::-1])
-            dlamLO = np.array(dlam[::-1])
-    # Calculate bin edges
-    LRedges = np.hstack([lamLR - 0.5*dlam, lamLR[-1]+0.5*dlam[-1]])
-    # Call scipy.stats.binned_statistic()
-    specLR = binned_statistic(lamHR, specHR, statistic="mean", bins=LRedges)[0]
-    return specLR
-
+############################# Basic functions #################################
 
 
 def linear_interpolate(y1, y2, x1, x2, x):
     """Interpolate between y1 and y2 given x1 and x2, targeting x"""
-    if x2 == x1:
+    if x2==x1:
         raise KeyError("Error: x1==x2 = ", x1)
     a = (y2 - y1) / (x2 - x1)
     b = y1 - a * x1
     return a * x + b
 
-def power_law_extrapolation(x, x0, y0, alpha):
-    return y0 * (x / x0) ** (-alpha)
 
 def improved_power_law_extrapolation(x, x0, y0, alpha, rc):
-    """ Modèle hybride : loi de puissance + décroissance exponentielle """
+    """ Hybrid model for PSF profile extrapolation : power law + exponential decrease """
     return y0 * (x / x0) ** (-abs(alpha)) * np.exp(-x / rc)
+
 
 def gaussian(x, mu, sig):
     return 1./(np.sqrt(2.*np.pi)*sig)*np.exp(-np.power((x - mu)/sig, 2.)/2)
 
+
 def gaussian0(x, sig):
     return 1./(np.sqrt(2.*np.pi)*sig)*np.exp(-np.power((x)/sig, 2.)/2)
+
 
 def lorentzian(x, x0, L):
     return L/(2*np.pi) * 1 / (L**2/4 + (x-x0)**2)
 
+
 def chi2(x, x0, L):
     return L/(2*np.pi) * 1 / (L**2/4 + (x-x0)**2)
+
 
 def smoothstep(x, Rc=None, N=10, x_min=None, x_max=None, filtering=True):
     if filtering :
@@ -153,7 +101,6 @@ def smoothstep(x, Rc=None, N=10, x_min=None, x_max=None, filtering=True):
         result += result[::-1]
         result = np.abs(result-1)
     return result
-
 
 
 def get_logL(flux_observed, flux_model, sigma_l, method="classic"): # see https://github.com/exoAtmospheres/ForMoSA/blob/activ_dev/ForMoSA/nested_sampling/nested_logL_functions.py
@@ -205,15 +152,40 @@ def get_logL(flux_observed, flux_model, sigma_l, method="classic"): # see https:
     return logL
 
 
+#################### Image processing/analysis functions ######################
 
-def annular_mask(R_int, R_ext, size, value=np.nan): 
-    mask = np.zeros(size) + value
-    i0, j0 = size[0]//2, size[1]//2
-    for i in range(size[0]):    
-        for j in range(size[1]):
-            if R_ext ** 2 >= ((i0 - i) ** 2 + (j0 - j) ** 2) >= R_int ** 2:
-                mask[i, j] = 1
+
+def annular_mask(r_in, r_out, size, value=np.nan):
+    """
+    Creates a 2D annular mask with value inside the annulus [r_in, r_out],
+    and `value` elsewhere.
+
+    Parameters
+    ----------
+    r_in : float
+        Inner radius of the annulus (in pixels).
+    r_out : float
+        Outer radius of the annulus (in pixels).
+    size : tuple of int
+        (ny, nx) shape of the output mask.
+    value : float or np.nan, optional
+        Value to assign outside the annulus.
+
+    Returns
+    -------
+    mask : 2D ndarray
+        Mask with 1s inside the annulus and `value` elsewhere.
+    """
+    if r_out < r_in:
+        raise ValueError("`r_out` must be greater than `r_in`.")
+    ny, nx = size
+    y0, x0 = ny // 2, nx // 2
+    Y, X = np.ogrid[:ny, :nx]
+    r2 = (Y - y0)**2 + (X - x0)**2
+    mask = np.full((ny, nx), value, dtype=float)
+    mask[(r2 >= r_in**2) & (r2 <= r_out**2)] = 1.0
     return mask
+
 
 def crop(data, Y0=None, X0=None, R_crop=None, return_center=False):
     # Calcul du centre global sur la médiane du cube si non fourni
@@ -247,6 +219,7 @@ def crop(data, Y0=None, X0=None, R_crop=None, return_center=False):
         return B, Y0, X0
     else:
         return B
+    
     
 def crop_both(data1, data2, Y0=None, X0=None, R_crop=None, return_center=False):
     # Calcul du centre global sur la médiane du cube si non fourni
@@ -285,22 +258,196 @@ def crop_both(data1, data2, Y0=None, X0=None, R_crop=None, return_center=False):
     else:
         return B, C
 
-def dither(cube, factor=10):
-    NbChannel, NbLine, NbColumn = cube.shape
-    cube_dither = np.zeros((NbChannel, int(NbLine*factor), int(NbColumn*factor)))
-    for l in range(NbChannel):
-        for i in range(NbLine):    
-            for j in range(NbColumn):
-                cube_dither[l, int(i*factor):int((i+1)*factor), int(j*factor):int((j+1)*factor)] = cube[l, i, j]
-    return cube_dither
+
+def PSF_profile_ratio(PSF, pxscale, size_core, show=True):
+    PSF = np.copy(PSF)
+    NbLine, NbColumn = PSF.shape
+    y0, x0           = NbLine // 2, NbColumn // 2
+    N                = max(y0, x0) + 2*size_core
+    PSF_flux = np.nansum(PSF)
+    PSF     /= PSF_flux
+    if size_core != 1:
+        psf = np.zeros_like(PSF) + np.nan 
+        for i in range(NbLine):
+            for j in range(NbColumn): 
+                if not (np.isnan(PSF[max(i-size_core//2, 0):min(i+size_core//2+1, NbLine-1), max(j-size_core//2, 0):min(j+size_core//2+1, NbColumn-1)]).all()):
+                    psf[i, j] = np.nanmean(PSF[max(i-size_core//2, 0):min(i+size_core//2+1, NbLine-1), max(j-size_core//2, 0):min(j+size_core//2+1, NbColumn-1)])
+        psf[psf == 0] = np.nan ; PSF = psf
+    fraction_core = size_core**2 * PSF[y0, x0]
+    profile = np.zeros((2, N))
+    for r in range(N):
+        if r == 0 or r == 1:
+            r_int = r
+            r_ext = r
+        else:
+            r_int = max(1, r - 1)
+            r_ext = r
+        profile[0, r] = (r_int + r_ext)/2 * pxscale
+        profile[1, r] = np.nanmean(PSF * annular_mask(r_int, r_ext, size=(NbLine, NbColumn)))
+    profile[1, :] /= pxscale**2
+    # # PSF profile sep sanity check
+    # NbLine, NbColumn = PSF.shape
+    # y0, x0 = NbLine // 2, NbColumn // 2
+    # separation = np.zeros((max(y0, x0)+1))
+    # sep_mean = np.zeros((max(y0, x0)+1))
+    # # Grille de coordonnées
+    # Y, X = np.indices(PSF.shape)
+    # distances_from_center = np.sqrt((X - x0)**2 + (Y - y0)**2) * pxscale
+    # for R in range(max(y0, x0)+1):
+    #     if R == 0 or R == 1:
+    #         R_int = R
+    #         R_ext = R
+    #     else:
+    #         R_int = max(1, R - 1)
+    #         R_ext = R
+    #     separation[R] = (R_int + R_ext)/2 * pxscale
+    #     PSF_R         = PSF * annular_mask(R_int, R_ext, size=(NbLine, NbColumn))
+    #     sep_mean[R] = np.nanmean(distances_from_center[~np.isnan(PSF_R)])
+    #     # # Visualisation si besoin
+    #     # plt.figure(dpi=300)
+    #     # plt.imshow(PSF_R)
+    #     # plt.title(f"Annulus R={R}")
+    #     # plt.xlim(-10+NbLine/2, 10+NbLine/2)
+    #     # plt.ylim(-10+NbLine/2, 10+NbLine/2)
+    #     # plt.show()
+    # plt.figure(dpi=300)
+    # plt.plot(separation-sep_mean)
+    # plt.show()
+    return profile, fraction_core
+
+
+def register_PSF_ratio(instru, profile, fraction_core, aper_corr, band, strehl, apodizer, coronagraph=None):
+    hdr = fits.Header()
+    hdr['FC'] = fraction_core
+    hdr['AC'] = aper_corr
+    if coronagraph is None:
+        fits.writeto("sim_data/PSF/PSF_"+instru+"/PSF_"+band+"_"+strehl+"_"+apodizer+".fits", profile, header=hdr, overwrite=True)
+    else:
+        fits.writeto("sim_data/PSF/PSF_"+instru+"/PSF_"+band+"_"+coronagraph+"_"+strehl+"_"+apodizer+".fits", profile, header=hdr, overwrite=True)
+
+
+def fitting_PSF(instru, data, wave, pxscale, size_core, sep_unit="arcsec", model="gaussian", Y0=None, X0=None, sigfactor=5, debug=False):
+    import vip_hci as vip
+    D        = get_config_data(instru)["telescope"]["diameter"]  # diameter  in m
+    lambda0  = (wave[0] + wave[-1]) / 2 * 1e-6  # wavelength in m
+    FWHM_ang = lambda0 / D * rad2arcsec  # FWHM [arcsec]
+    if sep_unit == "mas":
+        FWHM_ang *= 1000  # FWHM [mas]
+    FWHM_px = FWHM_ang / pxscale  # FWHM [pixels]
+    dpx = size_core
+
+    if len(data.shape) == 2:
+        NbLine, NbColumn = data.shape
+        if Y0 is None or X0 is None: # First guess
+            Y0, X0 = np.unravel_index(np.nanargmax(data, axis=None), data.shape)
+        img = np.nan_to_num(data)
+        ymin = max(Y0 - 2*dpx  , 0)
+        ymax = min(Y0 + 2*dpx+1, NbLine-1)
+        xmin = max(X0 - 2*dpx  , 0)
+        xmax = min(X0 + 2*dpx+1, NbColumn-1)
+        img_cropped = img[ymin:ymax, xmin:xmax]
+        if model == "gaussian":
+            results = vip.var.fit_2d.fit_2dgaussian(img_cropped, fwhmx=2*FWHM_px, fwhmy=2*FWHM_px, sigfactor=sigfactor, threshold=True, full_output=True, debug=debug)
+            fwhm_y     = results["fwhm_y"][0]
+            fwhm_x     = results["fwhm_x"][0]
+            fwhm_y_err = results["fwhm_y_err"][0]
+            fwhm_x_err = results["fwhm_x_err"][0]
+        elif model == "airy_disk":
+            results = vip.var.fit_2d.fit_2dairydisk(img_cropped, fwhm=2*FWHM_px, sigfactor=sigfactor, threshold=True, full_output=True, debug=debug)
+            fwhm_x     = fwhm_y     = results["fwhm"][0]
+            fwhm_x_err = fwhm_y_err = results["fwhm_err"][0]
+        elif model == "moffat":
+            results = vip.var.fit_2d.fit_2dmoffat(img_cropped, fwhm=2*FWHM_px, sigfactor=sigfactor, threshold=True, full_output=True, debug=debug)
+            fwhm_x     = fwhm_y     = results["fwhm"][0]
+            fwhm_x_err = fwhm_y_err = results["fwhm_err"][0]
+        y0_err  = results["centroid_y_err"][0]
+        x0_err  = results["centroid_x_err"][0]
+        centroid_y = results["centroid_y"][0]
+        centroid_x = results["centroid_x"][0]
+        y0 = centroid_y + ymin
+        x0 = centroid_x + xmin
+        return y0, x0, fwhm_y, fwhm_x
+    
+    elif len(data.shape) == 3:
+        NbChannel, NbLine, NbColumn = data.shape
+        if Y0 is None or X0 is None: # First guess
+            Y0, X0 = np.unravel_index(np.nanargmax(np.nanmedian(data, axis=0), axis=None), data[0].shape)
+        y0         = np.zeros((NbChannel))
+        x0         = np.zeros((NbChannel))
+        y0_err     = np.zeros((NbChannel))
+        x0_err     = np.zeros((NbChannel))
+        fwhm_y     = np.zeros((NbChannel))
+        fwhm_x     = np.zeros((NbChannel))
+        fwhm_y_err = np.zeros((NbChannel))
+        fwhm_x_err = np.zeros((NbChannel))
+        for i in range(NbChannel):
+            img = np.nan_to_num(data[i])
+            ymin = max(Y0-2*dpx, 0)
+            ymax = min(Y0+2*dpx+1, NbLine-1)
+            xmin = max(X0-2*dpx, 0)
+            xmax = min(X0+2*dpx+1, NbColumn-1)
+            img_cropped = img[ymin:ymax, xmin:xmax]
+            if model == "gaussian":
+                results = vip.var.fit_2d.fit_2dgaussian(img_cropped, fwhmx=2*FWHM_px, fwhmy=2*FWHM_px, sigfactor=sigfactor, threshold=True, full_output=True, debug=(i == NbChannel//2) and debug)
+                fwhm_y[i]     = results["fwhm_y"][0]
+                fwhm_x[i]     = results["fwhm_x"][0]
+                fwhm_y_err[i] = results["fwhm_y_err"][0]
+                fwhm_x_err[i] = results["fwhm_x_err"][0]
+            elif model == "airy_disk":
+                results = vip.var.fit_2d.fit_2dairydisk(img_cropped, fwhm=2*FWHM_px, sigfactor=sigfactor, threshold=True, full_output=True, debug=(i == NbChannel//2) and debug)
+                fwhm_y[i]     = fwhm_x[i]     = results["fwhm"][0]
+                fwhm_y_err[i] = fwhm_x_err[i] = results["fwhm_err"][0]
+            elif model == "moffat":
+                results = vip.var.fit_2d.fit_2dmoffat(img_cropped, fwhm=2*FWHM_px, sigfactor=sigfactor, threshold=True, full_output=True, debug=(i == NbChannel//2) and debug)
+                fwhm_y[i]     = fwhm_x[i]     = results["fwhm"][0]
+                fwhm_y_err[i] = fwhm_x_err[i] = results["fwhm_err"][0]
+            y0_err[i]  = results["centroid_y_err"][0]
+            x0_err[i]  = results["centroid_x_err"][0]
+            centroid_y = results["centroid_y"][0]
+            centroid_x = results["centroid_x"][0]
+            y0[i] = centroid_y + ymin
+            x0[i] = centroid_x + xmin
+            dy = Y0 - y0[i]
+            dx = X0 - x0[i]
+        if wave is not None:        
+            plt.figure(figsize=(14, 7), dpi=300)
+            plt.suptitle("PSF Fitting", fontsize=22, fontweight="bold", color="#333")                
+            plt.subplot(1, 2, 1)
+            plt.fill_between(wave, y0 - y0_err, y0 + y0_err, color="#1f77b4", alpha=0.3)
+            plt.fill_between(wave, x0 - x0_err, x0 + x0_err, color="#ff7f0e", alpha=0.3)
+            plt.plot(wave, y0, label=f"y ("r"$\mu$"f" = {round(np.nanmean(y0), 2)} px, "r"$\sigma$"f" = {round(np.nanmean(y0_err), 3)} px)", linewidth=2.5, color="#1f77b4")
+            plt.plot(wave, x0, label=f"x ("r"$\mu$"f" = {round(np.nanmean(x0), 2)} px, "r"$\sigma$"f" = {round(np.nanmean(x0_err), 3)} px)", linewidth=2.5, color="#ff7f0e")
+            plt.ylabel("PSF Centroid Position [px]", fontsize=16)
+            plt.xlabel("Wavelength [µm]", fontsize=16)
+            plt.title("Centroid Position as a Function of Wavelength", fontsize=18, pad=10)
+            plt.legend(loc="best", fontsize=14, fancybox=True, shadow=True)
+            plt.grid(True, linestyle="--", alpha=0.5)
+            plt.subplot(1, 2, 2)
+            if model == "gaussian":
+                plt.fill_between(wave, fwhm_y - fwhm_y_err, fwhm_y + fwhm_y_err, color="#1f77b4", alpha=0.3)
+                plt.fill_between(wave, fwhm_x - fwhm_x_err, fwhm_x + fwhm_x_err, color="#ff7f0e", alpha=0.3)
+                plt.plot(wave, fwhm_y, label=f"y FWHM ("r"$\mu$"f" = {round(np.nanmean(fwhm_y), 2)} px, "r"$\sigma$"f" = {round(np.nanmean(fwhm_y_err), 2)} px)", linewidth=2.5, color="#1f77b4")
+                plt.plot(wave, fwhm_x, label=f"x FWHM ("r"$\mu$"f" = {round(np.nanmean(fwhm_x), 2)} px, "r"$\sigma$"f" = {round(np.nanmean(fwhm_x_err), 2)} px)", linewidth=2.5, color="#ff7f0e")
+            else:
+                plt.fill_between(wave, fwhm_y - fwhm_y_err, fwhm_y + fwhm_y_err, color="black", alpha=0.3)
+                plt.plot(wave, fwhm_y, label=f"FWHM ("r"$\mu$"f" = {round(np.nanmean(fwhm_y), 2)} px, "r"$\sigma$"f" = {round(np.nanmean(fwhm_y_err), 2)} px)", linewidth=2.5, color="black")
+            plt.ylabel("PSF FWHM [px]", fontsize=16)
+            plt.xlabel("Wavelength [µm]", fontsize=16)
+            plt.title("FWHM as a Function of Wavelength", fontsize=18, pad=10)
+            plt.legend(loc="best", fontsize=14, fancybox=True, shadow=True)
+            plt.grid(True, linestyle="--", alpha=0.5)
+            plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+        return np.nanmean(y0), np.nanmean(x0), np.nanmean(fwhm_y), np.nanmean(fwhm_x)
+
+
 
 def align_HC_bench_psf(cube_desat, cube, model="airy_disk", dpx=10, wave=None):
     """
     Align each slice of the HC bench cubes. 
     """
+    import vip_hci as vip
     cube_desat = np.nan_to_num(cube_desat)
     cube       = np.nan_to_num(cube)
-    import vip_hci as vip
     cube_desat_med = np.nanmedian(cube_desat, axis=0)
     Y0, X0         = np.unravel_index(np.argmax(np.nan_to_num(cube_desat_med), axis=None), cube_desat_med.shape)
     aligned_cube       = np.zeros_like(cube)
@@ -340,7 +487,7 @@ def align_HC_bench_psf(cube_desat, cube, model="airy_disk", dpx=10, wave=None):
         centroid_y = results["centroid_y"][0]
         centroid_x = results["centroid_x"][0]
         y0[i] = centroid_y + ymin
-        x0[i] = centroid_x + ymin
+        x0[i] = centroid_x + xmin
         dy = Y0 - y0[i]
         dx = X0 - x0[i]
         aligned_cube[i]       = shift(cube[i], shift=(dy, dx), mode='constant', cval=0)
@@ -375,58 +522,404 @@ def align_HC_bench_psf(cube_desat, cube, model="airy_disk", dpx=10, wave=None):
         plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     return aligned_cube_desat, aligned_cube
 
-def correlation_PSF(cube_M, CCF):
-    idx_PSF_centroid = np.unravel_index(np.nanargmax(PSF, axis=None), PSF.shape)    
-    i_PSF_centroid = idx_PSF_centroid[0]
-    j_PSF_centroid = idx_PSF_centroid[1]
-    PSF_shift = np.copy(PSF) * 0
-    CCF_conv  = np.copy(CCF) * np.nan
-    for i_shift in range(CCF_conv.shape[0]):
-        for j_shift in range(CCF_conv.shape[1]): 
-            if not np.isnan(CCF[i_shift, j_shift]):
-                for i in range(PSF_shift.shape[0]):
-                    for j in range(PSF_shift.shape[1]):
-                        if i+i_PSF_centroid-i_shift>=0 and j+j_PSF_centroid-j_shift>=0 and i+i_PSF_centroid-i_shift<PSF_shift.shape[0] and j+j_PSF_centroid-j_shift<PSF_shift.shape[1]:
-                            PSF_shift[i, j] = PSF[i+i_PSF_centroid-i_shift, j+j_PSF_centroid-j_shift]
-                        else:
-                            PSF_shift[i, j] = np.nan
-                #plt.figure() ; plt.imshow(PSF_shift, extent=[-(cube.shape[2]+1)//2*pxscale, (cube.shape[2]+1)//2*pxscale, -(cube.shape[2]+1)//2*pxscale, (cube.shape[2]+1)//2*pxscale]) ; plt.title(f'MIRIMRS PSF of {target_name} \n on {band}', fontsize=14) ; plt.ylabel('y offset (in ")', fontsize=14) ; plt.xlabel('x offset (in ")', fontsize=14) ; plt.show()
-                #plt.figure() ; plt.imshow(CCF, extent=[-(cube.shape[2]+1)//2*pxscale, (cube.shape[2]+1)//2*pxscale, -(cube.shape[2]+1)//2*pxscale, (cube.shape[2]+1)//2*pxscale]) ; plt.title(f'MIRIMRS PSF of {target_name} \n on {band}', fontsize=14) ; plt.ylabel('y offset (in ")', fontsize=14) ; plt.xlabel('x offset (in ")', fontsize=14) ; plt.show()
-                CCF_conv[i_shift, j_shift] = np.nansum(PSF_shift*CCF)
-    return CCF_conv
 
 
+#################### Spectral processing/analysis functions ###################
 
-def PSF_profile_ratio(PSF, pxscale, size_core, show=True):
-    NbLine, NbColumn = PSF.shape # => donne (taille de l'axe lambda, " de l'axe y, " de l'axe x)
-    y0, x0 = NbLine // 2, NbColumn // 2
-    if size_core==1:
-        PSF_core = PSF[y0, x0]
+
+def downbin_spec(specHR, lamHR, lamLR, dlam=None):
+    """
+    from : https://github.com/jlustigy/coronagraph/blob/master/coronagraph/degrade_spec.py
+    Re-bin spectum to lower resolution using :py:obj:`scipy.binned_statistic`
+    with ``statistic = 'mean'``. This is a "top-hat" convolution.
+
+    Parameters
+    ----------
+    specHR : array-like
+        Spectrum to be degraded
+    lamHR : array-like
+        High-res wavelength grid
+    lamLR : array-like
+        Low-res wavelength grid
+    dlam : array-like, optional
+        Low-res wavelength width grid
+
+    Returns
+    -------
+    specLR : :py:obj:`numpy.ndarray`
+        Low-res spectrum
+    """
+    if dlam is None:
+        ValueError("Please supply dlam in downbin_spec()")
+    # Reverse ordering if wl vector is decreasing with index
+    if len(lamLR) > 1:
+        if lamHR[0] > lamHR[1]:
+            lamHI = np.array(lamHR[::-1])
+            spec = np.array(specHR[::-1])
+        if lamLR[0] > lamLR[1]:
+            lamLO = np.array(lamLR[::-1])
+            dlamLO = np.array(dlam[::-1])
+    # Calculate bin edges
+    LRedges = np.hstack([lamLR - 0.5*dlam, lamLR[-1]+0.5*dlam[-1]])
+    # Call scipy.stats.binned_statistic()
+    specLR = binned_statistic(lamHR, specHR, statistic="mean", bins=LRedges)[0]
+    return specLR
+
+
+def air2vacuum(wavelength):
+    """
+    Convert wavelength from air to vacuum (wavelength in µm)
+    """
+    s = 1e4 / (wavelength * 1e4) # self.wavelength in Angstrom
+    n =  1 + 0.00008336624212083 + 0.02408926869968 / (130.1065924522 - s**2) + 0.0001599740894897 / (38.92568793293 - s**2)
+    return wavelength * n
+
+
+def PCA_subtraction(Sres, n_comp_sub, y0=None, x0=None, size_core=None, PCA_annular=False, PCA_mask=False, scree_plot=False, PCA_plots=False, PCA_plots_PDF=False, path_PDF=None, wave=None, R=None, pxscale=None):
+    """
+    Perform PCA subtraction on the input data cube.
+
+    This function applies Principal Component Analysis (PCA) to subtract signal
+    components from the input data cube (Sres). Optionally, it masks out regions 
+    around a specified planet location before performing the PCA. It can also display 
+    plots for the first few PCA components interactively, and if a file path is provided, 
+    it saves plots of all PCA components to a PDF (one per page).
+
+    Parameters
+    ----------
+    Sres : numpy.ndarray
+        Input data cube with dimensions (NbChannel, NbColumn, NbLine).
+    n_comp_sub : int
+        Number of PCA components to subtract. If 0, no PCA subtraction is performed.
+    y0 : int, optional
+        Y-coordinate of the planet location.
+    x0 : int, optional
+        X-coordinate of the planet location.
+    size_core : int, optional
+        Size parameter for masking around the planet (FWHM size in px).
+    PCA_annular : bool, optional
+        If True, applies PCA on an annular mask around the planet location.
+    PCA_mask : bool, optional
+        If True, applies a rectangular mask (of size_core x size_core) around the planet location.
+    scree_plot : bool, optional
+        If True, displays a scree plot of the eigenvalues.
+    PCA_plots : bool, optional
+        If True, displays plots for up to the first 5 PCA components.
+    PCA_plots_PDF : bool, optional
+        If True, saves plots of all PCA components into a PDF.
+    path_PDF : str, optional
+        If provided, saves plots of all PCA components into a PDF at this path.
+    wave : numpy.ndarray, optional
+        Array of wavelengths used for plotting the PCA component curves.
+    R : int or float, optional
+        Resolution parameter used for plotting the Power Spectral Density (PSD).
+    pxscale : float, optional
+        Pixel scale used for plotting the correlation maps.
+
+    Returns
+    -------
+    Sres_sub : numpy.ndarray
+        Data cube after PCA subtraction.
+    pca : PCA object or None
+        The fitted PCA object if n_comp_sub is not 0; otherwise, None.
+    """
+    
+    if n_comp_sub != 0:
+        from sklearn.decomposition import PCA
+        NbChannel, NbColumn, NbLine = Sres.shape # Retrieve the shape of the data cube
+        pca = PCA(n_components=n_comp_sub)
+        Sres_wo_planet = np.copy(Sres) # Create a copy of the input data for masking purposes
+        
+        # If planet coordinates are provided, apply the masks if specified
+        if y0 is not None and x0 is not None:
+            if PCA_annular:
+                # Calculate the separation from the center to the planet
+                planet_sep = int(round(np.sqrt((y0 - NbLine // 2) ** 2 + (x0 - NbColumn // 2) ** 2)))
+                # Apply an annular mask with a given core size
+                Sres_wo_planet *= annular_mask(max(1, planet_sep - size_core - 1), planet_sep + size_core, value=np.nan, size=(NbLine, NbColumn))
+            if PCA_mask:
+                # Apply a rectangular mask around the planet location
+                Sres_wo_planet[:, y0 - size_core // 2:y0 + size_core // 2 + 1, x0 - size_core // 2:x0 + size_core // 2 + 10] = np.nan 
+        
+        # Reshape the cube to 2D (pixels x channels) and replace NaNs with 0
+        Sres_wo_planet = np.reshape(Sres_wo_planet, (NbChannel, NbColumn * NbLine)).transpose()
+        Sres_wo_planet[np.isnan(Sres_wo_planet)] = 0
+        
+        # Fit the PCA on the masked data
+        pca.fit(Sres_wo_planet)
+        
+        # Prepare the data for subtraction (reshape and replace NaNs)
+        Sres_sub = np.reshape(np.copy(Sres), (NbChannel, NbColumn * NbLine)).transpose()
+        Sres_sub[np.isnan(Sres_sub)] = 0
+        
+        # Transform and inverse transform to obtain the PCA model reconstruction
+        X = pca.transform(Sres_sub)
+        X = pca.inverse_transform(X)
+        
+        # Subtract the PCA reconstruction from the original data
+        Sres_sub = (Sres_sub - X).transpose()
+        Sres_sub = np.reshape(Sres_sub, (NbChannel, NbColumn, NbLine))
+        Sres_sub[Sres_sub == 0] = np.nan
+        
+        # ---------------------------
+        # PCA plots
+        # ---------------------------
+        if PCA_plots:
+            # Display up to the first 5 components interactively
+            Nk = min(n_comp_sub, 5)
+            from src.spectrum import Spectrum
+            cmap = plt.get_cmap("Spectral", Nk)
+            fig, ax = plt.subplots(Nk, 3, figsize=(16, Nk * 3), sharex='col', sharey='col',
+                                   layout="constrained", gridspec_kw={'wspace': 0.05, 'hspace': 0}, dpi=300)
+            for k in range(Nk):
+                # Retrieve the k-th PCA component and replace zeros with NaN for plotting
+                pca_comp = pca.components_[k]
+                pca_comp[pca_comp == 0] = np.nan
+                
+                # First column: PCA component curve
+                ax[k, 0].plot(wave, pca_comp, c=cmap(k), label=f"$n_k$ = {k+1}")
+                ax[k, 0].legend(fontsize=14, loc="upper center")
+                if k == Nk - 1:
+                    ax[k, 0].set_xlim(wave[0], wave[-1])
+                    ax[k, 0].set_xlabel("wavelength (in µm)", fontsize=14)
+                ax[k, 0].set_ylabel("modulation (normalized)", fontsize=14)
+                ax[k, 0].grid(True)
+                
+                # Second column: Plot the Power Spectral Density (PSD)
+                m_HF_spectrum = Spectrum(wave, pca_comp, R, None)
+                m_HF_spectrum.wavelength = m_HF_spectrum.wavelength[~np.isnan(m_HF_spectrum.flux)]
+                m_HF_spectrum.flux = m_HF_spectrum.flux[~np.isnan(m_HF_spectrum.flux)]
+                res, psd = m_HF_spectrum.get_psd(smooth=0)
+                ax[k, 1].plot(res, psd, c=cmap(k))
+                if k == Nk - 1:
+                    ax[k, 1].set_xlim(10, R)
+                    ax[k, 1].set_xlabel("resolution", fontsize=14)
+                    ax[k, 1].set_xscale('log')
+                    ax[k, 1].set_yscale('log')
+                ax[k, 1].set_ylabel("PSD", fontsize=14)
+                ax[k, 1].grid(True)
+                
+                # Third column: Vectorized computation and plot of the correlation map
+                numerator = np.nansum(Sres * pca_comp[:, None, None], axis=0)
+                denom = np.sqrt(np.nansum(Sres ** 2, axis=0))
+                mask = ~np.all(np.isnan(Sres), axis=0)
+                CCF = np.full(Sres.shape[1:], np.nan)
+                CCF[mask] = np.nan_to_num(numerator[mask]) / denom[mask]
+                cax = ax[k, 2].imshow(CCF, extent=[-(CCF.shape[0] + 1) // 2 * pxscale, (CCF.shape[0]) // 2 * pxscale,
+                                                    -(CCF.shape[1] - 2) // 2 * pxscale, (CCF.shape[1]) // 2 * pxscale],
+                                      zorder=3)
+                cbar = fig.colorbar(cax, ax=ax[k, 2], orientation='vertical', shrink=0.8)
+                cbar.set_label("correlation", fontsize=14, labelpad=20, rotation=270)
+                if k == Nk - 1:
+                    ax[k, 2].set_xlabel('x offset (in ")', fontsize=14)
+                ax[k, 2].set_ylabel('y offset (in ")', fontsize=14)
+                ax[k, 2].grid(True)
+            plt.show()
+        
+        # ---------------------------
+        # Save PCA component plots to a PDF
+        # ---------------------------
+        if PCA_plots_PDF and path_PDF is not None:
+            from matplotlib.backends.backend_pdf import PdfPages
+            pdf = PdfPages(path_PDF)
+            # Create a colormap with n_comp_sub distinct colors
+            N = min(n_comp_sub, 100)
+            cmap_pdf = get_cmap("Spectral", N)
+            from src.spectrum import Spectrum
+            for k in tqdm(range(N), desc="Saving PCA components in PDF"):
+                pca_comp = pca.components_[k]
+                pca_comp[pca_comp == 0] = np.nan
+                
+                fig, ax = plt.subplots(1, 3, figsize=(16, 3), dpi=100)
+                
+                # First column: PCA component curve
+                ax[0].plot(wave, pca_comp, c=cmap_pdf(k), label=f"$n_k$ = {k+1}")
+                ax[0].legend(fontsize=14, loc="upper center")
+                ax[0].set_xlim(wave[0], wave[-1])
+                ax[0].set_xlabel("wavelength (in µm)", fontsize=14)
+                ax[0].set_ylabel("modulation (normalized)", fontsize=14)
+                ax[0].grid(True)
+                
+                # Second column: PSD plot
+                m_HF_spectrum = Spectrum(wave, pca_comp, R, None)
+                m_HF_spectrum.wavelength = m_HF_spectrum.wavelength[~np.isnan(m_HF_spectrum.flux)]
+                m_HF_spectrum.flux = m_HF_spectrum.flux[~np.isnan(m_HF_spectrum.flux)]
+                res, psd = m_HF_spectrum.get_psd(smooth=0)
+                ax[1].plot(res, psd, c=cmap_pdf(k))
+                ax[1].set_xlim(10, R)
+                ax[1].set_xlabel("resolution", fontsize=14)
+                ax[1].set_xscale('log')
+                ax[1].set_yscale('log')
+                ax[1].set_ylabel("PSD", fontsize=14)
+                ax[1].grid(True)
+                
+                # Third column: correlation map
+                numerator = np.nansum(Sres * pca_comp[:, None, None], axis=0)
+                denom = np.sqrt(np.nansum(Sres ** 2, axis=0))
+                mask = ~np.all(np.isnan(Sres), axis=0)
+                CCF = np.full(Sres.shape[1:], np.nan)
+                CCF[mask] = np.nan_to_num(numerator[mask]) / denom[mask]
+                cax = ax[2].imshow(CCF, extent=[-(CCF.shape[0] + 1) // 2 * pxscale, (CCF.shape[0]) // 2 * pxscale, -(CCF.shape[1] - 2) // 2 * pxscale, (CCF.shape[1]) // 2 * pxscale], zorder=3)
+                cbar = fig.colorbar(cax, ax=ax[2], orientation='vertical', shrink=0.8)
+                cbar.set_label("correlation", fontsize=14, labelpad=20, rotation=270)
+                ax[2].set_xlabel('x offset (in ")', fontsize=14)
+                ax[2].set_ylabel('y offset (in ")', fontsize=14)
+                ax[2].grid(True)
+                
+                pdf.savefig(fig, bbox_inches='tight')
+                plt.close(fig)
+                
+            pdf.close()
+            print(f"PCA PDF saved in {path_PDF}")
+
+        # ---------------------------
+        # Scree plot (Eigenvalues)
+        # ---------------------------
+        if scree_plot:
+            X = np.reshape(Sres, (NbChannel, NbColumn * NbLine)).transpose()
+            X[np.isnan(X)] = 0
+            pca = PCA(n_components=n_comp_sub)
+            pca.fit_transform(X)
+            eigenvalues = pca.explained_variance_
+            plt.figure(figsize=(8, 6))
+            plt.plot(np.arange(1, len(eigenvalues) + 1), eigenvalues, marker='o', linestyle='-')
+            plt.xlabel('Principal Components')
+            plt.ylabel('Eigenvalues')
+            plt.title('Scree Plot')
+            plt.yscale('log')
+            plt.grid(True)
+            plt.show()
+            
+    elif n_comp_sub == 0:
+        Sres_sub = np.copy(Sres)
+        pca      = None
+        
+    return Sres_sub, pca
+
+
+def cut_spectral_frequencies(input_flux, R, Rmin, Rmax, filter_type='empirical', show=False, target_name=None, force_new_calc=False):
+    """
+    Removes spectral fringes from the input flux by setting specific frequency components to zero or applying a smoother filter.
+
+    Parameters:
+    input_flux (array-like): The flux values to be filtered, which may contain NaN values.
+    R (float): The spectral resolution of the data.
+    Rmin (float): The lower bound of the fringe domain in resolution units.
+    Rmax (float): The upper bound of the fringe domain in resolution units.
+    filter_type (str): The type of smoother filter to apply, either 'gaussian', 'step' or 'empirical'.
+    data (bool): In order to estimate the empirical filter response profile from data.
+
+    Returns:
+    array-like: The filtered flux with spectral fringes removed or smoothed.
+    """
+    # Ensure there are no NaN values in the input flux
+    valid_data = ~np.isnan(input_flux)
+    # Perform FFT on the valid part of the input flux
+    fft_values = np.fft.fft(input_flux[valid_data])
+    frequencies = np.fft.fftfreq(len(input_flux[valid_data]))
+    # Convert frequencies to resolution scale
+    res_values = frequencies * R * 2
+    if filter_type == 'gaussian': # Apply a Gaussian filter to smoothly reduce the amplitudes in the fringe domain
+        sigma = (Rmax - Rmin) / (2 * np.sqrt(2 * np.log(2)))  # assuming FWHM = Rmax - Rmin
+        n = 1 # Control the sharpness of the filter, n > 1 for super-gaussian
+        gaussian_filter = (1 - np.exp(-0.5 * ((res_values - (Rmin + Rmax) / 2) / sigma) ** (2*n))) / 2 + (1 - np.exp(-0.5 * ((res_values + (Rmin + Rmax) / 2) / sigma) ** (2*n))) / 2
+        filter_response = gaussian_filter
+    elif filter_type == 'step': # Apply a window filter for a sharp cutoff of the fringe domain
+        step_filter = np.ones_like(res_values)
+        step_filter[(Rmax > np.abs(res_values)) & (np.abs(res_values) > Rmin)] = 0
+        filter_response = step_filter
+    elif filter_type == 'empirical': 
+        try : # Opening existing filter response profile
+            if force_new_calc:
+                raise ValueError("force_new_calc = True")
+            empirical_res_values, empirical_filter_response = fits.getdata(f"utils/empirical_filter_response/{target_name}_{R}_{Rmin}_{Rmax}_empirical_filter_response.fits")
+            f = interp1d(empirical_res_values, empirical_filter_response, bounds_error=False, fill_value="extrapolate")
+            filter_response = f(res_values)
+        except Exception as e: # Calculating empirical filter response profile (needs to be done once on data!!! and not on models)
+            print(f"empirical cut_spectral_frequencies(): {e}")
+            # Calcul de la PSD des données
+            psd_values = np.abs(fft_values)**2
+            # Lissage de la PSD des données
+            psd_values_LF = gaussian_filter1d(psd_values, sigma=100)
+            # Interpolation de la PSD en masquant le pic des franges
+            psd_values_LF_interp = np.copy(psd_values_LF)
+            psd_values_LF_interp[(Rmax > np.abs(res_values)) & (np.abs(res_values) > Rmin)] = np.nan
+            f = interp1d(res_values[~np.isnan(psd_values_LF_interp)], psd_values_LF_interp[~np.isnan(psd_values_LF_interp)], bounds_error=False, fill_value=np.nan)
+            psd_values_LF_interp = f(res_values)
+            # Calcul de la forme du pic des franges (psd_values_LF = PSD lissée avec le pic et psd_values_LF_interp PSD lissée sans le pic)
+            peak = np.abs(psd_values_LF - psd_values_LF_interp)
+            # Normalisation du pic (on s'intéresse uniquement à la forme)
+            peak /= np.nanmax(peak)
+            # Lissage de la forme du pic trouvé (semble mieux marcher), sigma=400 est une valeur qui fonctionne bien pour les données de Beta Pic c, mais il faudra surement modifier cette valeur pour d'autres données
+            if "beta_Pic_c" in target_name:
+                sigma = 666
+            else:
+                sigma = 1000
+            filter_response = gaussian_filter1d(1 - peak, sigma=sigma)
+            # Sauvegarde du profil trouvé
+            empirical_filter_response = np.zeros((2, len(filter_response)))
+            empirical_filter_response[0] = res_values ; empirical_filter_response[1] = filter_response
+            fits.writeto(f"utils/empirical_filter_response/{target_name}_{R}_{Rmin}_{Rmax}_empirical_filter_response.fits", empirical_filter_response, overwrite=True)
+            plt.figure(dpi=300)
+            plt.plot(np.fft.fftshift(res_values), np.fft.fftshift(psd_values), label="PSD des données")
+            plt.plot(np.fft.fftshift(res_values), np.fft.fftshift(psd_values_LF), label="PSD lissée (avec le pic)")
+            plt.plot(np.fft.fftshift(res_values), np.fft.fftshift(psd_values_LF_interp), label="PSD lissée (sans le pic)")
+            plt.plot(np.fft.fftshift(res_values), np.fft.fftshift(np.abs(psd_values_LF - psd_values_LF_interp)), label="Estimation du pic")
+            plt.plot(np.fft.fftshift(res_values), np.fft.fftshift(filter_response), label="normalisation, lissage et inversion du pic")
+            plt.xscale('log')
+            plt.yscale('log')
+            plt.legend()
+            plt.xlabel("resolution")
+            plt.ylabel("PSD")
+            plt.show()
     else:
-        PSF_core = PSF[y0-size_core//2:y0+size_core//2+1, x0-size_core//2:x0+size_core//2+1]
-    if show :
-        plt.figure(dpi=300) ; plt.imshow(PSF_core) ; plt.show()
-    PSF_flux = np.nansum(PSF)
-    fraction_core = np.nansum(PSF_core) / PSF_flux
-    profile = np.zeros((2, max(y0, x0)+1)) # array 2D de taille 2x Nbline (ou Column) /2
-    for R in range(max(y0, x0)+1):
-        profile[0, R] = R * pxscale
-        if R==0:
-            profile[1, R] = np.nanmean(PSF * annular_mask(0, 0, size=(NbLine, NbColumn))) / PSF_flux
-        else:
-            profile[1, R] = np.nanmean(PSF * annular_mask(max(1, R-1), R, size=(NbLine, NbColumn))) / PSF_flux
-    profile[1, :] /= pxscale**2
-    return profile, fraction_core
+        raise ValueError("Invalid filter_type. Use 'gaussian', 'lorentzian', or 'step'.")
+    if show: # Plot the filter and the effect on FFT values
+        plt.figure(dpi=300)
+        plt.plot(np.fft.fftshift(res_values), abs(np.fft.fftshift(fft_values))**2, label='Original PSD')
+        plt.plot(np.fft.fftshift(res_values), abs(np.fft.fftshift(filter_response))**2, label=f'{filter_type.capitalize()} Filter Response')
+        plt.plot(np.fft.fftshift(res_values), abs(np.fft.fftshift(fft_values * filter_response))**2, label='Filtered PSD')
+        plt.xscale('log') ; plt.yscale('log')
+        plt.xlabel("resolution") ; plt.ylabel("PSD")
+        plt.legend()
+        plt.show()
+    fft_values *= filter_response
+    filtered_flux = np.copy(input_flux)
+    filtered_flux[valid_data] = np.real(np.fft.ifft(fft_values))
+    return filtered_flux
 
-def register_PSF_ratio(instru, profile, fraction_core, aper_corr, band, strehl, apodizer, coronagraph=None):
-    hdr = fits.Header()
-    hdr['FC'] = fraction_core
-    hdr['AC'] = aper_corr
-    if coronagraph is None:
-        fits.writeto("sim_data/PSF/PSF_"+instru+"/PSF_"+band+"_"+strehl+"_"+apodizer+".fits", profile, header=hdr, overwrite=True)
-    else:
-        fits.writeto("sim_data/PSF/PSF_"+instru+"/PSF_"+band+"_"+coronagraph+"_"+strehl+"_"+apodizer+".fits", profile, header=hdr, overwrite=True)
 
+def keep_true_chunks(nan_values, N):
+    # Convertir nan_values en une array numpy (si ce n'est pas déjà fait)
+    nan_values = np.array(nan_values)
+    # Initialisation des listes pour stocker les indices des débuts et fins de séquences de True
+    start_indices = []
+    end_indices   = []
+    # Parcourir l'array pour identifier les séquences de True
+    in_chunk = False
+    for i in range(len(nan_values)):
+        if nan_values[i] and not in_chunk:
+            # Début d'une nouvelle séquence de True
+            in_chunk = True
+            start_idx = i
+        elif not nan_values[i] and in_chunk:
+            # Fin de la séquence en cours
+            in_chunk = False
+            if i - start_idx >= N:
+                start_indices.append(start_idx)
+                end_indices.append(i)
+    # Pour la dernière séquence si elle continue jusqu'à la fin de l'array
+    if in_chunk and (len(nan_values) - start_idx >= N):
+        start_indices.append(start_idx)
+        end_indices.append(len(nan_values))
+    # Créer une nouvelle array ne contenant que les chunks de True de longueur >= N
+    filtered_nan_values = np.zeros_like(nan_values, dtype=bool)
+    for start, end in zip(start_indices, end_indices):
+        filtered_nan_values[start:end] = True
+    return filtered_nan_values
+
+
+########################### Q-Q plot functions ################################
 
 
 def qqplot(map_w, show=True):
@@ -437,6 +930,7 @@ def qqplot(map_w, show=True):
     plt.figure(dpi=300) ; ax = plt.gca()
     sm.qqplot(list_cn_w, ax=ax, line='45')
     plt.title('Q-Q plots of the CCF', fontsize = 14) ; plt.ylabel("sample quantiles", fontsize = 14) ; plt.xlabel("theoritical quantiles", fontsize = 14) ; plt.grid(True) ; plt.show()
+
     
 def qqplot2(CCF_map, sep_lim, sep_unit, pxscale, band, target_name):
     NbLine, NbColumn = CCF_map.shape
@@ -462,6 +956,7 @@ def qqplot2(CCF_map, sep_lim, sep_unit, pxscale, band, target_name):
     plt.yticks(fontsize=12)
     plt.tight_layout()
     plt.show()
+
     
 def qqplot2_hirise(CCF_signal, CCF_bkgd, band, target_name):
     plt.figure(dpi=300) ; ax = plt.gca()
@@ -478,14 +973,14 @@ def qqplot2_hirise(CCF_signal, CCF_bkgd, band, target_name):
     plt.title(f'Q-Q plots of the CCF of {target_name} on {band}', fontsize = 14) ; plt.ylabel("sample quantiles", fontsize = 14) ; plt.xlabel("theoritical quantiles", fontsize = 14) ; plt.grid(True) ; plt.show()
 
 
-
+########################## Extracting data functions ##########################
 
 
 def extract_jwst_data(instru, target_name, band, crop_band=True, outliers=False, sigma_outliers=5, file=None, X0=None, Y0=None, R_crop=None, verbose=True):
     
     # Instrument specs
     config_data = get_config_data(instru)
-    area        = config_data['telescope']['area'] # aire collectrice m²
+    area        = config_data['telescope']['area'] # collective area m2
 
     # Opening file
     if file is None :
@@ -496,13 +991,15 @@ def extract_jwst_data(instru, target_name, band, crop_band=True, outliers=False,
                 file = f"data/MIRIMRS/MAST/{target_name}_ch{band[0]}-shortmediumlong_s3d.fits"
         elif instru=="NIRSpec":
             file = f"data/NIRSpec/MAST/{target_name}_nirspec_{band}_s3d.fits"
+        else:
+            raise KeyError(f"Unknown instrument {instru}")
     f = fits.open(file)
     
     # Retrieving header values
     hdr0 = f[0].header
     hdr  = f[1].header
     if instru=="MIRIMRS" :
-        if "sim" in target_name.lower(): # les données MIRISIM sont déjà par bande (et non par channel)
+        if "sim" in target_name.lower() or "shortmediumlong" not in file: # MIRISIM are already per band
             exposure_time = f[0].header['EFFEXPTM']/60 # in mn / Effective exposure time
         elif crop_band:
             target_name   = hdr0['TARGNAME']
@@ -541,9 +1038,12 @@ def extract_jwst_data(instru, target_name, band, crop_band=True, outliers=False,
     cube *= area                         # ph/s/m²/px => photons/s/px
     err  *= area
     if crop_band: 
-        cube = cube[(wave>config_data['gratings'][band].lmin) & (wave<config_data['gratings'][band].lmax)]
-        err  = err[(wave>config_data['gratings'][band].lmin) & (wave<config_data['gratings'][band].lmax)]
-        wave = wave[(wave>config_data['gratings'][band].lmin) & (wave<config_data['gratings'][band].lmax)]
+        lmin = config_data['gratings'][band].lmin
+        lmax = config_data['gratings'][band].lmax
+        band_mask = (wave >= config_data['gratings'][band].lmin) & (wave <= config_data['gratings'][band].lmax)
+        cube = cube[band_mask]
+        err  = err[band_mask]
+        wave = wave[band_mask]
         NbChannel = cube.shape[0]
         from src.signal_noise_estimate import get_transmission
         trans = get_transmission(instru, wave, band, tellurics=False, apodizer="NO_SP") / fits.getheader("sim_data/PSF/PSF_"+instru+"/PSF_"+band+"_NO_JQ_NO_SP.fits")['AC'] # AC is obviously already taken into account
@@ -553,16 +1053,19 @@ def extract_jwst_data(instru, target_name, band, crop_band=True, outliers=False,
     else:
         trans = 1
     cube *= exposure_time*60
-    err  *= exposure_time*60 # e-/pixel or ph/pixel
+    err  *= exposure_time*60 # e-/px or ph/px
     
-    # Cropping empty slices
-    valid_slices = np.array([np.any(np.isfinite(cube[i]) & (cube[i] != 0)) for i in range(NbChannel)])
-    wave  = wave[valid_slices]
-    cube  = cube[valid_slices]
-    err   = err[valid_slices]
-    trans = trans[valid_slices]
-    NbChannel = cube.shape[0]
-    
+    # Cropping first and last empty slices
+    valid_slices = np.array([np.any(np.isfinite(cube[i]) & (cube[i] != 0)) for i in range(NbChannel)]) # Identify valid slices (not all zeros or NaNs)    
+    start = np.argmax(valid_slices)  # first True -> first valid slice
+    end   = len(valid_slices) - np.argmax(valid_slices[::-1])  # last True + 1 -> last valid slice
+    wave = wave[start:end] # Crop only the empty slices at the beginning and the end
+    cube = cube[start:end]
+    err  = err[start:end]
+    if crop_band:
+        trans = trans[start:end]    
+    NbChannel = cube.shape[0] # Update the number of channels
+
     # Flagging bad pixels
     if instru == "MIRIMRS": # flagging edge effects
         bad_pixels  = np.sum(cube, axis=(0))
@@ -571,7 +1074,6 @@ def extract_jwst_data(instru, target_name, band, crop_band=True, outliers=False,
         bad_pixels = np.zeros((NbLine, NbColumn))        
     cube += bad_pixels
     err  += bad_pixels
-
     cube[cube==0] = np.nan
     err[err==0]   = np.nan
     
@@ -590,34 +1092,32 @@ def extract_jwst_data(instru, target_name, band, crop_band=True, outliers=False,
                 Z[:, k] = np.array(np.ma.masked_array(Z[:, k], mask=sg.mask).filled(np.nan))
         cube = Y.reshape((NbChannel, NbLine, NbColumn))
         err  = Z.reshape((NbChannel, NbLine, NbColumn))
-    
-    degrade_resolution = False # Crash test (does not seems better with it)
-    if degrade_resolution:
-        degrated_cube = np.copy(cube)
-        from src.spectrum import Spectrum
-        for i in range(NbLine):
-            for j in range(NbColumn):
-                if not (np.isnan(cube[:, i, j]).all()):
-                    degrated_cube[:, i, j] = Spectrum(wave, cube[:, i, j], None, None).degrade_resolution(wave, renorm=False).flux
-        degrated_cube[np.isnan(degrated_cube)] = cube[np.isnan(degrated_cube)]
-        cube = degrated_cube
 
     if verbose :
-        print("\n exposure time = ", round(exposure_time, 3), "mn and DIT = ", round(DIT*60, 3), 's') 
-        print(' target name =', target_name, " / pixelscale =", round(pxscale, 3), ' "/px')
-        if instru=="MIRIMRS":
-            print(" DATE :", hdr0["DATE-OBS"])
-        try:
-            print(" TITLE :", hdr0["TITLE"])
-        except: 
-            pass
-        dwl = wave - np.roll(wave, 1) ; dwl[0] = dwl[1] ; dwl[dwl==0] = np.nanmean(dwl) # delta lambda array
-        R   = np.nanmean(wave/(2*dwl)) # calculating the resolution
-        print(' R = ', round(R))     
-        
+        dl = wave - np.roll(wave, 1) ; dl[0] = dl[1] ; dl[dl==0] = np.nanmean(dl) # delta lambda array
+        R  = np.nanmean(wave/(2*dl)) # calculating the resolution
+        print("\n"+"\033[4m"+f"{band.replace('_', ' ')}-BAND (from {round(wave.min(), 2)} to {round(wave.max(), 2)} µm with R={R:.0f}):"+"\033[0m")
+        print(f" Pixel scale  : {pxscale:.2f} arcsec/px")
+        print(f" Exposure time: {exposure_time:.1f} mn (with DIT of {DIT*60:.1f} s)") 
+        fields = [  ("TITLE", "{}"),
+                    ("CATEGORY", "{}"),
+                    ("SCICAT", "{}"),
+                    ("DATE-OBS", "{}"),
+                    ("TARGPROP", "{}"),
+                    ("TARGNAME", "{}"),
+                    ("TARGTYPE", "{}"),
+                    ("TARGCAT", "{}"),
+                    ("TARGDESC", "{}"),
+                    ("TARG_RA", "{:.2f}"),
+                    ("TARG_DEC", "{:.2f}"),
+                    ("PATTTYPE", "{}")]
+        for key, fmt in fields:
+            try:
+                print(f" {key:<13}: {fmt.format(hdr0[key])}")
+            except KeyError:
+                pass
+
     return cube, wave, pxscale, err, trans, exposure_time, DIT
-
-
 
 
 
@@ -714,8 +1214,6 @@ def extract_vipa_data(instru, target_name, gain, label_fiber, interpolate=True, 
         weight = None
         
     return wave, flux, flux_HF, sigma, weight, trans, R
-
-
 
 
 def extract_hirise_data(target_name, interpolate, degrade_resolution, R, Rc, filter_type, order_by_order, outliers, sigma_outliers, only_high_pass=False, cut_fringes=False, Rmin=None, Rmax=None, use_weight=True, mask_nan_values=False, keep_only_good=False, wave_input=None, reference_fibers=True, crop_tell_orders=False, verbose=True): # OPENING DATA AND DEGRADATING THE RESOLUTION (if wanted)
@@ -1101,429 +1599,13 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R, Rc, fil
     return wave, star_flux, d_star, planet_flux, d_planet, trans, trans_model, R, planet_sigma, planet_weight, T_star, lg_star, rv_star, vsini_star, hdr, d_bkg, wave_raw
 
 
-
-
-
-
-
-def cut_spectral_frequencies(input_flux, R, Rmin, Rmax, filter_type='empirical', show=False, target_name=None, force_new_calc=False):
-    """
-    Removes spectral fringes from the input flux by setting specific frequency components to zero or applying a smoother filter.
-
-    Parameters:
-    input_flux (array-like): The flux values to be filtered, which may contain NaN values.
-    R (float): The spectral resolution of the data.
-    Rmin (float): The lower bound of the fringe domain in resolution units.
-    Rmax (float): The upper bound of the fringe domain in resolution units.
-    filter_type (str): The type of smoother filter to apply, either 'gaussian', 'step' or 'empirical'.
-    data (bool): In order to estimate the empirical filter response profile from data.
-
-    Returns:
-    array-like: The filtered flux with spectral fringes removed or smoothed.
-    """
-    # Ensure there are no NaN values in the input flux
-    valid_data = ~np.isnan(input_flux)
-    # Perform FFT on the valid part of the input flux
-    fft_values = np.fft.fft(input_flux[valid_data])
-    frequencies = np.fft.fftfreq(len(input_flux[valid_data]))
-    # Convert frequencies to resolution scale
-    res_values = frequencies * R * 2
-    if filter_type == 'gaussian': # Apply a Gaussian filter to smoothly reduce the amplitudes in the fringe domain
-        sigma = (Rmax - Rmin) / (2 * np.sqrt(2 * np.log(2)))  # assuming FWHM = Rmax - Rmin
-        n = 1 # Control the sharpness of the filter, n > 1 for super-gaussian
-        gaussian_filter = (1 - np.exp(-0.5 * ((res_values - (Rmin + Rmax) / 2) / sigma) ** (2*n))) / 2 + (1 - np.exp(-0.5 * ((res_values + (Rmin + Rmax) / 2) / sigma) ** (2*n))) / 2
-        filter_response = gaussian_filter
-    elif filter_type == 'step': # Apply a window filter for a sharp cutoff of the fringe domain
-        step_filter = np.ones_like(res_values)
-        step_filter[(Rmax > np.abs(res_values)) & (np.abs(res_values) > Rmin)] = 0
-        filter_response = step_filter
-    elif filter_type == 'empirical': 
-        try : # Opening existing filter response profile
-            if force_new_calc:
-                raise ValueError("force_new_calc = True")
-            empirical_res_values, empirical_filter_response = fits.getdata(f"utils/empirical_filter_response/{target_name}_{R}_{Rmin}_{Rmax}_empirical_filter_response.fits")
-            f = interp1d(empirical_res_values, empirical_filter_response, bounds_error=False, fill_value="extrapolate")
-            filter_response = f(res_values)
-        except Exception as e: # Calculating empirical filter response profile (needs to be done once on data!!! and not on models)
-            print(f"empirical cut_spectral_frequencies(): {e}")
-            # Calcul de la PSD des données
-            psd_values = np.abs(fft_values)**2
-            # Lissage de la PSD des données
-            psd_values_LF = gaussian_filter1d(psd_values, sigma=100)
-            # Interpolation de la PSD en masquant le pic des franges
-            psd_values_LF_interp = np.copy(psd_values_LF)
-            psd_values_LF_interp[(Rmax > np.abs(res_values)) & (np.abs(res_values) > Rmin)] = np.nan
-            f = interp1d(res_values[~np.isnan(psd_values_LF_interp)], psd_values_LF_interp[~np.isnan(psd_values_LF_interp)], bounds_error=False, fill_value=np.nan)
-            psd_values_LF_interp = f(res_values)
-            # Calcul de la forme du pic des franges (psd_values_LF = PSD lissée avec le pic et psd_values_LF_interp PSD lissée sans le pic)
-            peak = np.abs(psd_values_LF - psd_values_LF_interp)
-            # Normalisation du pic (on s'intéresse uniquement à la forme)
-            peak /= np.nanmax(peak)
-            # Lissage de la forme du pic trouvé (semble mieux marcher), sigma=400 est une valeur qui fonctionne bien pour les données de Beta Pic c, mais il faudra surement modifier cette valeur pour d'autres données
-            if "beta_Pic_c" in target_name:
-                sigma = 666
-            else:
-                sigma = 1000
-            filter_response = gaussian_filter1d(1 - peak, sigma=sigma)
-            # Sauvegarde du profil trouvé
-            empirical_filter_response = np.zeros((2, len(filter_response)))
-            empirical_filter_response[0] = res_values ; empirical_filter_response[1] = filter_response
-            fits.writeto(f"utils/empirical_filter_response/{target_name}_{R}_{Rmin}_{Rmax}_empirical_filter_response.fits", empirical_filter_response, overwrite=True)
-            plt.figure(dpi=300)
-            plt.plot(np.fft.fftshift(res_values), np.fft.fftshift(psd_values), label="PSD des données")
-            plt.plot(np.fft.fftshift(res_values), np.fft.fftshift(psd_values_LF), label="PSD lissée (avec le pic)")
-            plt.plot(np.fft.fftshift(res_values), np.fft.fftshift(psd_values_LF_interp), label="PSD lissée (sans le pic)")
-            plt.plot(np.fft.fftshift(res_values), np.fft.fftshift(np.abs(psd_values_LF - psd_values_LF_interp)), label="Estimation du pic")
-            plt.plot(np.fft.fftshift(res_values), np.fft.fftshift(filter_response), label="normalisation, lissage et inversion du pic")
-            plt.xscale('log')
-            plt.yscale('log')
-            plt.legend()
-            plt.xlabel("resolution")
-            plt.ylabel("PSD")
-            plt.show()
-    else:
-        raise ValueError("Invalid filter_type. Use 'gaussian', 'lorentzian', or 'step'.")
-    if show: # Plot the filter and the effect on FFT values
-        plt.figure(dpi=300)
-        plt.plot(np.fft.fftshift(res_values), abs(np.fft.fftshift(fft_values))**2, label='Original PSD')
-        plt.plot(np.fft.fftshift(res_values), abs(np.fft.fftshift(filter_response))**2, label=f'{filter_type.capitalize()} Filter Response')
-        plt.plot(np.fft.fftshift(res_values), abs(np.fft.fftshift(fft_values * filter_response))**2, label='Filtered PSD')
-        plt.xscale('log') ; plt.yscale('log')
-        plt.xlabel("resolution") ; plt.ylabel("PSD")
-        plt.legend()
-        plt.show()
-    fft_values *= filter_response
-    filtered_flux = np.copy(input_flux)
-    filtered_flux[valid_data] = np.real(np.fft.ifft(fft_values))
-    return filtered_flux
-
-
-
-
-
-def keep_true_chunks(nan_values, N):
-    # Convertir nan_values en une array numpy (si ce n'est pas déjà fait)
-    nan_values = np.array(nan_values)
-    # Initialisation des listes pour stocker les indices des débuts et fins de séquences de True
-    start_indices = []
-    end_indices = []
-    # Parcourir l'array pour identifier les séquences de True
-    in_chunk = False
-    for i in range(len(nan_values)):
-        if nan_values[i] and not in_chunk:
-            # Début d'une nouvelle séquence de True
-            in_chunk = True
-            start_idx = i
-        elif not nan_values[i] and in_chunk:
-            # Fin de la séquence en cours
-            in_chunk = False
-            if i - start_idx >= N:
-                start_indices.append(start_idx)
-                end_indices.append(i)
-    # Pour la dernière séquence si elle continue jusqu'à la fin de l'array
-    if in_chunk and (len(nan_values) - start_idx >= N):
-        start_indices.append(start_idx)
-        end_indices.append(len(nan_values))
-    # Créer une nouvelle array ne contenant que les chunks de True de longueur >= N
-    filtered_nan_values = np.zeros_like(nan_values, dtype=bool)
-    for start, end in zip(start_indices, end_indices):
-        filtered_nan_values[start:end] = True
-    return filtered_nan_values
-
-
-
-
-
-def PCA_subtraction(Sres, n_comp_sub, y0=None, x0=None, size_core=None, 
-                    PCA_annular=False, PCA_mask=False, scree_plot=False, 
-                    PCA_plots=False, PCA_plots_PDF=False, path_PDF=None, wave=None, R=None, pxscale=None):
-    """
-    Perform PCA subtraction on the input data cube.
-
-    This function applies Principal Component Analysis (PCA) to subtract signal
-    components from the input data cube (Sres). Optionally, it masks out regions 
-    around a specified planet location before performing the PCA. It can also display 
-    plots for the first few PCA components interactively, and if a file path is provided, 
-    it saves plots of all PCA components to a PDF (one per page).
-
-    Parameters
-    ----------
-    Sres : numpy.ndarray
-        Input data cube with dimensions (NbChannel, NbColumn, NbLine).
-    n_comp_sub : int
-        Number of PCA components to subtract. If 0, no PCA subtraction is performed.
-    y0 : int, optional
-        Y-coordinate of the planet location.
-    x0 : int, optional
-        X-coordinate of the planet location.
-    size_core : int, optional
-        Size parameter for masking around the planet (FWHM size in px).
-    PCA_annular : bool, optional
-        If True, applies PCA on an annular mask around the planet location.
-    PCA_mask : bool, optional
-        If True, applies a rectangular mask (of size_core x size_core) around the planet location.
-    scree_plot : bool, optional
-        If True, displays a scree plot of the eigenvalues.
-    PCA_plots : bool, optional
-        If True, displays plots for up to the first 5 PCA components.
-    PCA_plots_PDF : bool, optional
-        If True, saves plots of all PCA components into a PDF.
-    path_PDF : str, optional
-        If provided, saves plots of all PCA components into a PDF at this path.
-    wave : numpy.ndarray, optional
-        Array of wavelengths used for plotting the PCA component curves.
-    R : int or float, optional
-        Resolution parameter used for plotting the Power Spectral Density (PSD).
-    pxscale : float, optional
-        Pixel scale used for plotting the correlation maps.
-
-    Returns
-    -------
-    Sres_sub : numpy.ndarray
-        Data cube after PCA subtraction.
-    pca : PCA object or None
-        The fitted PCA object if n_comp_sub is not 0; otherwise, None.
-    """
-    
-    if n_comp_sub != 0:
-        from sklearn.decomposition import PCA
-        NbChannel, NbColumn, NbLine = Sres.shape # Retrieve the shape of the data cube
-        pca = PCA(n_components=n_comp_sub)
-        Sres_wo_planet = np.copy(Sres) # Create a copy of the input data for masking purposes
-        
-        # If planet coordinates are provided, apply the masks if specified
-        if y0 is not None and x0 is not None:
-            if PCA_annular:
-                # Calculate the separation from the center to the planet
-                planet_sep = int(round(np.sqrt((y0 - NbLine // 2) ** 2 + (x0 - NbColumn // 2) ** 2)))
-                # Apply an annular mask with a given core size
-                Sres_wo_planet *= annular_mask(max(1, planet_sep - size_core - 1), planet_sep + size_core, value=np.nan, size=(NbLine, NbColumn))
-            if PCA_mask:
-                # Apply a rectangular mask around the planet location
-                Sres_wo_planet[:, y0 - size_core // 2:y0 + size_core // 2 + 1, x0 - size_core // 2:x0 + size_core // 2 + 10] = np.nan 
-        
-        # Reshape the cube to 2D (pixels x channels) and replace NaNs with 0
-        Sres_wo_planet = np.reshape(Sres_wo_planet, (NbChannel, NbColumn * NbLine)).transpose()
-        Sres_wo_planet[np.isnan(Sres_wo_planet)] = 0
-        
-        # Fit the PCA on the masked data
-        pca.fit(Sres_wo_planet)
-        
-        # Prepare the data for subtraction (reshape and replace NaNs)
-        Sres_sub = np.reshape(np.copy(Sres), (NbChannel, NbColumn * NbLine)).transpose()
-        Sres_sub[np.isnan(Sres_sub)] = 0
-        
-        # Transform and inverse transform to obtain the PCA model reconstruction
-        X = pca.transform(Sres_sub)
-        X = pca.inverse_transform(X)
-        
-        # Subtract the PCA reconstruction from the original data
-        Sres_sub = (Sres_sub - X).transpose()
-        Sres_sub = np.reshape(Sres_sub, (NbChannel, NbColumn, NbLine))
-        Sres_sub[Sres_sub == 0] = np.nan
-        
-        # ---------------------------
-        # PCA plots
-        # ---------------------------
-        if PCA_plots:
-            # Display up to the first 5 components interactively
-            Nk = min(n_comp_sub, 5)
-            from src.spectrum import Spectrum
-            cmap = plt.get_cmap("Spectral", Nk)
-            fig, ax = plt.subplots(Nk, 3, figsize=(16, Nk * 3), sharex='col', sharey='col',
-                                   layout="constrained", gridspec_kw={'wspace': 0.05, 'hspace': 0}, dpi=300)
-            for k in range(Nk):
-                # Retrieve the k-th PCA component and replace zeros with NaN for plotting
-                pca_comp = pca.components_[k]
-                pca_comp[pca_comp == 0] = np.nan
-                
-                # First column: PCA component curve
-                ax[k, 0].plot(wave, pca_comp, c=cmap(k), label=f"$n_k$ = {k+1}")
-                ax[k, 0].legend(fontsize=14, loc="upper center")
-                if k == Nk - 1:
-                    ax[k, 0].set_xlim(wave[0], wave[-1])
-                    ax[k, 0].set_xlabel("wavelength (in µm)", fontsize=14)
-                ax[k, 0].set_ylabel("modulation (normalized)", fontsize=14)
-                ax[k, 0].grid(True)
-                
-                # Second column: Plot the Power Spectral Density (PSD)
-                m_HF_spectrum = Spectrum(wave, pca_comp, R, None)
-                m_HF_spectrum.wavelength = m_HF_spectrum.wavelength[~np.isnan(m_HF_spectrum.flux)]
-                m_HF_spectrum.flux = m_HF_spectrum.flux[~np.isnan(m_HF_spectrum.flux)]
-                res, psd = m_HF_spectrum.get_psd(smooth=0)
-                ax[k, 1].plot(res, psd, c=cmap(k))
-                if k == Nk - 1:
-                    ax[k, 1].set_xlim(10, R)
-                    ax[k, 1].set_xlabel("resolution", fontsize=14)
-                    ax[k, 1].set_xscale('log')
-                    ax[k, 1].set_yscale('log')
-                ax[k, 1].set_ylabel("PSD", fontsize=14)
-                ax[k, 1].grid(True)
-                
-                # Third column: Vectorized computation and plot of the correlation map
-                numerator = np.nansum(Sres * pca_comp[:, None, None], axis=0)
-                denom = np.sqrt(np.nansum(Sres ** 2, axis=0))
-                mask = ~np.all(np.isnan(Sres), axis=0)
-                CCF = np.full(Sres.shape[1:], np.nan)
-                CCF[mask] = np.nan_to_num(numerator[mask]) / denom[mask]
-                cax = ax[k, 2].imshow(CCF, extent=[-(CCF.shape[0] + 1) // 2 * pxscale, (CCF.shape[0]) // 2 * pxscale,
-                                                    -(CCF.shape[1] - 2) // 2 * pxscale, (CCF.shape[1]) // 2 * pxscale],
-                                      zorder=3)
-                cbar = fig.colorbar(cax, ax=ax[k, 2], orientation='vertical', shrink=0.8)
-                cbar.set_label("correlation", fontsize=14, labelpad=20, rotation=270)
-                if k == Nk - 1:
-                    ax[k, 2].set_xlabel('x offset (in ")', fontsize=14)
-                ax[k, 2].set_ylabel('y offset (in ")', fontsize=14)
-                ax[k, 2].grid(True)
-            plt.show()
-        
-        # ---------------------------
-        # Save PCA component plots to a PDF (grouping several components per page)
-        # ---------------------------
-        if PCA_plots_PDF and path_PDF is not None:
-            from matplotlib.backends.backend_pdf import PdfPages
-            pdf = PdfPages(path_PDF)
-            # Create a colormap with n_comp_sub distinct colors
-            N = min(n_comp_sub, 100)
-            cmap_pdf = get_cmap("Spectral", N)
-            from src.spectrum import Spectrum
-            for k in tqdm(range(N), desc="Saving PCA components in PDF"):
-                pca_comp = pca.components_[k]
-                pca_comp[pca_comp == 0] = np.nan
-                
-                fig, ax = plt.subplots(1, 3, figsize=(16, 3), dpi=100)
-                
-                # First column: PCA component curve
-                ax[0].plot(wave, pca_comp, c=cmap_pdf(k), label=f"$n_k$ = {k+1}")
-                ax[0].legend(fontsize=14, loc="upper center")
-                ax[0].set_xlim(wave[0], wave[-1])
-                ax[0].set_xlabel("wavelength (in µm)", fontsize=14)
-                ax[0].set_ylabel("modulation (normalized)", fontsize=14)
-                ax[0].grid(True)
-                
-                # Second column: PSD plot
-                m_HF_spectrum = Spectrum(wave, pca_comp, R, None)
-                m_HF_spectrum.wavelength = m_HF_spectrum.wavelength[~np.isnan(m_HF_spectrum.flux)]
-                m_HF_spectrum.flux = m_HF_spectrum.flux[~np.isnan(m_HF_spectrum.flux)]
-                res, psd = m_HF_spectrum.get_psd(smooth=0)
-                ax[1].plot(res, psd, c=cmap_pdf(k))
-                ax[1].set_xlim(10, R)
-                ax[1].set_xlabel("resolution", fontsize=14)
-                ax[1].set_xscale('log')
-                ax[1].set_yscale('log')
-                ax[1].set_ylabel("PSD", fontsize=14)
-                ax[1].grid(True)
-                
-                # Third column: Vectorized computation for the correlation map
-                numerator = np.nansum(Sres * pca_comp[:, None, None], axis=0)
-                denom = np.sqrt(np.nansum(Sres ** 2, axis=0))
-                mask = ~np.all(np.isnan(Sres), axis=0)
-                CCF = np.full(Sres.shape[1:], np.nan)
-                CCF[mask] = np.nan_to_num(numerator[mask]) / denom[mask]
-                cax = ax[2].imshow(CCF, extent=[-(CCF.shape[0] + 1) // 2 * pxscale, (CCF.shape[0]) // 2 * pxscale, -(CCF.shape[1] - 2) // 2 * pxscale, (CCF.shape[1]) // 2 * pxscale], zorder=3)
-                cbar = fig.colorbar(cax, ax=ax[2], orientation='vertical', shrink=0.8)
-                cbar.set_label("correlation", fontsize=14, labelpad=20, rotation=270)
-                ax[2].set_xlabel('x offset (in ")', fontsize=14)
-                ax[2].set_ylabel('y offset (in ")', fontsize=14)
-                ax[2].grid(True)
-                
-                pdf.savefig(fig, bbox_inches='tight')
-                plt.close(fig)
-                
-            pdf.close()
-            print(f"PCA PDF saved in {path_PDF}")
-
-        # ---------------------------
-        # Scree plot (Eigenvalues)
-        # ---------------------------
-        if scree_plot:
-            X = np.reshape(Sres, (NbChannel, NbColumn * NbLine)).transpose()
-            X[np.isnan(X)] = 0
-            pca = PCA(n_components=n_comp_sub)
-            pca.fit_transform(X)
-            eigenvalues = pca.explained_variance_
-            plt.figure(figsize=(8, 6))
-            plt.plot(np.arange(1, len(eigenvalues) + 1), eigenvalues, marker='o', linestyle='-')
-            plt.xlabel('Principal Components')
-            plt.ylabel('Eigenvalues')
-            plt.title('Scree Plot')
-            plt.yscale('log')
-            plt.grid(True)
-            plt.show()
-            
-    elif n_comp_sub == 0:
-        Sres_sub = np.copy(Sres)
-        pca = None
-        
-    return Sres_sub, pca
-
-
-
-
-def fit_PSF_FWHM(instru, PSF, wave, pxscale, sep_unit="arcsec", PSF_fit_model="gaussian"):
-    NbLine, NbColumn = PSF.shape
-    PSF = PSF / np.nanmax(PSF)  # Normalisation de la PSF
-    D = get_config_data(instru)["telescope"]["diameter"]  # diameter  in m
-    lambda0 = (wave[0] + wave[-1]) / 2 * 1e-6  # wavelength in m
-    if sep_unit == "mas":     # Calcul de la FWHM théorique en fonction de l'unité d'angle
-        FWHM_ang = lambda0 / D * rad2arcsec * 1000  # FWHM en mas
-    elif sep_unit == "arcsec":
-        FWHM_ang = lambda0 / D * rad2arcsec  # FWHM en arcsec
-    else:
-        raise ValueError(f"{sep_unit} units unknown. Use 'mas' or 'arcsec'.")
-    FWHM_px = FWHM_ang / pxscale  # FWHM en pixels
-    y, x = np.mgrid[:NbLine, :NbColumn] # Génération de la grille pour le fit
-    amp = np.nanmax(PSF)  # Amplitude maximale de la PSF
-    y0, x0 = np.unravel_index(np.argmax(np.nan_to_num(PSF)), PSF.shape)  # Position initiale
-    fitter = fitting.LevMarLSQFitter() # Choix du modèle de PSF pour le fit
-    if PSF_fit_model == "moffat":
-        model = models.Moffat2D(amplitude=amp, x_0=x0, y_0=y0, gamma=2.5, alpha=1.5)
-    elif PSF_fit_model == "gaussian":
-        sigma_x = FWHM_px / (2 * np.sqrt(2 * np.log(2)))  # Conversion FWHM -> sigma
-        sigma_y = sigma_x
-        model = models.Gaussian2D(amplitude=amp, x_mean=x0, y_mean=y0, x_stddev=sigma_x, y_stddev=sigma_y)
-    elif PSF_fit_model == "airy":
-        model = models.AiryDisk2D(amplitude=amp, x_0=x0, y_0=y0, radius=1.22 * FWHM_px)
-    else:
-        raise ValueError(f"{PSF_fit_model} model unknown. Use 'moffat', 'gaussian' or 'airy'.")
-    best_fit = fitter(model, x, y, z=np.nan_to_num(PSF)) # Fit de la PSF
-    psf_residual = best_fit(x, y) - PSF # Résidus entre le fit et les données
-    if PSF_fit_model == "moffat": # Calcul de la FWHM en pixels
-        FWHM_fit_px = best_fit.gamma.value * 2  # FWHM en pixels pour Moffat
-    elif PSF_fit_model == "gaussian":
-        FWHM_fit_px = np.mean([best_fit.x_stddev.value, best_fit.y_stddev.value]) * (2 * np.sqrt(2 * np.log(2)))
-    elif PSF_fit_model == "airy":
-        FWHM_fit_px = best_fit.radius.value / 1.22
-    FWHM_fit_ang = FWHM_fit_px * pxscale  # Conversion FWHM en unités angulaires (mas ou arcsec)
-    r = np.linspace(-NbLine/2, NbLine/2, NbLine) * pxscale # Affichage des résultats
-    print(f"FWHM DL PSF size: {round(FWHM_ang, 2)} {sep_unit}")
-    print(f"FWHM DL PSF size: {round(FWHM_px, 2)} px")
-    print(f"FWHM data PSF size (from {PSF_fit_model} fit): {round(FWHM_fit_ang, 2)} {sep_unit}")
-    print(f"FWHM data PSF size (from {PSF_fit_model} fit): {round(FWHM_fit_px, 2)} px")
-    plt.figure(dpi=300) # Visualisation du fit
-    plt.plot(r, best_fit(x, y)[NbLine // 2], 'b', label=f"{PSF_fit_model} fit")
-    plt.plot(r, PSF[NbLine // 2], 'r', label='data PSF')
-    plt.legend() ; plt.yscale('log') ; plt.grid(True) ; plt.xlabel(f'x offset (in {sep_unit})') ; plt.ylabel("Intensity (in raw contrast)") ; plt.ylim(np.nanmin(PSF[NbLine // 2]), 2*np.nanmax(PSF[NbLine // 2])) ; plt.show()
-    return FWHM_fit_ang, FWHM_fit_px, psf_residual
-
-
-
-
-
-
-
-
-
-
-
-
+############################## Other functions ################################
 
 
 def mjd_to_date(mjd):
     t = Time(mjd, format='mjd')
     date_str = t.datetime.strftime("%d/%m/%Y")
     return date_str
-
 
 
 def propagate_coordinates_at_epoch(targetname, date, verbose=True):
@@ -1561,6 +1643,7 @@ def propagate_coordinates_at_epoch(targetname, date, verbose=True):
         print(f"Coordinates at J2000:  {target_coord_j2000.icrs.to_string('hmsdms')}")
         print(f"Coordinates at {date}:  {host_coord_at_date.icrs.to_string('hmsdms')}")
     return host_coord_at_date
+
 
 def get_coordinates_arrays(filename) :
     """ Determine the relative coordinates in the focal plane relative to the target.
@@ -1632,38 +1715,24 @@ def get_coordinates_arrays(filename) :
     return wavelen_array, dra_as_array, ddec_as_array, area2d
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-def air2vacuum(wavelength):
+def instru_thermal_background(temperature, emissivity, wavelengths_um):
     """
-    Convert wavelength from air to vacuum (wavelength in µm)
+    Calcule le flux thermique en ph/s/µm/arcsec².
+
+    Parameters:
+        temperature (float): Température du télescope (K).
+        emissivity (float): Émissivité du télescope.
+        wavelengths_um (array): Longueurs d'onde (µm).
+    
+    Returns:
+        flux_photon (array): Flux thermique en ph/s/µm/arcsec².
     """
-    s = 1e4 / (wavelength * 1e4) # self.wavelength in Angstrom
-    n =  1 + 0.00008336624212083 + 0.02408926869968 / (130.1065924522 - s**2) + 0.0001599740894897 / (38.92568793293 - s**2)
-    return wavelength * n
+    wavelengths_m = wavelengths_um * 1e-6  # Conversion µm -> m
+    B_lambda = (2 * h * c**2) / (wavelengths_m**5) / (np.exp((h * c) / (wavelengths_m * kB * temperature)) - 1)  # W/m²/m/sr
+    # Conversion en ph/s/µm/sr
+    energy_per_photon = (h * c) / wavelengths_m
+    B_lambda_ph       = B_lambda / energy_per_photon * 1e-6  # ph/s/m²/µm/sr
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    flux = emissivity * B_lambda_ph / sr2arcsec2  # ph/s/µm/arcsec²
+    return flux
 

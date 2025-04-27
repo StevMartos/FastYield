@@ -330,6 +330,7 @@ class Spectrum:
         """
         self.flux = snr_canal ** 2 * self.flux / np.nanmean(self.flux)
     
+    #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
     
     def air2vacuum(self):
         """
@@ -490,6 +491,7 @@ def get_model_grid(model, instru=None):
     elif model == "Morley": # 2012 + 2014 with clouds (https://www.carolinemorley.com/models)
         T_grid  = np.array([200, 225, 250, 275, 300, 325, 350, 375, 400, 450, 500, 550, 600, 700, 800, 900, 1000, 1100, 1200, 1300]) # K
         g_grid  = np.array([10, 30, 100, 300, 1000, 3000]) # m/s2 
+        g_grid  = np.array([100, 300, 1000, 3000]) # m/s2 
         lg_grid = np.round(np.log10(g_grid*1e2), 4) # dex(cm/s2)
 
     elif model == "Saumon": # https://www.ucolick.org/~cmorley/cmorley/Models.html
@@ -781,11 +783,13 @@ def load_albedo(T_planet, lg_planet, model="PICASO", interpolated_spectrum=True,
         albedo.flux = np.zeros_like(albedo.flux) + albedo_geo
     elif model == "tellurics":
         wave_tell, tell   = fits.getdata("sim_data/Transmission/sky_transmission_airmass_2.5.fits")
-        albedo_geo        = np.nanmean(albedo.flux[(albedo.wavelength>wave_tell[0])&(albedo.wavelength<wave_tell[-1])]) # mean value of the geometric albedo given by PICASO
+        albedo_geo        = np.nanmean(albedo.flux[(albedo.wavelength >= wave_tell[0]) & (albedo.wavelength <= wave_tell[-1])]) # mean value of the geometric albedo given by PICASO
         albedo.flux       = albedo_geo / np.nanmean(tell) * tell
         albedo.wavelength = wave_tell
         dl                = albedo.wavelength - np.roll(albedo.wavelength, 1) ; dl[0] = dl[1] ; dl[dl==0] = np.nanmean(dl) # delta lambda array
         albedo.R          = np.nanmean(albedo.wavelength/(2*dl)) # calculating the resolution of the raw spectrum
+    else:
+        raise KeyError(model+" IS NOT A VALID REFLECTED MODEL: tellurics, flat, PICASO")
     return albedo # no unit
 
 
@@ -1001,54 +1005,6 @@ def filtered_flux(flux, R, Rc, filter_type="gaussian", show=False):
 
 
 
-def get_fraction_noise_filtered(wave, R, Rc, filter_type, empirical=False):
-    """
-    Gives the fraction power of noise that is filtered
-
-    Parameters
-    ----------
-    wave: 1d-array
-        input wavelength.
-    R: float
-        spectral resolution of wave.
-    Rc: float
-        cut-off resolution.
-    filter_type: TYPE
-        used method for the filter.
-    empirical: TYPE, optional
-        To estimate the fractions empirically or analytically. The default is False.
-    """
-    if Rc is None: # No filter applied
-        fn_HF = 1. ; fn_LF = 1.
-    else:
-        if empirical:
-            N = 1000 ; fn_HF = 0. ; fn_LF = 0.
-            for i in range(N):
-                n = np.random.normal(0, 1, len(wave))
-                n_HF, n_LF = filtered_flux(n, R=R, Rc=Rc, filter_type=filter_type)
-                fn_HF += np.nansum(n_HF**2) / np.nansum(n**2) / N
-                fn_LF += np.nansum(n_LF**2) / np.nansum(n**2) / N
-        else:
-            ffreq = np.fft.fftfreq(len(wave)) ; res = ffreq*R*2
-            K = np.zeros_like(res) + 1.
-            K_LF = np.copy(K)
-            K_HF = np.copy(K)
-            if filter_type == "gaussian":
-                sigma = 2*R/(np.pi*Rc)*np.sqrt(np.log(2)/2) 
-                K_LF *= np.abs( np.exp( - 2*np.pi**2 * (res/(2*R))**2 * sigma**2 ) )**2
-                K_HF *=  np.abs( 1 - np.exp( - 2*np.pi**2 * (res/(2*R))**2 * sigma**2 ) )**2
-            elif filter_type == "step":
-                K_LF[np.abs(res)>Rc] = 0 
-                K_HF[np.abs(res)<Rc] = 0 
-            elif filter_type == "smoothstep":
-                K_LF *= smoothstep(res, Rc)
-                K_HF *= (1-smoothstep(res, Rc))
-            fn_LF = np.nansum(K_LF)/np.nansum(K) # power fraction of the fundamental noise being filtered
-            fn_HF = np.nansum(K_HF)/np.nansum(K)
-    return fn_HF, fn_LF
-
-
-
 #######################################################################################################################
 ############################################# FastYield part: #########################################################
 #######################################################################################################################
@@ -1118,25 +1074,19 @@ def thermal_reflected_spectrum(planet, instru=None, thermal_model="BT-Settl", re
         planet_scaling_factor  = float((planet['PlanetRadius']/planet['Distance']).decompose()**2)
         planet_thermal.flux   *= planet_scaling_factor
         planet_thermal_K.flux *= planet_scaling_factor
-
     elif thermal_model == "None":
         planet_thermal   = Spectrum(wave_instru, np.zeros_like(wave_instru), star_spectrum.R, float(planet["PlanetTeq"].value), float(planet["PlanetLogg"].value), thermal_model)
         planet_thermal_K = Spectrum(wave_K, np.zeros_like(wave_K), star_spectrum_K.R, float(planet["PlanetTeq"].value), float(planet["PlanetLogg"].value), thermal_model)
     
     if reflected_model != "None":
         albedo             = load_albedo(float(planet["PlanetTeq"].value), float(planet["PlanetLogg"].value), model=reflected_model, interpolated_spectrum=True)
-        albedo_K           = albedo.interpolate_wavelength(wave_K, renorm = False)
+        albedo_K           = albedo.interpolate_wavelength(wave_K, renorm=False)
+        albedo             = albedo.interpolate_wavelength(wave_instru, renorm=False)
         planet_reflected_K = star_spectrum_K.flux * albedo_K.flux * planet["g_alpha"] * (planet['PlanetRadius']/planet['SMA']).decompose()**2
-        albedo             = albedo.interpolate_wavelength(wave_instru, renorm = False)
         planet_reflected   = star_spectrum.flux * albedo.flux * planet["g_alpha"] * (planet['PlanetRadius']/planet['SMA']).decompose()**2
-
     elif reflected_model == "None":
         planet_reflected   = np.zeros_like(wave_instru)*u.dimensionless_unscaled
         planet_reflected_K = np.zeros_like(wave_K)*u.dimensionless_unscaled
-    
-    else:
-        raise KeyError(reflected_model+" IS NOT A VALID REFLECTED MODEL: tellurics, flat, PICASO or None")
-    
     planet_reflected   = Spectrum(wave_instru, np.nan_to_num(np.array(planet_reflected.value)), star_spectrum.R, float(planet["PlanetTeq"].value), float(planet["PlanetLogg"].value), reflected_model)
     planet_reflected_K = Spectrum(wave_K, np.nan_to_num(np.array(planet_reflected_K.value)), star_spectrum_K.R, float(planet["PlanetTeq"].value), float(planet["PlanetLogg"].value), reflected_model)
     
@@ -1207,57 +1157,53 @@ def import_picaso():
     """
     try: 
         os.environ['picaso_refdata'] = '/home/martoss/picaso/reference/'
-        os.environ['PYSYN_CDBS'] = '/home/martoss/picaso/grp/redcat/trds/'
+        os.environ['PYSYN_CDBS']     = '/home/martoss/picaso/grp/redcat/trds/'
         import picaso
         from picaso import justdoit as jdi
     except ImportError:
         print("Tried importing picaso, but couldn't do it")
     return picaso, jdi
 
-
-
-def simulate_picaso_spectrum(instru, planet_table_entry, spectrum_contributions='thermal+reflected', opacity=None, planet_type="gas", clouds=True, stellar_mh=0.0122):
+def simulate_picaso_spectrum(planet, spectrum_contributions='thermal+reflected', planet_type="gas", clouds=True, stellar_mh=0.0122, opacity=None):
     '''
     TAKEN FROM: https://github.com/planetarysystemsimager/psisim/tree/main
     A function that returns the required inputs for picaso, given a row from a universe planet table. 
     
     Inputs:
-    planet_table_entry - a single row, corresponding to a single planet from a universe planet table [astropy table (or maybe astropy row)]
+    planet - a single row, corresponding to a single planet from a universe planet table [astropy table (or maybe astropy row)]
     planet_type - either "Terrestrial", "Ice", or "Gas" [string]
     clouds - cloud parameters. For now, only accept True/False to turn clouds on and off
     stellar_mh - stellar metalicity
     Opacity class from justdoit.opannection
     NOTE: this assumes a planet phase of 0. You can change the phase in the resulting params object afterwards.
     '''
-    planet_table_entry["Phase"] = 0.0 * u.rad # in order to have the geometric Albedo (by definition)
-    picaso, jdi=import_picaso()
-    config_data = get_config_data(instru)
-    lmin_instru = config_data["lambda_range"]["lambda_min"] # en µm
-    lmax_instru = config_data["lambda_range"]["lambda_max"] # en µm
-    if opacity is None: # opacity file to load
-        wvrng = [0.98*min(lmin_K, lmin_instru), 1.02*max(lmax_K, lmax_instru)] # opacity file goes from 0.6 to 6 µm with R ~ 30 000
-        opacity_folder = os.path.join(os.getenv("picaso_refdata"), 'opacities')
-        dbname = 'all_opacities_0.6_6_R60000.db' # lambda va de 0.6 à 6µm (mais indiqué 0.3 à 15µm)
-        dbname = os.path.join(opacity_folder, dbname)
-        opacity = jdi.opannection(filename_db=dbname, wave_range=wvrng) # molecules, pt_pairs = opa.molecular_avail(dbname) ; print("\n molecules considérées: \n ", molecules)
-    host_temp_list=np.hstack([np.arange(3500, 13000, 250), np.arange(13000, 50000, 1000)])
-    host_logg_list=[5.00, 4.50, 4.00, 3.50, 3.00, 2.50, 2.00, 1.50, 1.00, 0.50, 0.0] # Define the grids that phoenix / ckmodel models like
-    f_teff_grid = interp1d(host_temp_list, host_temp_list, kind='nearest', bounds_error=False, fill_value='extrapolate')
-    f_logg_grid = interp1d(host_logg_list, host_logg_list, kind='nearest', bounds_error=False, fill_value='extrapolate')
-    planet_table_entry['StarTeff'] = f_teff_grid(planet_table_entry['StarTeff']) *planet_table_entry['StarTeff'].unit
-    planet_table_entry['StarLogg'] = f_logg_grid(planet_table_entry['StarLogg']) *planet_table_entry['StarLogg'].unit
-    params = jdi.inputs() ; params.approx(raman='none') # see justdoit.py => class inputs():
-    params.phase_angle(float(planet_table_entry['Phase'].value))
-    params.gravity(gravity=float(planet_table_entry['PlanetLogg'].value), gravity_unit=planet_table_entry['PlanetLogg'].physical.unit) # NOTE: picaso gravity() won't use the "gravity" input if mass and radius are provided
-    star_logG = planet_table_entry['StarLogg'].to(u.dex(u.cm/ u.s**2)).value
-    if star_logG > 5.0: # The current stellar models do not like log g > 5, so we'll force it here for now. 
-        star_logG = 5.0
-    star_Teff = float(planet_table_entry['StarTeff'].to(u.K).value)
-    if star_Teff < 3000: # The current stellar models do not like Teff < 3000, so we'll force it here for now. 
-        star_Teff = 3000   
-    params.star(opacity, star_Teff, stellar_mh, star_logG, radius = float(planet_table_entry['StarRadius'].value), semi_major=float(planet_table_entry['SMA'].value), semi_major_unit=planet_table_entry['SMA'].unit, radius_unit=planet_table_entry['StarRadius'].unit) 
+    
+    picaso, jdi = import_picaso()
+    
+    # Retrieve star-planet configuration
+    phase =  0. # float(planet['Phase'].value) # in order to have the geometric Albedo (by definition)
+    SMA = float(planet['SMA'].value)
+    R_star = float(planet['StarRadius'].value)
+    host_temp_list = np.hstack([np.arange(3500, 13000, 250), np.arange(13000, 50000, 1000)])
+    host_logg_list = [5.00, 4.50, 4.00, 3.50, 3.00, 2.50, 2.00, 1.50, 1.00, 0.50, 0.0] # Define the grids that phoenix / ckmodel models like
+    f_teff_grid    = interp1d(host_temp_list, host_temp_list, kind='nearest', bounds_error=False, fill_value='extrapolate')
+    f_logg_grid    = interp1d(host_logg_list, host_logg_list, kind='nearest', bounds_error=False, fill_value='extrapolate')
+    T_star         = f_teff_grid(float(planet['StarTeff'].to(u.K).value))
+    lg_star        = f_logg_grid(float(planet['StarLogg'].to(u.dex(u.cm/ u.s**2)).value))
+    T_planet  = float(planet['PlanetTeq'].value)
+    lg_planet = float(planet['PlanetLogg'].value)
+    
+    params = jdi.inputs()
+    params.approx(raman='none') # see justdoit.py => class inputs():
+    params.phase_angle(phase)
+    params.gravity(gravity=float(planet['PlanetLogg'].value), gravity_unit=planet['PlanetLogg'].physical.unit) # NOTE: picaso gravity() won't use the "gravity" input if mass and radius are provided
+    if lg_star > 5.0: # The current stellar models do not like log g > 5, so we'll force it here for now. 
+        lg_star = 5.0
+    if T_star < 3000: # The current stellar models do not like Teff < 3000, so we'll force it here for now. 
+        T_star = 3000
+    params.star(opacity, T_star, stellar_mh, lg_star, radius=R_star, semi_major=SMA, semi_major_unit=planet['SMA'].unit, radius_unit=planet['StarRadius'].unit) 
     if planet_type == 'gas': #-- Define atmosphere PT profile, mixing ratios, and clouds
-        params.guillot_pt(float(planet_table_entry['PlanetTeq'].value), T_int=150, logg1=-0.5, logKir=-1) # T_int = Internal temperature / logg1, logKir = see parameterization Guillot 2010
+        params.guillot_pt(T_planet, T_int=150, logg1=-0.5, logKir=-1) # T_int = Internal temperature / logg1, logKir = see parameterization Guillot 2010
         params.channon_grid_high() # get chemistry via chemical equillibrium
         if clouds: # may need to consider tweaking these for reflected light
             params.clouds(g0=[0.9], w0=[0.99], opd=[0.5], p = [1e-3], dp=[5]) # g0 = Asymmetry factor / w0 = Single Scattering Albedo / opd = Total Extinction in `dp` / p = Bottom location of cloud deck (LOG10 bars) / dp = Total thickness cloud deck above p (LOG10 bars)
@@ -1265,8 +1211,7 @@ def simulate_picaso_spectrum(instru, planet_table_entry, spectrum_contributions=
         pass # TODO: add Terrestrial type
     elif planet_type == 'ice':
         pass # TODO: add ice type
-    op_wv = opacity.wave # this is identical to the model_wvs we compute below  
-    phase = float(planet_table_entry['Phase'].value)
+    
     if phase == 0: # non-0 phases require special geometry which takes longer to run.
         df = params.spectrum(opacity, full_output=True, calculation=spectrum_contributions, plot_opacity=False) # Perform the simple simulation since 0-phase allows simple geometry
     else:
@@ -1275,58 +1220,68 @@ def simulate_picaso_spectrum(instru, planet_table_entry, spectrum_contributions=
         df2 = params.spectrum(opacity, full_output=True, calculation='reflected')
         df = df1.copy() ; df.update(df2) # Combine the output dfs into one df to be returned
         df['full_output_therm'] = df1.pop('full_output')
-        df['full_output_ref'] = df2.pop('full_output')
-    model_wvs = 1./df['wavenumber'] * 1e4 *u.micron ; argsort = np.argsort(model_wvs) ; model_wvs = model_wvs[argsort]
-    model_dwvs = np.abs(model_wvs - np.roll(model_wvs, 1)) ; model_dwvs[0] = model_dwvs[1] ; model_R = np.nanmean(model_wvs/(2*model_dwvs)) ; model_R = model_R.value # = 30000
+        df['full_output_ref']   = df2.pop('full_output')
+    
+    model_wvs  = 1./df['wavenumber'] * 1e4 *u.micron
+    argsort    = np.argsort(model_wvs)
+    model_wvs  = model_wvs[argsort]
+    model_dwvs = np.abs(model_wvs - np.roll(model_wvs, 1)) ; model_dwvs[0] = model_dwvs[1]
+    model_R    = np.nanmean(model_wvs/(2*model_dwvs))
+    model_R    = model_R.value # = 30000
+    
     if spectrum_contributions == "thermal":
-        planet_thermal = np.zeros((2, len(model_wvs))) ; planet_thermal[0] = model_wvs
-        thermal_flux = df["thermal"][argsort] * u.erg/u.s/u.cm**2/u.cm
-        thermal_flux = thermal_flux.to(u.J/u.s/u.m**2/u.micron)
+        planet_thermal    = np.zeros((2, len(model_wvs)))
+        planet_thermal[0] = model_wvs
+        thermal_flux      = df["thermal"][argsort] * u.erg/u.s/u.cm**2/u.cm
+        thermal_flux      = thermal_flux.to(u.J/u.s/u.m**2/u.micron)
         planet_thermal[1] = np.array(thermal_flux.value)
-        fits.writeto(f"sim_data/Spectra/planet_spectrum/PICASO/thermal_gas_giant_{round(float(planet_table_entry['PlanetTeq'].value))}K_lg{round(float(planet_table_entry['PlanetLogg'].value), 1)}.fits", planet_thermal, overwrite=True)
-        plt.figure(dpi=300) ; plt.plot(planet_thermal[0], planet_thermal[1]) ; plt.title(f'T = {round(float(planet_table_entry["PlanetTeq"].value))}K and lg = {round(float(planet_table_entry["PlanetLogg"].value), 1)}') ; plt.xlabel('wavelength [µm]') ; plt.ylabel("flux (in J/s/µm/m2)") ; plt.yscale('log') ; plt.show()
+        fits.writeto(f"sim_data/Spectra/planet_spectrum/PICASO/thermal_gas_giant_{round(float(planet['PlanetTeq'].value))}K_lg{round(float(planet['PlanetLogg'].value), 1)}.fits", planet_thermal, overwrite=True)
+        plt.figure(dpi=300) ; plt.plot(planet_thermal[0], planet_thermal[1]) ; plt.title(f'Thermal: T = {round(float(planet["PlanetTeq"].value))}K and lg = {round(float(planet["PlanetLogg"].value), 1)}') ; plt.xlabel('wavelength [µm]') ; plt.ylabel("flux (in J/s/µm/m2)") ; plt.yscale('log') ; plt.show()
+    
     elif spectrum_contributions == "reflected":
-        albedo = np.zeros((2, len(model_wvs))) ; albedo[0] = model_wvs ; albedo[1] = df['albedo'][argsort]
-        fits.writeto(f"sim_data/Spectra/planet_spectrum/albedo/albedo_gas_giant_{round(float(planet_table_entry['PlanetTeq'].value))}K_lg{round(float(planet_table_entry['PlanetLogg'].value), 1)}.fits", albedo, overwrite=True)
-        plt.figure(dpi=300) ; plt.plot(albedo[0], albedo[1]) ; plt.title(f'T = {round(float(planet_table_entry["PlanetTeq"].value))}K and lg = {round(float(planet_table_entry["PlanetLogg"].value), 1)}') ; plt.xlabel('wavelength [µm]') ; plt.ylabel("albedo") ; plt.yscale('log') ; plt.show()
+        albedo    = np.zeros((2, len(model_wvs)))
+        albedo[0] = model_wvs
+        albedo[1] = df['albedo'][argsort]
+        fits.writeto(f"sim_data/Spectra/planet_spectrum/albedo/albedo_gas_giant_{round(float(planet['PlanetTeq'].value))}K_lg{round(float(planet['PlanetLogg'].value), 1)}.fits", albedo, overwrite=True)
+        plt.figure(dpi=300) ; plt.plot(albedo[0], albedo[1]) ; plt.title(f'Albedo: T = {round(float(planet["PlanetTeq"].value))}K and lg = {round(float(planet["PlanetLogg"].value), 1)}') ; plt.xlabel('wavelength [µm]') ; plt.ylabel("albedo") ; plt.yscale('log') ; plt.show()
    
 def get_picasso_thermal():
     from src.FastYield import load_planet_table, get_planet_index
-    picaso, jdi=import_picaso()
+    picaso, jdi = import_picaso()
     wvrng = [0.6, 6] # opacity file to load
     opacity_folder = os.path.join(os.getenv("picaso_refdata"), 'opacities')
-    dbname = 'all_opacities_0.6_6_R60000.db'
-    dbname = os.path.join(opacity_folder, dbname)
-    opacity = jdi.opannection(filename_db=dbname, wave_range=wvrng)
+    dbname         = 'all_opacities_0.6_6_R60000.db'
+    dbname         = os.path.join(opacity_folder, dbname)
+    opacity        = jdi.opannection(filename_db=dbname, wave_range=wvrng)
     planet_table = load_planet_table("Archive_Pull_for_FastCurves.ecsv")
-    idx = planet_index(planet_table, "HR 8799 b") # "HR 8799 b" => does not change anything
+    idx          = get_planet_index(planet_table, "HR 8799 b") # "HR 8799 b" => does not change anything
+    planet       = planet_table[idx]
     T0, lg0 = get_model_grid("PICASO")
     for i in tqdm(range(len(T0))):
         T_planet = T0[i]
         for lg_planet in lg0:
-            planet_table[idx]["PlanetTeq"] = T_planet * planet_table[idx]["PlanetTeq"].unit # 
-            planet_table[idx]["PlanetLogg"] = lg_planet * planet_table[idx]["PlanetLogg"].unit # 
-            simulate_picaso_spectrum("HARMONI", planet_table[idx], spectrum_contributions="thermal", opacity=opacity)
+            planet["PlanetTeq"]  = T_planet * planet["PlanetTeq"].unit # 
+            planet["PlanetLogg"] = lg_planet * planet["PlanetLogg"].unit # 
+            simulate_picaso_spectrum(planet, spectrum_contributions="thermal", opacity=opacity)
             
 def get_picasso_albedo():
     from src.FastYield import load_planet_table, get_planet_index
-    picaso, jdi=import_picaso()
+    picaso, jdi = import_picaso()
     wvrng = [0.6, 6] # opacity file to load
     opacity_folder = os.path.join(os.getenv("picaso_refdata"), 'opacities')
-    dbname = 'all_opacities_0.6_6_R60000.db'
-    dbname = os.path.join(opacity_folder, dbname)
-    opacity = jdi.opannection(filename_db=dbname, wave_range=wvrng)
+    dbname         = 'all_opacities_0.6_6_R60000.db'
+    dbname         = os.path.join(opacity_folder, dbname)
+    opacity        = jdi.opannection(filename_db=dbname, wave_range=wvrng)
     planet_table = load_planet_table("Archive_Pull_for_FastCurves.ecsv")
-    idx = planet_index(planet_table, "HR 8799 b") # "HR 8799 b" => does not change anything
-    T0 = np.append(np.arange(500, 1000, 50), np.arange(1000, 3100, 100))
-    T0 = np.append([200, 220, 240, 260, 280, 300, 320, 340, 360, 380, 400, 450], T0)
+    idx          = get_planet_index(planet_table, "HR 8799 b") # "HR 8799 b" => does not change anything
+    planet       = planet_table[idx]
     T0, lg0 = get_model_grid("PICASO")
     for i in tqdm(range(len(T0))):
         T_planet = T0[i]
         for lg_planet in lg0:
-            planet_table[idx]["PlanetTeq"] = T_planet * planet_table[idx]["PlanetTeq"].unit # 
-            planet_table[idx]["PlanetLogg"] = lg_planet * planet_table[idx]["PlanetLogg"].unit # 
-            simulate_picaso_spectrum("HARMONI", planet_table[idx], spectrum_contributions="reflected", opacity=opacity)
+            planet["PlanetTeq"]  = T_planet * planet["PlanetTeq"].unit # 
+            planet["PlanetLogg"] = lg_planet * planet["PlanetLogg"].unit # 
+            simulate_picaso_spectrum(planet, spectrum_contributions="reflected", opacity=opacity)
             
 
 

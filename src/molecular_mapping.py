@@ -4,7 +4,7 @@ from src.spectrum import *
 
 def stellar_high_filtering(cube, R, Rc, filter_type, outliers=False, sigma_outliers=5, verbose=True, renorm_cube_res=False, only_high_pass=False, stell=None, show=False):
     """
-    Post-processing filtering method according to molecular mapping, see Appendix B of Martos et al. (2024)
+    Post-processing filtering method according to molecular mapping, see Appendix B of Martos et al. (2025)
 
     Parameters
     ----------
@@ -42,31 +42,32 @@ def stellar_high_filtering(cube, R, Rc, filter_type, outliers=False, sigma_outli
     NbChannel, NbLine, NbColumn = cube.shape
     if stell is None:
         stell = np.nansum(cube, (1, 2)) # estimated stellar spectrum
-    Y = np.reshape(cube, (NbChannel, NbLine*NbColumn))
-    cube_M = np.copy(Y) ; m = 0
-    for k in range(Y.shape[1]):
-        if not all(np.isnan(Y[:, k])):
+    S = np.reshape(cube, (NbChannel, NbLine*NbColumn))
+    cube_M = np.copy(S) ; m = 0
+    for k in range(S.shape[1]):
+        if not all(np.isnan(S[:, k])):
             if show:
-                fig, ax = plt.subplots(1, 2, figsize=(8, 3), layout="constrained", gridspec_kw={'wspace': 0.05, 'hspace':0}, dpi=300) ; ax[0].set_xlabel("wavelength axis") ; ax[0].set_ylabel("modulation (normalized)") ; ax[1].set_yscale('log') ; ax[1].set_xscale('log') ; ax[1].set_xlabel("resolution frequency R") ; ax[1].set_ylabel("PSD") ; ax[0].plot(Y[:, k]/np.sqrt(np.nansum(Y[:, k]**2)), 'darkred', zorder=10) ; Y_spectrum = Spectrum(None, Y[:, k][~np.isnan(Y[:, k])], R, None) ; res, psd = Y_spectrum.get_psd(smooth=0) ; ax[1].plot(res, psd, "r", label="raw (LF+HF)") ; Y_HF = filtered_flux(Y[:, k], R=R, Rc=Rc, filter_type=filter_type)[0] ; ax[0].plot(Y_HF/np.sqrt(np.nansum(Y_HF**2)), 'seagreen') ; Y_spectrum = Spectrum(None, Y_HF[~np.isnan(Y_HF)], R, None) ; res_HF, psd_HF = Y_spectrum.get_psd(smooth=0) ; ax[1].plot(res_HF, psd_HF, "g", label="HF") ; plt.title(f" F = {round(psd_HF[np.abs(res_HF-Rc).argmin()]/psd[np.abs(res-Rc).argmin()], 3)}")
+                fig, ax = plt.subplots(1, 2, figsize=(8, 3), layout="constrained", gridspec_kw={'wspace': 0.05, 'hspace':0}, dpi=300) ; ax[0].set_xlabel("wavelength axis") ; ax[0].set_ylabel("modulation (normalized)") ; ax[1].set_yscale('log') ; ax[1].set_xscale('log') ; ax[1].set_xlabel("resolution frequency R") ; ax[1].set_ylabel("PSD") ; ax[0].plot(S[:, k]/np.sqrt(np.nansum(S[:, k]**2)), 'darkred', zorder=10) ; S_spectrum = Spectrum(None, S[:, k][~np.isnan(S[:, k])], R, None) ; res, psd = S_spectrum.get_psd(smooth=0) ; ax[1].plot(res, psd, "r", label="raw (LF+HF)") ; S_HF = filtered_flux(S[:, k], R=R, Rc=Rc, filter_type=filter_type)[0] ; ax[0].plot(S_HF/np.sqrt(np.nansum(S_HF**2)), 'seagreen') ; S_spectrum = Spectrum(None, S_HF[~np.isnan(S_HF)], R, None) ; res_HF, psd_HF = S_spectrum.get_psd(smooth=0) ; ax[1].plot(res_HF, psd_HF, "g", label="HF") ; plt.title(f" F = {round(psd_HF[np.abs(res_HF-Rc).argmin()]/psd[np.abs(res-Rc).argmin()], 3)}")
             if only_high_pass:
-                _, Y_LF = filtered_flux(Y[:, k], R, Rc, filter_type)
-                M = Y_LF/stell
+                S_LF = filtered_flux(S[:, k], R, Rc, filter_type)[1]
+                M    = S_LF / stell
             else:
-                _, M = filtered_flux(Y[:, k]/stell, R, Rc, filter_type)
-            cube_M[:, k] = Y[:, k]/stell #  True modulations (with noise), assuming that stell is the real observed stellar spectrum
+                M = filtered_flux(S[:, k], R, Rc, filter_type)[1] / filtered_flux(stell, R, Rc, filter_type)[1]
+            cube_M[:, k] = M #  Estimated modulations, assuming that stell is the real observed stellar spectrum
             if outliers:
-                sg = sigma_clip(Y[:, k]-stell*M, sigma=sigma_outliers)
-                Y[:, k] = np.array(np.ma.masked_array(sg, mask=sg.mask).filled(np.nan))
+                sg      = sigma_clip(S[:, k] - stell * M, sigma=sigma_outliers)
+                S[:, k] = np.array(np.ma.masked_array(sg, mask=sg.mask).filled(np.nan))
             else:
-                Y[:, k] = Y[:, k] - stell*M
+                S[:, k] = S[:, k] - stell * M
             m += np.nansum(M)
             if show:
-                ax[0].plot(Y[:, k]/np.sqrt(np.nansum(Y[:, k]**2)), "b") ; Y_spectrum = Spectrum(None, Y[:, k][~np.isnan(Y[:, k])], R, None) ; res, psd = Y_spectrum.get_psd(smooth=0) ; ax[1].plot(res, psd, "b", label="post MM filtering method") ; plt.legend() ; plt.show()
+                ax[0].plot(S[:, k]/np.sqrt(np.nansum(S[:, k]**2)), "b") ; S_spectrum = Spectrum(None, S[:, k][~np.isnan(S[:, k])], R, None) ; res, psd = S_spectrum.get_psd(smooth=0) ; ax[1].plot(res, psd, "b", label="post MM filtering method") ; plt.legend() ; plt.show()
     if verbose:
-        print("\nsum(M) =", round(m/(NbChannel), 3)) # must be ~ 1
-    cube_res =  Y.reshape((NbChannel, NbLine, NbColumn))
-    cube_M = cube_M.reshape((NbChannel, NbLine, NbColumn))
-    cube_res[cube_res == 0] = np.nan ; cube_M[cube_M == 0] = np.nan
+        print("\n sum(M) =", round(m/(NbChannel), 3)) # must be ~ 1 (sanity check)
+    cube_res = S.reshape((NbChannel, NbLine, NbColumn))
+    cube_M   = cube_M.reshape((NbChannel, NbLine, NbColumn))
+    cube_res[cube_res == 0] = np.nan
+    cube_M[cube_M == 0]     = np.nan
     if renorm_cube_res: # renormalizing the spectra of every spaxel in order to directly have the correlation strength
         for i in range(NbLine):
             for j in range(NbColumn): # for every spaxel
@@ -134,7 +135,7 @@ def molecular_mapping_rv(instru, S_res, star_flux, T_planet, lg_planet, model, w
         template = template.degrade_resolution(wave, renorm=False)
     else:
         template = template.interpolate_wavelength(wave, renorm=False)
-    # Return if template only contains NaNs (i.e. if the crop of the molecular templates left only NaNs)
+    # Return if template only contains NaNs (e.g. if the crop of the molecular templates left only NaNs)
     if all(np.isnan(template.flux)):
         return rv, CCF_planet, corr_planet, CCF_bkg, corr_auto, logL_planet, sigma_planet
     # Filter the template
@@ -150,7 +151,7 @@ def molecular_mapping_rv(instru, S_res, star_flux, T_planet, lg_planet, model, w
     NbChannel, NbLine, NbColumn = S_res.shape
     if rv is None:
         rv = np.linspace(-50, 50, 201)
-    else:
+    elif not isinstance(rv, np.ndarray):
         rv = np.array([rv])
     CCF = np.zeros((len(rv), NbLine, NbColumn))
     for k in range(len(rv)):
@@ -165,7 +166,7 @@ def molecular_mapping_rv(instru, S_res, star_flux, T_planet, lg_planet, model, w
             template0_shift = np.copy(template_shift)
             n_comp_sub = pca.n_components
             for nk in range(n_comp_sub): 
-                template_shift -= np.nan_to_num(np.nansum(template0_shift*pca.components_[nk])*pca.components_[nk])
+                template_shift -= np.nan_to_num(np.nansum(template0_shift * pca.components_[nk]) * pca.components_[nk])
         template_shift /= np.sqrt(np.nansum(template_shift**2))  # normalizing the template
         for i in range(NbLine):
             for j in range(NbColumn): # for every spaxel
@@ -494,7 +495,7 @@ def correlation_rv(instru, d_planet, d_bkg, star_flux, wave, trans, T_planet, lg
 
 
 
-def plot_CCF_rv(instru, band, target_name, d_planet, d_bkg, star_flux, wave, trans, T_planet, lg_planet, model, R, Rc, filter_type, large_rv=True, rv=None, rv_planet=None, vsini_planet=0, pca=None, template=None, epsilon=0.8, fastbroad=True, logL=False, method_logL="classic", sigma_l=None, weight=None, stellar_component=True, degrade_resolution=True, disable_tqdm=False, show=True, smooth_PSD=1, compare_data=False, cut_fringes=False, Rmin=None, Rmax=None, rv_star=None, zoom_CCF=True):
+def plot_CCF_rv(instru, band, target_name, d_planet, d_bkg, star_flux, wave, trans, T_planet, lg_planet, model, R, Rc, filter_type, large_rv=True, rv=None, rv_planet=None, vsini_planet=0, pca=None, template=None, epsilon=0.8, fastbroad=True, logL=False, method_logL="classic", sigma_l=None, weight=None, stellar_component=True, degrade_resolution=True, verbose=True, show=True, smooth_PSD=1, compare_data=False, cut_fringes=False, Rmin=None, Rmax=None, rv_star=None, zoom_CCF=True):
     """
     Plots the Cross-Correlation Function (CCF) for the given parameters.
 
@@ -537,7 +538,7 @@ def plot_CCF_rv(instru, band, target_name, d_planet, d_bkg, star_flux, wave, tra
     tuple: Contains radial velocity array, SNR of the planet, SNR of the background, and maximum SNR.
     """
     # Compute the radial velocity and cross-correlation functions for the planet and background
-    rv, CCF_planet, corr_planet, CCF_bkg, corr_auto, logL_planet, sigma_planet = correlation_rv(instru=instru, d_planet=d_planet, d_bkg=d_bkg, star_flux=star_flux, wave=wave, trans=trans, T_planet=T_planet, lg_planet=lg_planet, model=model, R=R, Rc=Rc, filter_type=filter_type, large_rv=large_rv, rv=rv, rv_planet=rv_planet, vsini_planet=vsini_planet, pca=pca, template=template, epsilon=epsilon, fastbroad=fastbroad, logL=logL, method_logL=method_logL, sigma_l=sigma_l, weight=weight, stellar_component=stellar_component, degrade_resolution=degrade_resolution, disable_tqdm=disable_tqdm, show=show, smooth_PSD=smooth_PSD, target_name=target_name, compare_data=compare_data, cut_fringes=cut_fringes, Rmin=Rmin, Rmax=Rmax)
+    rv, CCF_planet, corr_planet, CCF_bkg, corr_auto, logL_planet, sigma_planet = correlation_rv(instru=instru, d_planet=d_planet, d_bkg=d_bkg, star_flux=star_flux, wave=wave, trans=trans, T_planet=T_planet, lg_planet=lg_planet, model=model, R=R, Rc=Rc, filter_type=filter_type, large_rv=large_rv, rv=rv, rv_planet=rv_planet, vsini_planet=vsini_planet, pca=pca, template=template, epsilon=epsilon, fastbroad=fastbroad, logL=logL, method_logL=method_logL, sigma_l=sigma_l, weight=weight, stellar_component=stellar_component, degrade_resolution=degrade_resolution, disable_tqdm=not verbose, show=show, smooth_PSD=smooth_PSD, target_name=target_name, compare_data=compare_data, cut_fringes=cut_fringes, Rmin=Rmin, Rmax=Rmax)
     # Refine the radial velocity estimate for the planet
     rv_planet = rv[(rv < rv_planet + 25) & (rv > rv_planet - 25)][np.abs(CCF_planet[(rv < rv_planet + 25) & (rv > rv_planet - 25)]).argmax()]
     if np.nanmax(np.abs(rv))/2 > 200: # https://arxiv.org/pdf/2405.13469: std(rv_planet +- 200 km/s)
@@ -606,10 +607,10 @@ def plot_CCF_rv(instru, band, target_name, d_planet, d_bkg, star_flux, wave, tra
         ax2 = ax1.twinx()
         ax2.set_ylabel("Correlation Strength", fontsize=14, labelpad=20, rotation=270)
         ax2.tick_params(axis='y')
-        ax2.set_ylim(ymin * np.nanmax(corr_planet) / max_SNR, ymax * np.nanmax(corr_planet) / max_SNR)
-        
+        ax2.set_ylim(ymin * corr_planet[SNR_planet==max_SNR][0] / max_SNR, ymax * corr_planet[SNR_planet==max_SNR][0] / max_SNR)
+
         if zoom_CCF:
-            zoom_xmin, zoom_xmax = rv_planet - 100, rv_planet + 100
+            zoom_xmin, zoom_xmax = rv_planet - np.nanmax(np.abs(rv))/10, rv_planet + np.nanmax(np.abs(rv))/10
             axins = inset_axes(ax1, width="40%", height="40%", loc="upper left", borderpad=2)  
             if d_bkg is not None:  # Ajout du fond si disponible
                 for i in range(len(d_bkg)):
@@ -631,11 +632,12 @@ def plot_CCF_rv(instru, band, target_name, d_planet, d_bkg, star_flux, wave, tra
         plt.tight_layout()
         plt.show()
         
-        # Print error on sigma (if required)
-        if sigma_l is not None:
-            print(" error on sigma (sigma CCF/sigma planet) = ", round(sigma_CCF / sigma_planet, 3))
-        # Print maximum S/N and correlation
-        print(f" CCF: max S/N ({round(max_SNR, 1)}) and correlation ({round(np.nanmax(corr_planet), 5)}) for rv = {round(rv_planet, 2)} km/s")
+        if verbose: # Print maximum S/N and correlation
+            if sigma_l is not None: # Print error on sigma (if required):
+                print(" error on sigma (sigma CCF/sigma planet) = ", round(sigma_CCF / sigma_planet, 3))
+            # Print maximum S/N and correlation
+            print(f" CCF: max S/N ({round(max_SNR, 1)}) and correlation ({round(np.nanmax(corr_planet), 5)}) for rv = {round(rv_planet, 2)} km/s")
+            
         # Plot log-likelihood (if required)
         if logL:
             rv_planet = rv[(rv < rv_planet + 25) & (rv > rv_planet - 25)][logL_planet[(rv < rv_planet + 25) & (rv > rv_planet - 25)].argmax()]
@@ -656,7 +658,7 @@ def plot_CCF_rv(instru, band, target_name, d_planet, d_bkg, star_flux, wave, tra
             plt.show()
             # Print maximum log-likelihood
             print(f" max logL for rv = {round(rv_planet, 2)} km/s")
-    return rv, SNR_planet, SNR_bkg, corr_planet, signal_planet, sigma_CCF, sigma_planet
+    return rv, SNR_planet, SNR_bkg, corr_planet, signal_planet, sigma_CCF, sigma_planet, corr_auto
 
 
 
@@ -848,51 +850,6 @@ def SNR_calculation(CCF, CCF_wo_planet, y0, x0, size_core, verbose=True, snr_cal
 
 
 
-def correlation_T_lg(instru, d_planet, star_flux, wave, trans, R, Rc, filter_type, target_name, band, model="BT-Settl", rv_planet=0, vsini_planet=0, pca=None, template=None, weight=None, stellar_component=True):
-    T_planet, lg_planet = get_model_grid(model)
-    rv = np.linspace(rv_planet-25, rv_planet+25, 100)
-    corr_3d = np.zeros((len(lg_planet), len(T_planet), len(rv)))
-    for j in tqdm(range(len(T_planet)), desc="correlation_T_lg()"):
-        for i in range(len(lg_planet)):
-            T = T_planet[j]
-            if model[:4] == "mol_":
-                model = model[:4] + lg_planet[i]
-                lg = 4
-            else:
-                lg = lg_planet[i]
-            _, _, corr_planet, _, _, _, _ = correlation_rv(instru=instru, d_planet=d_planet, d_bkg=None, star_flux=star_flux, wave=wave, trans=trans, T_planet=T, lg_planet=lg, model=model, R=R, Rc=Rc, filter_type=filter_type, show=False, large_rv=False, rv=rv, rv_planet=None, vsini_planet=vsini_planet, pca=pca, template=template, weight=weight, stellar_component=stellar_component, disable_tqdm=True)
-            corr_3d[i, j, :] = corr_planet
-    idx_max_corr = np.unravel_index(np.argmax(corr_3d, axis=None), corr_3d.shape)
-    corr_2d = corr_3d[:, :, idx_max_corr[2]] # on se place à la vitesse radiale donnant le plus grand SNR
-    plt.figure(dpi=300)
-    plt.pcolormesh(T_planet, lg_planet, corr_2d, cmap=plt.get_cmap('rainbow'), vmin=np.nanmin(corr_2d), vmax=np.nanmax(corr_2d))
-    cbar = plt.colorbar() ; cbar.set_label("correlation strength", fontsize=14, labelpad=20, rotation=270)
-    if model[:4] == "mol_":
-        print(f"maximum correlation value of {round(np.nanmax(corr_2d), 2)} for T = {T_planet[idx_max_corr[1]]} K, {lg_planet[idx_max_corr[0]]} and rv = {round(rv[idx_max_corr[2]], 1)} km/s")
-        plt.ylabel("molecule", fontsize=12)
-        plt.title(f'Correlation between molecular template and {target_name} \n data spectrum on {band} of {instru} with $R_c$ = {Rc}', fontsize=14)
-        plt.plot([T_planet[idx_max_corr[1]], T_planet[idx_max_corr[1]]], [lg_planet[idx_max_corr[0]], lg_planet[idx_max_corr[0]]], 'kX', ms=10, label=f"max for T = {T_planet[idx_max_corr[1]]} K, \n {lg_planet[idx_max_corr[0]]} and rv = {round(rv[idx_max_corr[2]], 1)} km/s")
-    else:
-        print(f"maximum correlation value of {round(np.nanmax(corr_2d), 2)} for T = {T_planet[idx_max_corr[1]]} K, lg = {lg_planet[idx_max_corr[0]]} and rv = {round(rv[idx_max_corr[2]], 1)} km/s")
-        plt.ylabel("template's gravity surface", fontsize=12)
-        plt.title(f'Correlation between {model} spectra and {target_name} \n data spectrum on {band}-band of {instru} with $R_c$ = {Rc}', fontsize=14)
-        plt.plot([T_planet[idx_max_corr[1]], T_planet[idx_max_corr[1]]], [lg_planet[idx_max_corr[0]], lg_planet[idx_max_corr[0]]], 'kX', ms=10, label=f"max for T = {T_planet[idx_max_corr[1]]} K, \n lg = {lg_planet[idx_max_corr[0]]} and rv = {round(rv[idx_max_corr[2]], 1)} km/s")
-        plt.contour(T_planet, lg_planet, corr_2d, linewidths=0.1, colors='k')
-        plt.ylim(lg_planet[0], lg_planet[-1])
-    plt.xlabel("template's temperature [K]", fontsize=12)
-    plt.xlim(T_planet[0], T_planet[-1])
-    plt.legend(fontsize=12) ; plt.show()
-    T = T_planet[idx_max_corr[1]]
-    if model[:4] == "mol_":
-        model = model[:4] + lg_planet[idx_max_corr[0]]
-        lg = 4
-    else:
-        lg = lg_planet[idx_max_corr[0]]
-    correlation_rv(instru=instru, d_planet=d_planet, d_bkg=None, star_flux=star_flux, wave=wave, trans=trans, T_planet=T, lg_planet=lg, model=model, R=R, Rc=Rc, filter_type=filter_type, show=True, large_rv=False, rv=np.array([rv[idx_max_corr[2]]]), rv_planet=rv[idx_max_corr[2]], vsini_planet=vsini_planet, pca=pca, template=template, weight=weight, stellar_component=stellar_component, disable_tqdm=True)
-    return T_planet[idx_max_corr[1]], lg_planet[idx_max_corr[0]], rv[idx_max_corr[2]]
-
-
-
 def SNR_T_rv(instru, Sres, Sres_wo_planet, x0, y0, size_core, d_planet, rv_planet, wave, trans, R, Rc, filter_type, target_name, band, model="BT-Settl", vsini_planet=0, pca=None, template=None, weight=None):
     T_planet, lg_planet = model_T_lg(model)
     SNR_2d = np.zeros((len(lg_planet), len(T_planet))) ; noise_2d = np.zeros_like(SNR_2d) + np.nan ; signal_2d = np.zeros_like(SNR_2d) + np.nan
@@ -960,8 +917,8 @@ def get_template(instru, wave, model, T_planet, lg_planet, vsini_planet, rv_plan
         dl = template.wavelength - np.roll(template.wavelength, 1) ; dl[0] = dl[1] # delta lambda array
         Rold = np.nanmax(template.wavelength/(2*dl))
         Rold = max(Rold, 2*R)
-        if Rold > 300_000: # takes too much time otherwise (limiting then the resolution to 200 000 => does not seem to change anything)
-            Rold = 300_000
+        if Rold > R0_max: # takes too much time otherwise (limiting then the resolution to 200 000 => does not seem to change anything)
+            Rold = R0_max
         dl = np.nanmean(template.wavelength/(2*Rold)) # np.nanmin(dl) # 2*R => Nyquist sampling (Shannon)
         wave_inter = np.arange(0.98*wave[0], 1.02*wave[-1], dl) # regularly sampled template
     template = template.interpolate_wavelength(wave_inter, renorm=False)
@@ -970,7 +927,7 @@ def get_template(instru, wave, model, T_planet, lg_planet, vsini_planet, rv_plan
     # Doppler shifting the spectrum [km/s]
     template = template.doppler_shift(rv_planet, renorm=False)
     if model[:4] != "mol_": # if it is not a molecular template
-        template.flux *= wave_inter # for the template to be homogenous to photons or e- or ADU
+        template.flux *= wave_inter # for the template to be homogenous to ph or e- or ADU
     return template
 
 
@@ -1235,6 +1192,7 @@ def parameters_estimation(instru, band, target_name, wave, d_planet, star_flux, 
     
     # Show 2D (T, lg) matrices (if wanted and if possible)
     if show and len(T_arr) > 2 and len(lg_arr) > 2 and not fastcurves:
+        
         if SNR_estimate:
             idx_max_SNR = np.unravel_index(np.argmax(np.nan_to_num(SNR_4D[:, :, :, (rv_arr>-50)&(rv_arr<50)]), axis=None), SNR_4D[:, :, :, (rv_arr>-50)&(rv_arr<50)].shape)
             SNR_2D      = np.nan_to_num(SNR_4D[:, :, :, (rv_arr>-50)&(rv_arr<50)][:, :, idx_max_SNR[2], idx_max_SNR[3]].transpose())
@@ -1242,7 +1200,7 @@ def parameters_estimation(instru, band, target_name, wave, d_planet, star_flux, 
             lg_SNR_found    = lg_arr[idx_max_SNR[1]]
             vsini_SNR_found = vsini_arr[idx_max_SNR[2]]
             rv_SNR_found    = rv_arr[(rv_arr>-50)&(rv_arr<50)][idx_max_SNR[3]]
-            print(f"maximum S/N for T = {round(T_SNR_found)} K, lg = {lg_SNR_found} and rv = {rv_SNR_found:.1f} km/s")
+            print(f"maximum S/N for T = {T_SNR_found:.0f} K, lg = {lg_SNR_found:.2f} and rv = {rv_SNR_found:.1f} km/s")
             plt.figure(dpi=300) ; plt.ylabel("surface gravity [dex]", fontsize=12) ; plt.xlabel("temperature [K]", fontsize=12) ; plt.title(f'S/N with {model} spectra for {target_name}\n data spectrum on {band}-band of {instru} with $R_c$ = {Rc}', fontsize=14)
             plt.pcolormesh(T_arr, lg_arr, SNR_2D, cmap=plt.get_cmap('rainbow'), vmin=np.nanmin(SNR_2D), vmax=np.nanmax(SNR_2D))
             cbar = plt.colorbar() ; cbar.set_label("S/N", fontsize=12, labelpad=20, rotation=270)
@@ -1252,6 +1210,7 @@ def parameters_estimation(instru, band, target_name, wave, d_planet, star_flux, 
                 plt.plot([T_SNR_found, T_SNR_found], [lg_SNR_found, lg_SNR_found], 'kX', ms=10, label=r"$S/N_{max}$ "+f"for T = {round(T_SNR_found)}K, lg = {lg_SNR_found:.2f}, \n Vsin(i) = {vsini_SNR_found:.1f}km/s and RV = {rv_SNR_found:.1f}km/s")
             plt.contour(T_arr, lg_arr, SNR_2D, linewidths=0.1, colors='k')
             plt.ylim(lg_arr[0], lg_arr[-1]) ; plt.xlim(T_arr[0], T_arr[-1]) ; plt.legend(fontsize=10) ; plt.show()
+        
         else:
             idx_max_corr = np.unravel_index(np.argmax(corr_4D, axis=None), corr_4D.shape)
             corr_2D      = np.nan_to_num(corr_4D[:, :, idx_max_corr[2], idx_max_corr[3]].transpose())
@@ -1259,16 +1218,28 @@ def parameters_estimation(instru, band, target_name, wave, d_planet, star_flux, 
             lg_corr_found    = lg_arr[idx_max_corr[1]]
             vsini_corr_found = vsini_arr[idx_max_corr[2]]
             rv_corr_found    = rv_arr[idx_max_corr[3]]
-            print(f"maximum correlation ({round(np.nanmax(corr_4D), 5)}) for T = {round(T_corr_found)} K, lg = {lg_corr_found} and rv = {rv_corr_found:.1f} km/s")
-            plt.figure(dpi=300) ; plt.ylabel("surface gravity [dex]", fontsize=12) ; plt.xlabel("temperature [K]", fontsize=12) ; plt.title(f'Correlation between {model} spectra and {target_name}\n data spectrum on {band}-band of {instru} with $R_c$ = {Rc}', fontsize=14)
-            plt.pcolormesh(T_arr, lg_arr, corr_2D, cmap=plt.get_cmap('rainbow'), vmin=np.nanmin(corr_2D), vmax=np.nanmax(corr_2D))
-            cbar = plt.colorbar() ; cbar.set_label("correlation strength", fontsize=12, labelpad=20, rotation=270)
-            if "mol_" in model:
-                plt.plot([T_corr_found, T_corr_found], [lg_corr_found, lg_corr_found], 'kX', ms=10, label=f"max for T = {round(T_corr_found)}K, {lg_corr_found}, \n Vsin(i) = {vsini_corr_found:.1f}km/s and RV = {rv_corr_found:.1f}km/s")
-            else:
-                plt.plot([T_corr_found, T_corr_found], [lg_corr_found, lg_corr_found], 'kX', ms=10, label=f"max for T = {round(T_corr_found)}K, lg = {lg_corr_found:.2f}, \n Vsin(i) = {vsini_corr_found:.1f}km/s and RV = {rv_corr_found:.1f}km/s")
-            plt.contour(T_arr, lg_arr, corr_2D, linewidths=0.1, colors='k')
-            plt.ylim(lg_arr[0], lg_arr[-1]) ; plt.xlim(T_arr[0], T_arr[-1]) ; plt.legend(fontsize=10) ; plt.show()
+            print(f"maximum correlation ({np.nanmax(corr_4D):.3f}) for T = {T_corr_found:.0f} K, lg = {lg_corr_found:.2f} and rv = {rv_corr_found:.1f} km/s")
+            fig, ax = plt.subplots(dpi=300, figsize=(8, 6))            
+            ax.set_title(f'Correlation between {model} spectra and {target_name}\n{band}-band spectrum from {instru} at $R_c$ = {Rc}', fontsize=16, pad=20)            
+            ax.set_xlabel(r"$T_\mathrm{eff}$ [K]", fontsize=14)
+            ax.set_ylabel(r"$\log\,g$ [dex (cm/s²)]", fontsize=14)            
+            pcm = ax.pcolormesh(T_arr, lg_arr, corr_2D, cmap='coolwarm', shading='auto', vmin=np.nanmin(corr_2D), vmax=np.nanmax(corr_2D))            
+            cbar = plt.colorbar(pcm, ax=ax, pad=0.02, fraction=0.046, format='%.3f')
+            cbar.set_label("Correlation strength", fontsize=14, labelpad=18, rotation=270)
+            cbar.ax.tick_params(labelsize=10)
+            cbar.ax.minorticks_on()            
+            label_text = rf"max at $T_\mathrm{{eff}}$ = {T_corr_found:.0f} K, $\log\,g$ = {lg_corr_found:.2f}, $V\sin i$ = {vsini_corr_found:.1f} km/s, $RV$ = {rv_corr_found:.1f} km/s" if "mol_" not in model else rf"max at $T_\mathrm{{eff}}$ = {T_corr_found:.0f} K, {lg_corr_found}, $V\sin i$ = {vsini_corr_found:.1f} km/s, $RV$ = {rv_corr_found:.1f} km/s"
+            ax.plot(T_corr_found, lg_corr_found, marker='X', color='white', markersize=9, markeredgecolor='black', markeredgewidth=1.5, label=label_text)            
+            ax.contour(T_arr, lg_arr, corr_2D, levels=12, linewidths=0.8, colors='white', alpha=0.7)            
+            ax.set_xlim(T_arr[0], T_arr[-1])
+            ax.set_ylim(lg_arr[0], lg_arr[-1])
+            ax.tick_params(axis='both', which='major', labelsize=12)
+            ax.minorticks_on()            
+            ax.legend(fontsize=11, loc='lower left', frameon=True, facecolor='whitesmoke', edgecolor='gray')
+            ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.3)            
+            plt.tight_layout()
+            plt.show()
+            
             if logL:
                 idx_max_logL = np.unravel_index(np.argmax(logL_4D, axis=None), logL_4D.shape)
                 logL_2D      = logL_4D[:, :, idx_max_logL[2], idx_max_logL[3]].transpose()
@@ -1278,7 +1249,7 @@ def parameters_estimation(instru, band, target_name, wave, d_planet, star_flux, 
                 lg_logL_found    = lg_arr[idx_max_logL[1]]
                 vsini_logL_found = vsini_arr[idx_max_logL[2]]
                 rv_logL_found    = rv_arr[idx_max_logL[3]]
-                print(f"maximum logL for T = {round(T_logL_found)} K, lg = {lg_logL_found} and rv = {rv_logL_found:.1f} km/s")
+                print(f"maximum logL for T = {T_logL_found:.0f} K, lg = {lg_logL_found} and rv = {rv_logL_found:.1f} km/s")
                 plt.figure(dpi=300) ; plt.ylabel("surface gravity [dex]", fontsize=12) ; plt.xlabel("temperature [K]", fontsize=12) ; plt.title(f'logL ({method_logL}) with {model} spectra for {target_name}\n data spectrum on {band}-band of {instru} with $R_c$ = {Rc}', fontsize=14)
                 plt.pcolormesh(T_arr, lg_arr, logL_2D, cmap=plt.get_cmap('rainbow'), vmin=np.nanmin(logL_2D), vmax=np.nanmax(logL_2D))
                 cbar = plt.colorbar() ; cbar.set_label("logL", fontsize=12, labelpad=20, rotation=270)
@@ -1288,14 +1259,15 @@ def parameters_estimation(instru, band, target_name, wave, d_planet, star_flux, 
                     plt.plot([T_logL_found, T_logL_found], [lg_logL_found, lg_logL_found], 'kX', ms=10, label=r"$logL_{max}$ "+f" for T = {round(T_logL_found)}K, lg = {lg_logL_found:.2f}, \n Vsin(i) = {vsini_logL_found:.1f}km/s and RV = {rv_logL_found:.1f}km/s")
                 plt.contour(T_arr, lg_arr, logL_2D, linewidths=0.1, colors='k')
                 plt.ylim(lg_arr[0], lg_arr[-1]) ; plt.xlim(T_arr[0], T_arr[-1]) ; plt.legend(fontsize=10) ; plt.show()
+                
                 if d_planet_sim is not None:
                     idx_max_logL_sim = np.unravel_index(np.argmax(logL_4D_sim, axis=None), logL_4D_sim.shape)
                     logL_sim_2D = logL_4D_sim[:, :, idx_max_logL_sim[2], idx_max_logL_sim[3]].transpose()
                     logL_sim_2D = (logL_sim_2D - np.nanmin(logL_sim_2D)) / np.nanmax(logL_sim_2D - np.nanmin(logL_sim_2D))
-                    T_logL_sim_found = T_arr[idx_max_logL_sim[0]]
-                    lg_logL_sim_found = lg_arr[idx_max_logL_sim[1]]
+                    T_logL_sim_found     = T_arr[idx_max_logL_sim[0]]
+                    lg_logL_sim_found    = lg_arr[idx_max_logL_sim[1]]
                     vsini_logL_sim_found = vsini_arr[idx_max_logL_sim[2]]
-                    rv_logL_sim_found = rv_arr[idx_max_logL_sim[3]]
+                    rv_logL_sim_found    = rv_arr[idx_max_logL_sim[3]]
                     plt.figure(dpi=300) ; plt.ylabel("surface gravity [dex]", fontsize=12) ; plt.xlabel("temperature [K]", fontsize=12) ; plt.title(f'logL_sim ({method_logL}) with {model} spectra for {target_name}\n data spectrum on {band}-band of {instru} with $R_c$ = {Rc}', fontsize=14)
                     plt.pcolormesh(T_arr, lg_arr, logL_sim_2D, cmap=plt.get_cmap('rainbow'), vmin=np.nanmin(logL_sim_2D), vmax=np.nanmax(logL_sim_2D))
                     cbar = plt.colorbar() ; cbar.set_label("logL_sim", fontsize=12, labelpad=20, rotation=270)

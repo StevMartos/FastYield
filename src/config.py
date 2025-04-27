@@ -21,7 +21,9 @@ def get_config_data(instrument_name):
 GratingInfo  = collections.namedtuple('GratingInfo', 'lmin, lmax, R')
 ApodizerInfo = collections.namedtuple('ApodizerInfo', 'transmission, sep')
 
-######################################################### ELT : #######################################################
+#------------------------------------------------------------------------------#
+#                                  ELT:                                        #
+#------------------------------------------------------------------------------#
 
 config_data_HARMONI = {
     'name': "HARMONI", 
@@ -41,9 +43,9 @@ config_data_HARMONI = {
                  "K2_high": GratingInfo(2.199, 2.40, 17385)}, 
     'lambda_range': {"lambda_min":1.046, "lambda_max": 2.470}, #HARMONI
     'size_core': 3, # size of box side corresponding to FWHM
-    'apodizers': {"NO_SP": ApodizerInfo(0.84, 50), "SP1": ApodizerInfo(0.45, 70), "SP2": ApodizerInfo(0.35, 100), "SP3": ApodizerInfo(0.53, 50), "SP4": ApodizerInfo(0.59, 30), "SP_Prox": ApodizerInfo(0.68, 30)}, # (transmission, iwa)     
-    #'apodizers': {"NO_SP": ApodizerInfo(0.84, 30), "SP1": ApodizerInfo(0.45, 30), "SP2": ApodizerInfo(0.35, 30), "SP3": ApodizerInfo(0.53, 30), "SP4": ApodizerInfo(0.59, 30), "SP_Prox": ApodizerInfo(0.68, 30)}, # (transmission, iwa)
-    'strehls': ["JQ1", "MED"], 
+    'apodizers': {"NO_SP": ApodizerInfo(0.84, 50), "SP1": ApodizerInfo(0.45, 70), "SP2": ApodizerInfo(0.35, 100), "SP_Prox": ApodizerInfo(0.68, 30)}, # (transmission, iwa)     
+    #'apodizers': {"NO_SP": ApodizerInfo(0.84, 30), "SP1": ApodizerInfo(0.45, 30), "SP2": ApodizerInfo(0.35, 30), "SP_Prox": ApodizerInfo(0.68, 30)}, # (transmission, iwa)
+    'strehls': ["JQ1"], 
     'spec': {"RON": 10.0, "dark_current": 0.0053, "FOV": 0.8, "pxscale": 0.004, "minDIT": 0.026, "maxDIT": 1, "saturation_e": 40000.}, 
     # e-, e-/s, arcsec, arcsec/px, min, min, e-/ph;
 }
@@ -70,7 +72,9 @@ config_data_ANDES = {
     # e-, e-/s, arcsec, arcsec/px, min, min, e-/ph;
 }
 
-######################################################### VLT : #######################################################
+#------------------------------------------------------------------------------#
+#                                  VLT:                                        #
+#------------------------------------------------------------------------------#
 
 config_data_ERIS = {
     'name': "ERIS", 
@@ -115,12 +119,14 @@ config_data_HiRISE = {
     'size_core': 1, # 1 fiber on the planet
     'pixel_detector_projection': 2 * 2.04 , # ~ 2 * Npx_x * Npx_y (2x for the darks: assuming the same number of bkg as sci) = nb of pixels on which the fiber's signal is projected 
     'apodizers': {"NO_SP": ApodizerInfo(1, 0)}, 
-    'strehls': ["JQ1", "MED", "JQ3"], 
+    'strehls': ["MED"], 
     'spec': {"RON": 12, "dark_current": 0.0053, "FOV":4, "pxscale":0.01225, "minDIT": 1.4725/60, "maxDIT": 20, "saturation_e": 64000.}, 
     # e-, e-/s, arcsec, arcsec/px, min, min, e-/ph;
 }
 
-######################################################## JWST : #######################################################
+#------------------------------------------------------------------------------#
+#                                  JWST:                                       #
+#------------------------------------------------------------------------------#
 
 config_data_MIRIMRS = {
     'name': "MIRIMRS", 
@@ -163,7 +169,7 @@ config_data_NIRCam = {
                  "F356W": GratingInfo(3.00, 4.25, 10000), 
                  "F444W": GratingInfo(3.65, 5.19, 10000), }, 
     'lambda_range': {"lambda_min": 2.35, "lambda_max": 5.19}, 
-    'size_core': 1, # size of box side corresponding to FWHM
+    'size_core': 3, # size of box side corresponding to FWHM
     'apodizers': {"NO_SP": ApodizerInfo(1, 0)}, 
     'strehls': ["NO_JQ"], 
     'spec': {"RON": 13.17*np.sqrt(2), "dark_current": 34.2/1000, "FOV":10, "pxscale":  0.063, "minDIT": 20.155/60, "maxDIT": 5, "saturation_e": 62000}, 
@@ -186,13 +192,7 @@ config_data_NIRSpec = {
     'base': "space", 
     'sep_unit': "arcsec", 
     'telescope': {"diameter": 6.6052, "area": 25.032}, # all-glass diameter in m, including central hole, secondary and spider obscuration in m2
-    'gratings': {
-                 #"G140M_F070LP": GratingInfo(0.90, 1.27, 1000),
-                 #"G140M_F100LP": GratingInfo(0.97, 1.89, 1000), 
-                 #"G235M_F170LP": GratingInfo(1.66, 3.17, 1000), 
-                 #"G395M_F290LP": GratingInfo(2.87, 5.27, 1000), 
-                 #"G140H_F070LP": GratingInfo(0.95, 1.27, 2700), 
-                 "G140H_F100LP": GratingInfo(0.98, 1.89, 2700), 
+    'gratings': {"G140H_F100LP": GratingInfo(0.98, 1.89, 2700), 
                  "G235H_F170LP": GratingInfo(1.66, 3.17, 2700), 
                  "G395H_F290LP": GratingInfo(2.87, 5.27, 2700)}, 
     'lambda_range': {"lambda_min": 0.90, "lambda_max": 5.27},
@@ -200,11 +200,13 @@ config_data_NIRSpec = {
     'R_cov': 1.7, # spatial covariance factor with size_core = 3 
     'apodizers': {"NO_SP": ApodizerInfo(1, 0)}, 
     'strehls': ["NO_JQ"], 
-    'spec': {"RON": 14*np.sqrt(2), "dark_current": 0.008, "FOV":3.15, "pxscale":0.1045, "minDIT": 14.58889/60, "maxDIT": 5, "saturation_e": 200000.}, 
+    'spec': {"RON": 14*np.sqrt(2), "dark_current": 0.008, "FOV": 5, "pxscale":0.1045, "minDIT": 14.58889/60, "maxDIT": 5, "saturation_e": 200000.}, 
     # e-, e-/s, arcsec, arcsec/px, min, min, e-, e-/ph ;
 }
 
-######################################################## Test bench : ####################################################
+#------------------------------------------------------------------------------#
+#                               Test bench:                                    #
+#------------------------------------------------------------------------------#
 
 # VIPA spectrometer at 152cm telescope of the OHP
 config_data_VIPAPYRUS = {
@@ -216,8 +218,8 @@ config_data_VIPAPYRUS = {
     'altitude': 650,    # Altitude of OHP (in m)
     'sep_unit': "arcsec", 
     'telescope': {"diameter": 1.52, "area": 1.81}, # all-glass diameter in m, including central hole, secondary and spider obscuration in m2
-    'gratings': {"H": GratingInfo(1.54, 1.74, 70000), }, # µm
-    'lambda_range': {"lambda_min":1.54, "lambda_max": 1.74}, # VIPA
+    'gratings': {"H": GratingInfo(1.552, 1.760, 70000), }, # µm
+    'lambda_range': {"lambda_min": 1.552, "lambda_max": 1.760}, # VIPA
     'size_core': 1, # 1 fiber on the planet
     'pixel_detector_projection': 1.55 * 10 , # ~ 2 * k * Npx_x * Npx_y * 10 (2x for the darks) (10x because Npx_y has been calculated for 10x 70 000 of R) = nb of pixels on which the fiber's signal is projected 
     'apodizers': {"NO_SP": ApodizerInfo(1, 0)}, 
@@ -245,7 +247,7 @@ config_data_VIPAPYRUS = {
 #     # e-, e-/s, arcsec, arcsec/px, min, min, e-/ph;
 # }
 
-#######################################################################################################################
+###############################################################################
 
 config_data_list = [config_data_HARMONI, config_data_ANDES, config_data_ERIS, config_data_MIRIMRS, config_data_NIRCam, config_data_NIRSpec, config_data_HiRISE, config_data_VIPAPYRUS]
 instru_name_list = [config_data["name"] for config_data in config_data_list]

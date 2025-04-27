@@ -479,8 +479,8 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         else:
             self.__plt.set_title(f'Known exoplanets detection yield with {self.instru} ({self.spectrum_contributions} light with {self.model_planet})'+'\n on '+self.band+'-band (from '+str(round(self.lmin, 1))+' to '+str(round(self.lmax, 1))+f' µm with R ~ {int(round(self.R, -2))}) with '+'$t_{exp}$=' + str(round(self.exposure_time.get())) + 'mn ' + txt_syst, fontsize=18)
         if self.units == "Observational":
-            self.__plt.set_xlabel(f'Angular separation (in {x_raw.unit})', fontsize=18)
-            self.__plt.set_ylabel(f'Contrast (on {self.band}-band)', fontsize=18)
+            self.__plt.set_xlabel(f'Maximum angular separation (in {x_raw.unit})', fontsize=18)
+            self.__plt.set_ylabel(f'Planet-to-star contrast (on {self.band}-band)', fontsize=18)
             self.__plt.axvspan(iwa, owa, color='grey', alpha=0.5, lw=0, label="Working angle", zorder=2)
             if "thermal" in self.spectrum_contributions:
                 self.__plt.set_ylim(1e-11, 1)
@@ -553,7 +553,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
             cell.set_linewidth(0.5)
         data2 =  [[ 'S/N', f'{round(self.SNR[self.planet_index], 1)}'], 
                     [ 'Flux ratio', '{0:.1e}'.format(self.flux_ratio)], 
-                    [ 'Angular separation', f"{round(float(self.planet['AngSep'].value))} {self.planet['AngSep'].unit}"], 
+                    [ 'Max. sep.', f"{round(float(self.planet['AngSep'].value))} {self.planet['AngSep'].unit}"], 
                     [ 'SMA', f"{round(float(self.planet['SMA'].value), 1)} {self.planet['SMA'].unit}"], 
                     [ f'Discovery method', self.planet["DiscoveryMethod"]], 
                     [ f'Star spectral type', f"{self.planet['StarSpT']}"], 
@@ -573,12 +573,12 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         self.__plt2.text(1.05, -0.05, self.date, horizontalalignment='right', size=14, weight='light')
         
     def open_popup(self): # USELESS
-       self.popup_state = "Open"
-       self.popup = Toplevel(self)
-       self.popup.title(self.planet["PlanetName"]) ; self.popup.attributes("-topmost", True)
-       Button(self.popup, text="S/N", command=lambda *args:self.SNR_calculation(), bg="dark orange", fg="black", font=('Arial', 12, 'bold')).grid(row=11, column=0, sticky="nsew")
-       Button(self.popup, text="Contrast", command=lambda *args:self.contrast_calculation(), bg="dark orange", fg="black", font=('Arial', 12, 'bold')).grid(row=11, column=2, sticky="nsew")
-       self.popup.protocol('WM_DELETE_WINDOW', lambda: self.onclose())
+        self.popup_state = "Open"
+        self.popup = Toplevel(self)
+        self.popup.title(self.planet["PlanetName"]) ; self.popup.attributes("-topmost", True)
+        Button(self.popup, text="S/N", command=lambda *args:self.SNR_calculation(), bg="dark orange", fg="black", font=('Arial', 12, 'bold')).grid(row=11, column=0, sticky="nsew")
+        Button(self.popup, text="Contrast", command=lambda *args:self.contrast_calculation(), bg="dark orange", fg="black", font=('Arial', 12, 'bold')).grid(row=11, column=2, sticky="nsew")
+        self.popup.protocol('WM_DELETE_WINDOW', lambda: self.onclose())
     def onclose(self): # Func to be called when window is closing, passing the window name
         self.popup_state = "Close" # Set it to close
         self.popup.destroy() # Destroy the window
@@ -619,7 +619,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
                 band_only = None 
             else:
                 band_only = self.band
-            FastCurves(PCA_mask=True, instru=self.instru, band_only=band_only, calculation=self.calculation, T_planet=float(self.planet["PlanetTeq"].value), lg_planet=float(self.planet["PlanetLogg"].value), mag_star=mag_s, band0=band0, T_star=float(self.planet["StarTeff"].value), lg_star=float(self.planet["StarLogg"].value), exposure_time=self.exposure_time.get(), model_planet=self.model_planet, mag_planet=mag_p, separation_planet=float(self.planet["AngSep"].value/1000), planet_name=self.planet["PlanetName"], systematic=self.systematics, PCA=self.PCA, show_plot=True, verbose=True, star_spectrum=star_spectrum, planet_spectrum=planet_spectrum, apodizer=self.apodizer, strehl=self.strehl)
+            FastCurves(instru=self.instru, band_only=band_only, calculation=self.calculation, T_planet=float(self.planet["PlanetTeq"].value), lg_planet=float(self.planet["PlanetLogg"].value), mag_star=mag_s, band0=band0, T_star=float(self.planet["StarTeff"].value), lg_star=float(self.planet["StarLogg"].value), exposure_time=self.exposure_time.get(), model_planet=self.model_planet, mag_planet=mag_p, separation_planet=float(self.planet["AngSep"].value/1000), planet_name=self.planet["PlanetName"], systematic=self.systematics, PCA=self.PCA, show_plot=True, verbose=True, star_spectrum=star_spectrum, planet_spectrum=planet_spectrum, apodizer=self.apodizer, strehl=self.strehl)
 
     def destroy_lower_buttons(self):
         try:

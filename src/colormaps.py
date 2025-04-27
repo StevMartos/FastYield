@@ -172,13 +172,13 @@ def process_colormap_bandwidth_resolution_with_constant_Nlambda(args):
             trans = sky_R.flux[valid]
         else:
             trans = 1 
-        star_R_crop = Spectrum(wav[valid], star_R.flux[valid], res, None)
+        star_R_crop   = Spectrum(wav[valid], star_R.flux[valid], res, None)
         planet_R_crop = Spectrum(wav[valid], planet_R.flux[valid], res, None)
         planet_HF, planet_BF = filtered_flux(planet_R_crop.flux, R=res, Rc=Rc, filter_type=filter_type)
-        star_HF, star_BF = filtered_flux(star_R_crop.flux, R=res, Rc=Rc, filter_type=filter_type)
+        star_HF, star_BF     = filtered_flux(star_R_crop.flux, R=res, Rc=Rc, filter_type=filter_type)
         template = trans*planet_HF / np.sqrt(np.nansum((trans*planet_HF)**2))
-        alpha = np.nansum(trans*planet_HF * template)
-        beta = np.nansum(trans*star_HF*planet_BF/star_BF * template)
+        alpha    = np.nansum(trans*planet_HF * template)
+        beta     = np.nansum(trans*star_HF*planet_BF/star_BF * template)
         if stellar_halo_photon_noise_limited:
             noise = np.sqrt(np.nansum(trans*star_R_crop.flux * template**2)) # stellar halo photon noise
         else:
@@ -723,10 +723,7 @@ def colormap_bands_planets_SNR(mode="multi", instru="HARMONI", thermal_model="BT
     spectrum_contributions, name_model = get_spectrum_contribution_name_model(thermal_model, reflected_model)
 
     # Load the planet table and convert it from QTable to pandas DataFrame
-    if instru=="HARMONI":
-        planet_table = load_planet_table("Archive_Pull_"+instru+"_SP_Prox_"+strehl+"_without_systematics_"+name_model+".ecsv")
-    else:
-        planet_table = load_planet_table("Archive_Pull_"+instru+"_"+apodizer+"_"+strehl+"_without_systematics_"+name_model+".ecsv")
+    planet_table = load_planet_table(f"Archive_Pull_{instru}_{apodizer}_{strehl}_without_systematics_{name_model}.ecsv")
 
     planet_table["SNR"] = np.sqrt(exposure_time/planet_table['DIT_INSTRU']) * planet_table['signal_INSTRU'] / np.sqrt( planet_table['sigma_fund_INSTRU']**2 + (exposure_time/planet_table['DIT_INSTRU'])*planet_table['sigma_syst_INSTRU']**2 )
 
@@ -740,7 +737,6 @@ def colormap_bands_planets_SNR(mode="multi", instru="HARMONI", thermal_model="BT
     # Table plot
     plot_matching_planets(matching_planets, exposure_time, mode)
 
-    
     #
     # Colormap calculation
     #
@@ -755,7 +751,7 @@ def colormap_bands_planets_SNR(mode="multi", instru="HARMONI", thermal_model="BT
         tellurics = True
     
     # Raw wavelength axis
-    R_model = 1_000_000
+    R_model = R0_max
     lmin    = config_data["lambda_range"]["lambda_min"]
     lmax    = config_data["lambda_range"]["lambda_max"]
     dl      = (lmin+lmax)/2 / (2*R_model)
@@ -763,7 +759,7 @@ def colormap_bands_planets_SNR(mode="multi", instru="HARMONI", thermal_model="BT
     
     # Definig matrices
     planet_types_arr = np.array([])
-    list_planets = []
+    list_planets     = []
     for ptype, planets in matching_planets.items():
         if len(planets)>0:
             planet_types_arr = np.append(planet_types_arr, ptype)
@@ -828,7 +824,7 @@ def process_colormap_bands_planets_snr(args):
     planet_spectrum, _, _, star_spectrum = thermal_reflected_spectrum(planet, instru, thermal_model=thermal_model, reflected_model=reflected_model, wave_instru=None, wave_K=None, vega_spectrum_K=None, show=False)
     mag_p = float(planet["PlanetINSTRUmag("+instru+")("+spectrum_contributions+")"])
     mag_s = float(planet["StarINSTRUmag("+instru+")"])
-    _, SNR_1D, _, _, _, _ = FastCurves(instru=instru, calculation="SNR", systematic=systematic, T_planet=float(planet["PlanetTeq"].value), lg_planet=float(planet["PlanetLogg"].value), mag_star=mag_s, band0="instru", T_star=float(planet["StarTeff"].value), lg_star=float(planet["StarLogg"].value), exposure_time=exposure_time, model="None", mag_planet=mag_p, separation_planet=float(planet["AngSep"].value/1000), planet_name="None", return_SNR_planet=True, show_plot=False, verbose=False, planet_spectrum=planet_spectrum.copy(), star_spectrum=star_spectrum.copy(), apodizer=apodizer, strehl=strehl, PCA=PCA, PCA_mask=PCA_mask, Nc=Nc)
+    _, SNR_1D, _, _, _, _ = FastCurves(instru=instru, calculation="SNR", systematic=systematic, T_planet=float(planet["PlanetTeq"].value), lg_planet=float(planet["PlanetLogg"].value), mag_star=mag_s, band0="instru", T_star=float(planet["StarTeff"].value), lg_star=float(planet["StarLogg"].value), exposure_time=exposure_time, model_planet="None", mag_planet=mag_p, separation_planet=float(planet["AngSep"].value/1000), planet_name="None", return_SNR_planet=True, show_plot=False, verbose=False, planet_spectrum=planet_spectrum.copy(), star_spectrum=star_spectrum.copy(), apodizer=apodizer, strehl=strehl, PCA=PCA, PCA_mask=PCA_mask, Nc=Nc)
     SNR_1D /= np.nanmax(SNR_1D)
     itype = np.where(planet["PlanetType"]==planet_types_arr)[0][0]
     return itype, SNR_1D
@@ -879,7 +875,7 @@ def colormap_bands_planets_parameters(mode="multi", instru="HARMONI", thermal_mo
         tellurics = True
     
     # Raw wavelength axis
-    R_model = 1_000_000
+    R_model = R0_max
     lmin    = config_data["lambda_range"]["lambda_min"]
     lmax    = config_data["lambda_range"]["lambda_max"]
     dl      = (lmin+lmax)/2 / (2*R_model)
@@ -912,7 +908,7 @@ def colormap_bands_planets_parameters(mode="multi", instru="HARMONI", thermal_mo
         mag_p = float(planet["PlanetINSTRUmag("+instru+")("+spectrum_contributions+")"])
         mag_s = float(planet["StarINSTRUmag("+instru+")"])
         planet_spectrum.model = thermal_model
-        name_bands, _, uncertainties = FastCurves(instru=instru, calculation="corner plot", systematic=systematic, T_planet=float(planet["PlanetTeq"].value), lg_planet=float(planet["PlanetLogg"].value), mag_star=mag_s, band0="instru", T_star=float(planet["StarTeff"].value), lg_star=float(planet["StarLogg"].value), exposure_time=exposure_time, model=thermal_model, mag_planet=mag_p, separation_planet=float(planet["AngSep"].value/1000), planet_name="None", return_SNR_planet=False, show_plot=False, verbose=False, planet_spectrum=planet_spectrum.copy(), star_spectrum=star_spectrum.copy(), apodizer=apodizer, strehl=strehl, PCA=PCA, PCA_mask=PCA_mask, Nc=Nc)
+        name_bands, _, uncertainties = FastCurves(instru=instru, calculation="corner plot", systematic=systematic, T_planet=float(planet["PlanetTeq"].value), lg_planet=float(planet["PlanetLogg"].value), mag_star=mag_s, band0="instru", T_star=float(planet["StarTeff"].value), lg_star=float(planet["StarLogg"].value), exposure_time=exposure_time, model_planet=thermal_model, mag_planet=mag_p, separation_planet=float(planet["AngSep"].value/1000), planet_name="None", return_SNR_planet=False, show_plot=False, verbose=False, planet_spectrum=planet_spectrum.copy(), star_spectrum=star_spectrum.copy(), apodizer=apodizer, strehl=strehl, PCA=PCA, PCA_mask=PCA_mask, Nc=Nc)
         
         sigma_T_1D     = np.zeros((len(name_bands)))
         sigma_lg_1D    = np.zeros((len(name_bands)))

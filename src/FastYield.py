@@ -2,8 +2,8 @@ from src.FastCurves import *
 
 
 # Models list
-thermal_models          = ["None", "BT-Settl", "Exo-REM", "PICASO"]
-reflected_models        = ["None", "tellurics", "flat", "PICASO"]
+thermal_models   = ["None", "BT-Settl", "Exo-REM", "PICASO"]
+reflected_models = ["None", "tellurics", "flat", "PICASO"]
 
 # Planet types list
 planet_types = {
@@ -1040,7 +1040,7 @@ def process_SNR_table(args):
     idx, mag_s, planet, instru, thermal_model, reflected_model, wave_instru, wave_K, vega_spectrum, vega_spectrum_K, lmin_instru, lmax_instru, band0, exposure_time, name_model, systematic, apodizer, strehl, PCA, Nc = args
     planet_spectrum, planet_thermal, planet_reflected, star_spectrum = thermal_reflected_spectrum(planet=planet, instru=instru, thermal_model=thermal_model, reflected_model=reflected_model, wave_instru=wave_instru, wave_K=wave_K, vega_spectrum_K=vega_spectrum_K, show=False)
     mag_p = -2.5*np.log10(np.nanmean(planet_spectrum.flux[(wave_instru>lmin_instru)&(wave_instru<lmax_instru)])/np.nanmean(vega_spectrum.flux[(wave_instru>lmin_instru) & (wave_instru<lmax_instru)]))
-    name_band, SNR_planet, signal_planet, sigma_fund_planet, sigma_syst_planet, DIT_band = FastCurves(instru=instru, calculation="SNR", systematic=systematic, T_planet=float(planet["PlanetTeq"].value), lg_planet=float(planet["PlanetLogg"].value), mag_star=mag_s, band0=band0, T_star=float(planet["StarTeff"].value), lg_star=float(planet["StarLogg"].value), exposure_time=exposure_time, model="None", mag_planet=mag_p, separation_planet=float(planet["AngSep"].value/1000), planet_name="None", return_SNR_planet=True, show_plot=False, verbose=False, planet_spectrum=planet_spectrum.copy(), star_spectrum=star_spectrum.copy(), apodizer=apodizer, strehl=strehl, PCA=PCA, Nc=Nc)
+    name_band, SNR_planet, signal_planet, sigma_fund_planet, sigma_syst_planet, DIT_band = FastCurves(instru=instru, calculation="SNR", systematic=systematic, T_planet=float(planet["PlanetTeq"].value), lg_planet=float(planet["PlanetLogg"].value), mag_star=mag_s, band0=band0, T_star=float(planet["StarTeff"].value), lg_star=float(planet["StarLogg"].value), exposure_time=exposure_time, model_planet="None", mag_planet=mag_p, separation_planet=float(planet["AngSep"].value/1000), planet_name="None", return_SNR_planet=True, show_plot=False, verbose=False, planet_spectrum=planet_spectrum.copy(), star_spectrum=star_spectrum.copy(), apodizer=apodizer, strehl=strehl, PCA=PCA, Nc=Nc)
     return idx, planet_spectrum, planet_thermal, planet_reflected, star_spectrum, mag_p, name_band, SNR_planet, signal_planet, sigma_fund_planet, sigma_syst_planet, DIT_band
 
 
@@ -1052,32 +1052,31 @@ def all_SNR_table(table="Archive"): # takes ~ 13 hours
 
     time0 = time.time()
     for instru in instru_name_list:
-        config_data = get_config_data(instru)
-        if config_data["lambda_range"]["lambda_max"] > 6:
-            thermal_models   = ["None", "BT-Settl", "Exo-REM"]
-            reflected_models = ["None"]
-        else:
-            thermal_models   = ["None", "BT-Settl", "Exo-REM", "PICASO"]
-            reflected_models = ["None", "tellurics", "flat", "PICASO"]
-        apodizers = [apodizer for apodizer in config_data["apodizers"]]
-        if config_data["base"] == "ground":
-            strehls = config_data["strehls"]
-        elif config_data["base"] == "space":
-            strehls = ["NO_JQ"]
-        for apodizer in apodizers:
-            for strehl in strehls:
-                if instru == "HARMONI" and (apodizer == "SP2" or apodizer == "SP3" or apodizer == "SP4" or apodizer == "SP_Prox") and strehl != "JQ1":
-                    continue
-                for thermal_model in thermal_models:
-                    for reflected_model in reflected_models:
-                        if thermal_model == "None" and reflected_model == "None":
-                            continue
-                        else:
-                            calculate_SNR_table(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, systematic=False)
-                            if instru in instru_with_systematics:
-                                calculate_SNR_table(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, systematic=True)
-                                calculate_SNR_table(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, systematic=True, PCA=True, Nc=20)
-    
+        if instru not in ["HARMONI", "ANDES"]:
+            config_data = get_config_data(instru)
+            if config_data["lambda_range"]["lambda_max"] > 6:
+                thermal_models   = ["None", "BT-Settl", "Exo-REM"]
+                reflected_models = ["None"]
+            else:
+                thermal_models   = ["None", "BT-Settl", "Exo-REM", "PICASO"]
+                reflected_models = ["None", "tellurics", "flat", "PICASO"]
+            apodizers = [apodizer for apodizer in config_data["apodizers"]]
+            if config_data["base"] == "ground":
+                strehls = config_data["strehls"]
+            elif config_data["base"] == "space":
+                strehls = ["NO_JQ"]
+            for apodizer in apodizers:
+                for strehl in strehls:
+                    for thermal_model in thermal_models:
+                        for reflected_model in reflected_models:
+                            if thermal_model == "None" and reflected_model == "None":
+                                continue
+                            else:
+                                calculate_SNR_table(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, systematic=False)
+                                if instru in instru_with_systematics:
+                                    calculate_SNR_table(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, systematic=True)
+                                    calculate_SNR_table(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, systematic=True, PCA=True, Nc=20)
+        
     print('\n Calculating all SNR took {0:.3f} s'.format(time.time()-time0))
 
 
