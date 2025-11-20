@@ -9,7 +9,7 @@ Python package for exoplanet detection and performance estimation using the mole
 
 FastCurves serves as a promising exposure time calculator (ETC) for predicting the performance of integral field spectrographs (IFS) when molecular mapping is used as a post-processing technique. This method, which involves stellar halo subtraction through spectral high-pass filtering and cross-correlation, efficiently removes speckles. **FastYield** builds upon FastCurves by applying it to archival or synthetic planet catalogs, allowing for yield performance estimations for a given instrument. 
 
-For more details, see [Bidot et al. 2024](https://www.aanda.org/articles/aa/pdf/2024/02/aa46185-23.pdf) or [Martos et al. 2025](https://arxiv.org/pdf/2504.06890).
+For more details, see [Bidot et al. 2024](https://www.aanda.org/articles/aa/pdf/2024/02/aa46185-23.pdf) and [Martos et al. 2025](https://arxiv.org/pdf/2504.06890).
 
 <picture align="center">
   <source media="(prefers-color-scheme: dark)" srcset="FastYield example.png">
