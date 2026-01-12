@@ -23,19 +23,20 @@ import matplotlib.colors as mcolors
 from matplotlib.colors import LogNorm
 from matplotlib.cm import get_cmap
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes, mark_inset
-from matplotlib.ticker import AutoMinorLocator
+from matplotlib.ticker import LogLocator, NullFormatter, AutoMinorLocator
 from matplotlib import gridspec
-from matplotlib.patches import Rectangle
+from matplotlib.patches import Rectangle, Patch
 import matplotlib.patheffects as pe
 from matplotlib.cm import ScalarMappable
 from matplotlib.font_manager import FontProperties
 from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
+from matplotlib.collections import LineCollection
 
 # import scipy modules
 from scipy.interpolate import interp1d, interp2d, RegularGridInterpolator
 from scipy.ndimage import shift, zoom, distance_transform_edt, fourier_shift, convolve
 from scipy.ndimage.filters import gaussian_filter, gaussian_filter1d
-from scipy.special import comb
+from scipy.special import comb, j1
 from scipy.signal import savgol_filter
 from scipy.stats import binned_statistic
 from scipy.optimize import curve_fit
@@ -58,8 +59,10 @@ from multiprocessing import Pool, cpu_count
 import corner
 from collections import OrderedDict
 from functools import lru_cache
+from math import erf
 
 warnings.filterwarnings('ignore', category=UserWarning, append=True)
+mpl.rcParams['figure.max_open_warning'] = 0
 
 # Defining constants
 h          = const.h.value     # [J.s]
@@ -104,7 +107,7 @@ def _load_psf_profile(instru, band, strehl, apodizer, coronagraph):
 @lru_cache(maxsize=50)
 def _load_corona_profile(instru, band, strehl, apodizer, coronagraph):
     """Load *once* the coronagraphic profile arrays."""
-    sep, fraction_core, radial_transmission = fits.getdata(f"sim_data/PSF/PSF_{instru}/fraction_PSF_{band}_{coronagraph}_{strehl}_{apodizer}.fits")
+    sep, fraction_core, radial_transmission = fits.getdata(f"sim_data/PSF/PSF_{instru}/fraction_core_radial_transmission_{band}_{coronagraph}_{strehl}_{apodizer}.fits")
     return sep, fraction_core, radial_transmission
 
 @lru_cache(maxsize=50)
@@ -482,6 +485,54 @@ def get_bracket_values(x, grid):
 
 
 
+def airy_profile_norm(sep, wave_um, sep_unit, D_m=39.0, eps=0.3):
+    """
+    Polychromatic diffraction-limited PSF radial profile (normalized to 1 at rho=0).
+    sep     : 1D array separations in sep_unit
+    wave_um : 1D array wavelengths in micron (e.g. wave_band)
+    D_m     : telescope diameter
+    eps     : central obscuration ratio (0 for clear circular pupil)
+    """
+    if sep_unit == "arcsec":
+        sep_rad = sep / 206265.0  # mas -> arcsec -> rad
+    elif sep_unit == "mas":
+        sep_rad = sep * 1e-3 / 206265.0  # mas -> arcsec -> rad
+
+    wave_m  = np.asarray(wave_um) * 1e-6
+
+    # x = pi * D * theta / lambda
+    # Use broadcasting: (Nsep, Nlam)
+    x = np.pi * D_m * sep_rad[:, None] / wave_m[None, :]
+
+    # Handle x=0 safely
+    def airy_clear(x):
+        out = np.ones_like(x)
+        m = x != 0
+        out[m] = (2 * j1(x[m]) / x[m])**2
+        return out
+
+    if eps <= 0:
+        I = airy_clear(x)
+    else:
+        # Obscured circular pupil (approx): amplitude difference then square
+        # A ~ [2J1(x)/x - eps^2 * 2J1(eps x)/(eps x)] / (1 - eps^2)
+        out = np.ones_like(x)
+        m = x != 0
+        A  = np.zeros_like(x)
+        A[m] = (2*j1(x[m])/x[m] - eps**2 * 2*j1(eps*x[m])/(eps*x[m])) / (1 - eps**2)
+        A[~m] = 1.0
+        I = A**2
+
+    # Polychromatic average
+    I_poly = np.nanmean(I, axis=1)
+
+    # Normalize to peak = 1 (at sep=0 ideally)
+    I_poly /= np.nanmax(I_poly)
+    return I_poly
+
+
+
+
 #################### Image processing/analysis functions ######################
 
 def box_convolution(data, size_core, mode="sum"):
@@ -723,7 +774,7 @@ def crop_both(data1, data2, Y0=None, X0=None, R_crop=None, return_center=False):
 
 
 
-def PSF_profile_ratio(PSF, pxscale, size_core, show=True):
+def PSF_profile_ratio(PSF, pxscale, size_core):
     """
     Compute a radial profile (mean flux per annulus) and fraction in the core.
 
@@ -738,8 +789,6 @@ def PSF_profile_ratio(PSF, pxscale, size_core, show=True):
         Pixel scale [arcsec/px] or mas/px (used only for the x-axis labeling).
     size_core : int
         Width of the square "core" (in pixels).
-    show : bool
-        If True, this function simply returns results (no plotting inside).
 
     Returns
     -------
@@ -2166,7 +2215,7 @@ def compute_rebin_variance_factor(lamHR, maskHR, lamLR, dlam, R_sampling, Rc_ini
 
 
 
-def extract_vipa_data(instru, target_name, gain, label_fiber, degrade_data=True, outliers=False, sigma_outliers=5, use_weight=True, mask_nan_values=False, filter_noise=False, R_target=80_000, Rc=100, filter_type="gaussian", use_trans=True, high_pass_flux=True, verbose=True):
+def extract_vipa_data(instru, target_name, gain, label_fiber, degrade_data=True, outliers=False, sigma_outliers=5, use_weight=True, mask_nan_values=False, filter_noise=False, R_target=80_000, Rc=100, filter_type="gaussian", verbose=True):
     """
     Load a VIPA 1D spectrum from FITS and optionally:
       (i) filter high-frequency content (assumed noise above the instrumental R),
@@ -2351,28 +2400,24 @@ def extract_vipa_data(instru, target_name, gain, label_fiber, degrade_data=True,
         print()
     
     # Missing values
-    nan_values0 = ~np.isfinite(flux0)
-    if use_trans:
-        nan_values0 |= ~np.isfinite(trans0)
+    nan_values0  = ~np.isfinite(flux0)
+    nan_values0 |= ~np.isfinite(trans0)
     
     # (first) OUTLIERS FILTERING (if wanted)
     if outliers:
         NbNaN0 = nan_values0.sum()
         flux0_HF     = filtered_flux(flux0, R=R_sampling, Rc=Rc, filter_type=filter_type)[0]
         nan_values0 |= sigma_clip(flux0_HF, sigma=sigma_outliers).mask
-        if use_trans:
-            trans0_HF    = filtered_flux(trans0, R=R_sampling, Rc=Rc, filter_type=filter_type)[0]
-            nan_values0 |= sigma_clip(trans0_HF, sigma=sigma_outliers).mask
-        if high_pass_flux:
-            flux0_HF     = trans0 * filtered_flux(flux0/trans0, R=R_sampling, Rc=Rc, filter_type=filter_type)[0]
-            nan_values0 |= sigma_clip(flux0_HF, sigma=sigma_outliers).mask
+        trans0_HF    = filtered_flux(trans0, R=R_sampling, Rc=Rc, filter_type=filter_type)[0]
+        nan_values0 |= sigma_clip(trans0_HF, sigma=sigma_outliers).mask
+        flux0_HF     = trans0 * filtered_flux(flux0/trans0, R=R_sampling, Rc=Rc, filter_type=filter_type)[0]
+        nan_values0 |= sigma_clip(flux0_HF, sigma=sigma_outliers).mask
         print(f"{nan_values0.sum() - NbNaN0} outliers found...")
-        weight0[nan_values0] = np.nan
-        flux0[nan_values0]   = np.nan
-        sigma0[nan_values0]  = np.nan
-        if use_trans:
-            trans0[nan_values0]       = np.nan
-            sigma_trans0[nan_values0] = np.nan
+        weight0[nan_values0]      = np.nan
+        flux0[nan_values0]        = np.nan
+        sigma0[nan_values0]       = np.nan
+        trans0[nan_values0]       = np.nan
+        sigma_trans0[nan_values0] = np.nan
     
     # Realistic noise realisation (for residual comparison purposes)
     noise0  = np.random.normal(0, sigma0, len(wave0)) # white noise at sigma0    
@@ -2400,9 +2445,9 @@ def extract_vipa_data(instru, target_name, gain, label_fiber, degrade_data=True,
         fn_LF   = compute_filter_variance_factor(N=len(wave0), R_sampling=R_sampling, Rc=Rc_noise, filter_type=filter_noise_type, Rc_init=Rc_init, filter_init_type=filter_init_type, Rc_noise=None, filter_noise_type=None, Rc_conv=None, filter_conv_type=None)[1]
         sigma0 *= np.sqrt(fn_LF)
         
-        if use_trans:
-            trans0        = filtered_flux(flux=trans0, R=R_sampling, Rc=Rc_noise, filter_type=filter_noise_type)[1]
-            sigma_trans0 *= np.sqrt(fn_LF)
+        trans0        = filtered_flux(flux=trans0, R=R_sampling, Rc=Rc_noise, filter_type=filter_noise_type)[1]
+        sigma_trans0 *= np.sqrt(fn_LF)
+        
     else:
         Rc_noise          = None
         filter_noise_type = None
@@ -2428,9 +2473,8 @@ def extract_vipa_data(instru, target_name, gain, label_fiber, degrade_data=True,
             fn_LF    = compute_filter_variance_factor(N=len(wave0), R_sampling=R_sampling, Rc=Rc_conv, filter_type=filter_conv_type, Rc_init=Rc_init, filter_init_type=filter_init_type, Rc_noise=Rc_noise, filter_noise_type=filter_noise_type, Rc_conv=None, filter_conv_type=None)[1]
             sigma0  *= np.sqrt(fn_LF)
             
-            if use_trans:
-                trans0        = filtered_flux(flux=trans0,  R=R_sampling, Rc=Rc_conv, filter_type=filter_conv_type)[1]
-                sigma_trans0 *= np.sqrt(fn_LF)
+            trans0        = filtered_flux(flux=trans0,  R=R_sampling, Rc=Rc_conv, filter_type=filter_conv_type)[1]
+            sigma_trans0 *= np.sqrt(fn_LF)
         
         # --- Rebinning to Nyquist sampling
         
@@ -2443,28 +2487,19 @@ def extract_vipa_data(instru, target_name, gain, label_fiber, degrade_data=True,
         # Interpolating weight
         nan_values = interp1d(wave0, nan_values0, bounds_error=False, fill_value=np.nan)(wave) != 0
         
-        # # Rebinning data
-        # flux, sigma, weight = downbin_spec(specHR=flux0,  sigmaHR=sigma0, weightHR=weight0, lamHR=wave0, lamLR=wave, dlam=dwave)
-        # noise, _, _         = downbin_spec(specHR=noise0, sigmaHR=None,   weightHR=None,    lamHR=wave0, lamLR=wave, dlam=dwave)
-        # if use_trans:
-        #     trans, sigma_trans, _ = downbin_spec(specHR=trans0,  sigmaHR=sigma_trans0, weightHR=None, lamHR=wave0, lamLR=wave, dlam=dwave)
-        # else:
-        #     trans       = None
-        #     sigma_trans = None
+        # Rebinning data
+        flux, sigma, weight   = downbin_spec(specHR=flux0,  sigmaHR=sigma0, weightHR=weight0, lamHR=wave0, lamLR=wave, dlam=dwave)
+        noise, _, _           = downbin_spec(specHR=noise0, sigmaHR=None,   weightHR=None,    lamHR=wave0, lamLR=wave, dlam=dwave)
+        trans, sigma_trans, _ = downbin_spec(specHR=trans0,  sigmaHR=sigma_trans0, weightHR=None, lamHR=wave0, lamLR=wave, dlam=dwave)
             
-        flux, sigma, weight, _ = rebin_spec(specHR=flux0,  sigmaHR=sigma0, weightHR=weight0, lamHR=wave0, lamLR=wave, dlam=dwave)
-        noise, _, _, _         = rebin_spec(specHR=noise0, sigmaHR=None,   weightHR=None,    lamHR=wave0, lamLR=wave, dlam=dwave)
-        if use_trans:
-            trans, sigma_trans, _, _ = rebin_spec(specHR=trans0,  sigmaHR=sigma_trans0, weightHR=None, lamHR=wave0, lamLR=wave, dlam=dwave)
-        else:
-            trans       = None
-            sigma_trans = None
+        # flux, sigma, weight, _   = rebin_spec(specHR=flux0,  sigmaHR=sigma0, weightHR=weight0, lamHR=wave0, lamLR=wave, dlam=dwave)
+        # noise, _, _, _           = rebin_spec(specHR=noise0, sigmaHR=None,   weightHR=None,    lamHR=wave0, lamLR=wave, dlam=dwave)
+        # trans, sigma_trans, _, _ = rebin_spec(specHR=trans0,  sigmaHR=sigma_trans0, weightHR=None, lamHR=wave0, lamLR=wave, dlam=dwave)
         
         # Rebinning does not propagate correctly the sigmas since it assumses i.d.d noise:
         fn_rebin     = compute_rebin_variance_factor(lamHR=wave0, maskHR=~nan_values0, lamLR=wave, dlam=dwave, R_sampling=R_sampling, Rc_init=Rc_init, filter_init_type=filter_init_type, Rc_noise=Rc_noise, filter_noise_type=filter_noise_type, Rc_conv=Rc_conv, filter_conv_type=filter_conv_type)
         sigma       *= np.sqrt(fn_rebin)
-        if use_trans:
-            sigma_trans *= np.sqrt(fn_rebin)
+        sigma_trans *= np.sqrt(fn_rebin)
         
         # New sampling resolution
         R_sampling = R
@@ -2484,62 +2519,50 @@ def extract_vipa_data(instru, target_name, gain, label_fiber, degrade_data=True,
         sigma_trans      = sigma_trans0
         
     # MM-like post-processing
-    if high_pass_flux:
-        flux_HF  = trans * filtered_flux(flux/trans,  R=R_sampling, Rc=Rc, filter_type=filter_type)[0]
-        noise_HF = trans * filtered_flux(noise/trans, R=R_sampling, Rc=Rc, filter_type=filter_type)[0]        
-        
-        # Assuming constant sigma: estimating the power fraction of noise that would be filtered
-        fn_HF    = compute_filter_variance_factor(N=len(wave), R_sampling=R_sampling, Rc=Rc, filter_type=filter_type, Rc_init=Rc_init, filter_init_type=filter_init_type, Rc_noise=Rc_noise, filter_noise_type=filter_noise_type, Rc_conv=Rc_conv, filter_conv_type=filter_conv_type)[0]
-        sigma_HF = np.sqrt(fn_HF) * sigma
-  
-    else:
-        flux_HF  = None
-        sigma_HF = None
-        noise_HF = None
+    flux_HF  = trans * filtered_flux(flux/trans,  R=R_sampling, Rc=Rc, filter_type=filter_type)[0]
+    noise_HF = trans * filtered_flux(noise/trans, R=R_sampling, Rc=Rc, filter_type=filter_type)[0]        
+    
+    # Assuming constant sigma: estimating the power fraction of noise that would be filtered
+    fn_HF    = compute_filter_variance_factor(N=len(wave), R_sampling=R_sampling, Rc=Rc, filter_type=filter_type, Rc_init=Rc_init, filter_init_type=filter_init_type, Rc_noise=Rc_noise, filter_noise_type=filter_noise_type, Rc_conv=Rc_conv, filter_conv_type=filter_conv_type)[0]
+    sigma_HF = np.sqrt(fn_HF) * sigma
     
     # (final) OUTLIERS FILTERING (if wanted)
     if outliers:
-        NbNaN = nan_values.sum()
+        NbNaN       = nan_values.sum()
         flux_HF     = filtered_flux(flux, R=R_sampling, Rc=Rc, filter_type=filter_type)[0]
         nan_values |= sigma_clip(flux_HF, sigma=sigma_outliers).mask
-        if use_trans:
-            trans_HF    = filtered_flux(trans, R=R_sampling, Rc=Rc, filter_type=filter_type)[0]
-            nan_values |= sigma_clip(trans_HF, sigma=sigma_outliers).mask
-        if high_pass_flux:
-            flux_HF     = trans * filtered_flux(flux/trans, R=R_sampling, Rc=Rc, filter_type=filter_type)[0]
-            nan_values |= sigma_clip(flux_HF, sigma=sigma_outliers).mask
+        trans_HF    = filtered_flux(trans, R=R_sampling, Rc=Rc, filter_type=filter_type)[0]
+        nan_values |= sigma_clip(trans_HF, sigma=sigma_outliers).mask
+        flux_HF     = trans * filtered_flux(flux/trans, R=R_sampling, Rc=Rc, filter_type=filter_type)[0]
+        nan_values |= sigma_clip(flux_HF, sigma=sigma_outliers).mask
         print(f"{nan_values.sum() - NbNaN} outliers found...")
 
     # Removing the flagged NaN values
     if mask_nan_values:
-        weight[nan_values] = np.nan
-        flux[nan_values]   = np.nan
-        sigma[nan_values]  = np.nan
-        noise[nan_values]  = np.nan
-        if use_trans:
-            trans[nan_values]       = np.nan
-            sigma_trans[nan_values] = np.nan
-        if high_pass_flux:
-            flux_HF[nan_values]     = np.nan
-            sigma_HF[nan_values]    = np.nan
-            noise_HF[nan_values]    = np.nan
+        weight[nan_values]      = np.nan
+        flux[nan_values]        = np.nan
+        sigma[nan_values]       = np.nan
+        noise[nan_values]       = np.nan
+        trans[nan_values]       = np.nan
+        sigma_trans[nan_values] = np.nan
+        flux_HF[nan_values]     = np.nan
+        sigma_HF[nan_values]    = np.nan
+        noise_HF[nan_values]    = np.nan
 
     # Weight function (if wanted)
     if use_weight:
-        weight /= np.nanmax(weight)
-        sigma  *= weight # since the signals (flux, flux_HF) will be multiplied by the weight, the noise needs also to be multiplied by it
-        noise  *= weight
-        if high_pass_flux:
-            sigma_HF *= weight
-            noise_HF *= weight
+        weight   /= np.nanmax(weight)
+        sigma    *= weight # since the signals (flux, flux_HF) will be multiplied by the weight, the noise needs also to be multiplied by it
+        noise    *= weight
+        sigma_HF *= weight
+        noise_HF *= weight
     else:
         weight = None
     
     # Sigma propagation sanity check
     if verbose:
         print(f"\nrms_z      = {np.sqrt(np.nanmean((noise / sigma)**2)):.3f} ({np.nanstd(noise) / np.sqrt(np.nanmean(sigma**2)):.3f})")
-        if high_pass_flux:
-            print(f"rms_z (HF) = {np.sqrt(np.nanmean((noise_HF / sigma_HF)**2)):.3f} ({np.nanstd(noise_HF) / np.sqrt(np.nanmean(sigma_HF**2)):.3f})")
+        print(f"rms_z (HF) = {np.sqrt(np.nanmean((noise_HF / sigma_HF)**2)):.3f} ({np.nanstd(noise_HF) / np.sqrt(np.nanmean(sigma_HF**2)):.3f})")
     
     # Filters dictionnary
     filters = dict(Rc_init=Rc_init, filter_init_type_init=filter_init_type, Rc_noise=Rc_noise, filter_noise_type_init=filter_noise_type, Rc_conv=Rc_conv, filter_conv_type_init=filter_conv_type)

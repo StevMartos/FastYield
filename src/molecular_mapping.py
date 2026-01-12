@@ -2394,7 +2394,7 @@ def process_parameters_estimation(args):
 # 1) Uncertainties by marginalization
 # -------------------------
 
-def estimate_uncertainties_1sigma(p_4D, *params):
+def estimate_uncertainties_1sigma(p, *params):
     """
     1D 1σ intervals and modes for each parameter by marginalization.
 
@@ -2406,10 +2406,10 @@ def estimate_uncertainties_1sigma(p_4D, *params):
 
     Parameters
     ----------
-    p_4D : ndarray
+    p : ndarray
         Probability hypercube (non-negative; normalization not required).
     *params : sequence of 1D arrays
-        Parameter grids in the same axis order as 'p_4D'.
+        Parameter grids in the same axis order as 'p'.
 
     Returns
     -------
@@ -2425,7 +2425,7 @@ def estimate_uncertainties_1sigma(p_4D, *params):
 
     for i, param_values in enumerate(params):
         # Marginalize the probability distribution
-        marginalized_p  = np.nansum(p_4D, axis=tuple(j for j in range(ndim) if j != i))
+        marginalized_p  = np.nansum(p, axis=tuple(j for j in range(ndim) if j != i))
 
         # Interpolation to estimate the maximum probability value
         f_interp      = interp1d(param_values, marginalized_p, kind='cubic', bounds_error=False, fill_value=np.nan)
@@ -2498,30 +2498,11 @@ def custom_corner_plot(logL_4D, T_arr, lg_arr, vsini_arr, rv_arr, target_name, b
     param_names = [r"$T \, [\mathrm{K}]$", r"$\lg \, [\mathrm{dex}]$", r"$Vsin(i) \, [\mathrm{km/s}]$", r"$RV \, [\mathrm{km/s}]$"]
     
     # Identify dimensions to remove (if size == 1)
-    axes_to_marginalize = []
-    params_to_remove    = []
-    
-    if len(T_arr) == 1:
-        axes_to_marginalize.append(0)
-        params_to_remove.append(0)
-    if len(lg_arr) == 1:
-        axes_to_marginalize.append(1)
-        params_to_remove.append(1)
-    if len(vsini_arr) == 1:
-        axes_to_marginalize.append(2)
-        params_to_remove.append(2)
-    if len(rv_arr) == 1:
-        axes_to_marginalize.append(3)
-        params_to_remove.append(3)
-    
-    # Remove elements in reverse order to avoid index shift issues
-    for idx in sorted(params_to_remove, reverse=True):
-        params.pop(idx)
-        param_names.pop(idx)
-    
-    # Reduce the p_4D array by marginalizing over dimensions of size 1
-    for axis in sorted(axes_to_marginalize, reverse=True):
-        p_4D = np.nansum(p_4D, axis=axis)
+    axes_to_drop = [i for i,p in enumerate(params) if len(p) == 1]
+    for ax in sorted(axes_to_drop, reverse=True):
+        p_4D = np.nansum(p_4D, axis=ax)
+        params.pop(ax)
+        param_names.pop(ax)
     
     # Number of remaining dimensions
     ndim = len(params)

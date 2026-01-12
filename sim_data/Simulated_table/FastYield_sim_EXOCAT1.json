@@ -1,0 +1,19 @@
+{
+  "arange":[0.001,10000],
+  "modules": {
+    "PlanetPopulation": "SAG13",
+    "StarCatalog": "EXOCAT1",
+    "OpticalSystem": " ",
+    "ZodiacalLight": "Stark",
+    "BackgroundSources": " ",
+    "PlanetPhysicalModel": "Forecaster",
+    "Observatory": "",
+    "TimeKeeping": " ",
+    "PostProcessing": " ",
+    "Completeness": " ",
+    "TargetList": " ",
+    "SimulatedUniverse": "SAG13Universe",
+    "SurveySimulation": " ",
+    "SurveyEnsemble": " "
+  }
+}

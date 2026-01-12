@@ -6,16 +6,13 @@ plots              = ["SNR", "lost_signal"]
 plots              = ["SNR"]
 cmap_colormaps     = "rainbow"
 contour_levels     = np.linspace(0, 100, 11)
-R_model            = 1_000_000
 R_model            = R0_max
 
 
 
 ######################## Bandwidth vs Resolution (with constant Nlambda or Dlambda) ###########################################################################################################################################################################################
 
-
-
-def colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_planet=300, T_star=6000, lg_planet=3.0, lg_star=4.44, delta_rv=30, vsini_planet=3, vsini_star=7, spectrum_contributions="thermal", model="BT-Settl", Rc=100, filter_type="gaussian", photon_noise_limited=True, Nlambda=None, num=100):
+def colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_planet=300, T_star=6000, lg_planet=3.0, lg_star=4.44, delta_rv=30, vsini_planet=3, vsini_star=7, spectrum_contributions="thermal", model="BT-Settl", Rc=100, filter_type="gaussian", stellar_halo_photon_noise_limited=True, Nlambda=None, num=100):
     
     # Get instru specs
     if instru != "all" and instru != "PCS":
@@ -35,11 +32,11 @@ def colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_plan
         
     # Number of pixels (spectral channels/bins) considered to sample a spectrum
     if instru=="all":
-        Npx = 4096
+        Nl = 4096
     elif instru=="PCS":
-        Npx = Nlambda
+        Nl = Nlambda
     else :
-        Npx = np.zeros((len(config_data["gratings"])))
+        Nl = np.zeros((len(config_data["gratings"])))
         for iband, band in enumerate(config_data["gratings"]):
             R_band     = config_data["gratings"][band].R
             lmax_band  = config_data["gratings"][band].lmax
@@ -47,8 +44,8 @@ def colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_plan
             DELTA_band = lmax_band - lmin_band
             l0_band    = (lmax_band + lmin_band) / 2
             delta_band = l0_band / (2*R_band)
-            Npx[iband] = DELTA_band/delta_band
-        Npx = int(round(np.nanmean(Npx), -2))
+            Nl[iband] = DELTA_band/delta_band
+        Nl = int(round(np.nanmean(Nl), -2))
     
     # Raw wavelength axis
     lmin = 0.6
@@ -74,6 +71,8 @@ def colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_plan
     elif spectrum_contributions=="thermal" :
         planet = load_planet_spectrum(T_planet, lg_planet, model, instru=instru)
         planet = planet.interpolate_wavelength(wave_model, renorm=False)
+    else:
+        raise ValueError("spectrum_contributions must be 'reflected' or 'thermal'")
     planet = planet.broad(vsini_planet)     # Broadening the spectrum
     planet = planet.doppler_shift(delta_rv) # Shifting the spectrum
     
@@ -91,14 +90,15 @@ def colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_plan
         sky_trans = None
     
     # Defining arrays
-    R_arr       = np.logspace(np.log10(1000), np.log10(200000), num=num)
+    R_max       = estimate_resolution(wave_model)
+    R_arr       = np.logspace(np.log10(1000), np.log10(R0_max), num=num)
     l0_arr      = np.linspace(lmin, lmax, len(R_arr))
     SNR         = np.zeros((len(R_arr), len(l0_arr)))
     lost_signal = np.zeros((len(R_arr), len(l0_arr)))
     
     # Parallel calculations
     with Pool(processes=cpu_count()) as pool:
-        results = list(tqdm(pool.imap(process_colormap_bandwidth_resolution_with_constant_Nlambda, [(i, R_arr[i], lmin, lmax, Npx, lmin_model, lmax_model, planet, star, sky_trans, l0_arr, Rc, filter_type, photon_noise_limited) for i in range(len(R_arr))]), total=len(R_arr)))
+        results = list(tqdm(pool.imap(process_colormap_bandwidth_resolution_with_constant_Nlambda, [(i, R_arr[i], lmin, lmax, Nl, lmin_model, lmax_model, planet, star, sky_trans, l0_arr, Rc, filter_type, stellar_halo_photon_noise_limited, R_max) for i in range(len(R_arr))]), total=len(R_arr)))
         for (i, SNR_1D, lost_signal_1D) in results:
             SNR[i, :]         = SNR_1D
             lost_signal[i, :] = lost_signal_1D
@@ -143,10 +143,10 @@ def colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_plan
         
         # Title
         tell         = "with tellurics absorption" if tellurics else "without tellurics absorption"
-        noise_regime = "stellar photon noise regime" if photon_noise_limited else "detector noise regime"
-        title_text   = (f"{'S/N' if plot=='SNR' else 'Lost signal'} fluctuations in {noise_regime} ({tell}) \n in {spectrum_contributions} light ({model}-model), $T_*$={T_star}K, $T_p$={T_planet}K, "r"$\Delta$rv="f"{delta_rv}km/s, "r"$N_\lambda$="f"{Npx}")
-        #plt.title(title_text, fontsize=16, pad=14)
-        plt.title(r"$N_\lambda$="f"{np.round(Npx, -2):.0f} channels", fontsize=20, pad=14)
+        noise_regime = "stellar halo photon noise regime" if stellar_halo_photon_noise_limited else "detector noise regime"
+        title_text   = (f"{'S/N' if plot=='SNR' else 'Lost signal'} fluctuations in {noise_regime} ({tell}) \n in {spectrum_contributions} light ({model}-model), $T_*$={T_star}K, $T_p$={T_planet}K, "r"$\Delta$rv="f"{delta_rv}km/s, "r"$N_\lambda$="f"{Nl}")
+        plt.title(title_text, fontsize=16, pad=14)
+        #plt.title(r"$N_\lambda$="f"{np.round(Nl, -2):.0f} channels", fontsize=20, pad=14)
 
         # Scatter & errorbars for bands
         if instru=="all" or instru=="PCS":
@@ -188,17 +188,19 @@ def colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_plan
 
         plt.legend(fontsize=12, loc="upper right", frameon=True, edgecolor="gray", facecolor="whitesmoke")        
         plt.tight_layout()
-        filename = f"colormaps_bandwidth_resolution/Colormap_bandwidth_resolution_with_constant_Nlambda_{plot}_{instru}_{spectrum_contributions}_{model}_Rc{Rc}_Tp{T_planet}K_Ts{T_star}K_drv{delta_rv}kms_broad{vsini_planet}kms_Npx{Npx}_{noise_regime.replace(' ', '_')}"
+        filename = f"colormaps_bandwidth_resolution/Colormap_bandwidth_resolution_with_constant_Nlambda_{plot}_{instru}_{spectrum_contributions}_{model}_Rc{Rc}_Tp{T_planet}K_Ts{T_star}K_drv{delta_rv}kms_broad{vsini_planet}kms_Nl{Nl}_{noise_regime.replace(' ', '_')}"
         plt.savefig(save_path_colormap + filename + ("_with_tellurics" if tellurics else "") + ".png", format='png', bbox_inches='tight')
         plt.show()
         
     return l0_arr, R_arr, SNR, lost_signal
 
 def process_colormap_bandwidth_resolution_with_constant_Nlambda(args):
-    i, R, lmin, lmax, Npx, lmin_model, lmax_model, planet, star, sky_trans, l0_arr, Rc, filter_type, photon_noise_limited = args
+    i, R, lmin, lmax, Nl, lmin_model, lmax_model, planet, star, sky_trans, l0_arr, Rc, filter_type, stellar_halo_photon_noise_limited, R_max = args
+    R        = min(R, R_max, R0_max)
     dl_R     = (lmin + lmax)/2 / (2 * R)
-    lmin_R   = max(lmin - (Npx/2)*dl_R, lmin_model)
-    lmax_R   = min(lmax + (Npx/2)*dl_R, lmax_model)
+    lmin_R   = max(lmin - (Nl/2)*dl_R, lmin_model)
+    lmax_R   = min(lmax + (Nl/2)*dl_R, lmax_model)
+    dl_R     = (lmin_R + lmax_R)/2 / (2 * R)
     wave_R   = np.arange(lmin_R, lmax_R, dl_R)
     planet_R = planet.degrade_resolution(wave_R, renorm=True).flux
     star_R   = star.degrade_resolution(wave_R, renorm=True).flux
@@ -207,8 +209,8 @@ def process_colormap_bandwidth_resolution_with_constant_Nlambda(args):
     if sky_trans is not None:
         sky_R = sky_trans.degrade_resolution(wave_R, renorm=False)
     for j, l0 in enumerate(l0_arr):
-        umin  = l0 - (Npx/2)*dl_R
-        umax  = l0 + (Npx/2)*dl_R
+        umin  = l0 - (Nl/2)*dl_R
+        umax  = l0 + (Nl/2)*dl_R
         valid = np.where(( (wave_R<umax) & (wave_R>umin) ))
         if sky_trans is not None:
             trans = sky_R.flux[valid]
@@ -216,13 +218,13 @@ def process_colormap_bandwidth_resolution_with_constant_Nlambda(args):
             trans = 1 
         star_R_crop          = star_R[valid]
         planet_R_crop        = planet_R[valid]
-        planet_HF, planet_BF = filtered_flux(planet_R_crop, R=R, Rc=Rc, filter_type=filter_type)
-        star_HF, star_BF     = filtered_flux(star_R_crop, R=R, Rc=Rc, filter_type=filter_type)
+        planet_HF, planet_LF = filtered_flux(planet_R_crop, R=R, Rc=Rc, filter_type=filter_type)
+        star_HF, star_LF     = filtered_flux(star_R_crop, R=R, Rc=Rc, filter_type=filter_type)
         template             = trans*planet_HF 
         template            /= np.sqrt(np.nansum(template**2))
         alpha                = np.nansum(trans*planet_HF * template)
-        beta                 = np.nansum(trans*star_HF*planet_BF/star_BF * template)
-        if photon_noise_limited:
+        beta                 = np.nansum(trans*star_HF*planet_LF/star_LF * template)
+        if stellar_halo_photon_noise_limited:
             noise = np.sqrt(np.nansum(trans*star_R_crop * template**2)) # stellar halo photon noise
         else:
             noise = 1. # wavelength and resolution-independent limiting noise (e.g. RON and dark current - detector noise - domination)
@@ -232,7 +234,7 @@ def process_colormap_bandwidth_resolution_with_constant_Nlambda(args):
 
 
 
-def colormap_bandwidth_resolution_with_constant_Dlambda(instru="HARMONI", T_planet=300, T_star=6000, lg_planet=3.0, lg_star=4.44, delta_rv=30, vsini_planet=3, vsini_star=7, spectrum_contributions="thermal", model="BT-Settl", Rc=100, filter_type="gaussian", photon_noise_limited=False):
+def colormap_bandwidth_resolution_with_constant_Dlambda(instru="HARMONI", T_planet=300, T_star=6000, lg_planet=3.0, lg_star=4.44, delta_rv=30, vsini_planet=3, vsini_star=7, spectrum_contributions="thermal", model="BT-Settl", Rc=100, filter_type="gaussian", stellar_halo_photon_noise_limited=False):
     
     # Get instru specs
     config_data = get_config_data(instru)
@@ -299,7 +301,7 @@ def colormap_bandwidth_resolution_with_constant_Dlambda(instru="HARMONI", T_plan
     
     # Parallel calculations
     with Pool(processes=cpu_count()) as pool:
-        results = list(tqdm(pool.imap(process_colormap_bandwidth_resolution_with_constant_Dlambda, [(i, R_arr[i], lmin, lmax, Dl, lmin_model, lmax_model, planet, star, sky_trans, l0_arr, Rc, filter_type, photon_noise_limited) for i in range(len(R_arr))]), total=len(R_arr)))
+        results = list(tqdm(pool.imap(process_colormap_bandwidth_resolution_with_constant_Dlambda, [(i, R_arr[i], lmin, lmax, Dl, lmin_model, lmax_model, planet, star, sky_trans, l0_arr, Rc, filter_type, stellar_halo_photon_noise_limited) for i in range(len(R_arr))]), total=len(R_arr)))
         for (i, SNR_1D, lost_signal_1D) in results:
             SNR[i, :]         = SNR_1D
             lost_signal[i, :] = lost_signal_1D
@@ -344,7 +346,7 @@ def colormap_bandwidth_resolution_with_constant_Dlambda(instru="HARMONI", T_plan
         
         # Title
         tell         = "with tellurics absorption" if tellurics else "without tellurics absorption"
-        noise_regime = "stellar photon noise regime" if photon_noise_limited else "detector noise regime"
+        noise_regime = "stellar halo photon noise regime" if stellar_halo_photon_noise_limited else "detector noise regime"
         title_text   = (f"{'S/N' if plot=='SNR' else 'Lost signal'} fluctuations in {noise_regime} ({tell}) \n in {spectrum_contributions} light ({model}-model), $T_*$={T_star}K, $T_p$={T_planet}K, "r"$\Delta$rv="f"{delta_rv}km/s, "r"$\Delta\lambda$="f"{Dl:.2f}µm")
         plt.title(title_text, fontsize=16, pad=14)
         
@@ -393,7 +395,7 @@ def colormap_bandwidth_resolution_with_constant_Dlambda(instru="HARMONI", T_plan
     return l0_arr, R_arr, SNR, lost_signal
 
 def process_colormap_bandwidth_resolution_with_constant_Dlambda(args):
-    i, R, lmin, lmax, Dl, lmin_model, lmax_model, planet, star, sky_trans, l0_arr, Rc, filter_type, photon_noise_limited = args
+    i, R, lmin, lmax, Dl, lmin_model, lmax_model, planet, star, sky_trans, l0_arr, Rc, filter_type, stellar_halo_photon_noise_limited = args
     dl_R     = (lmin + lmax)/2 / (2 * R)
     lmin_R   = max(lmin-Dl/2, lmin_model)
     lmax_R   = min(lmax+Dl/2, lmax_model)
@@ -414,13 +416,13 @@ def process_colormap_bandwidth_resolution_with_constant_Dlambda(args):
             trans = 1 
         star_R_crop          = star_R[valid]
         planet_R_crop        = planet_R[valid]
-        planet_HF, planet_BF = filtered_flux(planet_R_crop, R=R, Rc=Rc, filter_type=filter_type)
-        star_HF, star_BF     = filtered_flux(star_R_crop, R=R, Rc=Rc, filter_type=filter_type)
+        planet_HF, planet_LF = filtered_flux(planet_R_crop, R=R, Rc=Rc, filter_type=filter_type)
+        star_HF, star_LF     = filtered_flux(star_R_crop, R=R, Rc=Rc, filter_type=filter_type)
         template             = trans*planet_HF 
         template            /= np.sqrt(np.nansum(template**2))
         alpha                = np.nansum(trans*planet_HF * template)
-        beta                 = np.nansum(trans*star_HF*planet_BF/star_BF * template)
-        if photon_noise_limited:
+        beta                 = np.nansum(trans*star_HF*planet_LF/star_LF * template)
+        if stellar_halo_photon_noise_limited:
             noise = np.sqrt(np.nansum(trans*star_R_crop * template**2)) # stellar halo photon noise
         else:
             noise = 1. # wavelength and resolution-independent limiting noise (e.g. RON and dark current - detector noise - domination)
@@ -434,7 +436,7 @@ def process_colormap_bandwidth_resolution_with_constant_Dlambda(args):
 
 
 
-def colormap_bandwidth_Tp(instru, T_star=6000, lg_planet=3.0, lg_star=4.44, delta_rv=30, vsini_planet=3, vsini_star=7, spectrum_contributions="thermal", model="BT-Settl", Rc=100, filter_type="gaussian", photon_noise_limited=True):    
+def colormap_bandwidth_Tp(instru, T_star=6000, lg_planet=3.0, lg_star=4.44, delta_rv=30, vsini_planet=3, vsini_star=7, spectrum_contributions="thermal", model="BT-Settl", Rc=100, filter_type="gaussian", stellar_halo_photon_noise_limited=True):    
     
     # Get instru specs
     config_data = get_config_data(instru)
@@ -447,9 +449,9 @@ def colormap_bandwidth_Tp(instru, T_star=6000, lg_planet=3.0, lg_star=4.44, delt
     elif config_data["base"]=="ground":
         tellurics = True
     
-    # Mean instru specs (R, Npx)
+    # Mean instru specs (R, Nl)
     R   = np.zeros((len(config_data["gratings"])))
-    Npx = np.zeros((len(config_data["gratings"])))
+    Nl = np.zeros((len(config_data["gratings"])))
     for iband, band in enumerate(config_data["gratings"]):
         R_band     = config_data["gratings"][band].R
         R[iband]   = R_band
@@ -458,9 +460,9 @@ def colormap_bandwidth_Tp(instru, T_star=6000, lg_planet=3.0, lg_star=4.44, delt
         DELTA_band = lmax_band - lmin_band
         l0_band    = (lmax_band + lmin_band) / 2
         delta_band = l0_band / (2*R_band)
-        Npx[iband] = DELTA_band/delta_band
+        Nl[iband] = DELTA_band/delta_band
     R   = int(round(np.nanmean(R), -2))
-    Npx = int(round(np.nanmean(Npx), -2))
+    Nl = int(round(np.nanmean(Nl), -2))
     
     # Raw wavelength axis
     lmin = 0.6
@@ -469,8 +471,8 @@ def colormap_bandwidth_Tp(instru, T_star=6000, lg_planet=3.0, lg_star=4.44, delt
     else :
         lmax = 12 # en µm
     dl         = (lmin+lmax)/2 / (2*R)
-    lmin_model = max(lmin - Npx/2*dl, 0.1)
-    lmax_model = lmax + Npx/2*dl
+    lmin_model = max(lmin - Nl/2*dl, 0.1)
+    lmax_model = lmax + Nl/2*dl
     dl_model   = (lmin_model+lmax_model)/2 / (2*R_model)
     wave_model = np.arange(lmin_model, lmax_model, dl_model)
     
@@ -501,7 +503,7 @@ def colormap_bandwidth_Tp(instru, T_star=6000, lg_planet=3.0, lg_star=4.44, delt
     
     # Calculating matrices
     with Pool(processes=cpu_count()) as pool: # Utilisation de multiprocessing pour paralléliser les combinaisons i, j
-        results = list(tqdm(pool.imap(process_colormap_bandwidth_Tp, [(i, T_arr[i], lg_planet, delta_rv, vsini_planet, star, sky_trans, spectrum_contributions, model, instru, wave_model, l0_arr, Npx, R, Rc, filter_type, photon_noise_limited) for i in range(len(T_arr))]), total=len(T_arr)))
+        results = list(tqdm(pool.imap(process_colormap_bandwidth_Tp, [(i, T_arr[i], lg_planet, delta_rv, vsini_planet, star, sky_trans, spectrum_contributions, model, instru, wave_model, l0_arr, Nl, R, Rc, filter_type, stellar_halo_photon_noise_limited) for i in range(len(T_arr))]), total=len(T_arr)))
         for (i, SNR_1D, lost_signal_1D) in results: # Remplissage des matrices 5D avec les résultats
             SNR[i, :]         = SNR_1D / np.nanmax(SNR_1D) # Normalizing each row
             lost_signal[i, :] = lost_signal_1D
@@ -543,8 +545,8 @@ def colormap_bandwidth_Tp(instru, T_star=6000, lg_planet=3.0, lg_star=4.44, delt
         
         # Title
         tell         = "with tellurics absorption" if tellurics else "without tellurics absorption"
-        noise_regime = "stellar photon noise regime" if photon_noise_limited else "detector noise regime"
-        title_text   = (f"{'S/N' if plot=='SNR' else 'Lost signal'} fluctuations in {noise_regime} ({tell}) \n in {spectrum_contributions} light ({model}-model), $T_*$={T_star}K, "r"$\Delta$rv="f"{delta_rv}km/s, R={R}, "r"$N_\lambda$="f"{Npx}")
+        noise_regime = "stellar halo photon noise regime" if stellar_halo_photon_noise_limited else "detector noise regime"
+        title_text   = (f"{'S/N' if plot=='SNR' else 'Lost signal'} fluctuations in {noise_regime} ({tell}) \n in {spectrum_contributions} light ({model}-model), $T_*$={T_star}K, "r"$\Delta$rv="f"{delta_rv}km/s, R={R}, "r"$N_\lambda$="f"{Nl}")
         plt.title(title_text, fontsize=16, pad=14)
         
         # Bandes spectrales
@@ -578,14 +580,14 @@ def colormap_bandwidth_Tp(instru, T_star=6000, lg_planet=3.0, lg_star=4.44, delt
 
         plt.legend(fontsize=14, loc="upper left", frameon=True, edgecolor="gray", facecolor="whitesmoke")        
         plt.tight_layout()
-        filename = f"colormaps_bandwidth_Tp/Colormap_bandwidth_Tp_{plot}_{instru}_{spectrum_contributions}_{model}_Rc{Rc}_Ts{T_star}K_drv{delta_rv}kms_broad{vsini_planet}kms_Npx{Npx}_R{R}_{noise_regime.replace(' ', '_')}"
+        filename = f"colormaps_bandwidth_Tp/Colormap_bandwidth_Tp_{plot}_{instru}_{spectrum_contributions}_{model}_Rc{Rc}_Ts{T_star}K_drv{delta_rv}kms_broad{vsini_planet}kms_Nl{Nl}_R{R}_{noise_regime.replace(' ', '_')}"
         plt.savefig(save_path_colormap + filename + ("_with_tellurics" if tellurics else "") + ".png", format='png', bbox_inches='tight')
         plt.show()
         
     return l0_arr, T_arr, SNR, lost_signal
 
 def process_colormap_bandwidth_Tp(args):
-    i, T_planet, lg_planet, delta_rv, vsini_planet, star, sky_trans, spectrum_contributions, model, instru, wave_model, l0_arr, Npx, R, Rc, filter_type, photon_noise_limited = args
+    i, T_planet, lg_planet, delta_rv, vsini_planet, star, sky_trans, spectrum_contributions, model, instru, wave_model, l0_arr, Nl, R, Rc, filter_type, stellar_halo_photon_noise_limited = args
     
     SNR_1D         = np.zeros((len(l0_arr)))
     lost_signal_1D = np.zeros((len(l0_arr)))
@@ -608,8 +610,8 @@ def process_colormap_bandwidth_Tp(args):
         
         # Degrading the spectra on wave
         dl       = l0 / (2*R)
-        umin     = l0 - (Npx/2)*dl
-        umax     = l0 + (Npx/2)*dl
+        umin     = l0 - (Nl/2)*dl
+        umax     = l0 + (Nl/2)*dl
         wave     = np.arange(umin, umax, dl)
         star_R   = star.degrade_resolution(wave, renorm=True).flux
         planet_R = planet.degrade_resolution(wave, renorm=True).flux
@@ -619,14 +621,14 @@ def process_colormap_bandwidth_Tp(args):
             trans = 1
             
         # High- and low-pass filtering the spectra
-        planet_HF, planet_BF = filtered_flux(planet_R, R=R, Rc=Rc, filter_type=filter_type)
-        star_HF, star_BF     = filtered_flux(star_R, R=R, Rc=Rc, filter_type=filter_type)
+        planet_HF, planet_LF = filtered_flux(planet_R, R=R, Rc=Rc, filter_type=filter_type)
+        star_HF, star_LF     = filtered_flux(star_R, R=R, Rc=Rc, filter_type=filter_type)
         # S/N and signal loss calculations
         template  = trans*planet_HF 
         template /= np.sqrt(np.nansum(template**2))
         alpha     = np.nansum(trans*planet_HF * template)
-        beta      = np.nansum(trans*star_HF*planet_BF/star_BF * template)
-        if photon_noise_limited:
+        beta      = np.nansum(trans*star_HF*planet_LF/star_LF * template)
+        if stellar_halo_photon_noise_limited:
             noise = np.sqrt(np.nansum(trans*star_R * template**2)) # stellar halo photon noise
         else:
             noise = 1. # wavelength and resolution-independent limiting noise (e.g. RON and dark current - detector noise - domination)
@@ -637,7 +639,7 @@ def process_colormap_bandwidth_Tp(args):
 
 
 
-def colormap_bands_Tp(instru, T_star=6000, lg_planet=3.0, lg_star=4.44, delta_rv=30, vsini_planet=3, vsini_star=7, spectrum_contributions="thermal", model="BT-Settl", Rc=100, filter_type="gaussian", photon_noise_limited=True):    
+def colormap_bands_Tp(instru, T_star=6000, lg_planet=3.0, lg_star=4.44, delta_rv=30, vsini_planet=3, vsini_star=7, spectrum_contributions="thermal", model="BT-Settl", Rc=100, filter_type="gaussian", stellar_halo_photon_noise_limited=True):    
     
     # Get instru specs
     config_data = get_config_data(instru)
@@ -688,7 +690,7 @@ def colormap_bands_Tp(instru, T_star=6000, lg_planet=3.0, lg_star=4.44, delta_rv
         
     # Calculating matrices
     with Pool(processes=cpu_count()) as pool: # Utilisation de multiprocessing pour paralléliser les combinaisons i, j
-        results = list(tqdm(pool.imap(process_colormap_bands_Tp, [(nb, band, config_data, T_arr, lg_planet, delta_rv, vsini_planet, star, sky_trans, spectrum_contributions, model, instru, wave_model, Rc, filter_type, photon_noise_limited) for nb, band in enumerate(bands_labels)]), total=len(bands_labels)))
+        results = list(tqdm(pool.imap(process_colormap_bands_Tp, [(nb, band, config_data, T_arr, lg_planet, delta_rv, vsini_planet, star, sky_trans, spectrum_contributions, model, instru, wave_model, Rc, filter_type, stellar_halo_photon_noise_limited) for nb, band in enumerate(bands_labels)]), total=len(bands_labels)))
         for (nb, SNR_1D, lost_signal_1D) in results: # Remplissage des matrices 5D avec les résultats
             SNR[nb, :]         = SNR_1D
             lost_signal[nb, :] = lost_signal_1D
@@ -743,7 +745,7 @@ def colormap_bands_Tp(instru, T_star=6000, lg_planet=3.0, lg_star=4.44, delta_rv
         
         # Title
         tell         = "with tellurics absorption" if tellurics else "without tellurics absorption"
-        noise_regime = "stellar photon noise regime" if photon_noise_limited else "detector noise regime"
+        noise_regime = "stellar halo photon noise regime" if stellar_halo_photon_noise_limited else "detector noise regime"
         title_text   = (f"{instru} {'S/N' if plot=='SNR' else 'Lost signal'} fluctuations in {noise_regime} ({tell}) \n in {spectrum_contributions} light ({model}-model), $T_*$={T_star}K, "r"$\Delta$rv="f"{delta_rv}km/s")
         plt.title(title_text, fontsize=16, pad=14)
         
@@ -755,7 +757,7 @@ def colormap_bands_Tp(instru, T_star=6000, lg_planet=3.0, lg_star=4.44, delta_rv
         plt.show()
         
 def process_colormap_bands_Tp(args):
-    nb, band, config_data, T_arr, lg_planet, delta_rv, vsini_planet, star, sky_trans, spectrum_contributions, model, instru, wave_model, Rc, filter_type, photon_noise_limited = args
+    nb, band, config_data, T_arr, lg_planet, delta_rv, vsini_planet, star, sky_trans, spectrum_contributions, model, instru, wave_model, Rc, filter_type, stellar_halo_photon_noise_limited = args
 
     R_band         = config_data["gratings"][band].R
     lmin_band      = config_data["gratings"][band].lmin
@@ -773,7 +775,7 @@ def process_colormap_bands_Tp(args):
         trans = 1
     
     # High- and low-pass filtering the spectra
-    star_HF, star_BF = filtered_flux(star_band, R=R_band, Rc=Rc, filter_type=filter_type)
+    star_HF, star_LF = filtered_flux(star_band, R=R_band, Rc=Rc, filter_type=filter_type)
     
     # Calculation for each planet's temperature
     for nt, T_planet in enumerate(T_arr):
@@ -795,14 +797,14 @@ def process_colormap_bands_Tp(args):
         planet_band = planet.degrade_resolution(wave_band, renorm=True).flux
         
         # High- and low-pass filtering the spectra
-        planet_HF, planet_BF = filtered_flux(planet_band, R=R_band, Rc=Rc, filter_type=filter_type)
+        planet_HF, planet_LF = filtered_flux(planet_band, R=R_band, Rc=Rc, filter_type=filter_type)
         
         # S/N and signal loss calculations
         template  = trans*planet_HF 
         template /= np.sqrt(np.nansum(template**2))
         alpha     = np.nansum(trans*planet_HF * template)
-        beta      = np.nansum(trans*star_HF*planet_BF/star_BF * template)
-        if photon_noise_limited:
+        beta      = np.nansum(trans*star_HF*planet_LF/star_LF * template)
+        if stellar_halo_photon_noise_limited:
             noise = np.sqrt(np.nansum(trans*star_band * template**2)) # stellar halo photon noise
         else:
             noise = 1. # wavelength and resolution-independent limiting noise (e.g. RON and dark current - detector noise - domination)
@@ -1145,7 +1147,7 @@ def colormap_bands_planets_parameters(mode="multi", instru="HARMONI", thermal_mo
 
 
 
-def colormap_rv(instru="HARMONI", band="H", T_planet=300, T_star=6000, lg_planet=3.0, lg_star=4.44, vsini_planet=3, vsini_star=7,  spectrum_contributions="thermal", model="BT-Settl", airmass=2.5, Rc=100, filter_type="gaussian", photon_noise_limited=True):
+def colormap_rv(instru="HARMONI", band="H", T_planet=300, T_star=6000, lg_planet=3.0, lg_star=4.44, vsini_planet=3, vsini_star=7,  spectrum_contributions="thermal", model="BT-Settl", airmass=2.5, Rc=100, filter_type="gaussian", stellar_halo_photon_noise_limited=True):
     
     # Get instru specs
     config_data = get_config_data(instru)
@@ -1200,7 +1202,7 @@ def colormap_rv(instru="HARMONI", band="H", T_planet=300, T_star=6000, lg_planet
     
     # Parallel calculations
     with Pool(processes=cpu_count()) as pool: # Utilisation de multiprocessing pour paralléliser les combinaisons i, j
-        results = list(tqdm(pool.imap(process_colormap_rv, [(i, rv_star, delta_rv, star, planet, trans, wave_band, R_band, Rc, filter_type, photon_noise_limited) for i in range(len(rv_star))]), total=len(rv_star)))
+        results = list(tqdm(pool.imap(process_colormap_rv, [(i, rv_star, delta_rv, star, planet, trans, wave_band, R_band, Rc, filter_type, stellar_halo_photon_noise_limited) for i in range(len(rv_star))]), total=len(rv_star)))
         for (i, SNR_1D, lost_signal_1D) in results: # Remplissage des matrices 5D avec les résultats
             SNR[i, :]         = SNR_1D
             lost_signal[i, :] = lost_signal_1D
@@ -1247,7 +1249,7 @@ def colormap_rv(instru="HARMONI", band="H", T_planet=300, T_star=6000, lg_planet
         
         # Title
         tell         = "with tellurics absorption" if tellurics else "without tellurics absorption"
-        noise_regime = "stellar photon noise regime" if photon_noise_limited else "detector noise regime"
+        noise_regime = "stellar halo photon noise regime" if stellar_halo_photon_noise_limited else "detector noise regime"
         title_text   = (f"{instru} {band}-band {'S/N' if plot=='SNR' else 'Lost signal'} fluctuations in {noise_regime} ({tell}) \n in {spectrum_contributions} light ({model}-model), $T_*$={T_star}K, $T_p$={T_planet}K")
         #plt.title(title_text, fontsize=16, pad=14)
 
@@ -1259,24 +1261,24 @@ def colormap_rv(instru="HARMONI", band="H", T_planet=300, T_star=6000, lg_planet
     return delta_rv, rv_star, SNR, lost_signal
 
 def process_colormap_rv(args):
-    i, rv_star, delta_rv, star, planet, trans, wave_band, R_band, Rc, filter_type, photon_noise_limited = args
+    i, rv_star, delta_rv, star, planet, trans, wave_band, R_band, Rc, filter_type, stellar_halo_photon_noise_limited = args
     SNR_1D         = np.zeros((len(delta_rv)))
     lost_signal_1D = np.zeros((len(delta_rv)))
     # Preparing the star spectrum
     star_shift       = star.doppler_shift(rv_star[i])
     star_shift       = star_shift.degrade_resolution(wave_band, renorm=True).flux
-    star_HF, star_BF = filtered_flux(star_shift, R=R_band, Rc=Rc, filter_type=filter_type)
+    star_HF, star_LF = filtered_flux(star_shift, R=R_band, Rc=Rc, filter_type=filter_type)
     for j in range(len(delta_rv)):
         # Preparing the planet spectrum
         planet_shift         = planet.doppler_shift(rv_star[i] + delta_rv[j])
         planet_shift         = planet_shift.degrade_resolution(wave_band, renorm=True).flux
-        planet_HF, planet_BF = filtered_flux(planet_shift, R=R_band, Rc=Rc, filter_type=filter_type)
+        planet_HF, planet_LF = filtered_flux(planet_shift, R=R_band, Rc=Rc, filter_type=filter_type)
         # S/N and signal loss calculations
         template  = trans*planet_HF 
         template /= np.sqrt(np.nansum(template**2))
         alpha     = np.nansum(trans*planet_HF * template)
-        beta      = np.nansum(trans*star_HF*planet_BF/star_BF * template)
-        if photon_noise_limited:
+        beta      = np.nansum(trans*star_HF*planet_LF/star_LF * template)
+        if stellar_halo_photon_noise_limited:
             noise = np.sqrt(np.nansum(trans*star_shift * template**2)) # stellar halo photon noise
         else:
             noise = 1. # wavelength and resolution-independent limiting noise (e.g. RON and dark current - detector noise - domination)
@@ -1290,7 +1292,7 @@ def process_colormap_rv(args):
 
 
 
-def colormap_vsini(instru="HARMONI", band="H", T_planet=300, T_star=6000, lg_planet=3.0, lg_star=4.44, delta_rv=30,  spectrum_contributions="thermal", model="BT-Settl", Rc=100, filter_type="gaussian", photon_noise_limited=True):
+def colormap_vsini(instru="HARMONI", band="H", T_planet=300, T_star=6000, lg_planet=3.0, lg_star=4.44, delta_rv=30,  spectrum_contributions="thermal", model="BT-Settl", Rc=100, filter_type="gaussian", stellar_halo_photon_noise_limited=True):
     """
     https://www.aanda.org/articles/aa/pdf/2022/03/aa42314-21.pdf
     """
@@ -1345,7 +1347,7 @@ def colormap_vsini(instru="HARMONI", band="H", T_planet=300, T_star=6000, lg_pla
         
     # Parallel calculations
     with Pool(processes=cpu_count()) as pool: # Utilisation de multiprocessing pour paralléliser les combinaisons i, j
-        results = list(tqdm(pool.imap(process_colormap_vsini, [(i, vsini_star, vsini_planet, star, planet, albedo, trans, wave_band, delta_rv, R_band, Rc, filter_type, photon_noise_limited) for i in range(len(vsini_star))]), total=len(vsini_star)))
+        results = list(tqdm(pool.imap(process_colormap_vsini, [(i, vsini_star, vsini_planet, star, planet, albedo, trans, wave_band, delta_rv, R_band, Rc, filter_type, stellar_halo_photon_noise_limited) for i in range(len(vsini_star))]), total=len(vsini_star)))
         for (i, SNR_1D, lost_signal_1D) in results: # Remplissage des matrices 5D avec les résultats
             SNR[i, :]         = SNR_1D
             lost_signal[i, :] = lost_signal_1D
@@ -1395,7 +1397,7 @@ def colormap_vsini(instru="HARMONI", band="H", T_planet=300, T_star=6000, lg_pla
         
         # Title
         tell         = "with tellurics absorption" if tellurics else "without tellurics absorption"
-        noise_regime = "stellar photon noise regime" if photon_noise_limited else "detector noise regime"
+        noise_regime = "stellar halo photon noise regime" if stellar_halo_photon_noise_limited else "detector noise regime"
         title_text   = (f"{instru} {band}-band {'S/N' if plot=='SNR' else 'Lost signal'} fluctuations in {noise_regime} ({tell}) \n in {spectrum_contributions} light ({model}-model), $T_*$={T_star}K, $T_p$={T_planet}K, "r"$\Delta$rv="f"{delta_rv}km/s")
         plt.title(title_text, fontsize=16, pad=14)
 
@@ -1407,7 +1409,7 @@ def colormap_vsini(instru="HARMONI", band="H", T_planet=300, T_star=6000, lg_pla
     return vsini_planet, vsini_star, SNR, lost_signal
 
 def process_colormap_vsini(args):
-    i, vsini_star, vsini_planet, star, planet, albedo, trans, wave_band, delta_rv, R_band, Rc, filter_type, photon_noise_limited = args
+    i, vsini_star, vsini_planet, star, planet, albedo, trans, wave_band, delta_rv, R_band, Rc, filter_type, stellar_halo_photon_noise_limited = args
     SNR_1D         = np.zeros((len(vsini_planet)))
     lost_signal_1D = np.zeros((len(vsini_planet)))    
     # Preparing star spectrum (and planet if necessary)
@@ -1418,7 +1420,7 @@ def process_colormap_vsini(args):
     # To be homogenous to photons
     star_broad.flux *= star_broad.wavelength
     star_broad       = star_broad.degrade_resolution(wave_band, renorm=True).flux
-    star_HF, star_BF = filtered_flux(star_broad, R=R_band, Rc=Rc, filter_type=filter_type)
+    star_HF, star_LF = filtered_flux(star_broad, R=R_band, Rc=Rc, filter_type=filter_type)
 
     for j in range(len(vsini_planet)):
         # Preparing the planet spectrum
@@ -1426,13 +1428,13 @@ def process_colormap_vsini(args):
         # To be homogenous to photons
         planet_broad.flux   *= planet.wavelength
         planet_broad         = planet_broad.degrade_resolution(wave_band, renorm=True).flux
-        planet_HF, planet_BF = filtered_flux(planet_broad, R=R_band, Rc=Rc, filter_type=filter_type)
+        planet_HF, planet_LF = filtered_flux(planet_broad, R=R_band, Rc=Rc, filter_type=filter_type)
         # S/N and signal loss calculations
         template  = trans*planet_HF 
         template /= np.sqrt(np.nansum(template**2))
         alpha     = np.nansum(trans*planet_HF * template)
-        beta      = np.nansum(trans*star_HF*planet_BF/star_BF * template)
-        if photon_noise_limited:
+        beta      = np.nansum(trans*star_HF*planet_LF/star_LF * template)
+        if stellar_halo_photon_noise_limited:
             noise = np.sqrt(np.nansum(trans*star_broad * template**2)) # stellar halo photon noise
         else:
             noise = 1. # wavelength and resolution-independent limiting noise (e.g. RON and dark current - detector noise - domination)
@@ -1448,12 +1450,11 @@ def process_colormap_vsini(args):
 
 def colormap_maxsep_phase(instru="HARMONI", band="H", apodizer="NO_SP", strehl="JQ1", coronagraph=None, inc=90):
 
-    config_data = get_config_data(instru)
+    config_data = get_config_data(instru)    
     sep_unit    = config_data["sep_unit"]
+    iwa, _      = get_wa(config_data=config_data, sep_unit=sep_unit)
     
-    iwa, _ = get_wa(config_data=config_data, band=band, apodizer=apodizer, sep_unit=sep_unit)
-    
-    PSF_profile, fraction_PSF, separation, pxscale = get_PSF_profile(band=band, strehl=strehl, apodizer=apodizer, coronagraph=coronagraph, instru=instru, config_data=config_data, sep_unit=sep_unit, sampling=100 if instru=="ANDES" else 10, OWA=60 if instru=="ANDES" else None)
+    PSF_profile, fraction_PSF, separation, pxscale, _ = get_PSF_profile(band=band, strehl=strehl, apodizer=apodizer, coronagraph=coronagraph, instru=instru, sampling=100 if instru=="ANDES" else 10)
     
     if coronagraph is None:
         fraction_PSF = np.zeros(len(separation)) + fraction_PSF
@@ -1558,7 +1559,7 @@ def colormap_maxsep_phase(instru="HARMONI", band="H", apodizer="NO_SP", strehl="
     cbar.set_ticks(contour_levels)
     cbar.ax.tick_params(labelsize=12)
     cbar.set_label(cbar_label, rotation=270, labelpad=14, fontsize=14)
-    plt.title(f"{instru} {band}-band S/N fluctuations for reflected light planet at inc={inc}°\nwith {apodizer.replace('_', ' ')} apodizer and {strehl.replace('_', ' ')} strehl in stellar photon noise regime", fontsize=16, pad=14)
+    plt.title(f"{instru} {band}-band S/N fluctuations for reflected light planet at inc={inc}°\nwith {apodizer.replace('_', ' ')} apodizer and {strehl.replace('_', ' ')} strehl in stellar halo photon noise regime", fontsize=16, pad=14)
     plt.tight_layout()
     filename = f"colormaps_maxsep_phase/Colormap_maxsep_phase_SNR_photon_{instru}_{band}_reflected_inc{inc}_{strehl}_{apodizer}_{coronagraph}"
     plt.savefig(save_path_colormap + filename + ".png", format='png', bbox_inches='tight')
@@ -1605,12 +1606,11 @@ def process_colormap_maxsep_phase(args):
 
 def colormap_maxsep_inc(instru="HARMONI", band="H", apodizer="NO_SP", strehl="JQ1", coronagraph=None):
 
-    config_data = get_config_data(instru)
+    config_data = get_config_data(instru)    
     sep_unit    = config_data["sep_unit"]
+    iwa, _      = get_wa(config_data=config_data, sep_unit=sep_unit)
     
-    iwa, _ = get_wa(config_data=config_data, band=band, apodizer=apodizer, sep_unit=sep_unit)
-    
-    PSF_profile, fraction_PSF, separation, pxscale = get_PSF_profile(band=band, strehl=strehl, apodizer=apodizer, coronagraph=coronagraph, instru=instru, config_data=config_data, sep_unit=sep_unit, sampling=100 if instru=="ANDES" else 10, OWA=60 if instru=="ANDES" else None)
+    PSF_profile, fraction_PSF, separation, pxscale, _ = get_PSF_profile(band=band, strehl=strehl, apodizer=apodizer, coronagraph=coronagraph, instru=instru, sampling=100 if instru=="ANDES" else 10)
     
     if coronagraph is None:
         fraction_PSF = np.zeros(len(separation)) + fraction_PSF
@@ -1719,7 +1719,7 @@ def colormap_maxsep_inc(instru="HARMONI", band="H", apodizer="NO_SP", strehl="JQ
     cbar.minorticks_on()
     cbar.ax.tick_params(labelsize=12)
     cbar.set_label(cbar_label, rotation=270, labelpad=14, fontsize=14)
-    plt.title(f"{instru} {band}-band optimum phase for reflected light planet\nwith {apodizer.replace('_', ' ')} apodizer and {strehl.replace('_', ' ')} strehl in stellar photon noise regime", fontsize=16, pad=14)
+    plt.title(f"{instru} {band}-band optimum phase for reflected light planet\nwith {apodizer.replace('_', ' ')} apodizer and {strehl.replace('_', ' ')} strehl in stellar halo photon noise regime", fontsize=16, pad=14)
     plt.tight_layout()
     filename = f"colormaps_maxsep_inc/Colormap_maxsep_inc_optimum_phase_photon_{instru}_{band}_reflected_{strehl}_{apodizer}_{coronagraph}"
     plt.savefig(save_path_colormap + filename + ".png", format='png', bbox_inches='tight')
@@ -1753,7 +1753,7 @@ def colormap_maxsep_inc(instru="HARMONI", band="H", apodizer="NO_SP", strehl="JQ
 
 
 
-def colormap_best_parameters_earth(Npx=10000, T_planet=288, T_star=5800, lg_planet=3.0, lg_star=4.4, delta_rv=30, vsini_planet=0.5, vsini_star=2, SMA=1, planet_radius=1, star_radius=1, distance=1, thermal_model="BT-Settl", reflected_model="tellurics", Rc=100, filter_type="gaussian", photon_noise_limited=True, norm_plot="star"):
+def colormap_best_parameters_earth(Nl=10000, T_planet=288, T_star=5800, lg_planet=3.0, lg_star=4.4, delta_rv=30, vsini_planet=0.5, vsini_star=2, SMA=1, planet_radius=1, star_radius=1, distance=1, thermal_model="BT-Settl", reflected_model="tellurics", Rc=100, filter_type="gaussian", stellar_halo_photon_noise_limited=True, norm_plot="star"):
         
     d = distance * u.pc # parsec
     SMA = SMA * u.AU # AU
@@ -1859,7 +1859,7 @@ def colormap_best_parameters_earth(Npx=10000, T_planet=288, T_star=5800, lg_plan
     SNR_ground_reflected = np.zeros((len(R), len(l0_arr)), dtype=float)
     
     with Pool(processes=cpu_count()) as pool: # Utilisation de multiprocessing pour paralléliser les combinaisons i, j
-        results = list(tqdm(pool.imap(process_colormap_best_parameters_earth, [(i, R, lmin, lmax, planet_thermal, planet_reflected, star, sky_trans, l0_arr, Npx, Rc, filter_type, S_space, S_ground, photon_noise_limited) for i in range(len(R))]), total=len(R)))
+        results = list(tqdm(pool.imap(process_colormap_best_parameters_earth, [(i, R, lmin, lmax, planet_thermal, planet_reflected, star, sky_trans, l0_arr, Nl, Rc, filter_type, S_space, S_ground, stellar_halo_photon_noise_limited) for i in range(len(R))]), total=len(R)))
         for (i, SNR_space_thermal_1D, SNR_space_reflected_1D, SNR_ground_thermal_1D, SNR_ground_reflected_1D) in results: # Remplissage des matrices 5D avec les résultats
             SNR_space_thermal[i, :] = SNR_space_thermal_1D
             SNR_space_reflected[i, :] = SNR_space_reflected_1D
@@ -1874,7 +1874,7 @@ def colormap_best_parameters_earth(Npx=10000, T_planet=288, T_star=5800, lg_plan
     SNR_space_thermal[np.isnan(SNR_space_thermal)] = 0. ; SNR_space_reflected[np.isnan(SNR_space_reflected)] = 0. ; SNR_ground_thermal[np.isnan(SNR_ground_thermal)] = 0. ; SNR_ground_reflected[np.isnan(SNR_ground_reflected)] = 0.
     
     fig, axs = plt.subplots(2, 2, dpi=300, sharex=True, sharey=True, figsize=(14, 9))
-    fig.suptitle(f"S/N fluctuations for earth-like with "+r"$N_{\lambda}$="+f"{round(round(Npx, -3))} and $R_c$={Rc}", fontsize=20)
+    fig.suptitle(f"S/N fluctuations for earth-like with "+r"$N_{\lambda}$="+f"{round(round(Nl, -3))} and $R_c$={Rc}", fontsize=20)
     for i, base in enumerate(["space", "ground"]):
         for j, contribution in enumerate(["thermal", "reflected"]):
             SNR = locals()["SNR_" + base + "_" + contribution]
@@ -1892,13 +1892,13 @@ def colormap_best_parameters_earth(Npx=10000, T_planet=288, T_star=5800, lg_plan
             pcm = ax.pcolormesh(l0_arr, R, 100 * SNR / np.nanmax(SNR), cmap='rainbow', vmin=0, vmax=100)
             ax.plot(l0_arr[idx_max_snr[1]], R[idx_max_snr[0]], 'kX', label=r"max for $\lambda_0$ = "+f"{round(l0_arr[idx_max_snr[1]], 1)}\u00b5m and R = {int(round(R[idx_max_snr[0]], -2))}")
             dl = (lmin + lmax) / 2 / (2 * R[idx_max_snr[0]])
-            umin = l0_arr[idx_max_snr[1]] - (Npx / 2) * dl
-            umax = l0_arr[idx_max_snr[1]] + (Npx / 2) * dl
+            umin = l0_arr[idx_max_snr[1]] - (Nl / 2) * dl
+            umax = l0_arr[idx_max_snr[1]] + (Nl / 2) * dl
             ax.errorbar(l0_arr[idx_max_snr[1]], R[idx_max_snr[0]], xerr=(umax - umin)/2, fmt='X', color='k', linestyle='None', capsize=5)
             ax.set_title(f"{base.capitalize()} / {contribution.capitalize()}", fontsize=14, pad=14)
             ax.legend(fontsize=10)
     cbar = fig.colorbar(pcm, ax=axs, orientation='vertical', fraction=0.02, pad=0.04) ; cbar.set_label('$GAIN_{S/N}$ [%]', fontsize=14, labelpad=20, rotation=270)
-    filename = f"colormaps_best_parameters_earth_like/colormaps_best_parameters_earth_like_Npx_{round(round(Npx, -3))}_Rc_{Rc}_thermal_{thermal_model}_reflected_{reflected_model}"
+    filename = f"colormaps_best_parameters_earth_like/colormaps_best_parameters_earth_like_Nl_{round(round(Nl, -3))}_Rc_{Rc}_thermal_{thermal_model}_reflected_{reflected_model}"
     plt.savefig(save_path_colormap + filename + ".png", format='png', bbox_inches='tight') ; plt.show()
     
     idx_max_snr_space_thermal = np.unravel_index(np.argmax(np.nan_to_num(SNR_space_thermal), axis=None), SNR_space_thermal.shape)
@@ -1907,7 +1907,7 @@ def colormap_best_parameters_earth(Npx=10000, T_planet=288, T_star=5800, lg_plan
     idx_max_snr_ground_reflected = np.unravel_index(np.argmax(np.nan_to_num(SNR_ground_reflected), axis=None), SNR_ground_reflected.shape)
     
     plt.figure(dpi=300)
-    plt.title(f"S/N fluctuations for Earth-like with "+r"$N_{\lambda}$="+f"{round(round(Npx, -3))} and $R_c$={Rc}", fontsize=14, pad=14)
+    plt.title(f"S/N fluctuations for Earth-like with "+r"$N_{\lambda}$="+f"{round(round(Nl, -3))} and $R_c$={Rc}", fontsize=14, pad=14)
     plt.plot(l0_arr, SNR_space_thermal[idx_max_snr_space_thermal[0], :], "r--", label=f"space/thermal: R = {int(round(R[idx_max_snr_space_thermal[0]], -3))}")
     plt.plot(l0_arr, SNR_space_reflected[idx_max_snr_space_reflected[0], :], "b--", label=f"space/reflected: R = {int(round(R[idx_max_snr_space_reflected[0]], -3))}")
     plt.plot(l0_arr, SNR_ground_thermal[idx_max_snr_ground_thermal[0], :], "r", label=f"ground & thermal: R = {int(round(R[idx_max_snr_ground_thermal[0]], -3))}")
@@ -1918,13 +1918,13 @@ def colormap_best_parameters_earth(Npx=10000, T_planet=288, T_star=5800, lg_plan
     plt.grid(True, which='both', linestyle='--', linewidth=0.5) ; plt.minorticks_on()
     plt.xlim(lmin, lmax)
     plt.ylim(1e-5, 2)    
-    filename = f"colormaps_best_parameters_earth_like/plot_best_parameters_earth_like_Npx_{round(round(Npx, -3))}_Rc_{Rc}_thermal_{thermal_model}_reflected_{reflected_model}"
+    filename = f"colormaps_best_parameters_earth_like/plot_best_parameters_earth_like_Nl_{round(round(Nl, -3))}_Rc_{Rc}_thermal_{thermal_model}_reflected_{reflected_model}"
     plt.savefig(save_path_colormap + filename + ".png", format='png', bbox_inches='tight') ; plt.show()
     
-    return l0_arr, R, Npx, SNR_space_thermal, SNR_space_reflected, SNR_ground_thermal, SNR_ground_reflected
+    return l0_arr, R, Nl, SNR_space_thermal, SNR_space_reflected, SNR_ground_thermal, SNR_ground_reflected
 
 def process_colormap_best_parameters_earth(args):
-    i, R, lmin, lmax, planet_thermal, planet_reflected, star, sky_trans, l0_arr, Npx, Rc, filter_type, S_space, S_ground, photon_noise_limited = args
+    i, R, lmin, lmax, planet_thermal, planet_reflected, star, sky_trans, l0_arr, Nl, Rc, filter_type, S_space, S_ground, stellar_halo_photon_noise_limited = args
     res = R[i]
     dl = (lmin+lmax)/2 / (2 * res)
     wav = np.arange(lmin, lmax, dl)
@@ -1937,32 +1937,32 @@ def process_colormap_best_parameters_earth(args):
     SNR_ground_thermal_1D = np.zeros((len(l0_arr)))
     SNR_ground_reflected_1D = np.zeros((len(l0_arr)))
     for j, l0 in enumerate(l0_arr):
-        umin = l0-(Npx/2)*dl
-        umax = l0+(Npx/2)*dl
+        umin = l0-(Nl/2)*dl
+        umax = l0+(Nl/2)*dl
         valid = np.where(((wav<umax)&(wav>umin)))
         trans = sky_R.flux[valid]
 
         star_R_crop = Spectrum(wav[valid], star_R.flux[valid], res, None)
         planet_thermal_R_crop = Spectrum(wav[valid], planet_thermal_R.flux[valid], res, None)   
         planet_reflected_R_crop = Spectrum(wav[valid], planet_reflected_R.flux[valid], res, None)
-        star_HF, star_BF = filtered_flux(star_R_crop.flux, R=res, Rc=Rc, filter_type=filter_type)
-        planet_thermal_HF, planet_thermal_BF = filtered_flux(planet_thermal_R_crop.flux, R=res, Rc=Rc, filter_type=filter_type)
-        planet_reflected_HF, planet_reflected_BF = filtered_flux(planet_reflected_R_crop.flux, R=res, Rc=Rc, filter_type=filter_type)
+        star_HF, star_LF = filtered_flux(star_R_crop.flux, R=res, Rc=Rc, filter_type=filter_type)
+        planet_thermal_HF, planet_thermal_LF = filtered_flux(planet_thermal_R_crop.flux, R=res, Rc=Rc, filter_type=filter_type)
+        planet_reflected_HF, planet_reflected_LF = filtered_flux(planet_reflected_R_crop.flux, R=res, Rc=Rc, filter_type=filter_type)
         
         template_space_thermal = planet_thermal_HF/np.sqrt(np.nansum((planet_thermal_HF)**2))
         alpha_space_thermal = np.sqrt(np.nansum((planet_thermal_HF)**2))
-        beta_space_thermal = np.nansum(star_HF*planet_thermal_BF/star_BF * template_space_thermal)
+        beta_space_thermal = np.nansum(star_HF*planet_thermal_LF/star_LF * template_space_thermal)
         template_space_reflected = planet_reflected_HF/np.sqrt(np.nansum((planet_reflected_HF)**2))
         alpha_space_reflected = np.sqrt(np.nansum((planet_reflected_HF)**2))
-        beta_space_reflected = np.nansum(star_HF*planet_reflected_BF/star_BF * template_space_reflected)
+        beta_space_reflected = np.nansum(star_HF*planet_reflected_LF/star_LF * template_space_reflected)
         template_ground_thermal = trans*planet_thermal_HF/np.sqrt(np.nansum((trans*planet_thermal_HF)**2))
         alpha_ground_thermal = np.sqrt(np.nansum((trans*planet_thermal_HF)**2))
-        beta_ground_thermal = np.nansum(trans*star_HF*planet_thermal_BF/star_BF * template_ground_thermal)
+        beta_ground_thermal = np.nansum(trans*star_HF*planet_thermal_LF/star_LF * template_ground_thermal)
         template_ground_reflected = trans*planet_reflected_HF/np.sqrt(np.nansum((trans*planet_reflected_HF)**2))
         alpha_ground_reflected = np.sqrt(np.nansum((trans*planet_reflected_HF)**2))
-        beta_ground_reflected = np.nansum(trans*star_HF*planet_reflected_BF/star_BF * template_ground_reflected)
+        beta_ground_reflected = np.nansum(trans*star_HF*planet_reflected_LF/star_LF * template_ground_reflected)
         
-        if photon_noise_limited:
+        if stellar_halo_photon_noise_limited:
             SNR_space_thermal_1D[j] = np.sqrt(S_space) * (alpha_space_thermal - beta_space_thermal) / np.sqrt(np.nansum(star_R_crop.flux * template_space_thermal**2))
             SNR_space_reflected_1D[j] = np.sqrt(S_space) * (alpha_space_reflected - beta_space_reflected) / np.sqrt(np.nansum(star_R_crop.flux * template_space_reflected**2))
             SNR_ground_thermal_1D[j] = np.sqrt(S_ground) * (alpha_ground_thermal - beta_ground_thermal) / np.sqrt(np.nansum(trans*star_R_crop.flux * template_ground_thermal**2))
@@ -1976,16 +1976,136 @@ def process_colormap_best_parameters_earth(args):
 
 
 
-############################################################################################################################################################################################################################################"
+######################## signal(MM) / signal(DI) = alpha - beta / delta: Resolution VS Temperature ###########################################################################################################################################################################################
 
+def colormap_MM_DI_R_Tp(lmin=1, lmax=2.5, Tmin=200, Tmax=2_000, Rmin=1_000, Rmax=100_000, tellurics=True, T_star=6000, lg_planet=3.0, lg_star=4.44, delta_rv=30, vsini_planet=3, vsini_star=7, spectrum_contributions="thermal", model="BT-Settl", Rc=100, filter_type="gaussian", num=100):    
+    
+    # Raw wavelength axis
+    lmin_model = 0.9*lmin
+    lmax_model = 1.1*lmax
+    dl_model   = (lmin_model+lmax_model)/2 / (2*R_model)
+    wave_model = np.arange(lmin_model, lmax_model, dl_model)
+    
+    # Getting star spectrum
+    star = load_star_spectrum(T_star, lg_star)
+    star = star.interpolate_wavelength(wave_model, renorm=False) 
+    star = star.broad(vsini_star) # Broadening the spectrum
+    
+    # To be homogenous to photons
+    star.flux *= wave_model
+    
+    # Geting tellurics model (or not)
+    if tellurics :
+        sky_transmission_path = os.path.join(os.path.dirname(path_file), "sim_data/Transmission/sky_transmission_airmass_1.0.fits")
+        sky_trans = fits.getdata(sky_transmission_path)
+        sky_trans = Spectrum(sky_trans[0, :], sky_trans[1, :], None, None)
+        sky_trans = sky_trans.interpolate_wavelength(wave_model, renorm=False) # on réinterpole le flux (en densité (énergie)) sur wave_band
+    else:
+        sky_trans = None
+        
+    # Defining arrayrs
+    T_arr       = np.linspace(Tmin, Tmax, num=num)
+    R_max       = estimate_resolution(wave_model)
+    R_arr       = np.logspace(np.log10(1000), np.log10(100_000), num=num)
+    residual_signal = np.zeros((len(T_arr), len(R_arr)))
+    
+    # Calculating matrices
+    with Pool(processes=cpu_count()) as pool: # Utilisation de multiprocessing pour paralléliser les combinaisons i, j
+        results = list(tqdm(pool.imap(process_colormap_MM_DI_R_Tp, [(i, T_arr[i], lg_planet, delta_rv, vsini_planet, star, sky_trans, spectrum_contributions, model, wave_model, R_arr, lmin, lmax, Rc, filter_type) for i in range(len(T_arr))]), total=len(T_arr)))
+        for (i, residual_signal_1D) in results: # Remplissage des matrices 5D avec les résultats
+            residual_signal[i, :] = residual_signal_1D # Normalizing each row
 
+    # Plots
+    plt.figure(figsize=(10, 6), dpi=300)
+    plt.xlabel("Spectral resolution", fontsize=14)
+    plt.ylabel("Planet temperature [K]", fontsize=14)
+    plt.ylim([T_arr[0], T_arr[-1]])
+    plt.xlim(R_arr[0], R_arr[-1])
+    plt.xscale('log')
+    plt.tick_params(axis='both', which='major', labelsize=12)
+    plt.minorticks_on()
+    
+    data       = 100 * residual_signal
+    cmap       = plt.get_cmap(cmap_colormaps)
+    cbar_label = r'$(\alpha - \beta)$ $/$ $\delta$  [%]'
 
+    # Heatmap with pcolormesh
+    mesh = plt.pcolormesh(R_arr, T_arr, data, cmap=cmap, shading='auto', vmin=0, vmax=np.nanmax(data))
+    
+    # Contours
+    cs = plt.contour(R_arr, T_arr, data, colors='k', linewidths=0.5, alpha=0.7)
+    plt.clabel(cs, inline=True, fontsize=8, fmt="%d%%")
+    
+    # Colorbar
+    ax = plt.gca()
+    cbar = plt.colorbar(mesh, ax=ax, pad=0.025, shrink=1)
+    cbar.minorticks_on()
+    cbar.ax.tick_params(labelsize=12)
+    cbar.set_label(cbar_label, rotation=270, labelpad=20, fontsize=14)
+    
+    # Title
+    tell       = "with tellurics absorption" if tellurics else "without tellurics absorption"
+    title_text = (f"Molecular mapping residual signal fluctuations ({tell}) \n in {spectrum_contributions} light ({model}-model), $T_*$={T_star}K, "r"$\Delta$rv="f"{delta_rv}km/s")
+    #plt.title(title_text, fontsize=16, pad=14)
+    #plt.title("Reflected light", fontsize=16)
 
+    
+    plt.tight_layout()
+    filename = f"colormaps_bandwidth_Tp/Colormap_MM_DI_R_Tp_residual_signal_{tellurics}_{spectrum_contributions}_{model}_Rc{Rc}_Ts{T_star}K_drv{delta_rv}kms_broad{vsini_planet}kms"
+    plt.savefig(save_path_colormap + filename + ("_with_tellurics" if tellurics else "") + ".png", format='png', bbox_inches='tight')
+    plt.show()
+        
+    return R_arr, T_arr, residual_signal
 
+def process_colormap_MM_DI_R_Tp(args):
+    i, T_planet, lg_planet, delta_rv, vsini_planet, star, sky_trans, spectrum_contributions, model, wave_model, R_arr, lmin, lmax, Rc, filter_type = args
+    
+    residual_signal_1D = np.zeros((len(R_arr)))
+    
+    # Getting planet spectrum
+    if spectrum_contributions=="reflected" :
+        albedo = load_albedo(T_planet, lg_planet, model=model, airmass=2.5)
+        albedo = albedo.interpolate_wavelength(wave_model, renorm=False)
+        planet = Spectrum(wave_model, albedo.flux*star.flux)
+    elif spectrum_contributions=="thermal" :
+        planet = load_planet_spectrum(T_planet, lg_planet, model, instru=instru)
+        planet = planet.interpolate_wavelength(wave_model, renorm=False)
+        # To be homogenous to photons
+        planet.flux *= wave_model        
+    planet = planet.broad(vsini_planet)     # Broadening the spectrum
+    planet = planet.doppler_shift(delta_rv) # Shifting the spectrum
+    
+    # Calculation for each lambda0
+    for j, R in enumerate(R_arr):
+        
+        # Degrading the spectra on wave
+        dl       = (lmin + lmax)/2 / (2*R)
+        wave     = np.arange(lmin, lmax, dl)
+        star_R   = star.degrade_resolution(wave, renorm=True).flux
+        planet_R = planet.degrade_resolution(wave, renorm=True).flux
+        if sky_trans is not None:
+            trans = sky_trans.degrade_resolution(wave, renorm=False).flux
+        else:
+            trans = 1
+        
+        # DI CCF signal
+        template  = trans*planet_R
+        template /= np.sqrt(np.nansum(template**2))
+        delta     = np.nansum(trans*planet_R * template)
+        
+        # High- and low-pass filtering the spectra
+        planet_HF, planet_LF = filtered_flux(planet_R, R=R, Rc=Rc, filter_type=filter_type)
+        star_HF, star_LF     = filtered_flux(star_R,   R=R, Rc=Rc, filter_type=filter_type)
+        # S/N and signal loss calculations
+        template  = trans*planet_HF 
+        template /= np.sqrt(np.nansum(template**2))
+        alpha     = np.nansum(trans*planet_HF * template)
+        beta      = np.nansum(trans*star_HF*planet_LF/star_LF * template)
 
-
-
-
+        # Lost signal calculations
+        residual_signal_1D[j]    = (alpha - beta) / delta
+    
+    return i, residual_signal_1D
 
 
 

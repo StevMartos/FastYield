@@ -44,7 +44,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         self.spectrum_contributions = "thermal+reflected"
         self.band                   = "INSTRU"
         self.only_visible_targets   = False
-        self.systematic             = False
+        self.systematics             = False
         self.PCA                    = False
         self.planet_table           = None
         self.calculation            = None
@@ -152,7 +152,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         self.apodizer    = [apodizer for apodizer in self.config_data["apodizers"]][0]
         self.strehl      = self.config_data["strehls"][0]
         self.coronagraph = self.config_data["coronagraphs"][0]
-        self.systematic = False
+        self.systematics = False
         self.PCA         = False
         if self.config_data["lambda_range"]["lambda_max"] < 6:
             self.thermal_model          = "BT-Settl"
@@ -209,14 +209,14 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         self.__btn = tk.Button(self.button_systematics, text="With systematics + PCA", command=self.btn_systematics_PCA_clicked, bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn.grid(row=0, column=2, sticky="nsew") ; self.button_systematics.grid_columnconfigure(2, weight=1)
 
     def btn_no_systematics_clicked(self):
-        self.systematic = False
+        self.systematics = False
         self.draw_table_plot()
     def btn_systematics_clicked(self):
-        self.systematic = True
+        self.systematics = True
         self.PCA        = False
         self.draw_table_plot()
     def btn_systematics_PCA_clicked(self):
-        self.systematic = True
+        self.systematics = True
         self.PCA        = True
         self.draw_table_plot()
         
@@ -413,7 +413,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         
         # Loading SNR planet table 
         coronagraph_str = "_"+str(self.coronagraph) if self.coronagraph is not None else ""
-        if self.systematic:
+        if self.systematics:
             suffix = "with_systematics+PCA" if self.PCA else "with_systematics"
         else:
             suffix = "without_systematics"
@@ -502,7 +502,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         else:
             self.lmin = self.config_data['gratings'][self.band].lmin ; self.lmax = self.config_data['gratings'][self.band].lmax
             self.R = self.config_data["gratings"][self.band].R
-        if self.systematic:
+        if self.systematics:
             txt_syst = "(with systematics+PCA)" if self.PCA else "(with systematics)"
         else:
             txt_syst = "(without systematics)"
@@ -637,15 +637,15 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
             else:
                 band_only = self.band
             try:
-                FastCurves(instru=self.instru, band_only=band_only, calculation=self.calculation, T_planet=self.planet["PlanetTeq"].value, lg_planet=self.planet["PlanetLogg"].value, mag_star=mag_s, band0=band0, T_star=self.planet["StarTeff"].value, lg_star=self.planet["StarLogg"].value, exposure_time=self.exposure_time.get(), model_planet=planet_spectrum.model, mag_planet=mag_p, separation_planet=self.planet["AngSep"].value/1000, planet_name=self.planet["PlanetName"], systematic=self.systematic, PCA=self.PCA, show_plot=True, verbose=True, star_spectrum=star_spectrum, planet_spectrum=planet_spectrum, apodizer=self.apodizer, strehl=self.strehl, coronagraph=self.coronagraph)
+                FastCurves(instru=self.instru, band_only=band_only, calculation=self.calculation, T_planet=self.planet["PlanetTeq"].value, lg_planet=self.planet["PlanetLogg"].value, mag_star=mag_s, band0=band0, T_star=self.planet["StarTeff"].value, lg_star=self.planet["StarLogg"].value, exposure_time=self.exposure_time.get(), model_planet=planet_spectrum.model, mag_planet=mag_p, separation_planet=self.planet["AngSep"].value/1000, planet_name=self.planet["PlanetName"], systematics=self.systematics, PCA=self.PCA, show_plot=True, verbose=True, star_spectrum=star_spectrum, planet_spectrum=planet_spectrum, apodizer=self.apodizer, strehl=self.strehl, coronagraph=self.coronagraph)
             except Exception as e:
-                print(f"The S/N ({round(self.SNR[self.planet_index])}) is sufficiently high for the precision of the parameter estimation to be likely limited by systematic effects rather than fundamental noises: {e}")
+                print(f"The S/N ({round(self.SNR[self.planet_index])}) is sufficiently high for the precision of the parameter estimation to be likely limited by systematics effects rather than fundamental noises: {e}")
         else:
             if self.band == "INSTRU":
                 band_only = None 
             else:
                 band_only = self.band
-            FastCurves(instru=self.instru, band_only=band_only, calculation=self.calculation, T_planet=self.planet["PlanetTeq"].value, lg_planet=self.planet["PlanetLogg"].value, mag_star=mag_s, band0=band0, T_star=self.planet["StarTeff"].value, lg_star=self.planet["StarLogg"].value, exposure_time=self.exposure_time.get(), model_planet=self.model_planet, mag_planet=mag_p, separation_planet=self.planet["AngSep"].value/1000, planet_name=self.planet["PlanetName"], systematic=self.systematic, PCA=self.PCA, show_plot=True, verbose=True, star_spectrum=star_spectrum, planet_spectrum=planet_spectrum, apodizer=self.apodizer, strehl=self.strehl, coronagraph=self.coronagraph)
+            FastCurves(instru=self.instru, band_only=band_only, calculation=self.calculation, T_planet=self.planet["PlanetTeq"].value, lg_planet=self.planet["PlanetLogg"].value, mag_star=mag_s, band0=band0, T_star=self.planet["StarTeff"].value, lg_star=self.planet["StarLogg"].value, exposure_time=self.exposure_time.get(), model_planet=self.model_planet, mag_planet=mag_p, separation_planet=self.planet["AngSep"].value/1000, planet_name=self.planet["PlanetName"], systematics=self.systematics, PCA=self.PCA, show_plot=True, verbose=True, star_spectrum=star_spectrum, planet_spectrum=planet_spectrum, apodizer=self.apodizer, strehl=self.strehl, coronagraph=self.coronagraph)
 
     def destroy_lower_buttons(self):
         try:

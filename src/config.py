@@ -65,14 +65,15 @@ config_data_HARMONI = {
                        'apodizers':    {"NO_SP":   ApodizerInfo(0.84, 50),            # Available apodizers (transmission, IWA [mas])
                                         "SP1":     ApodizerInfo(0.45, 70),            # Available apodizers (transmission, IWA [mas])
                                         "SP2":     ApodizerInfo(0.35, 100),           # Available apodizers (transmission, IWA [mas])
-                                        "SP_Prox": ApodizerInfo(0.68, 10)},           # Available apodizers (transmission, IWA [mas])
-                       'strehls':      ["JQ1"],                                # Available strehls
+                                        "SP_Prox": ApodizerInfo(0.68, 30)},           # Available apodizers (transmission, IWA [mas])
+                       'strehls':      ["JQ1"],                                       # Available strehls
                        'coronagraphs': [None],                                        # Available coronagraphs
                        'spec':         {"RON":          10.0,                         # Read-Out Noise [e-/px/DIT]
+                                        "RON_lim":      1.,                           # Read-Out Noise limit [e-/px/DIT]
                                         "dark_current": 0.0053,                       # Dark current [e-/px/s]
                                         "FOV":          0.8,                          # Field Of View [arcsec]
                                         "pxscale":      0.004,                        # Pixel scale [arcsec/px]
-                                        "minDIT":       1.3/60,                      # Minimum Detector Integration Time [mn]
+                                        "minDIT":       1.3/60,                       # Minimum Detector Integration Time [mn]
                                         "maxDIT":       3,                            # Maximum Detector Integration Time [mn]
                                         "saturation_e": 40_000},                      # Full well capacity [e-] 
                      }
@@ -111,9 +112,10 @@ config_data_HARMONI = {
 #                      'strehls':                   ["MED"],                                           # Available strehls
 #                      'coronagraphs':              [None, "LYOT"],                                    # Available coronagraphs
 #                      'spec':                      {"RON":          4.5,                              # Read-Out Noise [e-/px/DIT]
+#                                                    "RON_lim":      1.,                               # Read-Out Noise limit [e-/px/DIT]
 #                                                    "dark_current": 0.0053,                           # Dark current [e-/px/s]
 #                                                    "FOV":          0.144,                            # Field Of View [arcsec] (16 mas * 9 fibers)
-#                                                    "minDIT":       1.3/60,                          # Minimum Detector Integration Time [mn]
+#                                                    "minDIT":       1.3/60,                           # Minimum Detector Integration Time [mn]
 #                                                    "maxDIT":       5,                                # Maximum Detector Integration Time [mn]
 #                                                    "saturation_e": 40_000},                          # Full well capacity [e-] 
 #                    }
@@ -145,12 +147,15 @@ config_data_ANDES = {
                      'strehls':                   ["MED"],                                           # Available strehls
                      'coronagraphs':              [None, "LYOT"],                                    # Available coronagraphs
                      'spec':                      {"RON":          4.5,                              # Read-Out Noise [e-/px/DIT]
+                                                   "RON_lim":      1.,                               # Read-Out Noise limit [e-/px/DIT]
                                                    "dark_current": 0.0053,                           # Dark current [e-/px/s]
                                                    "FOV":          0.144,                            # Field Of View [arcsec] (16 mas * 9 fibers)
                                                    "minDIT":       1.3/60,                           # Minimum Detector Integration Time [mn]
                                                    "maxDIT":       5,                                # Maximum Detector Integration Time [mn]
                                                    "saturation_e": 40_000},                          # Full well capacity [e-] 
                    }
+
+
 
 #------------------------------------------------------------------------------#
 #                                  VLT:                                        #
@@ -183,10 +188,11 @@ config_data_ERIS = {
                     'strehls':      ["JQ0"],                                       # Available strehls
                     'coronagraphs': [None],                                        # Available coronagraphs
                     'spec':         {"RON":          12.0,                         # Read-Out Noise [e-/px/DIT]
+                                     "RON_lim":      1.,                           # Read-Out Noise limit [e-/px/DIT]
                                      "dark_current": 0.1,                          # Dark current [e-/px/s]
                                      "FOV":          0.8,                          # Field Of View [arcsec]
                                      "pxscale":      0.025,                        # Pixel scale [arcsec/px]
-                                     "minDIT":       2.62/60,                        # Minimum Detector Integration Time [mn]
+                                     "minDIT":       2.62/60,                      # Minimum Detector Integration Time [mn]
                                      "maxDIT":       2,                            # Maximum Detector Integration Time [mn]
                                      "saturation_e": 40_000},                      # Full well capacity [e-] 
                    }
@@ -211,6 +217,7 @@ config_data_HiRISE = {
                       'strehls':                   ["MED"],                                  # Available strehls
                       'coronagraphs':              [None],                                   # Available coronagraphs
                       'spec':                      {"RON":          12,                      # Read-Out Noise [e-/px/DIT]
+                                                    "RON_lim":      1.,                      # Read-Out Noise limit [e-/px/DIT]
                                                     "dark_current": 0.0053,                  # Dark current [e-/px/s]
                                                     "FOV":          4,                       # Field Of View [arcsec]
                                                     "pxscale":      0.01225,                 # Pixel scale [arcsec/px]
@@ -258,6 +265,7 @@ config_data_MIRIMRS = {
                       'strehls':      ["NO_JQ"],                                                # Available strehls
                       'coronagraphs': [None],                                                   # Available coronagraphs
                       'spec':         {"RON":          14.0*np.sqrt(8),                         # Read-Out Noise [e-/px/DIT]
+                                       "RON_lim":      1.,                               # Read-Out Noise limit [e-/px/DIT]
                                        "dark_current": 0.2,                                     # Dark current [e-/px/s]
                                        "FOV":          5.2,                                     # Field Of View [arcsec]
                                        "minDIT":       2.775/60,                                # Minimum Detector Integration Time [mn]
@@ -286,6 +294,7 @@ config_data_NIRCam = {
                       'strehls':      ["NO_JQ"],                                  # Available strehls
                       'coronagraphs': ["MASK335R"],                               # Available coronagraphs
                       'spec':         {"RON":          13.17*np.sqrt(2),          # Read-Out Noise [e-/px/DIT]
+                                       "RON_lim":      1.,                               # Read-Out Noise limit [e-/px/DIT]
                                        "dark_current": 34.2/1000,                 # Dark current [e-/px/s]
                                        "FOV":          10,                        # Field Of View [arcsec]
                                        "pxscale":      0.063,                     # Pixel scale [arcsec/px]
@@ -312,6 +321,7 @@ config_data_NIRSpec = {
                        'strehls':      ["NO_JQ"],                                        # Available strehls
                        'coronagraphs': [None],                                           # Available coronagraphs
                        'spec':         {"RON":          14*np.sqrt(2),                   # Read-Out Noise [e-/px/DIT]
+                                        "RON_lim":      1.,                               # Read-Out Noise limit [e-/px/DIT]
                                         "dark_current": 0.008,                           # Dark current [e-/px/s]
                                         "FOV":          5,                               # Field Of View [arcsec]
                                         "pxscale":      0.1045,                          # Pixel scale [arcsec/px]
@@ -336,7 +346,7 @@ config_data_VIPAPYRUS = {
                          'altitude':                  650,                                         # Altitude [m]
                          'sep_unit':                  "arcsec",                                    # Unit for angular separation
                          'telescope':                 {"diameter": 1.52, "area": 1.81},            # All-glass diameter [m] and effective collecting area [m²], accounting for central hole, secondary mirror, and spider obscuration
-                         'gratings':                  {"H": GratingInfo(1.5525, 1.760, 75_000)},   # Spectral range [µm], resolving power
+                         'gratings':                  {"H": GratingInfo(1.5525, 1.760, 60_000)},   # Spectral range [µm], resolving power
                          'lambda_range':              {"lambda_min": 1.5525, "lambda_max": 1.760}, # Minimum and maximum instrumental wavelength range [µm]
                          'size_core':                 1,                                           # Size in pixels of the FWHM                      (here: 1 fiber on the planet)
                          'R_corr':                    0.65,                                        # Corrective factor on photon noise               (here: R_corr = scale_poisson**2)
@@ -344,7 +354,8 @@ config_data_VIPAPYRUS = {
                          'apodizers':                 {"NO_SP": ApodizerInfo(1, 0)},               # Available apodizers
                          'strehls':                   ["MED"],                                     # Available strehls
                          'coronagraphs':              [None],                                      # Available coronagraphs
-                         'spec':                      {"RON":          13,                         # Read-Out Noise [e-/px/DIT]
+                         'spec':                      {"RON":          11.4,                       # Read-Out Noise [e-/px/DIT]
+                                                       "RON_lim":      4.1,                        # Read-Out Noise limit [e-/px/DIT]
                                                        "dark_current": 0.0053,                     # Dark current [e-/px/s]
                                                        "FOV":          4,                          # Field Of View [arcsec]
                                                        "pxscale":      0.15,#0.24,                 # Pixel scale [arcsec/px]                         (here : pxscale ~ 1.03*lambda/D, i.e. size of the fiber/FWHM)
@@ -375,10 +386,11 @@ config_data_VIPAPYRUS = {
 #                        'strehls':      ["JQ1"],                                    # Available strehls
 #                        'coronagraphs': [None],                                     # Available coronagraphs
 #                        'spec':         {"RON":          10.0,                      # Read-Out Noise [e-/px/DIT]
+#                                         "RON_lim":      1.,                        # Read-Out Noise limit [e-/px/DIT]
 #                                         "dark_current": 0.0053,                    # Dark current [e-/px/s]
 #                                         "FOV":          0.8,                       # Field Of View [arcsec]
 #                                         "pxscale":      0.004,                     # Pixel scale [arcsec/px]
-#                                         "minDIT":       2.62/60,                     # Minimum Detector Integration Time [mn]
+#                                         "minDIT":       2.62/60,                   # Minimum Detector Integration Time [mn]
 #                                         "maxDIT":       1,                         # Maximum Detector Integration Time [mn]
 #                                         "saturation_e": 40_000},                   # Full well capacity [e-] 
 #                      }

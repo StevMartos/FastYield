@@ -341,6 +341,62 @@ def interpolate_flux_with_error(wave, flux, sigma, weight, wave_new):
 
 
 
+@njit
+def reflect_index(i, n):
+    """Reflect index i for 'reflect' mode (like scipy.ndimage)."""
+    if n <= 1:
+        return 0
+    period = 2 * n
+    m = i % period
+    if m >= n:
+        m = period - m - 1
+    return m
+
+@njit
+def gaussian_filter1d_variable(y, sigma, truncate=4.0):
+    """
+    Gaussian smoothing with spatially varying sigma and reflect boundary mode.
+
+    Parameters
+    ----------
+    y : (N,) array
+        1D input array.
+    sigma : (N,) array
+        Per-sample Gaussian sigma in pixel units.
+    truncate : float
+        Defines kernel size as truncate * sigma[i].
+
+    Returns
+    -------
+    y_smooth : (N,) array
+        Smoothed array, mimicking scipy.ndimage.gaussian_filter1d (if sigma is constant).
+    """
+    n        = y.shape[0]
+    y_smooth = np.empty_like(y)
+
+    for i in range(n):
+        s = sigma[i]
+        if s <= 0.0 or not np.isfinite(s):
+            y_smooth[i] = y[i]
+            continue
+
+        r = int(np.ceil(truncate * s))
+        wsum = 0.0
+        acc  = 0.0
+
+        for offset in range(-r, r + 1):
+            j     = reflect_index(i + offset, n)
+            dx    = offset
+            w     = np.exp(-0.5 * (dx / s) ** 2)
+            wsum += w
+            acc  += w * y[j]
+
+        y_smooth[i] = acc / wsum if wsum > 0.0 else y[i]
+
+    return y_smooth
+
+
+
 @lru_cache(maxsize=50)
 def _fft_filter_response(N, R, Rc, filter_type):
     """
@@ -366,12 +422,12 @@ def _fft_filter_response(N, R, Rc, filter_type):
         raise ValueError("N must be >= 2.")
     if R <= 0:
         raise ValueError("R must be > 0.")
-    if Rc is None:
-        H_LF = np.ones(N, dtype=np.complex128)
-        H_HF = np.zeros(N, dtype=np.complex128)
+    if Rc is None or Rc == 0:
+        H_HF = np.ones(N, dtype=np.complex128)
+        H_LF = np.zeros(N, dtype=np.complex128)
         return H_HF, H_LF
-    if Rc <= 0:
-        raise ValueError("Rc must be > 0 when filtering is requested.")
+    if Rc < 0:
+        raise ValueError("Rc must be >= 0 when filtering is requested.")
 
     ffreq = np.fft.fftfreq(N) # cycles/sample
     res   = ffreq * 2*R       # "resolution" axis
@@ -417,7 +473,6 @@ def _fft_filter_response(N, R, Rc, filter_type):
 
 
 
-
 def filtered_flux(flux, R, Rc, filter_type="gaussian", show=False):
     """
     Split an input 1D flux into high-pass and low-pass components using a cut-off
@@ -438,14 +493,15 @@ def filtered_flux(flux, R, Rc, filter_type="gaussian", show=False):
     Rc : float or None
         Cut-off resolution for the filter. If None, no filtering is applied and
         the low-pass component is identically zero.
-    filter_type : {'gaussian', 'gaussian_fast', 'gaussian_true', 'step', 'smoothstep', 'savitzky_golay'}, optional
+    filter_type : {'gaussian', 'gaussian_variable', 'gaussian_fast', 'gaussian_true', 'step', 'smoothstep', 'savitzky_golay'}, optional
         Filtering method:
-        - 'gaussian'      : real-space Gaussian blur with sigma derived from Rc (Appendix A, Martos+2024).
-        - 'gaussian_fast' : Like 'gaussian' but without using gaussian_filter1d(): Faster but less accurate.
-        - 'gaussian_true' : Analytic Gaussian convolution, as mathematically defined.
-        - 'step'          : ideal top-hat in Fourier space (sharp cutoff at Rc).
-        - 'smoothstep'    : smooth window in Fourier space around Rc.
-        - 'savitzky_golay': polynomial smoothing with window matched to Rc.
+        - 'gaussian'         : real-space Gaussian blur with sigma derived from Rc (Appendix A, Martos+2024).
+        - 'gaussian_variable': Like 'gaussian' but with variable sigma (Appendix A, Martos+2024).
+        - 'gaussian_fast'    : Like 'gaussian' but without using gaussian_filter1d(): Faster but less accurate.
+        - 'gaussian_true'    : Analytic Gaussian convolution, as mathematically defined.
+        - 'step'             : ideal top-hat in Fourier space (sharp cutoff at Rc).
+        - 'smoothstep'       : smooth window in Fourier space around Rc.
+        - 'savitzky_golay'   : polynomial smoothing with window matched to Rc.
     show : bool, optional
         If True, plot original, low-pass, and high-pass components.
 
@@ -464,19 +520,34 @@ def filtered_flux(flux, R, Rc, filter_type="gaussian", show=False):
         If 'filter_type' is unsupported.
     """
     # No filter applied
-    if Rc is None:
-        return flux, np.zeros_like(flux)
+    if Rc is None or Rc == 0:
+        return np.copy(flux), np.zeros_like(flux)
     
+    # Sanity check
+    Rc_arr = np.asarray(Rc)
+    if filter_type == "gaussian_variable":
+        if Rc_arr.ndim != 1 or Rc_arr.shape != flux.shape:
+            raise ValueError("For 'gaussian_variable', Rc must be a 1D array with same shape as flux.")
+    else:
+        if Rc_arr.ndim != 0:
+            raise ValueError("For non-'gaussian_variable', Rc must be scalar.")
+
     valid        = np.isfinite(flux)
-    flux_filled  = fill_nan_linear(x=None, y=flux) # NaN gaps are filled with linear interpolation
+    flux_filled  = fill_nan_linear(x=None, y=flux) # NaN gaps are filled with linear interpolation (without extrapolation)
     valid_filled = np.isfinite(flux_filled)        # NaN edges can remain
     flux_valid   = flux_filled[valid_filled]
     
-    # Real-space Gaussian sigma that approximates a cut at Rc in resolution space: sigma derived from Martos+2025 Appendix A
+    # Real-space Gaussian sigma that cut at Rc in resolution space: sigma derived from Martos+2025 Appendix A
     if filter_type == "gaussian":
-        sigma         = 2*R / (np.pi * Rc) * np.sqrt(np.log(2) / 2) 
+        sigma         = 2*R / (np.pi * Rc) * np.sqrt(np.log(2) / 2) # see Appendix A of Martos et al. (2025)
         flux_valid_LF = gaussian_filter1d(flux_valid, sigma=sigma)
-        
+    
+    # Same as 'gaussian' but with varying Rc (sigma)
+    elif filter_type == "gaussian_variable":
+        sigma         = 2*R / (np.pi * Rc) * np.sqrt(np.log(2) / 2) # see Appendix A of Martos et al. (2025)
+        sigma_valid   = np.nan_to_num(sigma[valid_filled])
+        flux_valid_LF = gaussian_filter1d_variable(flux_valid, sigma=sigma_valid)
+    
     # Savitzky-Golay filter
     elif filter_type == "savitzky_golay":
         # Map Rc to a window length (odd integer >= 5)
@@ -489,7 +560,7 @@ def filtered_flux(flux, R, Rc, filter_type="gaussian", show=False):
     
     # Cached frequency responses
     elif filter_type in {"gaussian_fast", "gaussian_true", "step", "smoothstep"}:
-        fft           = np.fft.fft(np.asarray(flux_valid, dtype=np.complex128))  # FFT pleine
+        fft           = np.fft.fft(np.asarray(flux_valid, dtype=np.complex128))
         _, H_LF       = _fft_filter_response(N=len(flux_valid), R=R, Rc=Rc, filter_type=filter_type)
         flux_valid_LF = np.real(np.fft.ifft(fft * H_LF))
 
@@ -497,9 +568,9 @@ def filtered_flux(flux, R, Rc, filter_type="gaussian", show=False):
         raise KeyError("Invalid 'filter_type'. Use one of: 'gaussian', 'gaussian_fast', 'gaussian_true', 'step', 'smoothstep', 'savitzky_golay'." )
 
     # Reinsert into an array with original NaNs preserved
-    flux_LF               = np.full_like(flux, np.nan)
+    flux_LF               = np.zeros_like(flux) + np.nan
     flux_LF[valid_filled] = flux_valid_LF
-    flux_LF[~valid]       = np.nan # Retrieving original NaN 
+    flux_LF[~valid]       = np.nan                     # Retrieving original NaN 
     flux_HF               = flux - flux_LF
 
     if show:
@@ -517,6 +588,7 @@ def filtered_flux(flux, R, Rc, filter_type="gaussian", show=False):
         plt.show()
         
     return flux_HF, flux_LF
+
 
 
 @lru_cache(maxsize=50)
@@ -567,7 +639,7 @@ def get_fraction_noise_filtered(N, R, Rc, filter_type, empirical=False):
     realizations. Much slower; intended for checks rather than production.
     """
 
-    if Rc is None:
+    if Rc is None or Rc == 0:
         return 1., 0.
     
     # --- Analytical: white-noise power fractions for the LF/HF split, cached by (N, R, Rc, type).
@@ -590,8 +662,8 @@ def get_fraction_noise_filtered(N, R, Rc, filter_type, empirical=False):
     for i in range(n):
         noise              = np.random.normal(0, sig, N)
         noise_HF, noise_LF = filtered_flux(flux=noise, R=R, Rc=Rc, filter_type=filter_type)
-        fn_HF += np.nanvar(noise_HF) / var / n
-        fn_LF += np.nanvar(noise_LF) / var / n
+        fn_HF             += np.nanvar(noise_HF) / var / n
+        fn_LF             += np.nanvar(noise_LF) / var / n
     
     return fn_HF, fn_LF
 
@@ -935,7 +1007,7 @@ class Spectrum:
         R_old      = round(spectrum_interp.R)                           # Old max resolution (assuming Nyquist sampling)
         R_sampling = round(estimate_resolution(wavelength=wave_output)) # New resolution     (assuming Nyquist sampling)
         
-        # Only forbid up-resolution if we do NOT provide a stricter R_output
+        # Only forbid up-resolution if we do NOT provide a broader R_output
         if R_sampling > R_old:
             raise ValueError("Target grid is finer than the current max resolving power. This function only supports down-binning (otherwise NaN would be injected). Provide a coarser 'wave_output'.")
         if (R_output is not None) and (R_output > R_old):
@@ -946,7 +1018,7 @@ class Spectrum:
         R_new = R_sampling if R_output is None else R_output
 
         # LSF Gaussian convolution (optional) 
-        if gaussian_filtering:
+        if gaussian_filtering and R_old != R_new:
             if sigma_kernel is None:
                 # Nyquist assumption: FWHM_old = 2 px → sigma_old = 2/2.355 px: sigma_kernel = sqrt(sigma_new^2 - sigma_old^2) = (2/2.355)*sqrt(ratio^2 - 1)
                 ratio_R      = R_old / R_new

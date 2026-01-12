@@ -145,7 +145,7 @@ def get_PSF_profile(band, strehl, apodizer, coronagraph, instru, separation_plan
     valid          = np.isfinite(raw_profile)
     raw_separation = raw_separation[valid]    # [arcsec] or [mas]
     raw_profile    = raw_profile[valid]       # [FOV flux fraction/arcsec**2] or [FOV flux fraction/mas**2]
-    profile_interp = interp1d(raw_separation, raw_profile, bounds_error=False, fill_value=np.nan)
+    profile_interp = interp1d(raw_separation, raw_profile, bounds_error=False, fill_value="extrapolate")
     
     # Build separation grid
     if return_SNR_planet and separation_planet is not None:
@@ -175,8 +175,7 @@ def get_PSF_profile(band, strehl, apodizer, coronagraph, instru, separation_plan
     iwa_FPM = None
     if instru == "HARMONI":
         iwa_FPM = config_data["apodizers"][apodizer].sep
-        if separation_planet is not None and 1==0:
-            #iwa_FPM = min(max(separation_planet - pxscale*config_data["size_core"]/2, 0), iwa_FPM)
+        if separation_planet is not None and 1==1: # TODO: adapted IWA for each planet's separation case (it's kinda of cheating)
             iwa_FPM = max(separation_planet - pxscale, 0)
         if iwa_FPM not in separation:
             idx        = np.searchsorted(separation, iwa_FPM)
@@ -250,55 +249,55 @@ def get_PSF_profile(band, strehl, apodizer, coronagraph, instru, separation_plan
 # -------------------------------------------------------------------------
 
 @lru_cache(maxsize=50)
-def estimate_RON_up_the_ramp(N, RON0, A=1.0, B=0.0):
+def estimate_RON_UTR(N, RON0, RON_lim=0.):
     """
-    Effective read noise for Up-the-Ramp with N non-destructive reads,
-    on the *integrated* counts over the ramp (not the slope per second).
+    Estimate the effective readout noise (RON) for an Up-the-Ramp (UTR) sampling scheme (see: https://ntrs.nasa.gov/api/citations/20070034922/downloads/20070034922.pdf)
 
     Parameters
     ----------
-    N : int (>= 2)
-        Number of reads in the ramp.
-    RON0 : float
-        Per-read read noise [e-/px/read] (RMS of a single read).
-    A : float, optional
-        Scale factor applied to the *white* RON variance (default 1.0).
-        Keep A=1 for the ideal textbook case.
-    B : float, optional
-        Correlated noise *floor* (sigma) to add in quadrature [e-/px/read]. Default 1.0.
-        (Its variance is added as B**2 and does not diminish with N.)
-        
+    N : int or float
+        Number of non-destructive reads (must be ≥ 2).
+    RON0 : float, optional
+        Read noise per read in electrons (default: global variable RON0).
+    RON_lim : float, optional
+        Asymptotic read noise floor at large N, representing other limiting sources 
+        (e.g., 1/f noise or temporal systematics) in electrons (default: global variable RON_lim).
+
     Returns
     -------
-    RON_eff : float or ndarray
-        Effective read noise on the integrated ramp (sigma in e-/px/DIT),
-        or the variance if return_variance=True.
-        
-    References
-    ----------
-    - Rauscher, B. J., et al. (2007), “Detectors for the JWST NIRSpec I:
-      Readout mode, noise model, and calibration considerations”.
-      Gives the read-noise-dominated UTR variance term:
-      σ_read^2 × [12 (N−1) / (N (N+1))].  arXiv:0706.2344. 
+    RON_eff : float
+        Effective readout noise in electrons for the given number of reads.
+
+    Notes
+    -----
+    The model assumes ideal equispaced Up-the-Ramp (UTR) sampling and combines two components:
+    - A term decreasing as 1/N² from averaging uncorrelated read noise.
+    - A constant floor from residual correlated noise or systematics.
+
+    The formula used is:
+        RON_eff² = RON0² × [12 × (N−1) / (N × (N+1))] + RON_lim²
+
+    Raises
+    ------
+    ValueError
+        If N < 2, since UTR requires at least 2 reads.
     """
-    if N < 2:
+    if (type(N) == int or type(N) == float) and N < 2:
         raise ValueError("N must be >= 2 for Up-the-Ramp.")
 
-    f         = 12 * (N - 1) / (N * (N + 1)) # UTR factor (w/o sqrt)
-    RON_eff_2 = A * (RON0**2) * f + B**2     # variance sum
+    RON_eff_2 = (RON0**2) * 12 * (N - 1) / (N * (N + 1)) + RON_lim**2
 
     return np.sqrt(RON_eff_2)
 
 
 
-
-def get_DIT_RON(instru, config_data, apodizer, PSF_profile, separation, star_spectrum_band, exposure_time, min_DIT, max_DIT, trans, RON, saturation_e, input_DIT, iwa_FPM):
+def get_DIT_RON(instru, instru_type, apodizer, PSF_profile, separation, star_spectrum_band, exposure_time, min_DIT, max_DIT, trans, RON, RON_lim, saturation_e, input_DIT, iwa_FPM):
     """
     Compute the detector integration time (DIT) to avoid saturation and the effective read-noise.
 
     Parameters
     ----------
-    instru, config_data, apodizer
+    instru, instru_type, apodizer
         Instrument description and apodizer name (used to ignore the PSF core inside the IWA for IFU_fiber).
     PSF_profile
         Radial PSF profile (in fraction per pixel^2, already scaled).
@@ -327,7 +326,7 @@ def get_DIT_RON(instru, config_data, apodizer, PSF_profile, separation, star_spe
         Effective read-out noise per DIT (e-/px).
     """
     # Per-DIT max electron rate estimate (worst-case pixel in the PSF core)
-    if config_data["type"] == "imager":
+    if instru_type == "imager":
         # Collapse spectrum to band total [e-/mn], then scale by PSF profile peak
         max_flux_e = np.nanmax(PSF_profile) * np.nansum(star_spectrum_band.flux * trans) # [total e-/mn]
         # Detector Integration Time when the saturation is reached on the brightest pixel
@@ -352,14 +351,14 @@ def get_DIT_RON(instru, config_data, apodizer, PSF_profile, separation, star_spe
     else:
         DIT = np.clip(DIT_saturation, min_DIT, max_DIT)
     DIT = min(DIT, exposure_time) # [mn]: The DIT cannot be longer than the total exposure time
-
+    
     # Up-the-ramp effective read-noise (see https://arxiv.org/pdf/0706.2344)
     if DIT >= 2*min_DIT: # At least 2 reads inside the ramp
         N_i = DIT / min_DIT # Number of intermittent readings
         if instru in {"MIRIMRS", "NIRSpec", "NIRCam"}:
             RON_eff = RON / np.sqrt(N_i)
         else:
-            RON_eff = estimate_RON_up_the_ramp(N=N_i, RON0=RON, A=1.0, B=0.0) # Effective read out noise [e-/px/DIT]
+            RON_eff = estimate_RON_UTR(N=N_i, RON0=RON, RON_lim=RON_lim) # Effective read out noise [e-/px/DIT]
             RON_eff = min(RON_eff, RON)
     else:
         RON_eff = RON
@@ -376,6 +375,33 @@ def get_DIT_RON(instru, config_data, apodizer, PSF_profile, separation, star_spe
     return NDIT, DIT, DIT_saturation, RON_eff, iwa_FPM
 
 
+# -------------------------------------------------------------------------
+# δ term for differential imaging with non-imager
+# -------------------------------------------------------------------------
+    
+def get_delta(planet_spectrum_band, template, trans):
+    """
+    Compute the useful photo-electron rate δ (per minute) used in differential imaging.
+    δ ≈ sum(  trans*Sp * template ) × fraction_core
+
+    Parameters
+    ----------
+    planet_spectrum_band
+        Planet spectrum on the band grid (photons/min).
+    template
+        (Unitless) normalized template on the same spectral grid.
+    trans
+        Total system transmission on the same grid as the spectrum (scalar or array).
+
+    Returns
+    -------
+    delta
+        δ (e-/mn).
+    """
+    delta = np.nansum(trans*planet_spectrum_band.flux * template) # delta x cos theta lim (if systematics)
+    return delta # [e-/mn]
+
+
 
 # -------------------------------------------------------------------------
 # α and β terms for molecular mapping
@@ -384,8 +410,7 @@ def get_DIT_RON(instru, config_data, apodizer, PSF_profile, separation, star_spe
 def get_alpha(planet_spectrum_band, template, Rc, R, trans, filter_type):
     """
     Compute the useful photo-electron rate α (per minute) used in molecular mapping.
-
-    α ≈ sum(  [Sp_HF] * trans * template ) × fraction_core
+    α ≈ sum(  [Sp]_HF * trans * template )
     where _HF denotes the high-pass filtered spectrum.
 
     Parameters
@@ -393,30 +418,26 @@ def get_alpha(planet_spectrum_band, template, Rc, R, trans, filter_type):
     planet_spectrum_band
         Planet spectrum on the band grid (photons/min).
     template
-        (Unitless) molecular template on the same spectral grid.
+        (Unitless) normalized template on the same spectral grid.
     Rc
         Cut-off resolving power for the filter; if None, no filtering (HP=Sp, LP=0).
     R
         Resolving power of the input spectrum.
-    fraction_core
-        Fraction of the flux contained in the PSF core.
     trans
         Total system transmission on the same grid as the spectrum (scalar or array).
-    separation
-        Separation array (only used to return a vector of same length).
     filter_type
         Filter kind passed to 'filtered_flux' ("gaussian", "step", ...).
 
     Returns
     -------
     alpha
-        Vector (same shape as 'separation') filled with α (e-/min) for convenience.
+        α (e-/mn)
     """
     R_nyquist = estimate_resolution(planet_spectrum_band.wavelength)
-    Sp        = planet_spectrum_band.flux                                           # Planetary flux integrated in the FWHM (in ph/mn)
+    Sp        = planet_spectrum_band.flux                                           # Planetary flux (in ph/mn)
     Sp_HF, _  = filtered_flux(flux=Sp, R=R_nyquist, Rc=Rc, filter_type=filter_type) # High_pass filtered planetary flux
     Sp_HF    *= trans                                                               # gamma x [Sp]_HF
-    alpha     = np.nansum(Sp_HF*template)                                           # alpha x cos theta lim (if systematic)
+    alpha     = np.nansum(Sp_HF*template)                                           # alpha x cos theta lim (if systematics)
     return alpha # [e-/mn]
 
 
@@ -424,21 +445,18 @@ def get_alpha(planet_spectrum_band, template, Rc, R, trans, filter_type):
 def get_beta(star_spectrum_band, planet_spectrum_band, template, Rc, R, trans, filter_type):
     """
     Compute the self-subtraction term β (per minute).
-
-    β ≈ sum( trans * Star_HF * Planet_LF / Star_LF * template ) × fraction_core
+    β ≈ sum( trans * Star_HF * Planet_LF / Star_LF * template )
 
     Parameters
     ----------
     star_spectrum_band, planet_spectrum_band
         Star/planet spectra (photons/min) on the band grid.
     template
-        (Unitless) molecular template on the same spectral grid.
+        (Unitless) normalized template on the same spectral grid.
     Rc
         Cut-off resolving power for HP/LP filter. If None, β = 0.
     R
         Resolving power of the input spectra.
-    fraction_core
-        Fraction of the flux contained in the PSF core.
     trans
         Total system transmission on the same grid as the spectrum (scalar or array).
     separation
@@ -449,10 +467,10 @@ def get_beta(star_spectrum_band, planet_spectrum_band, template, Rc, R, trans, f
     Returns
     -------
     beta
-        Vector (same shape as 'separation') filled with β (e-/min) for convenience.
+        β (e-/mn).
     """
     R_nyquist = estimate_resolution(planet_spectrum_band.wavelength)
-    if Rc is None:
+    if Rc is None or Rc == 0:
         beta = 0
     else:
         star_HF, star_LF     = filtered_flux(star_spectrum_band.flux, R=R_nyquist, Rc=Rc, filter_type=filter_type)   # Star filtered spectra
@@ -501,66 +519,6 @@ def get_wa(config_data, sep_unit=None):
         #return iwa * 1e3, owa * 1e3
     else:
         raise ValueError("sep_unit must be 'arcsec' or 'mas'.")
-
-
-
-#---------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-def plot_dark_noise_budget(instru, noise_level=None):
-    RON_min = 0.5 # e-/px/DIT (achieved laboratory limit)
-    config_data  = get_config_data(instru)
-    min_DIT      = config_data["spec"]["minDIT"]       # minimal integration time (in mn)
-    max_DIT      = config_data["spec"]["maxDIT"]       # maximal integration time (in mn)
-    RON          = config_data["spec"]["RON"]          # read out noise (in e-/px/DIT)
-    dark_current = config_data["spec"]["dark_current"] # dark current (in e-/px/s)
-    DIT       = np.logspace(np.log10(min_DIT), np.log10(200*max_DIT), 100)
-    sigma_dc  = np.zeros_like(DIT)
-    sigma_ron = np.zeros_like(DIT)
-    for i in range(len(DIT)):
-        dit = DIT[i]
-        sigma_dc[i] = dark_current * dit * 60 # e-/px/DOT
-        nb_min_DIT = 1 # "Up the ramp" reading mode: the pose is sequenced in several non-destructive readings to reduce reading noise (see https://en.wikipedia.org/wiki/Signal_averaging).
-        if dit > nb_min_DIT*min_DIT: # choose 4 min_DIT because if intermittent readings are too short, the detector will heat up too quickly => + dark current
-            N_i     = dit / (nb_min_DIT*min_DIT) # number of intermittent readings
-            sigma_ron[i] = RON / np.sqrt(N_i) # effective read out noise (in e-/px/DIT)
-        else:
-            sigma_ron[i] = RON
-        if instru == 'ERIS' and sigma_ron[i] < 7: # effective RON lower limit for ERIS
-            sigma_ron[i] = 7
-        if sigma_ron[i] < RON_min: # achieved lower limit in laboratory
-            sigma_ron[i] = RON_min
-    sigma_tot = np.sqrt(sigma_ron**2 + sigma_dc**2)
-    plt.figure(figsize=(8, 6), dpi=300)
-    plt.plot(DIT, sigma_ron, "g--", label=f"RON ($RON_0$ = {RON} e-/px/DIT)")
-    plt.plot(DIT, sigma_dc, "m--", label=f"dark current ({dark_current*60:.3f} e-/px/mn)")
-    plt.plot(DIT, sigma_tot, "k-", label="total")
-    if noise_level is not None:
-        plt.axhline(noise_level, color='r', ls='--', label=f"noise level = {noise_level} e-/px/DIT")    
-        intersections = []
-        for i in range(len(DIT) - 1):
-            y0, y1 = sigma_tot[i], sigma_tot[i+1]
-            if (y0 - noise_level) * (y1 - noise_level) < 0:
-                x0, x1 = DIT[i], DIT[i+1]
-                frac = (noise_level - y0) / (y1 - y0)  # interpolation linéaire
-                x_cross = x0 + frac * (x1 - x0)
-                intersections.append(x_cross)
-        for x_cross in intersections:
-            plt.axvline(x_cross, color='r', ls=':', alpha=0.7)
-            plt.annotate(f"{x_cross:.2f} mn", xy=(x_cross, noise_level), xycoords='data', xytext=(0, 0), textcoords='offset points', ha='center', va='bottom', color='r', rotation=0, bbox=dict(boxstyle="round", fc="white", ec="r", alpha=1))
-    plt.axhspan(0, RON_min, facecolor='gray', alpha=0.3, label=f"Laboratory limit (< {RON_min} e-/px/DIT)")
-    plt.title(f"Dark noise budget for {instru}", fontsize=16, fontweight='bold')
-    plt.xscale('log')
-    plt.xlabel("DIT [mn]", fontsize=14)
-    plt.ylabel("Noise [e-/px/DIT]", fontsize=14)
-    plt.xlim(DIT[0], DIT[-1])
-    plt.ylim(0)
-    plt.grid(which='both', alpha=0.4)
-    plt.minorticks_on()
-    plt.legend(loc='best', fontsize=12)
-    plt.tight_layout()
-    plt.gca().yaxis.set_ticks_position('both')
-    plt.gca().tick_params(axis='both', labelsize=12)
-    plt.show()
 
 
 
@@ -838,7 +796,7 @@ def get_systematic_profile(config_data, band, tellurics, apodizer, strehl, coron
         
         # Analytical PCA signal-loss proxy
         # Another way to estimate the signal loss due to the PCA: substract the PCA components to the planetary spectrum
-        if Rc is None:
+        if Rc is None or Rc == 0:
             d = trans*planet_HF
         else:
             d = trans*planet_HF - trans*star_HF*planet_LF/star_LF # Spectrum at the planet's location: see Eq.(18) of Martos et al. 2025
@@ -911,3 +869,61 @@ def get_systematic_profile(config_data, band, tellurics, apodizer, strehl, coron
     return sigma_syst_prime_2, sep, M_HF, Ms, Mp, M_pca, wave, pca, PCA_verbose
 
 
+
+#---------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+def plot_dark_noise_budget(instru, noise_level=None):
+    RON_min = 0.5 # e-/px/DIT (achieved laboratory limit)
+    config_data  = get_config_data(instru)
+    min_DIT      = config_data["spec"]["minDIT"]       # minimal integration time (in mn)
+    max_DIT      = config_data["spec"]["maxDIT"]       # maximal integration time (in mn)
+    RON          = config_data["spec"]["RON"]          # read out noise (in e-/px/DIT)
+    dark_current = config_data["spec"]["dark_current"] # dark current (in e-/px/s)
+    DIT       = np.logspace(np.log10(min_DIT), np.log10(200*max_DIT), 100)
+    sigma_dc  = np.zeros_like(DIT)
+    sigma_ron = np.zeros_like(DIT)
+    for i in range(len(DIT)):
+        dit = DIT[i]
+        sigma_dc[i] = dark_current * dit * 60 # e-/px/DOT
+        nb_min_DIT = 1 # "Up the ramp" reading mode: the pose is sequenced in several non-destructive readings to reduce reading noise (see https://en.wikipedia.org/wiki/Signal_averaging).
+        if dit > nb_min_DIT*min_DIT: # choose 4 min_DIT because if intermittent readings are too short, the detector will heat up too quickly => + dark current
+            N_i     = dit / (nb_min_DIT*min_DIT) # number of intermittent readings
+            sigma_ron[i] = RON / np.sqrt(N_i) # effective read out noise (in e-/px/DIT)
+        else:
+            sigma_ron[i] = RON
+        if instru == 'ERIS' and sigma_ron[i] < 7: # effective RON lower limit for ERIS
+            sigma_ron[i] = 7
+        if sigma_ron[i] < RON_min: # achieved lower limit in laboratory
+            sigma_ron[i] = RON_min
+    sigma_tot = np.sqrt(sigma_ron**2 + sigma_dc**2)
+    plt.figure(figsize=(8, 6), dpi=300)
+    plt.plot(DIT, sigma_ron, "g--", label=f"RON ($RON_0$ = {RON} e-/px/DIT)")
+    plt.plot(DIT, sigma_dc, "m--", label=f"dark current ({dark_current*60:.3f} e-/px/mn)")
+    plt.plot(DIT, sigma_tot, "k-", label="total")
+    if noise_level is not None:
+        plt.axhline(noise_level, color='r', ls='--', label=f"noise level = {noise_level} e-/px/DIT")    
+        intersections = []
+        for i in range(len(DIT) - 1):
+            y0, y1 = sigma_tot[i], sigma_tot[i+1]
+            if (y0 - noise_level) * (y1 - noise_level) < 0:
+                x0, x1 = DIT[i], DIT[i+1]
+                frac = (noise_level - y0) / (y1 - y0)  # interpolation linéaire
+                x_cross = x0 + frac * (x1 - x0)
+                intersections.append(x_cross)
+        for x_cross in intersections:
+            plt.axvline(x_cross, color='r', ls=':', alpha=0.7)
+            plt.annotate(f"{x_cross:.2f} mn", xy=(x_cross, noise_level), xycoords='data', xytext=(0, 0), textcoords='offset points', ha='center', va='bottom', color='r', rotation=0, bbox=dict(boxstyle="round", fc="white", ec="r", alpha=1))
+    plt.axhspan(0, RON_min, facecolor='gray', alpha=0.3, label=f"Laboratory limit (< {RON_min} e-/px/DIT)")
+    plt.title(f"Dark noise budget for {instru}", fontsize=16, fontweight='bold')
+    plt.xscale('log')
+    plt.xlabel("DIT [mn]", fontsize=14)
+    plt.ylabel("Noise [e-/px/DIT]", fontsize=14)
+    plt.xlim(DIT[0], DIT[-1])
+    plt.ylim(0)
+    plt.grid(which='both', alpha=0.4)
+    plt.minorticks_on()
+    plt.legend(loc='best', fontsize=12)
+    plt.tight_layout()
+    plt.gca().yaxis.set_ticks_position('both')
+    plt.gca().tick_params(axis='both', labelsize=12)
+    plt.show()

@@ -93,9 +93,7 @@ def mass_to_size(mass, s0, ds, mass_min=None, mass_max=None):
         mass_min = np.nanmin(mass[np.isfinite(mass) & (mass > 0)])
     if mass_max is None:
         mass_max = np.nanmax(mass[np.isfinite(mass) & (mass > 0)])
-
-    t = (np.log10(np.clip(mass, mass_min, mass_max)) - np.log10(mass_min)) / \
-        (np.log10(mass_max) - np.log10(mass_min))
+    t = (np.log10(np.clip(mass, mass_min, mass_max)) - np.log10(mass_min)) / (np.log10(mass_max) - np.log10(mass_min))
     t = np.clip(t, 0, 1)
     return s0 + ds * t
 
@@ -730,11 +728,11 @@ def SNR_from_table(table, exposure_time, band):
     np.ndarray
         SNR values (shape = len(table)).
     """
-    dit    = np.asarray(table[f'DIT_{band}'], dtype=float)        # mn/DIT
-    ndit   = exposure_time / dit                                  # DIT
-    signal = np.asarray(table[f'signal_{band}'], dtype=float)     # signal/DIT
+    dit    = np.asarray(table[f'DIT_{band}'],        dtype=float) # mn/DIT
+    signal = np.asarray(table[f'signal_{band}'],     dtype=float) # signal/DIT
     sfund  = np.asarray(table[f'sigma_fund_{band}'], dtype=float) # noise/DIT
     ssyst  = np.asarray(table[f'sigma_syst_{band}'], dtype=float) # noise/DIT
+    ndit   = exposure_time / dit
     S      = ndit * signal
     N      = np.sqrt(ndit*sfund**2 + ndit**2*ssyst**2)
     SNR    = S / N
@@ -1437,13 +1435,13 @@ def process_SNR(args):
     Returns
     -------
     result : tuple
-         - idx : int
-         - mags_p : dict {'Star{instru}mag' : float, 'Planet{instru}mag' : float, 'Star{band}mag' : float, ... }
+         - idx       : int
+         - mags_p    : dict {'Star{instru}mag' : float, 'Planet{instru}mag' : float, 'Star{band}mag' : float, ... }
          - name_band : list[str]
          - signal    : np.ndarray [e-/DIT]  (per name_band entry)
          - sigma_f   : np.ndarray [e-/DIT]
          - sigma_s   : np.ndarray [e-/DIT]
-         - DIT       : np.ndarray [s]
+         - DIT       : np.ndarray [mn]
     """
     # idx, planet row
     idx, planet = args
@@ -1463,7 +1461,7 @@ def process_SNR(args):
     coronagraph     = _SNR_CTX["coronagraph"]
     Rc              = _SNR_CTX["Rc"]
     filter_type     = _SNR_CTX["filter_type"]
-    systematic      = _SNR_CTX["systematic"]
+    systematics     = _SNR_CTX["systematics"]
     PCA             = _SNR_CTX["PCA"]
     N_PCA           = _SNR_CTX["N_PCA"]
     masks           = _SNR_CTX["masks"]
@@ -1485,13 +1483,13 @@ def process_SNR(args):
         mags[f"Planet{band}mag"] = get_mag(flux_obs=planet_spectrum.flux[mask_band], flux_ref=vega_flux[band])
         
     # Computing the SNR for the planet
-    name_band, SNR_planet, signal_planet, sigma_fund_planet, sigma_syst_planet, DIT_band = FastCurves(instru=instru, calculation="SNR", mag_star=mag_s, band0=band0, exposure_time=exposure_time, mag_planet=mag_p, separation_planet=planet["AngSep"].value/1000, return_SNR_planet=True, show_plot=False, verbose=False, planet_spectrum=planet_spectrum, star_spectrum=star_spectrum, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, Rc=Rc, filter_type=filter_type, systematic=systematic, PCA=PCA, N_PCA=N_PCA)
+    name_band, SNR_planet, signal_planet, sigma_fund_planet, sigma_syst_planet, DIT_band = FastCurves(instru=instru, calculation="SNR", mag_star=mag_s, band0=band0, exposure_time=exposure_time, mag_planet=mag_p, separation_planet=planet["AngSep"].value/1000, return_SNR_planet=True, show_plot=False, verbose=False, planet_spectrum=planet_spectrum, star_spectrum=star_spectrum, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, Rc=Rc, filter_type=filter_type, systematics=systematics, PCA=PCA, N_PCA=N_PCA)
     
     return idx, mags, name_band, signal_planet, sigma_fund_planet, sigma_syst_planet, DIT_band
 
 
 
-def get_planet_table_SNR(instru, table="Archive", thermal_model="None", reflected_model="None", apodizer="NO_SP", strehl="NO_JQ", coronagraph=None, Rc=100, filter_type="gaussian", systematic=False, PCA=False, N_PCA=20):
+def get_planet_table_SNR(instru, table="Archive", thermal_model="None", reflected_model="None", apodizer="NO_SP", strehl="NO_JQ", coronagraph=None, Rc=100, filter_type="gaussian", systematics=False, PCA=False, N_PCA=20):
     """"
     Compute per-planet SNRs for a given instrument and write results to the table.
 
@@ -1520,8 +1518,8 @@ def get_planet_table_SNR(instru, table="Archive", thermal_model="None", reflecte
         High-pass cutoff resolution (None → no filtering).
     filter_type : str
         Filtering kernel ("gaussian", "step", "smoothstep", ...).
-    systematic : bool, optional
-        Whether to include systematic noise in FastCurves.
+    systematics : bool, optional
+        Whether to include systematics noise in FastCurves.
     PCA : bool, optional
         Whether to include PCA post-processing in FastCurves.
     N_PCA : int, optional
@@ -1530,8 +1528,8 @@ def get_planet_table_SNR(instru, table="Archive", thermal_model="None", reflecte
     config_data   = get_config_data(instru)
     exposure_time = 120 # [mn]
     time1         = time.time()
-    if systematic and filter_type == "gaussian_fast":
-        filter_type = "gaussian" # "gaussian_fast" is bad for handling systematic estimations
+    if systematics and filter_type == "gaussian_fast":
+        filter_type = "gaussian" # "gaussian_fast" is bad for handling systematics estimations
     
     # --- 1) Loading table ---
     if table == "Archive":
@@ -1603,14 +1601,14 @@ def get_planet_table_SNR(instru, table="Archive", thermal_model="None", reflecte
     spectrum_contributions, name_model = get_spectrum_contribution_name_model(thermal_model, reflected_model)
     
     # Suffix
-    suffix = "with systematics+PCA" if (systematic and PCA) else ("with systematics" if systematic else "without systematics")
+    suffix = "with systematics+PCA" if (systematics and PCA) else ("with systematics" if systematics else "without systematics")
     
     # Print
     print(f"\n {instru} ({apodizer} & {strehl} & {coronagraph}) {suffix} ({thermal_model} & {reflected_model})")
 
     # --- 7) Init global context for workers ---
     global _SNR_CTX
-    _SNR_CTX = dict(instru=instru, thermal_model=thermal_model, reflected_model=reflected_model, wave_instru=wave_instru, wave_K=wave_K, vega_flux=vega_flux, vega_spectrum_K=vega_spectrum_K, band0=band0, exposure_time=exposure_time, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, Rc=Rc, filter_type=filter_type, systematic=systematic, PCA=PCA, N_PCA=N_PCA, masks=masks, bands_valid=bands_valid)    
+    _SNR_CTX = dict(instru=instru, thermal_model=thermal_model, reflected_model=reflected_model, wave_instru=wave_instru, wave_K=wave_K, vega_flux=vega_flux, vega_spectrum_K=vega_spectrum_K, band0=band0, exposure_time=exposure_time, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, Rc=Rc, filter_type=filter_type, systematics=systematics, PCA=PCA, N_PCA=N_PCA, masks=masks, bands_valid=bands_valid)    
 
     # --- 8) Run SNR for each planet (parallel if not PCA or serial if PCA) ---
     if PCA: # if PCA, no multiprocessing (otherwise it crashes: TODO ?)
@@ -1657,7 +1655,7 @@ def get_planet_table_SNR(instru, table="Archive", thermal_model="None", reflecte
         
     print(f"\n Calculating SNR took {(time.time()-time1)/60:.1f} mn")
     coronagraph_str = "_"+str(coronagraph) if coronagraph is not None else ""
-    if systematic:
+    if systematics:
         suffix = "with_systematics+PCA" if PCA else "with_systematics"
     else:
         suffix = "without_systematics"
@@ -1687,10 +1685,10 @@ def all_SNR_table(table="Archive", instru_name_list=instru_name_list): # takes ~
                             if thermal_model == "None" and reflected_model == "None":
                                 continue
                             else:
-                                get_planet_table_SNR(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, systematic=False)
+                                get_planet_table_SNR(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, systematics=False)
                                 if instru in instru_with_systematics:
-                                    get_planet_table_SNR(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, systematic=True)
-                                    get_planet_table_SNR(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, systematic=True, PCA=True, N_PCA=20)
+                                    get_planet_table_SNR(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, systematics=True)
+                                    get_planet_table_SNR(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, systematics=True, PCA=True, N_PCA=20)
     print('\n Calculating all SNR took {0:.3f} s'.format(time.time()-time0))
 
 
@@ -1979,7 +1977,7 @@ def yield_plot_instrus_texp(thermal_model="BT-Settl", reflected_model="PICASO", 
 
 
 
-def yield_plot_bands_texp(instru="HARMONI", thermal_model="BT-Settl", reflected_model="PICASO", systematic=False, PCA=False, fraction=False):
+def yield_plot_bands_texp(instru="HARMONI", thermal_model="BT-Settl", reflected_model="PICASO", systematics=False, PCA=False, fraction=False):
         
     ANDES_R = False
     
@@ -1993,7 +1991,7 @@ def yield_plot_bands_texp(instru="HARMONI", thermal_model="BT-Settl", reflected_
 
     spectrum_contributions, name_model = get_spectrum_contribution_name_model(thermal_model, reflected_model)
 
-    if systematic:
+    if systematics:
         suffix = "with_systematics+PCA" if PCA else "with_systematics"
     else:
         suffix = "without_systematics"  
@@ -2356,7 +2354,7 @@ def yield_hist_instrus_ptypes_ELT(exposure_time=120, thermal_model="BT-Settl", r
 # Yield corners #
 #################
 
-def yield_corner_instru(instru="HARMONI", exposure_time=6*60, thermal_model="BT-Settl", reflected_model="PICASO", apodizer="NO_SP", strehl="JQ1", coronagraph=None, band="INSTRU", systematic=False, PCA=False):
+def yield_corner_instru(instru="HARMONI", exposure_time=6*60, thermal_model="BT-Settl", reflected_model="PICASO", apodizer="NO_SP", strehl="JQ1", coronagraph=None, band="INSTRU", systematics=False, PCA=False):
     smooth_corner = 1
     ndim          = 6 # Mp, Rp, Tp, a, d, sep
     config_data = get_config_data(instru)
@@ -2402,7 +2400,7 @@ def yield_corner_instru(instru="HARMONI", exposure_time=6*60, thermal_model="BT-
     
     # DETECTIONS TABLE
     coronagraph_str = "_"+str(coronagraph) if coronagraph is not None else ""
-    if systematic:
+    if systematics:
         suffix = "with_systematics+PCA" if PCA else "with_systematics"
     else:
         suffix = "without_systematics"
@@ -2441,7 +2439,7 @@ def yield_corner_instru(instru="HARMONI", exposure_time=6*60, thermal_model="BT-
     
 
 
-def yield_corner_instrus(instru1="HARMONI", instru2="ANDES", apodizer1="NO_SP", apodizer2="NO_SP", strehl1="JQ1", strehl2="MED", coronagraph1=None, coronagraph2=None, exposure_time=6*60, thermal_model="BT-Settl", reflected_model="PICASO", systematic=False, PCA=False):
+def yield_corner_instrus(instru1="HARMONI", instru2="ANDES", apodizer1="NO_SP", apodizer2="NO_SP", strehl1="JQ1", strehl2="MED", coronagraph1=None, coronagraph2=None, exposure_time=6*60, thermal_model="BT-Settl", reflected_model="PICASO", systematics=False, PCA=False):
     instrus       = [instru1,      instru2]
     apodizers     = [apodizer1,    apodizer2]
     strehls       = [strehl1,      strehl2]
@@ -2501,7 +2499,7 @@ def yield_corner_instrus(instru1="HARMONI", instru2="ANDES", apodizer1="NO_SP", 
         apodizer        = apodizers[ni]
         strehl          = strehls[ni]
         coronagraph_str = "_"+str(coronagraphs[ni]) if coronagraphs[ni] is not None else ""
-        if systematic:
+        if systematics:
             suffix = "with_systematics+PCA" if PCA else "with_systematics"
         else:
             suffix = "without_systematics"
@@ -2707,7 +2705,7 @@ def yield_corner_models(model1="tellurics", model2="flat", instru="ANDES", apodi
 # Yield contrast #
 ##################
 
-def yield_contrast_instru(instru="ANDES", exposure_time=6*60, thermal_model="BT-Settl", reflected_model="PICASO", apodizer="NO_SP", strehl="MED", coronagraph=None, systematic=False, PCA=False, table="Archive", band="INSTRU"):
+def yield_contrast_instru(instru="ANDES", exposure_time=6*60, thermal_model="BT-Settl", reflected_model="PICASO", apodizer="NO_SP", strehl="MED", coronagraph=None, systematics=False, PCA=False, table="Archive", band="INSTRU"):
     config_data = get_config_data(instru)
 
     # WORKING ANGLE
@@ -2725,7 +2723,7 @@ def yield_contrast_instru(instru="ANDES", exposure_time=6*60, thermal_model="BT-
     spectrum_contributions, name_model = get_spectrum_contribution_name_model(thermal_model, reflected_model)
 
     coronagraph_str = "_"+str(coronagraph) if coronagraph is not None else ""
-    if systematic:
+    if systematics:
         suffix = "with_systematics+PCA" if PCA else "with_systematics"
     else:
         suffix = "without_systematics"
@@ -2861,23 +2859,7 @@ def Vsini_plots():
 
 def process_contrast(args):
     """
-    Worker: compute SNR and band magnitudes for a single planet.
-
-    Parameters
-    ----------
-    args : tuple
-        (idx, planet_row)
-
-    Returns
-    -------
-    result : tuple
-         - idx : int
-         - mags_p : dict {'Star{instru}mag' : float, 'Planet{instru}mag' : float, 'Star{band}mag' : float, ... }
-         - name_band : list[str]
-         - signal    : np.ndarray [e-/DIT]  (per name_band entry)
-         - sigma_f   : np.ndarray [e-/DIT]
-         - sigma_s   : np.ndarray [e-/DIT]
-         - DIT       : np.ndarray [s]
+    Worker: compute contrast and band magnitudes for a single planet.
     """
     # idx, planet row
     idx, planet = args
@@ -2895,7 +2877,7 @@ def process_contrast(args):
     exposure_time          = _CONTRAST_CTX["exposure_time"]
     Rc                     = _CONTRAST_CTX["Rc"]
     filter_type            = _CONTRAST_CTX["filter_type"]
-    systematic             = _CONTRAST_CTX["systematic"]
+    systematics             = _CONTRAST_CTX["systematics"]
     PCA                    = _CONTRAST_CTX["PCA"]
     N_PCA                  = _CONTRAST_CTX["N_PCA"]
     masks                  = _CONTRAST_CTX["masks"]
@@ -2922,7 +2904,7 @@ def process_contrast(args):
         planet_spectrum = planet_spectrum.copy()
         mag_p           = mag_p_total
 
-    # Computing the SNR for the planet
+    # Computing the contrast for the planet
     contrasts_min = []
     for apodizer in config_data["apodizers"]:
         for strehl in config_data["strehls"]:
@@ -2930,7 +2912,7 @@ def process_contrast(args):
             # if apodizer not in ["NO_SP", "SP1"]:
             #     continue
             for coronagraph in config_data["coronagraphs"]:
-                name_bands, separation, curves = FastCurves(instru=instru, calculation="contrast", mag_star=mag_s, band0=band0, exposure_time=exposure_time, mag_planet=mag_p, separation_planet=sep_max/1000, show_plot=False, verbose=False, planet_spectrum=planet_spectrum, star_spectrum=star_spectrum, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, Rc=Rc, filter_type=filter_type, systematic=systematic, PCA=PCA, N_PCA=N_PCA)
+                _, separation, curves = FastCurves(instru=instru, calculation="contrast", mag_star=mag_s, band0=band0, exposure_time=exposure_time, mag_planet=mag_p, separation_planet=sep_max/1000, show_plot=False, verbose=False, planet_spectrum=planet_spectrum, star_spectrum=star_spectrum, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, Rc=Rc, filter_type=filter_type, systematics=systematics, PCA=PCA, N_PCA=N_PCA)
                 contrasts_min.append(np.nanmin(np.stack(curves, axis=0), axis=0))
 
     contrast_min = np.nanmin(np.stack(contrasts_min, axis=0), axis=0)
@@ -2939,16 +2921,16 @@ def process_contrast(args):
 
 
 
-def get_planet_table_contrast(instru, planet_table, exposure_time, thermal_model="None", reflected_model="None", spectrum_contributions=None, Rc=100, filter_type="gaussian", systematic=False, PCA=False, N_PCA=20, force_table_calc=False, sep_max=None):
+def get_planet_table_contrast(instru, planet_table, exposure_time, thermal_model="None", reflected_model="None", spectrum_contributions=None, Rc=100, filter_type="gaussian", systematics=False, PCA=False, N_PCA=20, force_table_calc=False, sep_max=None):
    
     # Contribution and model labels
     _, name_model = get_spectrum_contribution_name_model(thermal_model, reflected_model)
     
     # Suffix
-    suffix = "with systematics+PCA" if (systematic and PCA) else ("with systematics" if systematic else "without systematics")
+    suffix = "with systematics+PCA" if (systematics and PCA) else ("with systematics" if systematics else "without systematics")
     
     # Filename
-    if systematic:
+    if systematics:
         suffix = "with_systematics+PCA" if PCA else "with_systematics"
     else:
         suffix = "without_systematics"
@@ -2969,8 +2951,8 @@ def get_planet_table_contrast(instru, planet_table, exposure_time, thermal_model
         planet_table = planet_table.copy()
         config_data  = get_config_data(instru)
         time1        = time.time()
-        if systematic and filter_type == "gaussian_fast":
-            filter_type = "gaussian" # "gaussian_fast" is bad for handling systematic estimations
+        if systematics and filter_type == "gaussian_fast":
+            filter_type = "gaussian" # "gaussian_fast" is bad for handling systematics estimations
         
         # --- 4) Wavelength grids and Vega ---
         # K-band for photometry
@@ -2990,10 +2972,7 @@ def get_planet_table_contrast(instru, planet_table, exposure_time, thermal_model
         vega_spectrum_K = vega_spectrum.interpolate_wavelength(wave_K, renorm=False)
         vega_spectrum   = vega_spectrum.interpolate_wavelength(wave_instru, renorm=False)
         
-        # --- 5) Create columns for signal, noise and DIT length ---
-        planet_table["5sigma-contrast"]  = np.full(len(planet_table), np.nan) # [e-/FWHM/DIT]
-    
-        # --- 6) Bandpass masks and Vega flux on bands ---
+        # --- 5) Bandpass masks and Vega flux on bands ---
         vega_flux         = {}
         masks             = {}
         masks[instru]     = (wave_instru >= lmin_instru) & (wave_instru <= lmax_instru)
@@ -3005,11 +2984,11 @@ def get_planet_table_contrast(instru, planet_table, exposure_time, thermal_model
         # Print
         print(f"\n {instru} {suffix} ({thermal_model} & {reflected_model})")
     
-        # --- 7) Init global context for workers ---
+        # --- 6) Init global context for workers ---
         global _CONTRAST_CTX
-        _CONTRAST_CTX = dict(instru=instru, config_data=config_data, thermal_model=thermal_model, reflected_model=reflected_model, wave_instru=wave_instru, wave_K=wave_K, vega_flux=vega_flux, vega_spectrum_K=vega_spectrum_K, band0=band0, exposure_time=exposure_time, Rc=Rc, filter_type=filter_type, systematic=systematic, PCA=PCA, N_PCA=N_PCA, masks=masks, sep_max=sep_max, spectrum_contributions=spectrum_contributions)    
+        _CONTRAST_CTX = dict(instru=instru, config_data=config_data, thermal_model=thermal_model, reflected_model=reflected_model, wave_instru=wave_instru, wave_K=wave_K, vega_flux=vega_flux, vega_spectrum_K=vega_spectrum_K, band0=band0, exposure_time=exposure_time, Rc=Rc, filter_type=filter_type, systematics=systematics, PCA=PCA, N_PCA=N_PCA, masks=masks, sep_max=sep_max, spectrum_contributions=spectrum_contributions)    
     
-        # --- 8) Run contrast---
+        # --- 7) Run contrast---
         with Pool(processes=cpu_count()-1) as pool: # Utilisation de multiprocessing pour paralléliser les combinaisons i, j
             results = list(tqdm(pool.imap(process_contrast, [(idx, planet_table[idx]) for idx in range(len(planet_table))]), total=len(planet_table), desc="Multiprocessing"))
             for (idx, mag_s, mag_p_thermal, mag_p_reflected, mag_p_total, separation, contrast_5sigma) in results:
@@ -3021,7 +3000,7 @@ def get_planet_table_contrast(instru, planet_table, exposure_time, thermal_model
                 planet_table[idx][f"PlanetINSTRUmag({instru})(thermal+reflected)"] = mag_p_total
                 planet_table[idx]["contrast_5sigma"]                               = contrast_5sigma
     
-        print(f"\n Calculating SNR took {(time.time()-time1)/60:.1f} mn")
+        print(f"\n Calculating 5sigma-contrasts took {(time.time()-time1)/60:.1f} mn")
         planet_table.write(filename, format='ascii.ecsv', overwrite=True)
         fits.writeto(filename.replace(".ecsv", "_separation.fits"), separation, overwrite=True)
         print(f"\nSaving table: {filename}")
@@ -3052,26 +3031,26 @@ def yield_contrast_ELT_earthlike(thermal_model="BT-Settl", reflected_model="tell
     
     # Rayon & masse & Teq
     if R is not None:
-        before = int(mask_earth.sum())
+        before      = int(mask_earth.sum())
         mask_earth &= np.isfinite(R) & (R >= R_min) & (R <= R_max)
-        after = int(mask_earth.sum())
+        after       = int(mask_earth.sum())
         print(f" After radius filtering:      {after} / {n} (-{before - after})")
     if M is not None:
-        before = int(mask_earth.sum())
+        before      = int(mask_earth.sum())
         mask_earth &= np.isfinite(M) & (M >= M_min) & (M <= M_max)
-        after = int(mask_earth.sum())
+        after       = int(mask_earth.sum())
         print(f" After mass filtering:        {after} / {n} (-{before - after})")
     if Teq is not None:
-        before = int(mask_earth.sum())
+        before      = int(mask_earth.sum())
         mask_earth &= np.isfinite(Teq) & (Teq >= Teq_min) & (Teq <= Teq_max)
-        after = int(mask_earth.sum())
+        after       = int(mask_earth.sum())
         print(f" After temperature filtering: {after} / {n} (-{before - after})")
         
     planet_table = planet_table[mask_earth]
     
     # ---Retrieving tables
-    separation_HARMONI, planet_table_HARMONI = get_planet_table_contrast(instru="HARMONI", planet_table=planet_table, exposure_time=exposure_time, thermal_model=thermal_model, reflected_model=reflected_model, spectrum_contributions=spectrum_contributions, Rc=Rc, filter_type="gaussian", systematic=False, PCA=False, N_PCA=20, force_table_calc=force_table_calc, sep_max=sep_max)
-    separation_ANDES, planet_table_ANDES     = get_planet_table_contrast(instru="ANDES",   planet_table=planet_table, exposure_time=exposure_time, thermal_model=thermal_model, reflected_model=reflected_model, spectrum_contributions=spectrum_contributions, Rc=Rc, filter_type="gaussian", systematic=False, PCA=False, N_PCA=20, force_table_calc=force_table_calc, sep_max=sep_max)
+    separation_HARMONI, planet_table_HARMONI = get_planet_table_contrast(instru="HARMONI", planet_table=planet_table, exposure_time=exposure_time, thermal_model=thermal_model, reflected_model=reflected_model, spectrum_contributions=spectrum_contributions, Rc=Rc, filter_type="gaussian", systematics=False, PCA=False, N_PCA=20, force_table_calc=force_table_calc, sep_max=sep_max)
+    separation_ANDES, planet_table_ANDES     = get_planet_table_contrast(instru="ANDES",   planet_table=planet_table, exposure_time=exposure_time, thermal_model=thermal_model, reflected_model=reflected_model, spectrum_contributions=spectrum_contributions, Rc=Rc, filter_type="gaussian", systematics=False, PCA=False, N_PCA=20, force_table_calc=force_table_calc, sep_max=sep_max)
     
     # --- 5 sigma contrast
     # HARMONI
@@ -3129,9 +3108,6 @@ def yield_contrast_ELT_earthlike(thermal_model="BT-Settl", reflected_model="tell
     #######################################################################
     # V1
     #######################################################################
-    
-    from math import erf
-    from matplotlib.patches import Patch
     
     def _lighten(color, amount):
         """Blend 'color' toward white by 'amount' (0→no change, 1→white)."""
@@ -3245,10 +3221,6 @@ def yield_contrast_ELT_earthlike(thermal_model="BT-Settl", reflected_model="tell
     
     
     
-    
-    
-    
-    
     #######################################################################
     # V2
     #####################################################################
@@ -3309,6 +3281,8 @@ def yield_contrast_ELT_earthlike(thermal_model="BT-Settl", reflected_model="tell
             t.set_zorder(20)
         return labs
     
+    import matplotlib.patheffects as pe
+    
     # ---------------------- Ta taille de points ----------------------
     pm_valid  = planet_mass[np.isfinite(planet_mass) & (planet_mass > 0)]
     mass_minG = pm_valid.min()
@@ -3339,10 +3313,8 @@ def yield_contrast_ELT_earthlike(thermal_model="BT-Settl", reflected_model="tell
     P_A = pdet_grid(separation_ANDES,   contrast_5sigma_ANDES,   y_grid)
     
     # Contours
-    CS_H = draw_prob_contours(ax1, separation_HARMONI, P_H, y_grid,
-                              colors_instru["HARMONI"], levels=levels, lw=lw, z=0.4)
-    CS_A = draw_prob_contours(ax1, separation_ANDES,   P_A, y_grid,
-                              colors_instru["ANDES"],   levels=levels, lw=lw, z=0.5)
+    CS_H = draw_prob_contours(ax1, separation_HARMONI, P_H, y_grid, colors_instru["HARMONI"], levels=levels, lw=lw, z=0.4)
+    CS_A = draw_prob_contours(ax1, separation_ANDES,   P_A, y_grid, colors_instru["ANDES"],   levels=levels, lw=lw, z=0.5)
     
     # Labels forcés à x = 40 mas
     clabel_all_at_x(ax1, CS_H, separation_HARMONI, P_H, y_grid, levels, x_label, fontsize=12)
@@ -3358,21 +3330,17 @@ def yield_contrast_ELT_earthlike(thermal_model="BT-Settl", reflected_model="tell
     ax1.plot([], [], ls="", marker='o', ms=15, label="Thermal",   c="C3")
     
     # ---------------------- Légendes ----------------------
-    leg_planets = ax1.legend(fontsize=14, loc="upper left", frameon=True,
-                             edgecolor="gray", facecolor="white",
-                             title="Planet-light regime", title_fontsize=16)
+    leg_planets = ax1.legend(fontsize=14, loc="upper left", frameon=True, edgecolor="gray", facecolor="white", title="Planet-light regime", title_fontsize=16)
     ax1.add_artist(leg_planets)
     
-    leg_inst = ax1.legend(handles=[
-            Line2D([0],[0], color=colors_instru["HARMONI"], lw=lw, ls='-',  label="HARMONI"),
-            Line2D([0],[0], color=colors_instru["ANDES"],   lw=lw, ls='-',  label="ANDES")
-        ],
+    leg_inst = ax1.legend(handles=[Line2D([0],[0], color=colors_instru["HARMONI"], lw=lw, ls='-',  label="HARMONI"), Line2D([0],[0], color=colors_instru["ANDES"],   lw=lw, ls='-',  label="ANDES")],
         loc="lower left", fontsize=14, frameon=True, edgecolor="gray",
         facecolor="white", title="Detection probability", title_fontsize=16)
     ax1.add_artist(leg_inst)
     
     for lg in (leg_planets, leg_inst):
-        lg.set_zorder(100); lg.get_frame().set_alpha(1.0)
+        lg.set_zorder(100)
+        lg.get_frame().set_alpha(1.0)
     
     # ---------------------- Axe Δmag ----------------------
     ax2 = ax1.twinx()
@@ -3394,7 +3362,6 @@ def yield_contrast_ELT_earthlike(thermal_model="BT-Settl", reflected_model="tell
                           title_fontsize=16, fontsize=14, scatterpoints=1)
     leg_size.set_zorder(100); leg_size.get_frame().set_alpha(1.0)
     
-    import matplotlib.patheffects as pe
     # ---- Diffraction limit line + on-line label (bottom) ----
     DL_mas = 7.0
     # the line
