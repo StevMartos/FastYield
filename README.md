@@ -55,10 +55,6 @@ To perform SNR or contrast calculations, you'll need planetary spectra (BT-Settl
 
 You will also need the following packages:
 
-* [PyAstronomy](https://github.com/sczesla/PyAstronomy)
-```
-pip install PyAstronomy
-```
 * [astropy](https://github.com/astropy/astropy)
 ```
 pip install astropy
@@ -70,8 +66,4 @@ pip install pandas
 * [ttkwidgets](https://github.com/TkinterEP/ttkwidgets)
 ```
 pip install ttkwidgets
-```
-* [pyvo](https://github.com/astropy/pyvo)
-```
-pip install pyvo
 ```
