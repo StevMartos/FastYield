@@ -67,10 +67,6 @@ pip install astropy
 ```
 pip install pandas
 ```
-* [statsmodels](https://github.com/statsmodels/statsmodels)
-```
-pip install statsmodels
-```
 * [ttkwidgets](https://github.com/TkinterEP/ttkwidgets)
 ```
 pip install ttkwidgets
