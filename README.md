@@ -49,7 +49,7 @@ git clone https://github.com/StevMartos/FastYield.git
 
 ### Download the spectra:
 
-To perform SNR or contrast calculations, you'll need planetary spectra (BT-Settl, Exo-REM and PICASO) and stellar spectra (BT-NextGen) downloadable [here](https://filesender.renater.fr/?s=download&token=c103cfcd-5dcc-4026-b70f-79bc3617482f). Once downloaded, just put the "Spectra" file in "sim_data".
+To perform SNR or contrast calculations, you'll need planetary spectra (BT-Settl, Exo-REM and PICASO) and stellar spectra (BT-NextGen) downloadable [here](https://filesender.renater.fr/?s=download&token=4f89dafe-2882-4d32-b477-5deff6886d22). Once downloaded, just put the "Spectra" file in "sim_data".
 
 ### Download the packages:
 
