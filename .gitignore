@@ -1,0 +1,21 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Jupyter / Spyder
+.ipynb_checkpoints/
+.spyproject/
+.spyderproject
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local/external spectral library
+sim_data/Spectra/
+Spectra/
+
+# Local temporary files
+*.tmp
+*.log
