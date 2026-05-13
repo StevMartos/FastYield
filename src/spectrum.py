@@ -39,6 +39,67 @@ warnings.filterwarnings("ignore", message="Header block contains null bytes*")
 ###################################################### Utils: #########################################################
 #######################################################################################################################
 
+
+# -------------------------------------------------------------------------
+# Get wavelength axis
+# -------------------------------------------------------------------------
+
+@lru_cache(maxsize=1)
+def get_wave_K():
+    """
+    Build K-band grid (for photometric purpose only)
+    """
+    lmin_K, lmax_K = get_band_lims(band="K") # [µm]
+    R_K            = R0_min
+    wave_K         = get_wavelength_axis_constant_dl(lmin=lmin_K, lmax=lmax_K, R=R_K)
+    return wave_K
+
+
+
+@lru_cache(maxsize=64)
+def get_wave_model(lmin, lmax, R):
+    lmin_model       = 0.98*lmin                                   # [µm]
+    lmax_model       = 1.02*lmax                                   # [µm] (a bit larger than the instrumental bandwidth to avoid edge effects)    
+    R_model          = min(R, R0_max)                              # Fixing the upper limit of resolution in order to speeds up the calculation (it also need to be high enough for instruments with very high resolution)
+    dl_model         = lmin_model / (2*R_model)                    # [µm/bin] Nyquist sampling of a spectrum with max resolving power R_model: 2 samples per resolution element at lmin_model
+    wave_model       = np.arange(lmin_model, lmax_model, dl_model) # [µm] Model wavelength axis (with constant dl step)
+    return wave_model    
+
+
+
+@lru_cache(maxsize=64)
+def get_wave_band(instru, band):
+    """
+    Return the wavelength grid associated with a given spectral band.
+
+    This function extracts the minimum wavelength, maximum wavelength, and
+    spectral resolution of the selected band from 'config_data', then builds
+    a wavelength axis over that band.
+
+    Parameters
+    ----------
+    instru : str
+        Instrument's name. 
+    band : str
+        Name of the spectral band to extract.
+
+    Returns
+    -------
+    numpy.ndarray
+        One-dimensional wavelength array for the selected band, in [µm].
+    """
+    config_data = get_config_data(instru=instru)
+    lmin_band   = config_data['gratings'][band].lmin       # Lambda_min of the considered band [µm]
+    lmax_band   = config_data['gratings'][band].lmax       # Lambda_max of the considered band [µm]
+    R_band      = config_data['gratings'][band].R          # Spectral resolution of the band
+    # TODO: decide whether we want constant dl or constant R
+    wave_band = get_wavelength_axis_constant_dl(lmin=lmin_band, lmax=lmax_band, R=R_band) # Constant dl wavelength array on the considered band
+    #wave_band = get_wavelength_axis_constant_R(lmin=lmin_band, lmax=lmax_band, R=R_band) # Constant R  wavelength array on the considered band
+
+    return wave_band # [µm]
+
+
+
 @lru_cache(maxsize=128)
 def get_wavelength_axis_constant_R(lmin, lmax, R):
     """
@@ -97,8 +158,8 @@ def get_wavelength_axis_constant_dl(lmin, lmax, R):
         Wavelength axis.
     """
     
-    dl         = (lmin + lmax)/2 / (2*R)   # Delta lambda [µm/bin] (factor 2 for Nyquist sampling assumption)
-    wavelength = np.arange(lmin, lmax, dl) # Constant and linear wavelength array on the considered band 
+    dl         = (lmin + lmax)/2 / (2*R)      # Delta lambda [µm/bin] (factor 2 for Nyquist sampling assumption)
+    wavelength = np.arange(lmin, lmax+dl, dl) # Constant and linear wavelength array on the considered band 
     
     return wavelength # [µm]
 
@@ -1164,6 +1225,8 @@ class Spectrum:
         self.flux       = self.flux[mask_valid]
         if np.ndim(self.R) > 0:
             self.R = self.R[mask_valid]
+        if self.sigma is not None:
+            self.sigma = self.sigma[mask_valid]
     
     #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
     
@@ -1204,14 +1267,14 @@ class Spectrum:
         Spectrum
             New Spectrum instance with flux in [ph/bin/mn] (total ph over the FoV).
         """
-        spectrum = self.copy()                      # New Spectrum instance
-        area     = config_data["telescope"]["area"] # Effective collecting area [m2], accounting for central hole, secondary mirror, and spider obscuration
-        wave     = spectrum.wavelength              # Wavelength axis [µm]
-        dl       = np.gradient(wave)                # Wavelength spacing Δλ [µm/bin]
-        # [J/s/m2/µm] => [ph/s/m2/µm] using λ[m]/(h*c)
-        spectrum.flux *= wave*1e-6 / (h*c)
-        # [ph/s/m2/µm] => [ph/bin/mn] using collecting area and bin width and minutes:
-        spectrum.flux = spectrum.flux * area * dl * 60
+        spectrum       = self.copy()                      # New Spectrum instance
+        area           = config_data["telescope"]["area"] # Effective collecting area [m2], accounting for central hole, secondary mirror, and spider obscuration
+        wave           = spectrum.wavelength              # Wavelength axis [µm]
+        dl             = np.gradient(wave)                # Wavelength spacing Δλ [µm/bin]
+        factor         = wave*1e-6/(h*c) * area*dl*60     # [J/s/m2/µm] => [ph/s/m2/µm] using λ[m]/(h*c) => [ph/bin/mn] using collecting area and bin width and minutes
+        spectrum.flux *= factor
+        if spectrum.sigma is not None:
+            spectrum.sigma *= factor
         return spectrum # [ph/bin/mn] (total ph over the FoV)
 
     #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -1255,14 +1318,20 @@ class Spectrum:
             A new 'Spectrum' object sampled on 'wave_output', containing:
             - the interpolated flux,
             - the propagated uncertainty array (if 'self.sigma' is available),
-            - the intrinsic spectral resolution 'R' propagated onto the new grid.
+            - The physical LSF is not intentionally degraded by convolution. However, the
+            returned R is an effective usable resolution, obtained by propagating the
+            input LSF through the interpolation kernel and by capping it at the Nyquist
+            resolution of the output sampling.
     
         Notes
         -----
         - This method changes the wavelength sampling, but does not physically
           degrade the spectrum.
-        - The output attribute 'R' represents the intrinsic spectral resolution of
-          the spectrum, not the Nyquist-limited resolution of the output grid.
+        - The output attribute 'R' represents an effective usable resolution after
+          interpolation. It propagates the input LSF through the interpolation kernel
+          and is capped by the Nyquist-equivalent resolution of the output grid.
+        - Rotational broadening is not encoded in 'R'; it is tracked separately through
+          the 'vsini' attribute.
         - Outside the wavelength range covered by the input spectrum, the output
           flux is set to 'fill_value' and the output resolution is set to 'NaN'.
         - If the input spectrum contains NaNs or gaps, they may propagate locally
@@ -1271,10 +1340,10 @@ class Spectrum:
           flux samples over the overlap region, not the exact continuous integral.
         """
         # Getting input spectrum
-        wave_input  = np.asarray(self.wavelength, dtype=float)
-        flux_input  = np.asarray(self.flux,       dtype=float)
+        wave_input  = self.wavelength
+        flux_input  = self.flux
         R_input     = self.R
-        sigma_input = None if self.sigma is None else np.asarray(self.sigma, dtype=float)
+        sigma_input = None if self.sigma is None else self.sigma
         
         # Keeping the smallest range containing wave_output
         i0           = np.searchsorted(wave_input, wave_output[0],  side="right") - 1
@@ -1301,16 +1370,49 @@ class Spectrum:
             sigma_output = interpolate_flux_with_error(wave=wave_input, flux=None, sigma=sigma_input, weight=None, wave_new=wave_output)[1]
         else:
             sigma_output = None
+            
+        # # Slower but more accurate way
+        # # Sampling (at Nyquist) and spectral resolutions on wave_output
+        # R_nyquist_input = get_resolution(wavelength=wave_input, func=np.array) # Input sampling resolution (= spectral resolution assuming Nyquist sampling)
+        # R_nyquist_input = np.interp(wave_output, wave_input, R_nyquist_input, left=np.nan, right=np.nan)
+        # if np.ndim(R_input) > 0:
+        #     R_input = np.interp(wave_output, wave_input, R_input, left=np.nan, right=np.nan)
+        # else: # if R_input is a float, we assume a constant spectral resolution
+        #     R_input                 = np.full_like(wave_output, R_input, dtype=float)
+        #     R_input[~valid_overlap] = np.nan
+        # R_nyquist_output = get_resolution(wavelength=wave_output, func=np.array)
+
+        # # sigma_LSF is the spectral LSF propagated along this function in [input px]
+        # sigma_LSF = R_nyquist_input / ( np.sqrt(2*np.log(2)) * R_input ) # [input px]
         
-        # The intrinsic spectral resolution is not changed by an linear interpolation
+        # # Linear interpolation kernel.
+        # # For an output point located at fractional input-pixel position k + t,
+        # # linear interpolation uses weights (1-t, t), whose variance is t(1-t)
+        # # in input-pixel units. This gives zero broadening if the grids coincide.
+        # sigma_interp                = np.full_like(wave_output, np.nan, dtype=float)
+        # idx                         = np.searchsorted(wave_input, wave_output[valid_overlap], side="right") - 1
+        # idx                         = np.clip(idx, 0, len(wave_input) - 2)        
+        # t                           = (wave_output[valid_overlap] - wave_input[idx]) / ( wave_input[idx + 1] - wave_input[idx])
+        # t                           = np.clip(t, 0.0, 1.0)
+        # sigma_interp[valid_overlap] = np.sqrt(t * (1.0 - t))  # [input px]
+        # sigma_LSF                   = np.sqrt(sigma_LSF**2 + sigma_interp**2)   # [input px]
+        # R_LSF                       = R_nyquist_input / (np.sqrt(2*np.log(2)) * sigma_LSF)
+        
+        # # Effective usable resolution of the sampled spectrum
+        # R_effective                 = np.minimum(R_LSF, R_nyquist_output)
+        # R_effective[~valid_overlap] = np.nan
+        
+        # Effective usable resolution of the sampled spectrum (faster way, the resolution is mostly always limited by R_nyquist _output)
         if np.ndim(R_input) > 0:
-            R_output = np.interp(wave_output, wave_input, R_input, left=np.nan, right=np.nan)
+            R_input = np.interp(wave_output, wave_input, R_input, left=np.nan, right=np.nan)
         else: # if R_input is a float, we assume a constant spectral resolution
-            R_output                 = np.full_like(wave_output, R_input, dtype=float)
-            R_output[~valid_overlap] = np.nan
+            R_input                 = np.full_like(wave_output, R_input, dtype=float)
+            R_input[~valid_overlap] = np.nan
+        R_nyquist_output = get_resolution(wavelength=wave_output, func=np.array)
+        R_effective = np.minimum(R_input, R_nyquist_output)
         
         # Creating interpolated Spectrum instance
-        spectrum_output = Spectrum(wavelength=wave_output, flux=flux_output, R=R_output, T=self.T, lg=self.lg, model=self.model, rv=self.rv, vsini=self.vsini, sigma=sigma_output, P=self.P)
+        spectrum_output = Spectrum(wavelength=wave_output, flux=flux_output, R=R_effective, T=self.T, lg=self.lg, model=self.model, rv=self.rv, vsini=self.vsini, sigma=sigma_output, P=self.P)
         
         # Conserve the *total* flux in the overlapping domain (if needed)
         if renorm:
@@ -1333,6 +1435,10 @@ class Spectrum:
         convolving the input spectrum with a Gaussian kernel and then down-binning
         it onto 'wave_output'. The final spectrum is returned on the output grid,
         together with its propagated intrinsic spectral resolution.
+        
+        This method assumes that self.flux is a spectral density. If self.flux is
+        an integrated per-bin quantity, convert it to a density before using this
+        method, or use a flux-conservative overlap rebinning.
     
         The intrinsic spectral resolution of the input spectrum is taken from
         'self.R'. The output sampling resolution is estimated from the Nyquist
@@ -1351,7 +1457,7 @@ class Spectrum:
         wave_output : (M,) array_like
             Output wavelength grid. It must be expressed in the same units as
             'self.wavelength', must be sorted in increasing order, and must be
-            fully included within the input wavelength range.
+            included within the input wavelength range.
         renorm : bool, optional
             If True, renormalize the degraded spectrum so that the total sampled
             flux is conserved over the rebinned output spectrum. This is only
@@ -1408,13 +1514,13 @@ class Spectrum:
           flux samples, not the exact continuous integral of the spectrum.
         """
         # Getting input spectrum
-        wave_input  = np.asarray(self.wavelength, dtype=float)
-        flux_input  = np.array(self.flux,         dtype=float, copy=True) # because modified later
+        wave_input  = self.wavelength
+        flux_input  = self.flux
         R_input     = self.R
-        sigma_input = None if self.sigma is None else np.asarray(self.sigma, dtype=float)
+        sigma_input = None if self.sigma is None else self.sigma
         
-        #if wave_output[-1] < wave_input[0] or wave_output[0] > wave_input[-1]:
-        if wave_output[0] < wave_input[0] or wave_output[-1] > wave_input[-1]:
+        if wave_output[-1] < wave_input[0] or wave_output[0] > wave_input[-1]:
+        #if wave_output[0] < wave_input[0] or wave_output[-1] > wave_input[-1]:
             raise ValueError("'wave_output' is not included in 'wave_input'")
             
         # Keeping the smallest range containing wave_output
@@ -1423,7 +1529,7 @@ class Spectrum:
         i0           = max(i0, 0)
         i1           = min(i1, len(wave_input) - 1)
         mask_overlap = slice(i0, i1+1)
-        flux_input   = flux_input[mask_overlap]
+        flux_input   = np.copy(flux_input[mask_overlap]) # because modified later
         wave_input   = wave_input[mask_overlap]
         R_input      = R_input[mask_overlap] if np.ndim(R_input) > 0 else R_input
         sigma_input  = sigma_input[mask_overlap] if sigma_input is not None else None
@@ -1467,15 +1573,21 @@ class Spectrum:
         if verbose and np.any(R_output > R_nyquist_output):
             print()
             print_warning(f"WARNING (self.degrade_resolution): The output spectral resolution ({round(np.nanmedian(R_output), -2):.0f}) is greater than the output sampling resolution ({round(np.nanmedian(R_nyquist_output), -2):.0f}). Provide finer 'wave_output' to satisfy Nyquist (at least).")
-                    
+        
+        # Rebinning / bin averaging, top-hat kernel
+        # For a discrete mean of q input samples, the additional variance is
+        # approximately (q^2 - 1)/12 in input-pixel units. This gives zero
+        # broadening when q=1 and tends to q^2/12 for large q.
+        q         = R_nyquist_input / R_nyquist_output          # = dl_output / dl_input
+        sigma_bin = np.sqrt(np.maximum(q**2 - 1.0, 0.0) / 12.0) # [input px]
+
         # LSF Gaussian convolution (optional) 
         if gaussian_filtering:
             
             # Gaussian LSF + rebinning: we want the *final* variance to match R_output, so in RMS-variance
-            # sigma_target^2 ≈ sigma_in^2 + sigma_k^2 + sigma_bin^2, with sigma_px = (R_nyq/sqrt(2 ln2))*(1/R) and
-            # sigma_bin,px ≈ Δλ_bin/(sqrt(12) δλ_in) ≈ R_nyq,in/(sqrt(12) R_nyq,out) (assuming Δλ_bin ≈ δλ_out);
+            # sigma_target^2 = sigma_in^2 + sigma_k^2 + sigma_bin^2, with sigma_px = (R_nyq/sqrt(2 ln2))*(1/R) and
             # hence sigma_k^2 = sigma_target^2 - sigma_in^2 - sigma_bin^2, i.e. the first term minus the binning correction.
-            sigma_kernel_2 = (R_nyquist_input / np.sqrt(2*np.log(2)))**2 * ( 1/R_output**2 - 1/R_input**2 ) - (R_nyquist_input/(np.sqrt(12)*R_nyquist_output))**2
+            sigma_kernel_2 = (R_nyquist_input / np.sqrt(2*np.log(2)))**2 * ( 1/R_output**2 - 1/R_input**2 ) - sigma_bin**2
             
             # Mean computed sigma kernel in [input px] and sanity check value (forbidding negative values)
             sigma_kernel_2 = np.clip(a=sigma_kernel_2, a_min=0, a_max=None)
@@ -1497,12 +1609,15 @@ class Spectrum:
 
         # Down-binning to the output grid (if it is coarser than the input one)
         flux_output, sigma_output, _ = rebin_spectrum_mean(specHR=flux_input, sigmaHR=sigma_input, weightHR=None, lamHR=wave_input, lamLR=wave_output) # down binned flux
-        sigma_bin                    = R_nyquist_input / (np.sqrt(12) * R_nyquist_output) # [input px]
-        sigma_LSF                    = np.sqrt(sigma_LSF**2 + sigma_bin**2)               # [input px]
-        R_LSF                        = R_nyquist_input / (np.sqrt(2*np.log(2)) * sigma_LSF)
+        sigma_LSF                    = np.sqrt(sigma_LSF**2 + sigma_bin**2)                 # [input px]
+        R_LSF                        = R_nyquist_input / (np.sqrt(2*np.log(2)) * sigma_LSF) # [no unit]
+        
+        # Effective usable resolution of the sampled spectrum        
+        R_effective                 = np.minimum(R_LSF, R_nyquist_output)
+        R_effective[~valid_overlap] = np.nan
         
         # Creating degraded Spectrum instance
-        spectrum_output = Spectrum(wavelength=wave_output, flux=flux_output, R=R_LSF, T=self.T, lg=self.lg, model=self.model, rv=self.rv, vsini=self.vsini, sigma=sigma_output, P=self.P)
+        spectrum_output = Spectrum(wavelength=wave_output, flux=flux_output, R=R_effective, T=self.T, lg=self.lg, model=self.model, rv=self.rv, vsini=self.vsini, sigma=sigma_output, P=self.P)
         
         # # Resolutions sanity check plot
         # plt.figure(dpi=300, figsize=(10, 6))
@@ -1625,64 +1740,343 @@ class Spectrum:
             return spectrum_vsini 
 
     #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+    def plot(self, ax=None, figsize=(10, 6), dpi=300,
+         title=None, label=None,
+         xlabel=r"Wavelength [$\mu$m]", ylabel="Flux",
+         color="C0", lw=1.2, alpha=0.9,
+         yscale="log", xscale="linear",
+         xlim=None, ylim=None,
+         normalize=False,
+         show_sigma=True, show_R=True, show_metadata=True,
+         grid=True, legend=True,
+         save=None, show=True):
+        """
+        Plot the Spectrum object in a clean and publication-friendly way.
+
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes or None
+            Existing axis on which to plot. If None, a new figure is created.
+        figsize : tuple
+            Figure size if a new figure is created.
+        dpi : int
+            Figure resolution.
+        title : str or None
+            Plot title. If None, a title is built automatically from metadata.
+        label : str or None
+            Curve label. If None, a label is built automatically from metadata.
+        xlabel, ylabel : str
+            Axis labels.
+        color : str
+            Main curve color.
+        lw : float
+            Line width.
+        alpha : float
+            Line transparency.
+        yscale : {"auto", "linear", "log"}
+            Y-axis scaling. "auto" uses log only for strictly positive spectra
+            with a large dynamic range.
+        xscale : {"linear", "log"}
+            X-axis scaling.
+        xlim, ylim : tuple or None
+            Axis limits.
+        normalize : bool
+            If True, divide the flux by its finite maximum absolute value.
+        show_sigma : bool
+            If True and self.sigma is available, show a 1-sigma shaded region.
+        show_R : bool
+            If True, add a secondary panel showing the spectral resolution.
+        show_metadata : bool
+            If True, write basic metadata in a small text box.
+        grid : bool
+            If True, draw major and minor grid lines.
+        legend : bool
+            If True, show legend.
+        save : str or None
+            Path where the figure is saved. If None, no file is saved.
+        show : bool
+            If True, call plt.show().
+
+        Returns
+        -------
+        fig, ax
+            Matplotlib figure and main axis.
+        """
+
+        wave = np.asarray(self.wavelength, dtype=float)
+        flux = np.asarray(self.flux, dtype=float)
+
+        if wave.ndim != 1 or flux.ndim != 1:
+            raise ValueError("'self.wavelength' and 'self.flux' must be 1D arrays.")
+        if wave.size != flux.size:
+            raise ValueError("'self.wavelength' and 'self.flux' must have the same size.")
+        if wave.size < 2:
+            raise ValueError("Spectrum is too short to be plotted.")
+
+        valid = np.isfinite(wave) & np.isfinite(flux)
+        if not np.any(valid):
+            raise ValueError("No finite wavelength/flux values to plot.")
+
+        wave_plot = wave[valid]
+        flux_plot = flux[valid].copy()
+
+        if normalize:
+            norm = np.nanmax(np.abs(flux_plot))
+            if not np.isfinite(norm) or norm == 0:
+                raise ValueError("Cannot normalize: flux maximum is zero or non-finite.")
+            flux_plot = flux_plot / norm
+            ylabel = "Normalized flux"
+
+        # Automatic label
+        if label is None:
+            label_parts = []
+            if self.model is not None:
+                label_parts.append(str(self.model))
+            if self.T is not None:
+                label_parts.append(rf"$T={self.T:.0f}$ K")
+            if self.lg is not None:
+                label_parts.append(rf"$\log g={self.lg:.2f}$")
+            if self.P is not None:
+                label_parts.append(rf"$P={self.P:.2g}$ atm")
+            label = ", ".join(label_parts) if label_parts else "Spectrum"
+
+        # Automatic title
+        if title is None:
+            if self.model is not None:
+                title = f"{self.model} spectrum"
+            else:
+                title = "Spectrum"
+
+        # Figure creation
+        if ax is None:
+            if show_R:
+                fig = plt.figure(figsize=figsize, dpi=dpi)
+                gs = gridspec.GridSpec(
+                    2, 1,
+                    height_ratios=[3.5, 1.0],
+                    hspace=0.08
+                )
+                ax = fig.add_subplot(gs[0])
+                ax_R = fig.add_subplot(gs[1], sharex=ax)
+            else:
+                fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
+                ax_R = None
+        else:
+            fig = ax.figure
+            ax_R = None
+
+        # Main spectrum
+        ax.plot(
+            wave_plot,
+            flux_plot,
+            color=color,
+            lw=lw,
+            alpha=alpha,
+            label=label
+        )
+
+        # Optional sigma region
+        if show_sigma and self.sigma is not None:
+            sigma = np.asarray(self.sigma, dtype=float)
+            if sigma.shape == flux.shape:
+                sigma_plot = sigma[valid]
+                finite_sig = np.isfinite(sigma_plot) & (sigma_plot >= 0)
+
+                if np.any(finite_sig):
+                    if normalize:
+                        sigma_plot = sigma_plot / norm
+
+                    ax.fill_between(
+                        wave_plot[finite_sig],
+                        flux_plot[finite_sig] - sigma_plot[finite_sig],
+                        flux_plot[finite_sig] + sigma_plot[finite_sig],
+                        color=color,
+                        alpha=0.18,
+                        lw=0,
+                        label=r"$1\sigma$"
+                    )
+
+        # Axis scaling
+        if yscale == "auto":
+            finite_flux = flux_plot[np.isfinite(flux_plot)]
+            positive_flux = finite_flux[finite_flux > 0]
+
+            if positive_flux.size > 0:
+                fmin = np.nanmin(positive_flux)
+                fmax = np.nanmax(positive_flux)
+                dynamic_range = fmax / fmin if fmin > 0 else np.inf
+
+                if np.all(finite_flux > 0) and dynamic_range > 100:
+                    ax.set_yscale("log")
+                else:
+                    ax.set_yscale("linear")
+            else:
+                ax.set_yscale("linear")
+        else:
+            ax.set_yscale(yscale)
+
+        ax.set_xscale(xscale)
+
+        # Labels and title
+        ax.set_ylabel(ylabel, fontsize=13)
+        if not show_R:
+            ax.set_xlabel(xlabel, fontsize=13)
+
+        ax.set_title(title, fontsize=15, fontweight="bold", pad=10)
+
+        # Limits
+        if xlim is not None:
+            ax.set_xlim(xlim)
+        else:
+            ax.set_xlim(np.nanmin(wave_plot), np.nanmax(wave_plot))
+
+        if ylim is not None:
+            ax.set_ylim(ylim)
+        else:
+            if ax.get_yscale() == "log":
+                positive_flux = flux_plot[np.isfinite(flux_plot) & (flux_plot > 0)]
+                if positive_flux.size > 0:
+                    ax.set_ylim(
+                        np.nanmin(positive_flux) / 1.5,
+                        np.nanmax(positive_flux) * 1.5
+                    )
+            else:
+                ymin = np.nanpercentile(flux_plot, 0.5)
+                ymax = np.nanpercentile(flux_plot, 99.5)
+                margin = 0.08 * (ymax - ymin) if ymax > ymin else 1.0
+                ax.set_ylim(ymin - margin, ymax + margin)
+
+        # Grid
+        if grid:
+            ax.grid(True, which="major", linestyle="-", linewidth=0.5, alpha=0.35)
+            ax.grid(True, which="minor", linestyle="--", linewidth=0.35, alpha=0.25)
+            ax.minorticks_on()
+
+        # Metadata text box
+        if show_metadata:
+            R_med = np.nanmedian(self.R) if self.R is not None else np.nan
+
+            meta = []
+            if np.isfinite(R_med):
+                meta.append(rf"$R \simeq {R_med:.0f}$")
+            if self.rv is not None:
+                meta.append(rf"$RV = {self.rv:.1f}$ km/s")
+            if self.vsini is not None:
+                meta.append(rf"$v\sin i = {self.vsini:.1f}$ km/s")
+            meta.append(rf"$N_\lambda = {wave.size}$")
+
+            ax.text(
+                0.985, 0.965,
+                "\n".join(meta),
+                transform=ax.transAxes,
+                ha="right",
+                va="top",
+                fontsize=10.5,
+                bbox=dict(
+                    boxstyle="round,pad=0.35",
+                    facecolor="white",
+                    edgecolor="0.65",
+                    alpha=0.9
+                )
+            )
+
+        if legend:
+            ax.legend(
+                fontsize=10.5,
+                loc="best",
+                frameon=True,
+                framealpha=0.95,
+                facecolor="white",
+                edgecolor="0.7"
+            )
+
+        # Optional resolution panel
+        if show_R and ax_R is not None:
+            if self.R is not None:
+                if np.ndim(self.R) == 0:
+                    R_plot = np.full_like(wave, float(self.R), dtype=float)
+                else:
+                    R_plot = np.asarray(self.R, dtype=float)
+
+                valid_R = np.isfinite(wave) & np.isfinite(R_plot)
+
+                ax_R.plot(
+                    wave[valid_R],
+                    R_plot[valid_R],
+                    color="0.25",
+                    lw=1.0,
+                    alpha=0.9
+                )
+
+                ax_R.set_ylabel(r"$R$", fontsize=14)
+                ax_R.set_xlabel(xlabel, fontsize=14)
+                ax_R.set_yscale("log")
+
+                if grid:
+                    ax_R.grid(True, which="major", linestyle="-", linewidth=0.5, alpha=0.35)
+                    ax_R.grid(True, which="minor", linestyle="--", linewidth=0.35, alpha=0.25)
+                    ax_R.minorticks_on()
+            else:
+                ax_R.axis("off")
+
+            plt.setp(ax.get_xticklabels(), visible=False)
+
+        fig.tight_layout()
+
+        if save is not None:
+            fig.savefig(save, dpi=dpi, bbox_inches="tight")
+
+        if show:
+            plt.show()
+
+        return fig, ax
+
+
+    #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
         
     def get_psd(self, smooth=0, one_sided=True):
         """
         Compute the power spectral density (PSD) of the flux array.
-    
-        Parameters
-        ----------
-        smooth: float, optional
-            Standard deviation (in bins) of a Gaussian smoothing applied to the PSD.
-            Use 0 to disable smoothing. Default is 0.
-        one_sided: bool, optional
-            If True, return a one-sided PSD (positive frequencies) using an rFFT
-            with proper energy folding (doubling positive-frequency bins except DC
-            and, if applicable, Nyquist). If False, return a two-sided PSD.
-            Default is True.
-    
-        Returns
-        -------
-        res: ndarray
-            “Resolution-like” frequency axis scaled by ~ 2*R (heuristic).
-        PSD: ndarray
-            Power spectral density (arbitrary units).
         """
-        
-        # Copy and handle NaNs robustly
-        R_nyquist = get_resolution(wavelength=self.wavelength, func=np.nanmedian)
-        signal    = np.asarray(self.flux, dtype=float)
-        signal    = signal - np.nanmean(signal) # subtracting DC
+    
+        # For the Fourier axis, use the sampling resolution, not necessarily self.R.
+        # self.R may describe the propagated LSF/effective resolution, whereas the
+        # FFT frequency axis is set by the wavelength sampling.
+        R_sampling = get_resolution(wavelength=self.wavelength, func=np.nanmedian)
+    
+        signal = np.asarray(self.flux, dtype=float)
+        signal = signal - np.nanmean(signal)
+    
         if np.isnan(signal).any():
             signal = signal[np.isfinite(signal)]
             print_warning("WARNING (get_psd): NaN values inside self.flux...")
-        
+    
         N = signal.size
         if N < 2:
             raise ValueError("Signal too short for PSD computation.")
-            
-        # “Resolution-like” axis    
-        ffreq = np.fft.rfftfreq(N)  # cycles per sample
-        res   = ffreq * 2*R_nyquist # 2*R = sampling resolution (assuming Nyquist)
-
+    
         if one_sided:
-            # One-sided PSD via rFFT with correct energy folding
+            ffreq = np.fft.rfftfreq(N)
+            res   = ffreq * 2 * R_sampling
+    
             TF  = np.fft.rfft(signal)
             PSD = np.abs(TF)**2 / N
+    
             if N % 2 == 0:
-                # Even N: double bins 1..-2 (exclude DC and Nyquist)
                 if PSD.size > 2:
-                    PSD[1:-1] = PSD[1:-1] * 2
+                    PSD[1:-1] *= 2
             else:
-                # Odd N: double bins 1..end (exclude DC only)
                 if PSD.size > 1:
-                    PSD[1:] = PSD[1:] * 2
+                    PSD[1:] *= 2
+    
         else:
-            # Two-sided PSD
+            ffreq = np.fft.fftfreq(N)
+            res   = ffreq * 2 * R_sampling
+    
             TF  = np.fft.fft(signal)
             PSD = np.abs(TF)**2 / N
     
-        # Optional Gaussian smoothing
         if smooth > 0:
             PSD = gaussian_filter1d(PSD, sigma=smooth)
     
@@ -1775,8 +2169,8 @@ def get_model_grid(model, instru=None):
         lg_grid = np.array([4.5, 5.0])
 
     elif model == "Exo-REM": # https://iopscience.iop.org/article/10.3847/1538-4357/aaac7d/pdf
-        if instru is None: # Default: low resolution
-            T_grid  = np.arange(400, 2050, 50)
+        if instru is None: # Default: Very high resolution
+            T_grid  = np.arange(200, 1950, 50)
             lg_grid = np.arange(3.0, 5.5, 0.5)
         else:
             lmin, lmax = get_band_lims(band=instru)
@@ -1925,8 +2319,10 @@ def load_spectrum(T=None, lg=None, P=None, model=None, instru=None):
             wave, flux = fits.getdata(f"{spectra_path}/planet_spectrum/{model}/lte{T/100:03.0f}-{lg:.1f}-0.0a+0.0.{model}.fits")
             
         elif model == "Exo-REM": # https://iopscience.iop.org/article/10.3847/1538-4357/aaac7d/pdf
-            if instru is None: # Default: low resolution
-                wave, flux = fits.getdata(f"{spectra_path}/planet_spectrum/{model}/low_res/spectra_YGP_{T:.0f}K_logg{lg:.1f}_met1.00_CO0.50.fits")
+            if instru is None: # Default: Very high resolution
+                FeH        = 0.0  # Metallicity
+                CO         = 0.65 # C/O ratio
+                wave, flux = fits.getdata(f"{spectra_path}/planet_spectrum/{model}/very_high_res/spect_Teff={T:04.0f}K_logg={lg:.1f}_FeH={FeH:+.1f}_CO={CO:.2f}.fits")
             else:
                 lmin, lmax = get_band_lims(band=instru) # [µm]
                 if lmin >= 1.0 and lmax <= 5.3: # Very high resolution
@@ -1943,8 +2339,14 @@ def load_spectrum(T=None, lg=None, P=None, model=None, instru=None):
                 planet_type = model.replace("PICASO_albedo_", "")
                 wave, flux  = fits.getdata(f"{spectra_path}/planet_spectrum/albedo/PICASO/{planet_type}/albedo_{planet_type}_{T:.0f}K_lg{lg:.1f}.fits")
             else:
-                wave, flux = fits.getdata(f"{spectra_path}/planet_spectrum/PICASO/thermal_gas_giant_{T:.0f}K_lg{lg:.1f}.fits")
-        
+                if "earth_like" in model:
+                    planet_type = "earth_like"
+                elif "gas_giant" in model or model == "PICASO":
+                    planet_type = "gas_giant"
+                else:
+                    raise ValueError("Ambiguous PICASO thermal model. Use for example 'PICASO_gas_giant' or 'PICASO_earth_like'.")
+                wave, flux = fits.getdata(f"{spectra_path}/planet_spectrum/PICASO/thermal_{planet_type}_{T:.0f}K_lg{lg:.1f}.fits")
+            
         elif "airless" in model.lower() and "rocky" in model.lower(): # from private get_PICASO_spectra.py script
             if "albedo" in model:
                 wave, flux = fits.getdata(f"{spectra_path}/planet_spectrum/albedo/airless_rocky/albedo_airless_rocky_{T:.0f}K_lg{lg:.1f}.fits")
@@ -1976,8 +2378,10 @@ def load_spectrum(T=None, lg=None, P=None, model=None, instru=None):
         elif "PSG" in model:
             if "earth" in model.lower():
                 ptype = "earth_like"
+            else:
+                raise ValueError(f"Unsupported PSG model: {model}")
             wave, flux = fits.getdata(f"{spectra_path}/planet_spectrum/PSG/{ptype}/thermal_{ptype}_{T:.0f}K_lg{lg:.1f}.fits")
-        
+                    
         elif model == "BT-NextGen":
             wave, flux = fits.getdata(f"{spectra_path}/star_spectrum/{model}/lte{T/100:03.0f}-{lg:.1f}-0.0a+0.0.{model}.fits")
         
@@ -2203,7 +2607,7 @@ def load_planet_spectrum(T_planet=1000, lg_planet=4.0, model="BT-Settl", interpo
 
 
 
-def load_albedo_spectrum(T_planet, lg_planet, model="PICASO", airmass=2.0, interpolated_spectrum=True, T_grid=None, lg_grid=None):
+def load_albedo_spectrum(T_planet, lg_planet, model="PICASO_albedo_gas_giant", airmass=2.0, interpolated_spectrum=True, T_grid=None, lg_grid=None):
     """
     Load an albedo spectrum and optionally transform it ('flat' or 'tellurics').
     see Eq.(1) of Lovis et al. (2017): https://arxiv.org/pdf/1609.03082
@@ -2247,8 +2651,12 @@ def load_albedo_spectrum(T_planet, lg_planet, model="PICASO", airmass=2.0, inter
         return albedo
 
     elif "flat" in model.lower() or ("airless" in model.lower() and "rocky" in model.lower()):
-        albedo       = load_planet_spectrum(T_planet=T_planet, lg_planet=lg_planet, model="airless_rocky_albedo", interpolated_spectrum=interpolated_spectrum, instru=None, T_grid=T_grid, lg_grid=lg_grid)
-        albedo.model = "Airless rocky"
+        albedo = load_planet_spectrum(T_planet=T_planet, lg_planet=lg_planet, model="airless_rocky_albedo", interpolated_spectrum=interpolated_spectrum, instru=None, T_grid=T_grid, lg_grid=lg_grid)
+        if "flat" in model.lower():
+            albedo.flux  = np.full_like(albedo.wavelength, np.nanmean(albedo.flux), dtype=float)
+            albedo.model = "Flat"
+        else:
+            albedo.model = "Airless rocky"
         return albedo
 
     elif "tellurics" in model.lower():
@@ -2258,25 +2666,11 @@ def load_albedo_spectrum(T_planet, lg_planet, model="PICASO", airmass=2.0, inter
         tell                     = tell1**airmass
         
         # Geometric albedo from PICASO
-        albedo_geo = load_planet_spectrum(T_planet=T_planet, lg_planet=lg_planet, model="PICASO_albedo_earth_like", interpolated_spectrum=interpolated_spectrum, instru=None, T_grid=T_grid, lg_grid=lg_grid)
+        albedo_geo = load_planet_spectrum(T_planet=T_planet, lg_planet=lg_planet, model="airless_rocky_albedo", interpolated_spectrum=interpolated_spectrum, instru=None, T_grid=T_grid, lg_grid=lg_grid)
+        albedo_geo = albedo_geo.interpolate_wavelength(wave_output=wave_tell, renorm=False).flux
         
-        # Common wavelength range
-        lmin_common = max(wave_tell[0],  albedo_geo.wavelength[0])
-        lmax_common = min(wave_tell[-1], albedo_geo.wavelength[-1])
-        
-        if lmin_common >= lmax_common:
-            raise ValueError("No common wavelength range between telluric transmission and PICASO albedo spectrum.")
-        
-        # Valid masks on each native grid
-        mask_tell   = (wave_tell             >= lmin_common) & (wave_tell             <= lmax_common)
-        mask_albedo = (albedo_geo.wavelength >= lmin_common) & (albedo_geo.wavelength <= lmax_common)
-        
-        mean_tell       = np.nanmean(tell[mask_tell])
-        mean_albedo_geo = np.nanmean(albedo_geo.flux[mask_albedo])
-        
-        # Compute albedo model
-        tell_albedo_geo = tell * mean_albedo_geo / mean_tell
-        albedo          = Spectrum(wavelength=wave_tell, flux=tell_albedo_geo, R=R_tell, T=T_planet, lg=lg_planet, model=f"Tellurics(airmass={airmass:.2f})", rv=0, vsini=0)
+        # Computing the albedo
+        albedo = Spectrum(wavelength=wave_tell, flux=tell*albedo_geo, R=R_tell, T=T_planet, lg=lg_planet, model=f"Tellurics(airmass={airmass:.2f})", rv=0, vsini=0)
         return albedo
     
     else:
@@ -2422,49 +2816,6 @@ def load_vega_spectrum():
 ############################################# Spectra on instru and band: #############################################
 #######################################################################################################################
 
-def get_wave_K():
-    """
-    Build K-band grid (for photometric purpose only)
-    """
-    lmin_K, lmax_K = get_band_lims(band="K") # [µm]
-    R_K            = R0_min
-    wave_K         = get_wavelength_axis_constant_dl(lmin=lmin_K, lmax=lmax_K, R=R_K)
-    return wave_K
-
-
-
-def get_wave_band(config_data, band):
-    """
-    Return the wavelength grid associated with a given spectral band.
-
-    This function extracts the minimum wavelength, maximum wavelength, and
-    spectral resolution of the selected band from 'config_data', then builds
-    a wavelength axis over that band.
-
-    Parameters
-    ----------
-    config_data : dict
-        Instrument configuration dictionary containing the grating properties
-        for each spectral band. Each entry in 'config_data['gratings']' is
-        expected to provide the attributes 'lmin', 'lmax', and 'R'.
-    band : str
-        Name of the spectral band to extract.
-
-    Returns
-    -------
-    numpy.ndarray
-        One-dimensional wavelength array for the selected band, in [µm].
-    """
-    lmin_band = config_data['gratings'][band].lmin       # Lambda_min of the considered band [µm]
-    lmax_band = config_data['gratings'][band].lmax       # Lambda_max of the considered band [µm]
-    R_band    = config_data['gratings'][band].R          # Spectral resolution of the band
-    # TODO: decide whether we want constant dl or constant R
-    wave_band = get_wavelength_axis_constant_dl(lmin=lmin_band, lmax=lmax_band, R=R_band) # Constant dl wavelength array on the considered band
-    #wave_band = get_wavelength_axis_constant_R(lmin=lmin_band, lmax=lmax_band, R=R_band) # Constant R  wavelength array on the considered band
-
-    return wave_band # [µm]
-
-
 def get_spectrum_instru(band0, R, config_data, mag, spectrum, wave_instru=None):
     """
     Restrict a spectrum to the instrument wavelength range and scale it to match
@@ -2515,9 +2866,9 @@ def get_spectrum_instru(band0, R, config_data, mag, spectrum, wave_instru=None):
         raise KeyError(f"{band0} is not a recognized band. Choose among: {bands} or 'instru' for full instrument range.")        
     
     # Build an intermediate grid on band0 to compute the Vega scaling ratio: F_obj = F_vega * 10^{-0.4*mag}
-    wave_band0     = get_wavelength_axis_constant_dl(lmin=lmin_band0, lmax=lmax_band0, R=R) # Wavelength array on band0 [µm]
-    spectrum_band0 = spectrum.interpolate_wavelength(wave_band0, renorm=False)              # [J/s/m2/µm] Interpolating the input spectrum on band0
-    vega_band0     = load_vega_spectrum().interpolate_wavelength(wave_band0, renorm=False)  # [J/s/m2/µm] Getting the vega spectrum
+    wave_band0     = get_wavelength_axis_constant_dl(lmin=lmin_band0, lmax=lmax_band0, R=R0_min) # Wavelength array on band0 [µm]
+    spectrum_band0 = spectrum.interpolate_wavelength(wave_band0,             renorm=False)       # [J/s/m2/µm] Interpolating the input spectrum on band0
+    vega_band0     = load_vega_spectrum().interpolate_wavelength(wave_band0, renorm=False)       # [J/s/m2/µm] Getting the vega spectrum
     scale          = get_scale_to_mag(wave=wave_band0, density_obs=spectrum_band0.flux, density_vega=vega_band0.flux, mag=mag)
     
     # Restriction of spectra to instrumental range + adjustment of spectra to the input magnitude
@@ -2527,16 +2878,16 @@ def get_spectrum_instru(band0, R, config_data, mag, spectrum, wave_instru=None):
         wave_instru = get_wavelength_axis_constant_R(lmin=lmin_instru, lmax=lmax_instru, R=R) # Wavelength array on the instrumental bandwidth with constant sampling resolution
     spectrum_scaled       = spectrum.copy()                                                   # Making a copy of the input spetrum 
     spectrum_scaled.flux *= scale                                                             # Adjusting the spectrum to the input magnitude
-    spectrum_density      = spectrum_scaled.interpolate_wavelength(wave_instru, renorm=False) # In order to have a spectrum in density (i.e. J/s/m2/µm)     
+    spectrum_density      = spectrum_scaled.interpolate_wavelength(wave_instru, renorm=False) # [J/s/m2/µm]   
 
-    # Conversion to [ph/bin/mn] (total ph over the FoV)
+    # Conversion [J/s/m2/µm] to [ph/bin/mn] (total ph over the FoV)
     spectrum_instru = spectrum_density.density_to_photons(config_data=config_data)
     
     return spectrum_instru, spectrum_density # [ph/bin/mn] (total ph over the FoV) and [J/s/m2/µm]
 
 
 
-def get_spectrum_band(spectrum_instru, config_data=None, band=None, wave_band=None, R_output=None, degrade_resolution=True, verbose=False):
+def get_spectrum_band(spectrum_instru, config_data=None, instru=None, band=None, wave_band=None, R_output=None, degrade_resolution=True, verbose=False):
     """
     Extract and resample an input instrument spectrum onto the wavelength grid of a given band.
 
@@ -2558,7 +2909,10 @@ def get_spectrum_band(spectrum_instru, config_data=None, band=None, wave_band=No
     config_data : dict, optional
         Instrument configuration dictionary. Required if 'wave_band' is not provided,
         since it is used together with 'band' to retrieve the wavelength grid.
-
+    
+    instru : str
+        Instrument's name. 
+    
     band : str, optional
         Name of the spectral band to extract. Must be a valid key of
         'config_data["gratings"]'. Used only if 'wave_band' is not provided.
@@ -2587,16 +2941,21 @@ def get_spectrum_band(spectrum_instru, config_data=None, band=None, wave_band=No
     if wave_band is None:
         if band not in config_data["gratings"]:
             raise KeyError(f"Band '{band}' is not defined in config_data['gratings']: {[band for band in config_data['gratings']]}.")
-        wave_band = get_wave_band(config_data=config_data, band=band)
+        wave_band = get_wave_band(instru=instru, band=band)
     
     spectrum_instru_density       = spectrum_instru.copy()                          # [ph/bin/mn]
-    spectrum_instru_density.flux /= np.gradient(spectrum_instru_density.wavelength) # [ph/µm/mn]
+    dwave_in                      = np.gradient(spectrum_instru_density.wavelength) # [µm/bin]
+    spectrum_instru_density.flux /= dwave_in                                        # [ph/µm/mn]
+    if spectrum_instru_density.sigma is not None:
+        spectrum_instru_density.sigma /= dwave_in                                   # [ph/µm/mn]
     if degrade_resolution:
         spectrum_band = spectrum_instru_density.degrade_resolution(wave_band, renorm=False, R_output=R_output, verbose=verbose) # [ph/µm/mn]
     else:
         spectrum_band = spectrum_instru_density.interpolate_wavelength(wave_band, renorm=False)                                 # [ph/µm/mn]
-    spectrum_band.flux *= np.gradient(wave_band) # [ph/bin/mn]
-
+    dwave_out           = np.gradient(wave_band) # [µm/bin]
+    spectrum_band.flux *= dwave_out              # [ph/bin/mn]
+    if spectrum_band.sigma is not None:
+        spectrum_band.sigma *= dwave_out         # [ph/bin/mn]
     return spectrum_band # [ph/bin/mn]
 
 
@@ -2626,6 +2985,7 @@ def get_spectrum_contribution_name_model(thermal_model, reflected_model):
             spectrum_contributions = "thermal+reflected"
         name_model             = thermal_model+"+"+reflected_model
     return spectrum_contributions, name_model
+
 
 
 def make_pretty_table(ax, params, bbox):
@@ -2791,17 +3151,14 @@ def get_thermal_reflected_spectrum(planet, thermal_model="auto", reflected_model
     if wave_model is None:
         if instru is None:
             raise KeyError("Either provide 'wave_model' or an 'instru' name to derive it.")
-        config_data = get_config_data(instru)
         # Model bandwidth
-        lmin_instru = config_data["lambda_range"]["lambda_min"]   # [µm]
-        lmax_instru = config_data["lambda_range"]["lambda_max"]   # [µm]
-        lmin_model  = 0.98*lmin_instru                            # [µm]
-        lmax_model  = 1.02*lmax_instru                            # [µm] (a bit larger than the instrumental bandwidth to avoid edge effects)
-        R_instru    = get_R_instru(config_data=config_data)       # Max instrument resolution (factor 2 to be sure to not loose spectral information)
-        R_model     = min(R_instru, R0_max)                       # Fixing the upper limit of resolution in order to speeds up the calculation (it also need to be high enough for instruments with very high resolution)
-        dl_model    = lmin_model / (2*R_model)                    # [µm/bin] Nyquist sampling of a spectrum with max resolving power R_model: 2 samples per resolution element at lmin_model
-        wave_model  = np.arange(lmin_model, lmax_model, dl_model) # [µm] Model wavelength axis (with constant dl step)
-    
+        config_data = get_config_data(instru)
+        lmin_instru = config_data["lambda_range"]["lambda_min"]                     # [µm]
+        lmax_instru = config_data["lambda_range"]["lambda_max"]                     # [µm]
+        R_instru    = get_R_instru(instru=instru)                                   # Max instrument resolution (factor 2 to be sure to not loose spectral information)
+        R_model     = min(R_instru, R0_max)                                         # Fixing the upper limit of resolution in order to speeds up the calculation (it also need to be high enough for instruments with very high resolution)
+        wave_model  = get_wave_model(lmin=lmin_instru, lmax=lmax_instru, R=R_model) # [µm] Model wavelength axis (with constant dl step)
+        
     # Vega counts on K band
     if counts_vega_K is None:
         vega_spectrum   = load_vega_spectrum()
@@ -2869,7 +3226,7 @@ def get_thermal_reflected_spectrum(planet, thermal_model="auto", reflected_model
         albedo                  = albedo_raw.interpolate_wavelength(wave_model, renorm=False) # [no unit]
         flux_planet_reflected_K = star_spectrum_K.flux   * albedo_K.flux * g_alpha * scaling_planet # [J/s/m2/µm]
         flux_planet_reflected   = star_spectrum_ref.flux * albedo.flux   * g_alpha * scaling_planet # [J/s/m2/µm]
-        R_planet_reflected      = np.fmax.reduce([star_spectrum_ref.R, albedo.R])
+        R_planet_reflected      = np.maximum.reduce([star_spectrum_ref.R, albedo.R])
         reflected_model         = albedo_raw.model
     else:
         flux_planet_reflected_K = np.zeros_like(wave_K)
@@ -2895,8 +3252,8 @@ def get_thermal_reflected_spectrum(planet, thermal_model="auto", reflected_model
         planet_reflected = planet_reflected.doppler_shift(rv_planet) # [J/s/m2/µm]
     
     # Total planet spectrum (thermal + reflected)
-    planet_spectrum_K = Spectrum(wavelength=wave_K,     flux=planet_thermal_K.flux + planet_reflected_K.flux, R=R0_min,                                                 T=T_planet, lg=lg_planet, model=thermal_model+"+"+reflected_model, rv=rv_planet, vsini=vsini_planet, sigma=None)
-    planet_spectrum   = Spectrum(wavelength=wave_model, flux=planet_thermal.flux   + planet_reflected.flux,   R=np.fmax.reduce([planet_thermal.R, planet_reflected.R]), T=T_planet, lg=lg_planet, model=thermal_model+"+"+reflected_model, rv=rv_planet, vsini=vsini_planet, sigma=None)
+    planet_spectrum_K = Spectrum(wavelength=wave_K,     flux=planet_thermal_K.flux + planet_reflected_K.flux, R=R0_min,                                                   T=T_planet, lg=lg_planet, model=thermal_model+"+"+reflected_model, rv=rv_planet, vsini=vsini_planet, sigma=None)
+    planet_spectrum   = Spectrum(wavelength=wave_model, flux=planet_thermal.flux   + planet_reflected.flux,   R=np.maximum.reduce([planet_thermal.R, planet_reflected.R]), T=T_planet, lg=lg_planet, model=thermal_model+"+"+reflected_model, rv=rv_planet, vsini=vsini_planet, sigma=None)
     
     # Enforce observed K magnitude for directly imaged planets (if known and available)
     if in_planet_mag and ("inject_known_values" in planet["PlanetKmag(thermal+reflected)Ref"]) and (thermal_model != "None"): # Directly imaged planet magnitudes are measured mostly throught the thermal contribution
@@ -3032,6 +3389,8 @@ def get_thermal_reflected_spectrum(planet, thermal_model="auto", reflected_model
         plt.show()
 
     return planet_spectrum, planet_thermal, planet_reflected, star_spectrum
+
+
 
 
 

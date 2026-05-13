@@ -146,7 +146,7 @@ def get_template(instru, wave, R, model, T, lg, rv, vsini, epsilon=0.8, fastbroa
     
     # 3) Interpolation grid (regular, Nyquist-like)
     if wave_model is None:
-        R_interp    = min(max(template.R, 2*R), R0_max)
+        R_interp    = min(max(np.nanmax(template.R), 2*R), R0_max)
         lmin_interp = 0.98*wave[0]
         lmax_interp = 1.02*wave[-1]        
         wave_model  = get_wavelength_axis_constant_dl(lmin=lmin_interp, lmax=lmax_interp, R=R_interp) # Regularly sampled template
@@ -317,7 +317,7 @@ def get_d_sim(instru, d, wave, trans, R, Rc, filter_type, model, T, lg, rv, vsin
 # Stellar filtering method
 # -------------------------------------------------------------------------
 
-def get_S_res(wave, S, Rc, filter_type, trans_Ss=None, outliers=False, sigma_outliers=5, renorm_cube_res=False, only_high_pass=False, debug=False):
+def get_S_res(wave, S, Rc, filter_type, trans_Ss=None, outliers=False, sigma_outliers=5, renorm_S_res=False, only_high_pass=False, debug=False):
     """
     Stellar filtering for molecular mapping (Appendix B of Martos et al., 2025).
 
@@ -343,7 +343,7 @@ def get_S_res(wave, S, Rc, filter_type, trans_Ss=None, outliers=False, sigma_out
         If True, apply sigma clipping on the residual spectrum of each spaxel.
     sigma_outliers : float, optional
         Sigma threshold for clipping, if 'outliers=True'.
-    renorm_cube_res : bool, optional
+    renorm_S_res : bool, optional
         If True, L2-normalize the residual spectrum of each spaxel.
     only_high_pass : bool, optional
         If True, do NOT subtract a stellar component; only estimate LF to return M.
@@ -440,7 +440,7 @@ def get_S_res(wave, S, Rc, filter_type, trans_Ss=None, outliers=False, sigma_out
     M[M == 0]         = np.nan
     
     # Optional per-spaxel L2 normalization of residual spectra
-    if renorm_cube_res:
+    if renorm_S_res:
         # Compute ||S_res|| per spaxel -> (NbLine*NbColumn,)
         flat  = S_res.reshape(NbChannel, -1)
         norms = np.sqrt(np.nansum(flat**2, axis=0))
@@ -1211,7 +1211,7 @@ def plot_CCF_1D_rv(instru, band, target_name, d, d_bkg, wave, trans, R, Rc, filt
         else:
             title += f"\nat $T$ = {round(T)}K, "+r"$\log g$ = "+f"{round(lg, 1)} and Vsini = {round(vsini, 1)} km/s\nwith $R_c$ = {Rc}"
         ax1.set_title(title, fontsize=18, pad=15)        
-        ax1.set_xlabel("Observed Radial Velocity [km/s]", fontsize=14, labelpad=10)
+        ax1.set_xlabel("Observed radial velocity [km/s]", fontsize=14, labelpad=10)
         ax1.set_ylabel("CCF [S/N]", fontsize=14, labelpad=10)
         ax1.plot([], [], 'gray', label="Noise", alpha=0.5)        
         if d_bkg is not None:  # Ajout du fond si disponible
@@ -1968,6 +1968,9 @@ def process_parameters_estimation(args):
             if stellar_component and Rc is not None:
                 t += - trans_w_Ss_HF_LF_ratio * template_broad_LF_shift
             
+            # Masking like data
+            t[np.isnan(d)] = np.nan
+            
             # Optionnal PCA modes removing (template-side projection)
             if C_pca is not None:
                 t0 = np.nan_to_num(t, nan=0.0, posinf=0.0, neginf=0.0)
@@ -2411,15 +2414,13 @@ def estimate_uncertainties_1sigma(P, func_marg, *params):
         uncertainty = 0.5 * (upper_bound - lower_bound)
         
         # TODO: test median value instead
-        optimal_value = np.interp(0.50, cdf, param_values)
+        #optimal_value = np.interp(0.50, cdf, param_values)
 
         optimal_values.append(optimal_value)
         uncertainties.append(uncertainty)
         bounds_1sigma.append((lower_bound, upper_bound))
 
     return optimal_values, uncertainties, bounds_1sigma
-
-
 
 
 
@@ -2433,6 +2434,7 @@ def gaussian_equivalent_credible_levels(sigmas=(1, 2, 3, 4, 5)):
     etc.
     """
     return [erf(s / np.sqrt(2.0)) for s in sigmas]
+
 
 
 def get_hpd_levels_2d(P2D, x, y, sigmas=(1, 2, 3, 4, 5)):
@@ -2543,13 +2545,13 @@ def custom_corner_plot(logL, params, param_names, param_units, target_name, band
     # Plot
     if show:
 
-        print("\n=== Marginalized parameter estimates ===\\n")
+        print("\n=== Marginalized parameter estimates ===")
         for idim in range(ndim):
             lower, upper = bounds_1sigma[idim]
             err_minus    = optimal_values[idim] - lower
             err_plus     = upper - optimal_values[idim]
             print(f"{param_names[idim]:<7} = {optimal_values[idim]:>8.3f} -{err_minus:.3f} +{err_plus:.3f} {param_units[idim]}")
-        print("\n=== Global maximum-likelihood grid point ===\n")
+        print("\n=== Global maximum-likelihood grid point ===")
         for idim in range(ndim):
             print(f"{param_names[idim]:<7} = {BF_values[idim]:>8.3f} {param_units[idim]}")
         

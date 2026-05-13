@@ -44,7 +44,7 @@ M_sun    = 1.98841e+30 # [kg]
 R_sun    = 695_700_000 # [m]
 lg_sun   = 4.44        # [dex(cm/s2)]
 vrot_sun = 2.0         # [km/s]
-MH_sun   = 0.0134      # [no unit]
+MH_sun   = 0.          # [dex]
 
 
 # -------------------------------------------------------------------------
@@ -226,16 +226,16 @@ config_data_ANDES = {
                                                    "YJH_16mas_100": GratingInfo(0.95, 1.8, 100000)}, # Spectral range [µm], resolving power
                      'lambda_range':              {"lambda_min": 0.95, "lambda_max": 1.8},           # Minimum and maximum instrumental wavelength range [µm]
                      'size_core':                  1,                                                # Size in pixels of the FWHM  (here: 1 fiber on the planet)
-                     'injection':                 {"YJH_5mas_100":  0.842,                           # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
-                                                   "YJH_10mas_100": 0.671,                           # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
-                                                   "YJH_16mas_100": 0.620},                          # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
+                     'injection':                 {"YJH_5mas_100":  0.848,                           # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
+                                                   "YJH_10mas_100": 0.715,                           # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
+                                                   "YJH_16mas_100": 0.784},                          # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
                      'pixel_detector_projection':  3,                                                # Effective number of pixels per spectral channel (here: first guess)
                      'apodizers':                 {"NO_SP": ApodizerInfo(1)},                        # Available apodizers
                      'strehls':                   ["MED"],                                           # Available strehls
                      'coronagraphs':              [None, "LYOT"],                                    # Available coronagraphs
-                     'pxscale':                   {"YJH_5mas_100":  0.005,                           # Pixel scale [arcsec/px]
-                                                   "YJH_10mas_100": 0.010,                           # Pixel scale [arcsec/px]
-                                                   "YJH_16mas_100": 0.016},                          # Pixel scale [arcsec/px]
+                     'pxscale':                   {"YJH_5mas_100":  0.005,                           # Fiber scale [arcsec/fiber] <=> [arcsec/px]
+                                                   "YJH_10mas_100": 0.010,                           # Fiber scale [arcsec/fiber] <=> [arcsec/px]
+                                                   "YJH_16mas_100": 0.016},                          # Fiber scale [arcsec/fiber] <=> [arcsec/px]
                      'FOV':                        0.144,                                            # Field Of View [arcsec], 16 mas * 9 fibers
                      'sep_unit':                   "mas",                                            # Unit for angular separation
                      'detector':                  {"RON":          10.0,                             # Read-Out Noise [e-/px/read]
@@ -292,23 +292,56 @@ config_data_HiRISE = {
                       'type':                       "fiber_injection_HRS",                   # Instrument type
                       'gratings':                  {"H": GratingInfo(1.43, 1.78, 140_000)},  # Spectral range [µm], resolving power
                       'lambda_range':              {"lambda_min": 1.43, "lambda_max": 1.78}, # Minimum and maximum instrumental wavelength range [µm]
-                      'size_core':                 1,                                        # Size in pixels of the FWHM                      (here: 1 fiber on the planet)
+                      'size_core':                 1,                                        # Size in pixels of the FWHM                      (here: 1 fiber on the target)
                       'pixel_detector_projection': 2 * 2.04,                                 # Effective number of pixels per spectral channel (here: 2 × Npx_x × Npx_y)
                       'apodizers':                 {"NO_SP": ApodizerInfo(1)},               # Available apodizers
                       'strehls':                   ["MED"],                                  # Available strehls
                       'coronagraphs':              [None],                                   # Available coronagraphs
-                      'pxscale':                    0.01225,                                 # Pixel scale [arcsec/px]
+                      'pxscale':                    0.01225,                                 # Fiber scale [arcsec/fiber] <=> [arcsec/px]
                       'FOV':                        4,                                       # Field Of View [arcsec]
                       'sep_unit':                   "arcsec",                                # Unit for angular separation
                       'detector':                  {"RON":          12,                      # Read-Out Noise [e-/px/read]
-                                                    "RON_lim":      1.,                      # Read-Out Noise limit [e-/px/read]
+                                                    "RON_lim":      4.1,                     # Read-Out Noise limit [e-/px/read] https://www.eso.org/sci/facilities/paranal/instruments/crires/doc/CRIRES_User_Manual_P108_Phase2.pdf?utm.com
                                                     "dark_current": 0.03,                    # Dark current [e-/px/s]
-                                                    "pxscale":      0.01225,                 # Pixel scale [arcsec/px]
                                                     "minDIT":       1.4725/60,               # Minimum Detector Integration Time [mn]
                                                     "maxDIT":       20,                      # Maximum Detector Integration Time [mn]
                                                     "saturation_e": 80_000},                 # Full well capacity [e-] 
                      }
 
+
+
+
+config_data_CRIRES = {
+                      'name':                       "CRIRES+",                                 # Instrument name
+                      'telescope_name':             "VLT",                                     # Telescope name
+                      'type':                       "slit_HRS",                                # Instrument type
+                      'gratings':                  {"Y_0p2": GratingInfo(0.95, 1.12, 92_000),  # Spectral range [µm], resolving power
+                                                    "Y_0p4": GratingInfo(0.95, 1.12, 46_000),  # Spectral range [µm], resolving power
+                                                    "J_0p2": GratingInfo(1.12, 1.35, 92_000),  # Spectral range [µm], resolving power
+                                                    "J_0p4": GratingInfo(1.12, 1.35, 46_000),  # Spectral range [µm], resolving power
+                                                    "H_0p2": GratingInfo(1.43, 1.80, 92_000),  # Spectral range [µm], resolving power
+                                                    "H_0p4": GratingInfo(1.43, 1.80, 46_000),  # Spectral range [µm], resolving power
+                                                    "K_0p2": GratingInfo(1.95, 2.50, 92_000),  # Spectral range [µm], resolving power
+                                                    "K_0p4": GratingInfo(1.95, 2.50, 46_000),  # Spectral range [µm], resolving power
+                                                    "L_0p2": GratingInfo(2.90, 4.20, 86_000),  # Spectral range [µm], resolving power
+                                                    "L_0p4": GratingInfo(2.90, 4.20, 43_000),  # Spectral range [µm], resolving power
+                                                    "M_0p2": GratingInfo(4.50, 5.30, 86_000),  # Spectral range [µm], resolving power
+                                                    "M_0p4": GratingInfo(4.50, 5.30, 43_000)}, # Spectral range [µm], resolving power
+                      'lambda_range':              {"lambda_min": 0.95, "lambda_max": 5.30},   # Minimum and maximum instrumental wavelength range [µm]
+                      'size_core':                 1,                                          # Size in pixels of the FWHM 1 px ~ 1 spatial FWHM
+                      'apodizers':                 {"NO_SP": ApodizerInfo(1)},                 # Available apodizers
+                      'strehls':                   ["MED"],                                    # Available strehls
+                      'coronagraphs':              [None],                                     # Available coronagraphs
+                      'pxscale':                    0.056,                                     # Pixel scale [arcsec/px]
+                      'FOV':                        10,                                        # Field Of View [arcsec]
+                      'sep_unit':                   "arcsec",                                  # Unit for angular separation
+                      'detector':                  {"RON":          12,                        # Read-Out Noise [e-/px/read]
+                                                    "RON_lim":      4.1,                       # Read-Out Noise limit [e-/px/read] https://www.eso.org/sci/facilities/paranal/instruments/crires/doc/CRIRES_User_Manual_P108_Phase2.pdf?utm.com
+                                                    "dark_current": 0.03,                      # Dark current [e-/px/s]
+                                                    "minDIT":       1.4725/60,                 # Minimum Detector Integration Time [mn]
+                                                    "maxDIT":       20,                        # Maximum Detector Integration Time [mn]
+                                                    "saturation_e": 80_000},                   # Full well capacity [e-] 
+                     }
 
 
 #------------------------------------------------------------------------------#
@@ -430,7 +463,7 @@ config_data_VIPAPYRUS = {
                          'apodizers':                {"NO_SP": ApodizerInfo(1)},                   # Available apodizers
                          'strehls':                  ["MED"],                                      # Available strehls
                          'coronagraphs':             [None],                                       # Available coronagraphs
-                         'pxscale':                   0.15, #0.24,                                 # Pixel scale [arcsec/px]                         (here: pxscale ~ 1.03*lambda/D, i.e. size of the fiber/FWHM)
+                         'pxscale':                   0.15,                                        # Fiber scale [arcsec/fiber] <=> [arcsec/px]                         (here: pxscale ~ 1.03*lambda/D, i.e. size of the fiber/FWHM)
                          'FOV':                       4,                                           # Field Of View [arcsec]
                          'sep_unit':                  "arcsec",                                    # Unit for angular separation
                          'detector':                 {"RON":          11.4,                        # Read-Out Noise [e-/px/read]
@@ -484,6 +517,7 @@ config_data_list = [
                     config_data_ANDES,
                     config_data_ERIS,
                     config_data_HiRISE,
+                    config_data_CRIRES,
                     config_data_MIRIMRS,
                     config_data_NIRCam,
                     config_data_NIRSpec,
@@ -639,6 +673,7 @@ extra_bands = {
     "F1140C": (11.100, 11.900),
     "F1550C": (14.900, 15.800),
     "F2300C": (22.500, 23.900),
+        
 }
 
 for b, (l0, l1) in extra_bands.items():
@@ -740,10 +775,11 @@ planet_types_reduced = {
 # Global resolving-power cap (upper threshold)
 # -------------------------------------------------------------------------
 
-R_max = -np.inf # Max resolution considered over all the instruments
-for config_data in config_data_list:
-    for band in config_data["gratings"]:
-        R_band = config_data["gratings"][band].R
-        if R_band > R_max:
-            R_max = R_band
-R0_max = 2*R_max # Max resolution limit considered (No need for more)
+# R_max = -np.inf # Max resolution considered over all the instruments
+# for config_data in config_data_list:
+#     for band in config_data["gratings"]:
+#         R_band = config_data["gratings"][band].R
+#         if R_band > R_max:
+#             R_max = R_band
+# R0_max = 2*R_max # Max resolution limit considered (No need for more)
+R0_max = 200_000

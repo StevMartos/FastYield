@@ -1211,7 +1211,7 @@ def fill_invalid_by_symmetry(psf):
         for y in range(NbLine):
             for x in range(NbColumn):
                 if mask[y, x]:
-                    y_mirror = NbLine - 1 - y
+                    y_mirror = NbLine   - 1 - y
                     x_mirror = NbColumn - 1 - x
 
                     value = psf[k, y_mirror, x_mirror]

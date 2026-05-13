@@ -11,7 +11,10 @@ set_spectra_path("/home/martoss/Documents/PhD/work/Spectra")
 #                       Graphic User Interface (GUI):                          #
 #------------------------------------------------------------------------------#
 
-FastYield_interface()
+#FastYield_interface()
+
+
+
 
 
 
@@ -52,8 +55,8 @@ FastYield_interface()
 # get_archive_table()                             # ~ 7 mn
 # all_SNR_table(table="Archive", instrus=instrus) # ~ 15 hours
 
-# get_planet_table_SNR(instru="HARMONI", table="Archive", thermal_model="auto", reflected_model="auto",  apodizer="NO_SP",   strehl="JQ1", coronagraph=None, systematics=False) # ~ 2mn
-# get_planet_table_SNR(instru="HARMONI", table="Archive", thermal_model="auto", reflected_model="auto",  apodizer="SP_Prox", strehl="JQ1", coronagraph=None, systematics=False) # ~ 2mn
+# get_planet_table_SNR(instru="HARMONI", table="Archive", thermal_model="auto", reflected_model="auto",  apodizer="NO_SP",   strehl="JQ1", coronagraph=None, systematics=False) # ~ 3mn
+# get_planet_table_SNR(instru="HARMONI", table="Archive", thermal_model="auto", reflected_model="auto",  apodizer="SP_Prox", strehl="JQ1", coronagraph=None, systematics=False) # ~ 3mn
 
 # get_planet_table_SNR(instru="ANDES", table="Archive", thermal_model="auto", reflected_model="auto",    apodizer="NO_SP", strehl="MED", coronagraph=None,   systematics=False) # ~ 30 mn
 # get_planet_table_SNR(instru="ANDES", table="Archive", thermal_model="auto", reflected_model="auto",    apodizer="NO_SP", strehl="MED", coronagraph="LYOT", systematics=False) # ~ 30 mn
@@ -75,6 +78,8 @@ FastYield_interface()
 
 # FastCurves(instru="HiRISE", model_planet="BT-Settl", calculation="contrast", T_planet=1000, lg_planet=4.0, mag_star=3, band0='K', T_star=6000, lg_star=4.0, exposure_time=120, apodizer="NO_SP", strehl="MED")
 
+FastCurves(instru="CRIRES+", model_planet="BT-Settl", calculation="contrast", T_planet=1000, lg_planet=4.0, mag_star=3, band0='K', T_star=6000, lg_star=4.0, exposure_time=120, apodizer="NO_SP", strehl="MED")
+
 # FastCurves(instru="MIRIMRS", model_planet=" BT-Settl", calculation="contrast", T_planet=1000, lg_planet=4.0, mag_star=3, band0='K', T_star=6000, lg_star=4.0, exposure_time=120, apodizer="NO_SP", strehl="NO_JQ")
 
 # FastCurves(instru="NIRSpec", model_planet="BT-Settl", calculation="contrast", T_planet=1000, lg_planet=4.0, mag_star=3, band0='K', T_star=6000, lg_star=4.0, exposure_time=120, apodizer="NO_SP", strehl="NO_JQ")
@@ -89,13 +94,13 @@ FastYield_interface()
 #                      FastCurves (real data cases):                           #
 #------------------------------------------------------------------------------#
 
-# ### CT Cha b / SNR(1MEDIUM) = 12.43 (2.5 s)
+# ### CT Cha b / SNR(1MEDIUM) = 12.49 (2.5 s)
 # FastCurves(calculation="SNR", instru="MIRIMRS", systematics=True, input_DIT=138.75/60, model_planet="BT-Settl", separation_planet=2.5, T_planet=2600, lg_planet=3.5, planet_name="CT Cha b", mag_star=8.66, mag_planet=14.9, band0='K', T_star=4400, lg_star=3.5, exposure_time=56.426, rv_star=-2.9, rv_planet=15, vsini_star=10, vsini_planet=10, channel=False)
 
-# ### HD 19467 b / SNR(G395H F290LP) = 17.23 (5 s)
+# ### HD 19467 b / SNR(G395H F290LP) = 16.2 (5 s)
 # FastCurves(calculation="SNR", instru="NIRSpec", systematics=True, separation_planet=1.5, input_DIT=218.8/60, model_planet="BT-Settl", T_planet=950, lg_planet=5.0, planet_name='HD 19467 b', mag_star=5.4, band0='K', mag_planet=17.97, T_star=5680, lg_star=4.0, exposure_time=65.65)
 
-# ### HIP 65426 b / SNR(F356W) = 766.06
+# ### HIP 65426 b / SNR(F356W) = 767.0
 # FastCurves(calculation="SNR", instru="NIRCam", input_DIT=308/60, model_planet="BT-Settl", T_planet=1600, lg_planet=4.0, separation_planet=0.8, planet_name="HIP 65426 b", mag_planet=6.771+9.85, mag_star=6.771, band0='K', T_star=8000, lg_star=4.0, exposure_time=20.3, coronagraph="MASK335R")
 
 

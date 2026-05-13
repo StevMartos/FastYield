@@ -2,7 +2,7 @@
 from src.config import R0_max, LMIN, LMAX, bands, instrus, instrus_with_systematics, colors_instru, simulated_path, archive_path, thermal_models, reflected_models, ignore_reflected_thresh_um, SNR_thresh, planet_types, planet_types_reduced, m_u, kB, G, vesc_earth, sim_data_path
 from src.get_specs import get_config_data, get_band_lims, get_wa, get_R_instru
 from src.utils import faded
-from src.spectrum import load_vega_spectrum, get_mag, get_spectrum_contribution_name_model, get_thermal_reflected_spectrum, get_counts_from_density, get_wave_K
+from src.spectrum import load_vega_spectrum, get_mag, get_spectrum_contribution_name_model, get_thermal_reflected_spectrum, get_counts_from_density, get_wave_K, get_wave_model
 from src.FastCurves import FastCurves
 
 # import astropy modules
@@ -1409,7 +1409,7 @@ def get_archive_table(seed=None):
     # 3) Saving raw pull and re-load via the loader
     # -----------------------------------------------------------------------------
     print(f"\nSaving the raw archive planet_table ({len(planet_table)} planets) to {archive_path}Archive_Pull_Raw.ecsv ...\n")
-    planet_table.write(archive_path + "Archive_Pull_Raw.ecsv", format='ascii.ecsv', overwrite=True)
+    planet_table.write(f"{archive_path}/Archive_Pull_Raw.ecsv", format='ascii.ecsv', overwrite=True)
     planet_table = load_planet_table("Archive_Pull_Raw.ecsv")
     
     # -----------------------------------------------------------------------------
@@ -1740,7 +1740,7 @@ def get_archive_table(seed=None):
     # ----------------------
     print(f"\nTotal number of planets for FastYield calculations: {len(planet_table)}")
     print(f"\nGenerating the table took {round((time.time()-time1)/60, 1)} mn")
-    planet_table.write(archive_path + "Archive_Pull_For_FastYield.ecsv", format='ascii.ecsv', overwrite=True)
+    planet_table.write(f"{archive_path}/Archive_Pull_For_FastYield.ecsv", format='ascii.ecsv', overwrite=True)
     
     # Few sanity check plots
     planet_table_classification()
@@ -1752,6 +1752,31 @@ def get_archive_table(seed=None):
 ########################################### SNR computations: #########################################################
 #######################################################################################################################
 
+def warmup_instrument_caches(instru, config_data, apodizer, strehl, coronagraph, background):
+    from src.get_specs import _get_transmission, get_PSF_profile, get_logit_coronagraphic_profile_interp, get_R_corr_interp, get_bkg_flux_band
+    from src.spectrum import get_wave_band
+    tellurics = config_data["base"] == "ground"
+    for band in config_data["gratings"]:
+        get_wave_band(instru=instru, band=band)
+        _get_transmission(instru=instru, band=band, tellurics=tellurics, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, fill_value=np.nan)
+        get_PSF_profile(band=band, strehl=strehl, apodizer=apodizer, coronagraph=coronagraph, instru=instru, separation_planet=None, return_FastYield=False, return_hdr=True)
+        if coronagraph is not None:
+            get_logit_coronagraphic_profile_interp(instru=instru, band=band, strehl=strehl, apodizer=apodizer, coronagraph=coronagraph)
+        if instru in {"MIRIMRS", "NIRSpec"}:
+            get_R_corr_interp(instru=instru, band=band)
+        if background is not None:
+            get_bkg_flux_band(instru=instru, band=band, background_level=background)
+
+
+
+def _init_snr_worker(ctx):
+    global _SNR_CTX
+    _SNR_CTX    = ctx
+    config_data = get_config_data(ctx["instru"])
+    warmup_instrument_caches(instru=ctx["instru"], config_data=config_data, apodizer=ctx["apodizer"], strehl=ctx["strehl"], coronagraph=ctx["coronagraph"], background=ctx["background"])
+
+
+    
 def process_SNR(idx):
     """
     Worker: compute SNR and band magnitudes for a single planet.
@@ -1789,6 +1814,7 @@ def process_SNR(idx):
     coronagraph            = _SNR_CTX["coronagraph"]
     Rc                     = _SNR_CTX["Rc"]
     filter_type            = _SNR_CTX["filter_type"]
+    background             = _SNR_CTX["background"]
     systematics            = _SNR_CTX["systematics"]
     PCA                    = _SNR_CTX["PCA"]
     N_PCA                  = _SNR_CTX["N_PCA"]
@@ -1829,13 +1855,13 @@ def process_SNR(idx):
     # Computing the SNR for the planet
     mag_s = mags[f"StarINSTRUmag({instru})"]
     mag_p = mags[f"PlanetINSTRUmag({instru})({spectrum_contributions})"]
-    name_band, SNR_planet, signal_planet, sigma_fund_planet, sigma_syst_planet, DIT_band = FastCurves(instru=instru, band_only=None, calculation="SNR", mag_star=mag_s, band0=band0, exposure_time=exposure_time, mag_planet=mag_p, separation_planet=planet["AngSep"].value/1000, return_FastYield=True, show_plot=False, verbose=False, planet_name=None, planet_spectrum=planet_spectrum, star_spectrum=star_spectrum, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, Rc=Rc, filter_type=filter_type, systematics=systematics, PCA=PCA, N_PCA=N_PCA)
+    name_band, SNR_planet, signal_planet, sigma_fund_planet, sigma_syst_planet, DIT_band = FastCurves(instru=instru, band_only=None, calculation="SNR", mag_star=mag_s, band0=band0, exposure_time=exposure_time, mag_planet=mag_p, separation_planet=planet["AngSep"].value/1000, return_FastYield=True, show_plot=False, verbose=False, planet_name=None, planet_spectrum=planet_spectrum, star_spectrum=star_spectrum, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, Rc=Rc, filter_type=filter_type, background=background, systematics=systematics, PCA=PCA, N_PCA=N_PCA)
     
     return idx, mags, name_band, signal_planet, sigma_fund_planet, sigma_syst_planet, DIT_band
 
 
 
-def get_planet_table_SNR(instru, table="Archive", thermal_model="None", reflected_model="None", apodizer="NO_SP", strehl="NO_JQ", coronagraph=None, Rc=100, filter_type="gaussian", systematics=False, PCA=False, N_PCA=20):
+def get_planet_table_SNR(instru, table="Archive", thermal_model="None", reflected_model="None", apodizer="NO_SP", strehl="NO_JQ", coronagraph=None, Rc=100, filter_type="gaussian", background="medium", systematics=False, PCA=False, N_PCA=20):
     """"
     Compute per-planet SNRs for a given instrument and write results to the table.
     
@@ -1883,14 +1909,11 @@ def get_planet_table_SNR(instru, table="Archive", thermal_model="None", reflecte
     wave_K = get_wave_K()
     
     # Model bandwidth
-    lmin_instru = config_data["lambda_range"]["lambda_min"]   # [µm]
-    lmax_instru = config_data["lambda_range"]["lambda_max"]   # [µm]
-    lmin_model  = 0.98*lmin_instru                            # [µm]
-    lmax_model  = 1.02*lmax_instru                            # [µm] (a bit larger than the instrumental bandwidth to avoid edge effects)
-    R_instru    = get_R_instru(config_data=config_data)       # Max instrument resolution (factor 2 to be sure to not loose spectral information)
-    R_model     = min(R_instru, R0_max)                       # Fixing the upper limit of resolution in order to speeds up the calculation (it also need to be high enough for instruments with very high resolution)
-    dl_model    = lmin_model / (2*R_model)                    # [µm/bin] Nyquist sampling of a spectrum with max resolving power R_model: 2 samples per resolution element at lmin_model
-    wave_model  = np.arange(lmin_model, lmax_model, dl_model) # [µm] Model wavelength axis (with constant dl step)
+    lmin_instru = config_data["lambda_range"]["lambda_min"]                     # [µm]
+    lmax_instru = config_data["lambda_range"]["lambda_max"]                     # [µm]
+    R_instru    = get_R_instru(instru=instru)                                   # Max instrument resolution (factor 2 to be sure to not loose spectral information)
+    R_model     = min(R_instru, R0_max)                                         # Fixing the upper limit of resolution in order to speeds up the calculation (it also need to be high enough for instruments with very high resolution)
+    wave_model  = get_wave_model(lmin=lmin_instru, lmax=lmax_instru, R=R_model) # [µm] Model wavelength axis (with constant dl step)
     
     # Vega spectrum on K-band and instru-band [J/s/m2/µm]
     vega_spectrum   = load_vega_spectrum()
@@ -1936,7 +1959,7 @@ def get_planet_table_SNR(instru, table="Archive", thermal_model="None", reflecte
 
     # --- 5) Init global context for workers ---
     global _SNR_CTX
-    _SNR_CTX = dict(planet_table=planet_table, instru=instru, thermal_model=thermal_model, reflected_model=reflected_model, spectrum_contributions=spectrum_contributions, wave_model=wave_model, wave_K=wave_K, counts_vega=counts_vega, counts_vega_K=counts_vega_K, band0=band0, exposure_time=exposure_time, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, Rc=Rc, filter_type=filter_type, systematics=systematics, PCA=PCA, N_PCA=N_PCA, masks=masks, bands_valid=bands_valid)    
+    _SNR_CTX = dict(planet_table=planet_table, instru=instru, thermal_model=thermal_model, reflected_model=reflected_model, spectrum_contributions=spectrum_contributions, wave_model=wave_model, wave_K=wave_K, counts_vega=counts_vega, counts_vega_K=counts_vega_K, band0=band0, exposure_time=exposure_time, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, Rc=Rc, filter_type=filter_type, background=background, systematics=systematics, PCA=PCA, N_PCA=N_PCA, masks=masks, bands_valid=bands_valid)    
     
     # Function to enter the estimations in the planet_table
     def set_planet_table_values(planet_table, idx, mags, name_band, signal_planet, sigma_fund_planet, sigma_syst_planet, DIT_band):
@@ -1975,13 +1998,17 @@ def get_planet_table_SNR(instru, table="Archive", thermal_model="None", reflecte
             set_planet_table_values(planet_table, idx, mags, name_band, signal_planet, sigma_fund_planet, sigma_syst_planet, DIT_band)
     
     else: # if no PCA, uses multiprocessing
-        with Pool(processes=cpu_count()//2) as pool: # Utilisation de multiprocessing pour paralléliser les combinaisons i, j
-            for (idx, mags, name_band, signal_planet, sigma_fund_planet, sigma_syst_planet, DIT_band) in tqdm(pool.imap(process_SNR, [(idx) for idx in range(len(planet_table))]), total=len(planet_table), desc="Multiprocessing"):
+        nproc     = max(1, cpu_count() // 2)
+        chunksize = max(1, len(planet_table) // (20 * nproc))
+        with Pool(processes=nproc, initializer=_init_snr_worker, initargs=(_SNR_CTX,),) as pool:
+            iterator = pool.imap(process_SNR, range(len(planet_table)), chunksize=chunksize)
+            for result in tqdm(iterator, total=len(planet_table), desc="Multiprocessing"):
+                idx, mags, name_band, signal_planet, sigma_fund_planet, sigma_syst_planet, DIT_band = result
                 set_planet_table_values(planet_table, idx, mags, name_band, signal_planet, sigma_fund_planet, sigma_syst_planet, DIT_band)
                     
     print(f"\n Calculating SNR took {(time.time()-time1)/60:.1f} mn")
     filename = get_filename_table(table=table, instru=instru, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, systematics=systematics, PCA=PCA, name_model=name_model)
-    planet_table.write(path+filename, format='ascii.ecsv', overwrite=True)
+    planet_table.write(f"{path}/{filename}", format='ascii.ecsv', overwrite=True)
     
 
 
@@ -2349,7 +2376,7 @@ def yield_plot_bands_texp(table="Archive", instru="HARMONI", thermal_model="auto
     for ib, band in enumerate(bands):
         for im in range(len(modes)):
             for it in range(len(exposure_time)):
-                SNR = get_SNR_from_table(table=planet_tables[im], exposure_time=exposure_time[it], band=band)
+                SNR = get_SNR_from_table(planet_table=planet_tables[im], exposure_time=exposure_time[it], band=band)
                 if fraction :
                     yields[ib, im, it] = len(planet_tables[im][SNR > SNR_thresh]) * 100/NbPlanet[im]
                 else:
@@ -3257,7 +3284,7 @@ def get_planet_table_contrast(instru, planet_table, exposure_time, thermal_model
         suffix = "with_systematics+PCA" if PCA else "with_systematics"
     else:
         suffix = "without_systematics"
-    filename = archive_path + f"ELT_Contrast_Earth_Like_Archive_Pull_{instru}_{suffix}_{name_model}_{spectrum_contributions}_t{exposure_time}mn_Rc{Rc}.ecsv"
+    filename = f"{archive_path}/ELT_Contrast_Earth_Like_Archive_Pull_{instru}_{suffix}_{name_model}_{spectrum_contributions}_t{exposure_time}mn_Rc{Rc}.ecsv"
 
     # Retrieving or computing the table
     try:
@@ -3282,14 +3309,9 @@ def get_planet_table_contrast(instru, planet_table, exposure_time, thermal_model
         wave_K = get_wave_K()
         
         # Model bandwidth
-        lmin_instru = config_data["lambda_range"]["lambda_min"]   # [µm]
-        lmax_instru = config_data["lambda_range"]["lambda_max"]   # [µm]
-        lmin_model  = 0.98*lmin_instru                            # [µm]
-        lmax_model  = 1.02*lmax_instru                            # [µm] (a bit larger than the instrumental bandwidth to avoid edge effects)
-        R_instru    = get_R_instru(config_data=config_data)       # Max instrument resolution (factor 2 to be sure to not loose spectral information)
-        R_model     = min(R_instru, R0_max)                       # Fixing the upper limit of resolution in order to speeds up the calculation (it also need to be high enough for instruments with very high resolution)
-        dl_model    = lmin_model / (2*R_model)                    # [µm/bin] Nyquist sampling of a spectrum with max resolving power R_model: 2 samples per resolution element at lmin_model
-        wave_model  = np.arange(lmin_model, lmax_model, dl_model) # [µm] Model wavelength axis (with constant dl step)
+        lmin_instru = config_data["lambda_range"]["lambda_min"]                    # [µm]
+        lmax_instru = config_data["lambda_range"]["lambda_max"]                    # [µm]
+        wave_model  = get_wave_model(lmin=lmin_instru, lmax=lmax_instru, R=R0_max) # [µm]
         
         # Vega spectrum on K-band and instru-band [J/s/m2/µm]
         vega_spectrum   = load_vega_spectrum()
