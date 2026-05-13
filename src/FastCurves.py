@@ -1,6 +1,6 @@
 # import FastYield modules
-from src.config import instrus, bands, rad2arcsec
-from src.get_specs import _load_corona_profile, _load_corr_factor, _load_bkg_flux, _get_transmission, get_PSF_profile, get_config_data, get_wa, get_band_lims, get_R_instru
+from src.config import instrus, bands, rad2arcsec, R0_max
+from src.get_specs import _get_transmission, get_PSF_profile, get_config_data, get_wa, get_band_lims, get_R_instru, get_logit_coronagraphic_profile_interp, get_R_corr_interp, get_bkg_flux_band
 from src.utils import airy_profile, get_r_core
 from src.spectrum import filtered_flux, get_mag, get_resolution, get_spectrum_instru, get_spectrum_band, load_star_spectrum, load_planet_spectrum, load_vega_spectrum, get_counts_from_density
 from src.signal_noise import get_DIT_RON, get_delta_cos_theta_syst, get_alpha_cos_theta_syst, get_beta, get_fn_MM, get_systematics, compute_sigma_base_2_al_spat_numba, compute_sigma_base_2_al_spec_numba, compute_sigma_base_2_speck_numba, compress_h_for_sigma_base_2, compute_sigma_base_al_spec_fast
@@ -17,7 +17,7 @@ import numpy as np
 # import scipy modules
 from scipy.interpolate import interp1d
 from scipy.ndimage import gaussian_filter1d
-from scipy.special import expit, logit
+from scipy.special import expit
 
 # import other modules
 import time
@@ -29,7 +29,7 @@ import re
 #--------------------
 # FastCurves Function
 #--------------------
-def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star, band0_planet, planet_spectrum, star_spectrum, tellurics, apodizer, strehl, coronagraph, systematics, speckles, PCA, PCA_mask, N_PCA, channel, planet_name, separation_planet, mag_planet, show_plot, verbose, post_processing, sep_unit, background, Rc, filter_type, input_DIT, band_only, return_FastYield, return_quantity):
+def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star, band0_planet, planet_spectrum, star_spectrum, stellar_component, tellurics, apodizer, strehl, coronagraph, systematics, speckles, PCA, PCA_mask, N_PCA, channel, planet_name, separation_planet, mag_planet, show_plot, verbose, post_processing, sep_unit, background, Rc, filter_type, input_DIT, band_only, return_FastYield, return_quantity):
     """
     See the function "FastCurves" below.
     """
@@ -37,6 +37,8 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
     warnings.filterwarnings("ignore", message="FigureCanvasAgg is non-interactive*", category=UserWarning)
     #warnings.filterwarnings('ignore', category=UserWarning, append=True)
     mpl.rcParams['figure.max_open_warning'] = 0
+    mask_wave   = None
+    PCA_verbose = None
     
     # ----------------------------------
     # Hard-coded toggles for diagnostics
@@ -72,7 +74,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
     RON0           = config_data["detector"]["RON"]          # Read out noise [e-/px/read]
     RON_lim        = config_data["detector"]["RON_lim"]      # Read out noise limit [e-/px/read]
     dark_current   = config_data["detector"]["dark_current"] # Dark current [e-/px/s]
-    IWA, OWA       = get_wa(config_data=config_data, band="instru", sep_unit=sep_unit) # Inner and Outer Working Angle in 'sep_unit' 
+    IWA, OWA       = get_wa(instru=instru, band="instru", sep_unit=sep_unit) # Inner and Outer Working Angle in 'sep_unit' 
     if show_plot:
         cmap = plt.get_cmap("rainbow", NbBand)
 
@@ -119,7 +121,9 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
     lmax_instru  = config_data["lambda_range"]["lambda_max"] # [µm]
     R_planet     = np.nanmedian(planet_spectrum.R[(planet_spectrum.wavelength >= lmin_instru) & (planet_spectrum.wavelength <= lmax_instru)]) # Planet's model resolution
     R_star       = np.nanmedian(star_spectrum.R[(star_spectrum.wavelength     >= lmin_instru) & (star_spectrum.wavelength   <= lmax_instru)]) # Star's model resolution
-    R_instru     = get_R_instru(config_data=config_data) # Max instrument resolution (factor 2 to be sure to not loose spectral information)
+    R_instru     = get_R_instru(instru=instru) # Max instrument resolution (factor 2 to be sure to not loose spectral information)
+    R_instru     = max(R_instru, R_star, R_planet)
+    R_instru     = min(R_instru, R0_max)
     lmin_instru  = config_data["lambda_range"]["lambda_min"]
     lmax_instru  = config_data["lambda_range"]["lambda_max"]
     
@@ -140,12 +144,12 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
         planet_spectrum_instru, planet_spectrum_density = get_spectrum_instru(band0=band0_star, R=R_instru, config_data=config_data, mag=mag_star, spectrum=planet_spectrum) # [ph/bin/mn] and [J/s/m2/µm]
         # For plotting purposes only: normalize planetary density to star density mean level
         planet_spectrum_density.flux *= np.nanmean(star_spectrum_density.flux) / np.nanmean(planet_spectrum_density.flux)
-    
+        
     # Wavelength axis
-    wave_instru = planet_spectrum_instru.wavelength
+    wave_instru = planet_spectrum_instru.wavelength                           # [µm]
     mask_instru = (wave_instru >= lmin_instru) & (wave_instru <= lmax_instru) # wave_instru is slightly broader than the instrumental range
 
-    # Computing the planet-to-star and star-to-planet flux ratio in [ph/bin/mn] on the instrumental bandwidth to renormalize the signal with (by doing so, it will give a contrast in photons counts and not in energy on this bandwidth, otherwise we would have had to set it to the same received energy) + the contrast is then for all over the instrumental bandwidth
+    # Computing the planet-to-star and star-to-planet flux ratio in [ph/mn] on the instrumental bandwidth to renormalize the signal with (by doing so, it will give a contrast in photons counts and not in energy on this bandwidth, otherwise we would have had to set it to the same received energy) + the contrast is then for all over the instrumental bandwidth
     planet_to_star_ratio = np.nansum(planet_spectrum_instru.flux[mask_instru]) / np.nansum(star_spectrum_instru.flux[mask_instru])
     star_to_planet_ratio = 1 / planet_to_star_ratio
     
@@ -264,23 +268,26 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
         # -----------------------------------------------------------------------
         # Spectra on the band + magnitudes in [ph/bin/mn] (total ph over the FoV)
         # -----------------------------------------------------------------------
-        star_spectrum_band   = get_spectrum_band(spectrum_instru=star_spectrum_instru,   config_data=config_data, band=band, verbose=verbose) # [ph/bin/mn] (total ph over the FoV)
-        planet_spectrum_band = get_spectrum_band(spectrum_instru=planet_spectrum_instru, config_data=config_data, band=band, verbose=verbose) # [ph/bin/mn] (total ph over the FoV)
-        wave_band            = planet_spectrum_band.wavelength      # [µm]
-        lmin_band            = config_data['gratings'][band].lmin   # Lambda min of the considered band [µm]
-        lmax_band            = config_data['gratings'][band].lmax   # Lambda max of the considered band [µm]
-        R_band               = config_data['gratings'][band].R      # Spectral resolution of the band
-        R_nyquist            = get_resolution(wavelength=wave_band, func=np.nanmedian)       # Spectral resolution assuming Nyquist sampling (should be R_nyquist ~ R_band)
-        iwa, owa             = get_wa(config_data=config_data, band=band, sep_unit=sep_unit) # Inner and Outer Working Angle in 'sep_unit' 
+        star_spectrum_band   = get_spectrum_band(spectrum_instru=star_spectrum_instru,   config_data=config_data, instru=instru, band=band, verbose=verbose) # [ph/bin/mn] (total ph over the FoV)
+        planet_spectrum_band = get_spectrum_band(spectrum_instru=planet_spectrum_instru, config_data=config_data, instru=instru, band=band, verbose=verbose) # [ph/bin/mn] (total ph over the FoV)
+        wave_band            = planet_spectrum_band.wavelength                         # [µm]
+        lmin_band            = config_data['gratings'][band].lmin                      # Lambda min of the considered band [µm]
+        lmax_band            = config_data['gratings'][band].lmax                      # Lambda max of the considered band [µm]
+        R_band               = config_data['gratings'][band].R                         # Spectral resolution of the band
+        R_nyquist            = get_resolution(wavelength=wave_band, func=np.nanmedian) # Spectral resolution assuming Nyquist sampling (should be R_nyquist ~ R_band)
+        iwa, owa             = get_wa(instru=instru, band=band, sep_unit=sep_unit)     # Inner and Outer Working Angle in 'sep_unit' 
 
         # Band's magnitudes (computed from densities)
-        mask_band     = (wave_instru >= lmin_band) & (wave_instru <= lmax_band)
-        counts_vega   = get_counts_from_density(wave=wave_instru[mask_band], density=vega_spectrum_density.flux[mask_band])
-        mag_star_band = get_mag(wave=wave_instru[mask_band], density_obs=star_spectrum_density.flux[mask_band], density_vega=None, counts_vega=counts_vega)
-        if mag_planet is not None:
-            mag_planet_band = get_mag(wave=wave_instru[mask_band], density_obs=planet_spectrum_density.flux[mask_band], density_vega=None, counts_vega=counts_vega)
-        else:
-            mag_planet_band = None
+        mag_star_band   = None
+        mag_planet_band = None
+        if verbose:
+                mask_band     = (wave_instru >= lmin_band) & (wave_instru <= lmax_band)
+                counts_vega   = get_counts_from_density(wave=wave_instru[mask_band], density=vega_spectrum_density.flux[mask_band])
+                mag_star_band = get_mag(wave=wave_instru[mask_band], density_obs=star_spectrum_density.flux[mask_band], density_vega=None, counts_vega=counts_vega)
+                if mag_planet is not None:
+                    mag_planet_band = get_mag(wave=wave_instru[mask_band], density_obs=planet_spectrum_density.flux[mask_band], density_vega=None, counts_vega=counts_vega)
+                else:
+                    mag_planet_band = None
         
         # ------------------------------------
         # Total system transmission in [e-/ph]
@@ -292,24 +299,22 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
         # --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
         PSF_profile, fraction_core, separation, pxscale, hdr_PSF = get_PSF_profile(band=band, strehl=strehl, apodizer=apodizer, coronagraph=coronagraph, instru=instru, separation_planet=separation_planet, return_FastYield=return_FastYield, return_hdr=True)
         
-        # Index of the separation of the planet
-        if separation_planet is not None:
-            idx_planet_sep = np.nanargmin(np.abs(separation - separation_planet))
-                        
         # Coronagraphic radial transmission and fraction core [FoV flux fraction/FWHM] as function of separation
         if coronagraph is not None:
-            raw_sep, raw_fraction_core, raw_radial_transmission = _load_corona_profile(instru=instru, band=band, strehl=strehl, apodizer=apodizer, coronagraph=coronagraph)
-            logit_fraction_core_interp                          = interp1d(raw_sep, logit(raw_fraction_core),       bounds_error=False, fill_value=(logit(raw_fraction_core[0]),       logit(raw_fraction_core[-1])))
-            logit_radial_transmission_interp                    = interp1d(raw_sep, logit(raw_radial_transmission), bounds_error=False, fill_value=(logit(raw_radial_transmission[0]), logit(raw_radial_transmission[-1])))
-            fraction_core                                       = expit(logit_fraction_core_interp(separation))       # Fraction of flux of a PSF inside the FWHM as function of the separation
-            radial_transmission                                 = expit(logit_radial_transmission_interp(separation)) # Transmission of a PSF as function of the separation
-            star_transmission                                   = expit(logit_radial_transmission_interp(0))          # Star coronagraphic transmission factor when the star is perfectly aligned with it (i.e. at 0 separation)
-            fraction_core[separation > raw_sep[-1]]             = raw_fraction_core[-1]                               # Flat extrapolation
-            radial_transmission[separation > raw_sep[-1]]       = raw_radial_transmission[-1]                         # Flat extrapolation 
-            fraction_core                                      *= radial_transmission                                 # Fraction core through the coronagraph
+            # Get logit interpolation object of the raw profile, fraction core and raw data axis
+            logit_fraction_core_interp, logit_radial_transmission_interp, star_transmission, raw_fraction_core, raw_radial_transmission, raw_separation = get_logit_coronagraphic_profile_interp(instru=instru, band=band, strehl=strehl, apodizer=apodizer, coronagraph=coronagraph)            
+            fraction_core                                        = expit(logit_fraction_core_interp(separation))       # Fraction of flux of a PSF inside the FWHM as function of the separation
+            radial_transmission                                  = expit(logit_radial_transmission_interp(separation)) # Transmission of a PSF as function of the separation
+            fraction_core[separation > raw_separation[-1]]       = raw_fraction_core[-1]                               # Flat extrapolation
+            radial_transmission[separation > raw_separation[-1]] = raw_radial_transmission[-1]                         # Flat extrapolation 
+            fraction_core                                       *= radial_transmission                                 # Fraction core through the coronagraph
             
             # Multiplying the coronagraphic PSF profile by the star coronagraphic transmission factor
             PSF_profile *= star_transmission
+        
+        # Index of the separation of the planet
+        if separation_planet is not None:
+            idx_planet_sep = np.nanargmin(np.abs(separation - separation_planet))
         
         # -------------------------------------------------------
         # DIT in [mn] and effective read-out noise in [e-/px/DIT] 
@@ -317,8 +322,9 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
         N_DIT, DIT, DIT_saturation, DIT_saturation_planet, RON_eff, iwa_FPM = get_DIT_RON(config_data=config_data, instru_type=instru_type, apodizer=apodizer, PSF_profile=PSF_profile, separation=separation, star_spectrum_band=star_spectrum_band, exposure_time=exposure_time, min_DIT=min_DIT, max_DIT=max_DIT, trans=trans, RON0=RON0, RON_lim=RON_lim, saturation_e=saturation_e, input_DIT=input_DIT, separation_planet=separation_planet)
         
         # Star and planet spectra integrated over the DIT in [ph/bin/DIT] (total ph over the FoV)
-        Ss = star_spectrum_band.flux   * DIT # [ph/bin/DIT] (total ph over the FoV)
-        Sp = planet_spectrum_band.flux * DIT # [ph/bin/DIT] (total ph over the FoV)
+        Ss       = star_spectrum_band.flux   * DIT # [ph/bin/DIT] (total ph over the FoV)
+        Sp       = planet_spectrum_band.flux * DIT # [ph/bin/DIT] (total ph over the FoV)
+        trans_Ss = trans * Ss                      # [e-/bin/DIT] (total e- over the FoV)
         
         # -----------------------------------------------------------------------------------------------------------
         # Fiber-fed IFUs: mean injection correction (e.g. ANDES): the fact that the position of the planet is unknown
@@ -334,10 +340,9 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
         # ---------------------------------------------------------------------------------------------------------------------------------------------
         R_corr = np.zeros_like(separation) + 1.
         if instru in {"MIRIMRS", "NIRSpec"}: # Dithering for MIRIMRS and NIRSpec
-            separation_R_corr, r_corr                  = _load_corr_factor(instru=instru, band=band)
-            valid                                      = np.isfinite(r_corr)
-            R_corr                                     = interp1d(separation_R_corr[valid], r_corr[valid], bounds_error=False, fill_value="extrapolate")(separation)
-            R_corr[separation > separation_R_corr[-1]] = r_corr[-1] # Flat extrapolation
+            R_corr_interp, raw_R_corr, raw_separation = get_R_corr_interp(instru=instru, band=band)
+            R_corr                                    = R_corr_interp(separation)
+            R_corr[separation > raw_separation[-1]]   = raw_R_corr[-1] # Flat extrapolation
         else:
             try:
                 R_corr *= config_data["R_corr"]
@@ -371,7 +376,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
                     if systematics:
                         
                         # [e-/FHWM/mn]**2, [sep_unit], [no unit], [no unit], [µm], object, str
-                        sigma_syst_prime_2, separation_syst, Mp, M_pca, wave_data, pca, PCA_verbose = get_systematics(config_data=config_data, band=band, tellurics=tellurics, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, R_band=R_band, Rc=Rc, filter_type=filter_type, star_spectrum_instru=star_spectrum_instru, planet_spectrum_instru=planet_spectrum_instru, wave_band=wave_band, size_core=size_core, PCA=PCA, PCA_mask=PCA_mask, N_PCA=N_PCA, mag_planet=mag_planet, separation_planet=separation_planet, mag_star=mag_star, exposure_time=exposure_time, target_name=planet_name)
+                        sigma_syst_prime_2, separation_syst, Mp, M_pca, wave_data, pca, PCA_verbose = get_systematics(config_data=config_data, band=band, tellurics=tellurics, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, R_band=R_band, Rc=Rc, filter_type=filter_type, star_spectrum_instru=star_spectrum_instru, planet_spectrum_instru=planet_spectrum_instru, stellar_component=stellar_component, wave_band=wave_band, size_core=size_core, PCA=PCA, PCA_mask=PCA_mask, N_PCA=N_PCA, mag_planet=mag_planet, separation_planet=separation_planet, mag_star=mag_star, exposure_time=exposure_time, target_name=planet_name)
                         
                         # Interpolation + extrapolation (if needed) on the current separation axis
                         sigma_syst_prime = np.exp(interp1d(separation_syst, np.log(np.sqrt(sigma_syst_prime_2)), bounds_error=False, fill_value="extrapolate")(separation))
@@ -429,20 +434,26 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
             # ---------------------------
             if post_processing.lower() in {"molecular mapping", "mm"}:
                 
-                # Building MM template
-                template_MM, _ = filtered_flux(flux=Sp, R=R_band, Rc=Rc, filter_type=filter_type) # [Sp]_HF
-                template_MM    = trans * template_MM                                              # trans * [Sp]_HF
-                template_MM   /= np.sqrt(np.nansum(template_MM**2))                               # Normalizing the template
-                template       = template_MM
-                
                 # Systematic modulations of the spectra are taken into account (mostly insignificant effect on detection capability)
                 if not systematics:
                     Mp = 1.0
                 Mp_Sp = Mp * Sp # [ph/bin/DIT] (total ph over the FoV)
+                
+                # HF/LF split
+                Mp_Sp_HF, Mp_Sp_LF = filtered_flux(Mp_Sp, R=R_band, Rc=Rc, filter_type=filter_type) # Planet filtered spectra in [ph/bin/DIT] (total ph over the FoV)
+                Sp_HF, Sp_LF       = filtered_flux(Sp,    R=R_band, Rc=Rc, filter_type=filter_type) # Planet filtered spectra in [ph/bin/DIT] (total ph over the FoV)
+                Ss_HF, Ss_LF       = filtered_flux(Ss,    R=R_band, Rc=Rc, filter_type=filter_type) # Star   filtered spectra in [ph/bin/DIT] (total ph over the FoV)
+                
+                # Building MM template
+                template_MM      = trans * Sp_HF                      # [Sp]_HF
+                if stellar_component:
+                    template_MM += - trans * Ss_HF * Sp_LF / Ss_LF    # Adding the stellar residual component (if needed)
+                template_MM     /= np.sqrt(np.nansum(template_MM**2)) # Normalizing the template
+                template         = template_MM
 
                 # Useful signal (α) and self-subtraction (β) in [e-/DIT] (total e- over the FoV) (with systematic modulations, if any)
-                alpha, cos_theta_syst_MM = get_alpha_cos_theta_syst(Mp_Sp=Mp_Sp, trans=trans, template=template_MM, R=R_nyquist, Rc=Rc, filter_type=filter_type)
-                beta                     = get_beta(Ss=Ss,          Mp_Sp=Mp_Sp, trans=trans, template=template_MM, R=R_nyquist, Rc=Rc, filter_type=filter_type)
+                alpha, cos_theta_syst_MM = get_alpha_cos_theta_syst(Mp_Sp_HF=Mp_Sp_HF, trans=trans, template=template_MM, R=R_nyquist, Rc=Rc, filter_type=filter_type)
+                beta                     = get_beta(Ss_HF=Ss_HF, Ss_LF=Ss_LF, Mp_Sp_LF=Mp_Sp_LF, trans=trans, template=template_MM, R=R_nyquist, Rc=Rc, filter_type=filter_type)
                 
                 # For prints (computing DI signal in [e-/DIT] (total e- over the FoV) and template)
                 if verbose or show_syst_budget:
@@ -487,11 +498,11 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
             signal *= star_to_planet_ratio
             
         # Signal loss ratio due to the PCA (if required)
-        if systematics:
+        if systematics and PCA:
             signal *= M_pca
             
         # For fiber_injection_HRS instruments, and separation_planet < FWHM, MM is impossible
-        if instru_type == "fiber_injection_HRS" and separation_planet is not None and separation_planet < iwa and calculation == "SNR":
+        if instru_type in {"fiber_injection_HRS", "slit_HRS"} and separation_planet is not None and separation_planet < iwa and calculation == "SNR":
             signal *= 0
 
         # If saturation is reached at the planet separation even with the smallest DIT, detection is impossible
@@ -505,22 +516,22 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
         # -----------------------------------------------------------------------------------------------------------
         # Detector noises, DC and RON in [e-/px/DIT] (does not need CCF projection since it is wavelength indepedant)
         # -----------------------------------------------------------------------------------------------------------
-        sigma_DC_2  = dark_current * 60*DIT # Dark current photon noise [e-/px/DIT]
-        sigma_RON_2 = RON_eff**2            # Effective read out noise  [e-/px/DIT]
+        sigma_DC_2  = dark_current*60*DIT # Dark current photon noise [e-/px/DIT] (per detector pixel)
+        sigma_RON_2 = RON_eff**2          # Effective read out noise  [e-/px/DIT] (per detector pixel)
         
         if "fiber" in instru_type: # Detector noises must be multiplied by the number on which the fiber's signal is projected and integrated along the diretion perpendicular to the spectral dispersion of the detector
             NbPixel      = config_data['pixel_detector_projection'] # Number of detector px per fiber
-            sigma_DC_2  *= NbPixel                                  # Adds quadratically [e-/px/DIT]
-            sigma_RON_2 *= NbPixel                                  # Adds quadratically [e-/px/DIT]
+            sigma_DC_2  *= NbPixel                                  # Adds quadratically [e-/fiber/DIT] <=> [e-/px/DIT] (per cube pixel)
+            sigma_RON_2 *= NbPixel                                  # Adds quadratically [e-/fiber/DIT] <=> [e-/px/DIT] (per cube pixel)
         
         # ----------------------------------------
         # Stellar halo photon noise in [e-/px/DIT]
         # ----------------------------------------
         if instru_type == "imager": # Integrated flux
-            sigma_halo_2 = PSF_profile * np.nansum(trans*Ss) # Stellar photon noise per spectral channel in [e-/px/DIT] for each separation
+            sigma_halo_2 = PSF_profile * np.nansum(trans_Ss) # Stellar photon noise per spectral channel in [e-/px/DIT] for each separation
         
         else: # Projection onto the CCF
-            sigma_halo_prime_2 = PSF_profile * np.nansum(trans*Ss * template**2) # Stellar photon noise projected in the CCF [e-/px/DIT] for each separation
+            sigma_halo_prime_2 = PSF_profile * np.nansum(trans_Ss * template**2) # Stellar photon noise projected in the CCF [e-/px/DIT] for each separation
         
         # --------------------------------------
         # Background photon noise in [e-/px/DIT]
@@ -530,11 +541,10 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
             sigma_bkg_prime_2 = 0. # [e-/px/DIT]
         
         else:
-            wave_raw, bkg_raw = _load_bkg_flux(instru, band, background) # [µm] and [e-/bin/px/s]  
-            bkg_raw_density   = bkg_raw / np.gradient(wave_raw)          # [e-/µm/px/s]
-            bkg_flux          = interp1d(wave_raw, bkg_raw_density, bounds_error=False, fill_value=(bkg_raw_density[0], bkg_raw_density[-1]))(wave_band) # [e-/µm/px/s]
-            bkg_flux         *= np.gradient(wave_band) * 60*DIT          # [e-/bin/px/DIT]
-            sigma_bkg_2       = bkg_flux                                 # Background photon noise per spectral channel in [e-/bin/px/DIT] for each separation
+            bkg_flux_band = get_bkg_flux_band(instru=instru, band=band, background_level=background) # [e-/bin/px/mn]
+            sigma_bkg_2   = bkg_flux_band * DIT                                                      # Background photon noise per spectral channel in [e-/bin/px/DIT] for each separation
+            if mask_wave is not None:
+                sigma_bkg_2 = sigma_bkg_2[mask_wave]
             
             if instru_type == "imager": # Integrated flux
                 sigma_bkg_2 = np.nansum(sigma_bkg_2) # Background photon noise per spectral channel in [e-/px/DIT]
@@ -599,7 +609,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
                     flux_band = trans*fraction_core[idx_planet_sep]*Mp_Sp/DIT # Planet flux integrated over the FWHM in [e-/bin/FWHM/mn] at the planet's separation
                 else:
                     flux_band = trans*fraction_core*Mp_Sp/DIT                      # Planet flux integrated over the FWHM [e-/bin/FWHM/mn]
-                flux_band_star = A_FWHM*PSF_profile[idx_planet_sep] * trans*Ss/DIT # Stellar flux integrated over the FWHM in [e-/bin/FWHM/mn] at the planet's separation
+                flux_band_star = A_FWHM*PSF_profile[idx_planet_sep] * trans_Ss/DIT # Stellar flux integrated over the FWHM in [e-/bin/FWHM/mn] at the planet's separation
                 ax_flux_band.plot(wave_band, flux_band_star, color=cmap(nb), linestyle='-', linewidth=2, alpha=0.3)
                 ymin = min(ymin, np.nanmin(flux_band), np.nanmin(flux_band_star))
                 ymax = max(ymax, np.nanmax(flux_band), np.nanmax(flux_band_star))
@@ -703,7 +713,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
         DIT_bands.append(DIT)                 # [mn/DIT]
         signal_bands.append(signal)           # [e-/FWHM/DIT]
         planet_flux_bands.append(trans*Mp_Sp) # [e-/bin/DIT] (total e- over the FoV)
-        star_flux_bands.append(trans*Ss)      # [e-/bin/DIT] (total e- over the FoV)
+        star_flux_bands.append(trans_Ss)      # [e-/bin/DIT] (total e- over the FoV)
         wave_bands.append(wave_band)          # [µm]
         trans_bands.append(trans)             # [e-/ph]
         iwa_FPM_bands.append(iwa_FPM)         # [sep_unit]
@@ -873,7 +883,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
                             Mp_Sp_tot = fraction_core[idx_planet_sep] * N_DIT * Mp_Sp                                                                # Planet flux integrated over the FWHM and the exposure time [ph/bin/FWHM] (with modulations, if any)
                         else:
                             Mp_Sp_tot = fraction_core * N_DIT * Mp_Sp                                                                                # Planet flux integrated over the FWHM and the exposure time [ph/bin/FWHM] (with modulations, if any)
-                        sigma_halo_2 = PSF_profile[idx_planet_sep] * trans*Ss                                                                        # Stellar flux at the considered separation in [e-/bin/px/DIT]
+                        sigma_halo_2 = PSF_profile[idx_planet_sep] * trans_Ss                                                                        # Stellar flux at the considered separation in [e-/bin/px/DIT]
                         sigma_fund   = np.sqrt( R_corr[idx_planet_sep] * A_FWHM * N_DIT * (sigma_halo_2 + sigma_RON_2 + sigma_DC_2 + sigma_bkg_2 ) ) # [e-/bin/FWHM]
                         if post_processing.lower() in {"molecular mapping", "mm"}:
                             sigma_fund *= np.sqrt(fn_MM)
@@ -908,30 +918,32 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
                     planet_spectrum_instru_tot.flux *= fraction_core * exposure_time # [ph/bin/mn] => [ph/bin/FWHM]
                 # Flux in [e-/bin/FWHM] at the planet's location in the filtered cube: see Eq.(18) of Martos et al. 2025
                 # From the planet_spectrum template
-                d     = get_d_sim(instru=instru, d=None, wave=wave_band, trans=trans, R=R_band, Rc=Rc, filter_type=filter_type, model=None,         T=None,     lg=None,      rv=None,      vsini=None,         epsilon=None, fastbroad=None, airmass=None,    star_spectrum=None,          wave_model=None,       template=planet_spectrum_instru_tot, degrade_resolution=True, stellar_component=True, trans_Ss=trans*Ss, pca=pca, cut_fringes=False, Rmin=None, Rmax=None, target_name=None, renorm_d_sim=False, sigma_l=None, Mp=Mp, verbose=True)
-                # From scratch (more similar to the templates used in parameters_retrieval)
-                d_sim = get_d_sim(instru=instru, d=d,    wave=wave_band, trans=trans, R=R_band, Rc=Rc, filter_type=filter_type, model=model_planet, T=T_planet, lg=lg_planet, rv=rv_planet, vsini=vsini_planet, epsilon=0.8,  fastbroad=True, airmass=airmass, star_spectrum=star_spectrum, wave_model=wave_model, template=None,                       degrade_resolution=True, stellar_component=True, trans_Ss=trans*Ss, pca=pca, cut_fringes=False, Rmin=None, Rmax=None, target_name=None, renorm_d_sim=True,  sigma_l=None, Mp=Mp, verbose=True)
-                                
+                d = get_d_sim(instru=instru, d=None, wave=wave_band, trans=trans, R=R_band, Rc=Rc, filter_type=filter_type, model=None,         T=None,     lg=None,      rv=None,      vsini=None,         epsilon=None, fastbroad=None, airmass=None,    star_spectrum=None,          wave_model=None,       template=planet_spectrum_instru_tot, degrade_resolution=True, stellar_component=stellar_component, trans_Ss=trans_Ss, pca=pca, cut_fringes=False, Rmin=None, Rmax=None, target_name=None, renorm_d_sim=False, sigma_l=None, Mp=Mp, verbose=True)
+                # From scratch (more similar to the templates used in parameters_retrieval), only with the model_planet contribution
+                # d = get_d_sim(instru=instru, d=d,    wave=wave_band, trans=trans, R=R_band, Rc=Rc, filter_type=filter_type, model=model_planet, T=T_planet, lg=lg_planet, rv=rv_planet, vsini=vsini_planet, epsilon=0.8,  fastbroad=True, airmass=airmass, star_spectrum=star_spectrum, wave_model=wave_model, template=None,                       degrade_resolution=True, stellar_component=stellar_component, trans_Ss=trans_Ss, pca=pca, cut_fringes=False, Rmin=None, Rmax=None, target_name=None, renorm_d_sim=True,  sigma_l=None, Mp=Mp, verbose=True)
+                
                 # Expected CCF SNR of the planet
                 SNR_CCF = SNR[idx_planet_sep]
                 
                 # Total noise in [e-/bin/FWHM] at the planet position
-                sigma_halo_2 = PSF_profile[idx_planet_sep] * trans*Ss # Stellar flux at the planet position in [e-/bin/px/DIT]
+                sigma_halo_2 = PSF_profile[idx_planet_sep] * trans_Ss # Stellar flux at the planet position in [e-/bin/px/DIT]
                 sigma_fund   = np.sqrt( R_corr[idx_planet_sep] * A_FWHM * N_DIT * (sigma_halo_2 + sigma_RON_2 + sigma_DC_2 + sigma_bkg_2) ) # Fundamental noise at the planet position integrated over the FWHM and the exposure time [e-/bin/FWHM]
                 if post_processing.lower() in {"molecular mapping", "mm"}:
                     sigma_fund *= np.sqrt(fn_MM)
                 
+                
+                # # Displaying CCF
+                # n = 
+                
                 # Priors
                 N         = 20
-                T_arr     = np.linspace(T_planet-200,  T_planet+200,  N)
-                lg_arr    = np.linspace(lg_planet-0.5, lg_planet+0.5, N)
+                T_arr     = np.linspace(T_planet-200,           T_planet+200,   N)
+                lg_arr    = np.linspace(lg_planet-0.5,          lg_planet+0.5,  N)
                 vsini_arr = np.linspace(max(vsini_planet-5, 0), vsini_planet+5, N)
-                #vsini_arr = np.array([vsini_planet]) # TODO: tests
-                rv_arr    = np.linspace(rv_planet-10, rv_planet+10, N)
-                #rv_arr    = np.array([rv_planet]) # TODO: tests
+                rv_arr    = np.linspace(rv_planet-10,           rv_planet+10,   N)
 
                 # Running retrieval and displaying corner plot
-                uncertainties = parameters_retrieval(instru=instru, band=band, target_name=planet_name, d=d_sim, wave=wave_band, trans=trans, R=R_band, Rc=Rc, filter_type=filter_type, model=model_planet, T_arr=T_arr, lg_arr=lg_arr, rv_arr=rv_arr, vsini_arr=vsini_arr, T=T_planet, lg=lg_planet, rv=rv_planet, vsini=vsini_planet, epsilon=0.8, fastbroad=True, airmass=airmass, star_spectrum=star_spectrum, wave_model=wave_model, template=None, degrade_resolution=True, stellar_component=True, trans_Ss=trans*Ss, pca=pca, calc_d_sim=False, renorm_d_sim=True, sigma_l=sigma_fund, calc_logL=True, method_logL="classic", weight=None, SNR_estimate=False, SNR_CCF=SNR_CCF, force_new_est=True, save=False, fastcurves=True, exposure_time=exposure_time, show=show_plot, verbose=verbose)
+                uncertainties = parameters_retrieval(instru=instru, band=band, target_name=planet_name, d=d, wave=wave_band, trans=trans, R=R_band, Rc=Rc, filter_type=filter_type, model=model_planet, T_arr=T_arr, lg_arr=lg_arr, rv_arr=rv_arr, vsini_arr=vsini_arr, T=T_planet, lg=lg_planet, rv=rv_planet, vsini=vsini_planet, epsilon=0.8, fastbroad=True, airmass=airmass, star_spectrum=star_spectrum, wave_model=wave_model, template=planet_spectrum_instru_tot, degrade_resolution=True, stellar_component=stellar_component, trans_Ss=trans_Ss, pca=pca, calc_d_sim=True, renorm_d_sim=False, sigma_l=sigma_fund, calc_logL=True, method_logL="classic", weight=None, SNR_estimate=False, SNR_CCF=SNR_CCF, force_new_est=True, save=False, fastcurves=True, exposure_time=exposure_time, show=show_plot, verbose=verbose)
                 
                 # Adding the uncertainties of the band to the list
                 uncertainties_bands.append(uncertainties)
@@ -960,7 +972,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
                 for i, s in enumerate(separation):
                     
                     # Per-channel noise at separation i (scalar per channel)
-                    sigma_halo_2 = PSF_profile[i] * trans*Ss                                                                        # Stellar flux at the considered separation in [e-/bin/px/DIT]
+                    sigma_halo_2 = PSF_profile[i] * trans_Ss                                                                        # Stellar flux at the considered separation in [e-/bin/px/DIT]
                     sigma_fund   = np.sqrt( R_corr[i] * A_FWHM * N_DIT * (sigma_halo_2 + sigma_RON_2 + sigma_DC_2 + sigma_bkg_2 ) ) # [e-/bin/FWHM]
                     if post_processing.lower() in {"molecular mapping", "mm"}:
                         sigma_fund *= np.sqrt(fn_MM)
@@ -1026,7 +1038,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
         if show_syst_budget and post_processing.lower() in {"molecular mapping", "mm"} and instru_type != "imager" and not return_FastYield:
             
             # Computing the stellar halo profile in [e-/bin/FWHM] (if there is a coronagraph, PSF_profile already contain the coronagraphic transmission for the star)
-            H         = PSF_profile[None, :] * (trans*Ss)[:, None] # (wave, separation): Stellar halo [e-/bin/px/DIT], H = Ms * trans * Ss
+            H         = PSF_profile[None, :] * (trans_Ss)[:, None] # (wave, separation): Stellar halo [e-/bin/px/DIT], H = Ms * trans * Ss
             H        *= A_FWHM * N_DIT                             # (wave, separation): Stellar halo [e-/bin/FWHM] (integrated over the FWHM and exposure time)
             H[H <= 0] = np.nanmin(H[H > 0])                        # (wave, separation): Filling invalid values
             # "Undo" FPM effect 
@@ -1472,7 +1484,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
 # FastCurves init
 #------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-def FastCurves(calculation=None, instru=None, exposure_time=None, mag_star=None, mag_planet=None, band0=None, band0_star=None, band0_planet=None, model_planet=None, T_planet=None, lg_planet=None, model_star="BT-NextGen", T_star=None, lg_star=None, rv_star=0, rv_planet=0, vsini_star=0, vsini_planet=0, 
+def FastCurves(calculation=None, instru=None, exposure_time=None, mag_star=None, mag_planet=None, band0=None, band0_star=None, band0_planet=None, model_planet=None, T_planet=None, lg_planet=None, model_star="BT-NextGen", T_star=None, lg_star=None, rv_star=0, rv_planet=0, vsini_star=0, vsini_planet=0, stellar_component=False, 
              apodizer="NO_SP", strehl="NO_JQ", coronagraph=None, systematics=False, speckles=False, PCA=False, PCA_mask=False, N_PCA=20, channel=False, planet_name=None, separation_planet=None, show_plot=True, verbose=True, 
              post_processing="molecular mapping", background="medium", Rc=100, filter_type="gaussian", input_DIT=None, band_only=None, 
              star_spectrum=None, planet_spectrum=None, return_FastYield=False, return_quantity=False):
@@ -1500,6 +1512,8 @@ float
         Star atmospheric model + parameters (Teff [K], log g [dex(cm/s^2)]).
     rv_*, vsini_*: float
         Radial velocity and projected rotation [km/s] for star/planet.
+    stellar_component: bool.
+        To take the stellar component into account inside the MM template.
     apodizer, strehl, coronagraph: str | None
         Optical setup (validated against the instrument config).
     systematics, speckles, PCA, PCA_mask, N_PCA :
@@ -1652,7 +1666,7 @@ float
         raise ValueError(f"'planet_spectrum' does not fully cover the {band_only}-'band_only' range ({lmin_band0_planet}–{lmax_band0_planet} µm).")
     
     # ---- Delegate to FastCurves_main ----
-    name_bands, separation_bands, results_bands, signal_bands, sigma_syst_2_bands, sigma_fund_2_bands, sigma_halo_2_bands, sigma_det_2_bands, sigma_bkg_2_bands, DIT_bands, planet_flux_bands, star_flux_bands, wave_bands, trans_bands, sigma_budget_bands = FastCurves_process(calculation=calculation, instru=instru, exposure_time=exposure_time, mag_star=mag_star, band0_star=band0_star, band0_planet=band0_planet, planet_spectrum=planet_spectrum, star_spectrum=star_spectrum, tellurics=tellurics, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, systematics=systematics, speckles=speckles, PCA=PCA, PCA_mask=PCA_mask, N_PCA=N_PCA, channel=channel, planet_name=planet_name, separation_planet=separation_planet, mag_planet=mag_planet, show_plot=show_plot, verbose=verbose, post_processing=post_processing, sep_unit=sep_unit, background=background, Rc=Rc, filter_type=filter_type, input_DIT=input_DIT, band_only=band_only, return_FastYield=return_FastYield, return_quantity=return_quantity)
+    name_bands, separation_bands, results_bands, signal_bands, sigma_syst_2_bands, sigma_fund_2_bands, sigma_halo_2_bands, sigma_det_2_bands, sigma_bkg_2_bands, DIT_bands, planet_flux_bands, star_flux_bands, wave_bands, trans_bands, sigma_budget_bands = FastCurves_process(calculation=calculation, instru=instru, exposure_time=exposure_time, mag_star=mag_star, band0_star=band0_star, band0_planet=band0_planet, planet_spectrum=planet_spectrum, star_spectrum=star_spectrum, stellar_component=stellar_component, tellurics=tellurics, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, systematics=systematics, speckles=speckles, PCA=PCA, PCA_mask=PCA_mask, N_PCA=N_PCA, channel=channel, planet_name=planet_name, separation_planet=separation_planet, mag_planet=mag_planet, show_plot=show_plot, verbose=verbose, post_processing=post_processing, sep_unit=sep_unit, background=background, Rc=Rc, filter_type=filter_type, input_DIT=input_DIT, band_only=band_only, return_FastYield=return_FastYield, return_quantity=return_quantity)
 
     if verbose:
         print()

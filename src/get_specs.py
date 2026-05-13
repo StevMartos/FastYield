@@ -12,11 +12,14 @@ import numpy as np
 
 # import scipy modules
 from scipy.interpolate import interp1d
+from scipy.special import expit, logit, j1
+from scipy.optimize import brentq
 
 # import other modules
 from functools import lru_cache
 
 # For fits warnings
+
 import warnings
 from astropy.io.fits.verify import VerifyWarning
 warnings.simplefilter("ignore", category=VerifyWarning)
@@ -96,11 +99,13 @@ def _load_phi_m(post_processing, Rc):
     return sep, phi_m
 
 
+
 # -------------------------------------------------------------------------
 # Get config data
 # -------------------------------------------------------------------------
 
-def get_config_data(instrument_name):
+@lru_cache(maxsize=64)
+def get_config_data(instru):
     """
     Retrieve the specifications of a given instrument.
 
@@ -120,13 +125,14 @@ def get_config_data(instrument_name):
         If the instrument name is not defined in config_data_list.
     """
     for cfg in config_data_list:
-        if cfg["name"] == instrument_name:
+        if cfg["name"] == instru:
             return cfg
-    raise NameError(f"Undefined instrument name: {instrument_name}")
+    raise NameError(f"Undefined instrument name: {instru}")
 
 
 
-def get_R_instru(config_data):
+@lru_cache(maxsize=64)
+def get_R_instru(instru):
     """
     Compute a conservative upper bound on the instrument spectral resolving power.
             R_instru = 2 * max(R_grating)
@@ -135,26 +141,25 @@ def get_R_instru(config_data):
     
     Parameters
     ----------
-    config_data : dict
-        Instrument configuration dictionary. 
+    instru : str
+        Instrument's name. 
     
     Returns
     -------
     R_instru : float
         Conservative maximum resolving power.
     """
-    R_instru = 2*np.nanmax([config_data["gratings"][band].R for band in config_data["gratings"]])
-    R_instru = min(R_instru, R0_max) # Fixing the upper limit of resolution in order to speeds up the calculation (it also need to be high enough for instruments with very high resolution)
+    config_data = get_config_data(instru=instru)
+    R_instru    = 2*np.nanmax([config_data["gratings"][band].R for band in config_data["gratings"]])
+    R_instru    = min(R_instru, R0_max) # Fixing the upper limit of resolution in order to speeds up the calculation (it also need to be high enough for instruments with very high resolution)
     return R_instru
 
 
 
-# -------------------------------------------------------------------------
-# Get bands range
-# -------------------------------------------------------------------------
-
+@lru_cache(maxsize=64)
 def get_band_lims(band):
     return lmin_bands[band], lmax_bands[band]
+
 
 
 
@@ -162,32 +167,82 @@ def get_band_lims(band):
 # Get working angles
 # -------------------------------------------------------------------------
 
-def get_wa(config_data, sep_unit=None, band="instru"):
+@lru_cache(maxsize=64)
+def get_annular_pupil_fwhm_factor(eps):
     """
-    Return IWA and OWA in the requested separation unit.
+    Return the FWHM coefficient k(eps) such that
 
-    Parameters
-    ----------
-    config_data
-        Instrument configuration dictionary (must include pxscale/detector/FOV/apodizers).
+        FWHM = k(eps) * lambda / D
 
-    Returns
-    -------
-    iwa, owa
-        Inner/outer working angles in 'sep_unit'.
+    for a diffraction-limited annular aperture with central obstruction
+    eps = D_obs / D_tel.
+
+    The PSF intensity is normalized to I(0) = 1.
     """
-    
+
+    eps = float(eps)
+
+    if eps < 0 or eps >= 1:
+        raise ValueError("eps must satisfy 0 <= eps < 1.")
+
+    def psf_intensity(u):
+        amp = 2.0 * (j1(u) - eps * j1(eps * u)) / ((1.0 - eps**2) * u)
+        return amp**2
+
+    def half_max_equation(u):
+        return psf_intensity(u) - 0.5
+
+    u_half = brentq(half_max_equation, 1e-10, 3.0)
+
+    return 2.0 * u_half / np.pi
+
+
+
+@lru_cache(maxsize=64)
+def get_DL_FWHM(instru, sep_unit=None, band="instru"):
+    config_data = get_config_data(instru=instru)
     if band.lower() == "instru":
         lmin = config_data["lambda_range"]["lambda_min"] # [µm]
         lmax = config_data["lambda_range"]["lambda_max"] # [µm]
     else:
         lmin = config_data["gratings"][band].lmin # [µm]
         lmax = config_data["gratings"][band].lmax # [µm]
-    l0  = (lmin + lmax) / 2                    # [µm]
-    D   = config_data["telescope"]["diameter"] # [m]
-    iwa = l0*1e-6 / D * rad2arcsec             # [arcsec]
-    owa = config_data["FOV"]/2                 # [arcsec]
+    l0      = (lmin + lmax) / 2                    # [µm]
+    D       = config_data["telescope"]["diameter"] # [m]
+    eps     = config_data["telescope"]["eps"]      # [no unit] (diameter of the secondary / diameter of the primary))
+    k_eps   = get_annular_pupil_fwhm_factor(eps)   # [no unit]
+    FWHM_DL = k_eps * l0 * 1e-6 / D * rad2arcsec   # [arcsec]
+
+    # Returns
+    if sep_unit is None:
+        sep_unit = config_data["sep_unit"]
+    if sep_unit == "arcsec":
+        return FWHM_DL # [arcsec]
+    elif sep_unit == "mas":
+        return FWHM_DL*1e3 # [mas]
+    else:
+        raise ValueError("sep_unit must be 'arcsec' or 'mas'.")
+
+
     
+@lru_cache(maxsize=64)
+def get_wa(instru, sep_unit=None, band="instru"):
+    """
+    Return IWA and OWA in the requested separation unit.
+
+    Parameters
+    ----------
+    instru : str
+        Instrument's name. 
+    
+    Returns
+    -------
+    iwa, owa
+        Inner/outer working angles in 'sep_unit'.
+    """
+    config_data = get_config_data(instru=instru)
+    iwa         = get_DL_FWHM(instru=instru, sep_unit="arcsec", band=band) # [arcsec]
+    owa         = config_data["FOV"]/2                                     # [arcsec]
     # Returns
     if sep_unit is None:
         sep_unit = config_data["sep_unit"]
@@ -199,25 +254,18 @@ def get_wa(config_data, sep_unit=None, band="instru"):
         raise ValueError("sep_unit must be 'arcsec' or 'mas'.")
 
 
-# -------------------------------------------------------------------------
-# Get wave_band
-# -------------------------------------------------------------------------
-
-
-
 
 # -------------------------------------------------------------------------
 # Get transmission
 # -------------------------------------------------------------------------
 
-@lru_cache(maxsize=50)
+@lru_cache(maxsize=64)
 def _get_transmission(instru, band, tellurics, apodizer, strehl=None, coronagraph=None, fill_value=np.nan):
     """
     Cached version of get_transmission()
     """
     from src.spectrum import get_wave_band
-    config_data = get_config_data(instru)
-    wave_band   = get_wave_band(config_data=config_data, band=band)
+    wave_band   = get_wave_band(instru=instru, band=band)
     trans       = get_transmission(instru=instru, wave_band=wave_band, band=band, tellurics=tellurics, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, fill_value=fill_value)
     return trans
 
@@ -278,6 +326,87 @@ def get_transmission(instru, wave_band, band, tellurics, apodizer, strehl=None, 
 # -------------------------------------------------------------------------
 # Get PSF radial profile (+ extrapolation if needed)
 # -------------------------------------------------------------------------
+
+@lru_cache(maxsize=64)
+def get_pxscale(instru, band, sep_unit):
+    config_data = get_config_data(instru=instru)
+    # Pixel scale in output unit
+    try:
+        pxscale = config_data["pxscale"][band] # [arcsec/px]
+    except Exception:
+        pxscale = config_data["pxscale"]       # [arcsec/px]
+    if sep_unit == "mas":
+        pxscale = pxscale*1e3                  # [mas/px]
+    elif sep_unit != "arcsec":
+        raise ValueError("sep_unit must be 'mas' or 'arcsec'.")
+    return pxscale
+
+
+
+@lru_cache(maxsize=64)
+def get_separation_axis(instru, sep_unit, separation_planet, return_FastYield, sampling=10):
+    
+    config_data = get_config_data(instru=instru)
+    
+    _, owa = get_wa(instru=instru, sep_unit=sep_unit) # [sep_unit]
+    
+    if return_FastYield and separation_planet is not None:
+        separation = np.array([0, separation_planet])
+    else:
+        try:
+            pxscale_sampling = min(config_data["pxscale"].values()) # [arcsec]
+        except:
+            pxscale_sampling = config_data["pxscale"]               # [arcsec]
+        if sep_unit == "mas":
+            pxscale_sampling = pxscale_sampling * 1e3               # [mas/px]
+        step       = pxscale_sampling / sampling
+        separation = np.arange(0.0, owa + step, step)
+        # Ensure planet separation represented exactly
+        if separation_planet is not None and separation_planet > separation[-1]: # Extension of the separation axis to the planet's separation
+            extension  = np.linspace(separation[-1], separation_planet, len(separation))
+            separation = np.concatenate([separation, extension])
+        elif separation_planet is not None and separation_planet not in separation:
+            separation = np.append(separation, separation_planet)
+    
+    # Ensure iwa FPM values are represented exactly
+    try: 
+        iwa_FPM_values = config_data["FPMs"] # list of FPM IWAs in [mas] or [arcsec]
+        for iwa_FPM in iwa_FPM_values:
+            if iwa_FPM not in separation:
+                separation = np.append(separation, iwa_FPM)
+    except:
+        pass
+
+    # Sorted unique elements of separation
+    separation = np.unique(separation)
+    
+    return separation
+
+
+
+@lru_cache(maxsize=64)
+def get_log_profile_interp(instru, band, strehl, apodizer, coronagraph, sep_unit):
+    
+    config_data = get_config_data(instru=instru)
+    pxscale     = get_pxscale(instru=instru, band=band, sep_unit=sep_unit) # [sep_unit/px]
+    
+    # Load PSF
+    hdr, raw_separation, raw_profile, psf_file = _load_psf_profile(instru=instru, band=band, strehl=strehl, apodizer=apodizer, coronagraph=coronagraph)
+    fraction_core  = hdr.get("FC", None)                                    # Fraction of flux contained in the FWHM (or None for coronagraph)
+    valid          = np.isfinite(raw_separation) & np.isfinite(raw_profile) # Valid mask on the profile
+    raw_separation = raw_separation[valid]                                  # [sep_unit] ([arcsec] or [mas])
+    raw_profile    = raw_profile[valid]                                     # [FOV flux fraction/arcsec**2] or [FOV flux fraction/mas**2]
+    if instru == "MIRIMRS":
+        raw_profile = raw_profile * config_data["pxscale0"][band]**2 # pxscale (non-dithered) (because all the values are considered in the detector space in the first place, then multiplied by R_corr, to take into account the transformation into the 3D cube sapce)
+    else:
+        raw_profile = raw_profile * pxscale**2
+    
+    # Interpolation of the raw profile
+    log_profile_interp = interp1d(raw_separation, np.log(raw_profile), bounds_error=False, fill_value="extrapolate")
+    
+    return log_profile_interp, fraction_core, raw_profile, raw_separation, psf_file, hdr
+
+
 
 def get_PSF_profile(band, strehl, apodizer, coronagraph, instru, separation_planet=None, return_FastYield=False, new_extrapolation=False, sampling=10, return_hdr=False, separation=None):
     """
@@ -352,61 +481,15 @@ def get_PSF_profile(band, strehl, apodizer, coronagraph, instru, separation_plan
       profile is handled in detector-space coordinates before cube-space correction.
     """
     config_data = get_config_data(instru)
-    sep_unit    = config_data["sep_unit"]
-    
-    # Pixel scale in output unit
-    try:
-        pxscale = config_data["pxscale"][band] # [arcsec/px]
-    except Exception:
-        pxscale = config_data["pxscale"]       # [arcsec/px]
-    if sep_unit == "mas":
-        pxscale = pxscale*1e3                  # [mas/px]
-    elif sep_unit != "arcsec":
-        raise ValueError("sep_unit must be 'mas' or 'arcsec'.")
-    
-    _, owa = get_wa(config_data=config_data)
-    
-    # Load PSF
-    hdr, raw_separation, raw_profile, psf_file = _load_psf_profile(instru=instru, band=band, strehl=strehl, apodizer=apodizer, coronagraph=coronagraph)
-    fraction_core  = hdr.get("FC", None)                                    # Fraction of flux contained in the FWHM (or None for coronagraph)
-    valid          = np.isfinite(raw_separation) & np.isfinite(raw_profile) # Valid mask on the profile
-    raw_separation = raw_separation[valid]                                  # [sep_unit] ([arcsec] or [mas])
-    raw_profile    = raw_profile[valid]                                     # [FOV flux fraction/arcsec**2] or [FOV flux fraction/mas**2]
-    
-    # Interpolation of the raw profile
-    log_profile_interp = interp1d(raw_separation, np.log(raw_profile), bounds_error=False, fill_value="extrapolate")
+    sep_unit    = config_data["sep_unit"] # [arcsec] or [mas]    
+    pxscale     = get_pxscale(instru=instru, band=band, sep_unit=sep_unit) # [sep_unit/px]
+
+    # Get log interpolation object of the raw profile, fraction core, raw data axis, psf filename and hdr
+    log_profile_interp, fraction_core, raw_profile, raw_separation, psf_file, hdr = get_log_profile_interp(instru=instru, band=band, strehl=strehl, apodizer=apodizer, coronagraph=coronagraph, sep_unit=sep_unit)
     
     # Build separation grid (if not input)
     if separation is None:
-        if return_FastYield and separation_planet is not None:
-            separation = np.array([0, separation_planet])
-        else:
-            try:
-                pxscale_sampling = min(config_data["pxscale"].values()) # [arcsec]
-            except:
-                pxscale_sampling = config_data["pxscale"]               # [arcsec]
-            if sep_unit == "mas":
-                pxscale_sampling = pxscale_sampling * 1e3               # [mas/px]
-            step       = pxscale_sampling / sampling
-            separation = np.arange(0.0, owa + step, step)
-            # Ensure planet separation represented exactly
-            if separation_planet is not None and separation_planet > separation[-1]: # Extension of the separation axis to the planet's separation
-                extension  = np.linspace(separation[-1], separation_planet, len(separation))
-                separation = np.concatenate([separation, extension])
-            elif separation_planet is not None and separation_planet not in separation:
-                separation = np.append(separation, separation_planet)
-        
-        # Ensure iwa FPM values are represented exactly
-        try: 
-            iwa_FPM_values = config_data["FPMs"] # list of FPM IWAs in [mas] or [arcsec]
-            for iwa_FPM in iwa_FPM_values:
-                if iwa_FPM not in separation:
-                    separation = np.append(separation, iwa_FPM)
-        except:
-            pass
-    
-        # Sorted unique elements of separation
-        separation = np.unique(separation)
+        separation = get_separation_axis(instru=instru, sep_unit=sep_unit, separation_planet=separation_planet, return_FastYield=return_FastYield, sampling=sampling)
         
     # Extrapolation of the separation axis to the planet's separation (if needed)
     if separation[-1] > raw_separation[-1]:
@@ -431,6 +514,7 @@ def get_PSF_profile(band, strehl, apodizer, coronagraph, instru, separation_plan
             hdul[0].header['slope'] = slope
             hdul.writeto(psf_file, overwrite=True)
             hdul.close()
+            get_log_profile_interp.cache_clear()
             _load_psf_profile.cache_clear()
         
         PSF_profile            = np.exp(log_profile_interp(separation))
@@ -456,15 +540,57 @@ def get_PSF_profile(band, strehl, apodizer, coronagraph, instru, separation_plan
     # No extrapolation of the PSF profile
     else:
         PSF_profile = np.exp(log_profile_interp(separation))
-
-    if instru == "MIRIMRS":
-        PSF_profile *= config_data["pxscale0"][band]**2 # pxscale (non-dithered) (because all the values are considered in the detector space in the first place, then multiplied by R_corr, to take into account the transformation into the 3D cube sapce)
-    else:
-        PSF_profile *= pxscale**2
     
     if return_hdr:
         return PSF_profile, fraction_core, separation, pxscale, hdr
     else:
         return PSF_profile, fraction_core, separation, pxscale
+
+
+
+@lru_cache(maxsize=64)
+def get_logit_coronagraphic_profile_interp(instru, band, strehl, apodizer, coronagraph):
+    raw_separation, raw_fraction_core, raw_radial_transmission = _load_corona_profile(instru=instru, band=band, strehl=strehl, apodizer=apodizer, coronagraph=coronagraph)
+    logit_fraction_core_interp                                 = interp1d(raw_separation, logit(raw_fraction_core),       bounds_error=False, fill_value=(logit(raw_fraction_core[0]),       logit(raw_fraction_core[-1])))
+    logit_radial_transmission_interp                           = interp1d(raw_separation, logit(raw_radial_transmission), bounds_error=False, fill_value=(logit(raw_radial_transmission[0]), logit(raw_radial_transmission[-1])))
+    star_transmission                                          = expit(logit_radial_transmission_interp(0))          # Star coronagraphic transmission factor when the star is perfectly aligned with it (i.e. at 0 separation)
+    return logit_fraction_core_interp, logit_radial_transmission_interp, star_transmission, raw_fraction_core, raw_radial_transmission, raw_separation
+    
+
+    
+@lru_cache(maxsize=64)
+def get_R_corr_interp(instru, band):
+    raw_separation, raw_R_corr = _load_corr_factor(instru=instru, band=band)
+    valid                      = np.isfinite(raw_R_corr)
+    R_corr_interp              = interp1d(raw_separation[valid], raw_R_corr[valid], bounds_error=False, fill_value="extrapolate")
+    return R_corr_interp, raw_R_corr, raw_separation
+
+
+
+@lru_cache(maxsize=64)
+def get_bkg_flux_band(instru, band, background_level):
+    from src.spectrum import get_wave_band
+    wave_band         = get_wave_band(instru=instru, band=band)        # [µm]
+    wave_raw, bkg_raw = _load_bkg_flux(instru, band, background_level) # [µm] and [e-/bin/px/s]  
+    bkg_raw_density   = bkg_raw / np.gradient(wave_raw)                # [e-/µm/px/s]
+    bkg_flux_band     = interp1d(wave_raw, bkg_raw_density, bounds_error=False, fill_value=(bkg_raw_density[0], bkg_raw_density[-1]))(wave_band) # [e-/µm/px/s]
+    bkg_flux_band    *= np.gradient(wave_band) * 60                    # [e-/bin/px/mn]
+    return bkg_flux_band # [e-/bin/px/mn]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 

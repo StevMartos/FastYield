@@ -22,6 +22,8 @@ from astropy.io import fits
 from tqdm import tqdm
 from multiprocessing import Pool, cpu_count
 
+
+colormaps_path  = str(colormaps_path) + "/"
 plots_colormaps = ["SNR", "lost_signal"]
 cmap_colormaps  = "rainbow"
 contour_levels  = np.linspace(0, 100, 11)
@@ -67,7 +69,7 @@ def colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_plan
         else:
             Nl = np.zeros((len(config_data["gratings"])))
             for iband, band in enumerate(config_data["gratings"]):
-                Nl[iband] = len(get_wave_band(config_data=config_data, band=band))
+                Nl[iband] = len(get_wave_band(instru=instru, band=band))
             Nl = int(round(np.nanmedian(Nl)))
     
     # Global model-bandwidth (with constant dl step, must be evenly spaced in order to create the model spectra, for the rotational broadening with Vsini)
@@ -624,7 +626,7 @@ def colormap_bandwidth_Tp(instru, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_s
     Nl = np.zeros((len(config_data["gratings"])))
     for iband, band in enumerate(config_data["gratings"]):
         R[iband]  = config_data["gratings"][band].R
-        Nl[iband] = len(get_wave_band(config_data=config_data, band=band))
+        Nl[iband] = len(get_wave_band(instru=instru, band=band))
     R  = np.nanmedian(R)
     Nl = int(round(np.nanmedian(Nl)))
     
@@ -1029,7 +1031,7 @@ def process_colormap_bands_Tp(i):
     lost_signal_1D = np.zeros((len(config_data["gratings"]))) + np.nan
     for ib, band in enumerate(config_data["gratings"]):
         
-        wave_band  = get_wave_band(config_data=config_data, band=band)
+        wave_band  = get_wave_band(instru=instru, band=band)
         dwave_band = np.gradient(wave_band)
         R_band     = config_data["gratings"][band].R
         
@@ -1416,7 +1418,7 @@ def colormap_rv(instru="HARMONI", band="H", T_planet=T_earth, T_star=T_sun, lg_p
     R_band     = config_data['gratings'][band].R                   # [dimensionless] 
     lmin_band  = config_data['gratings'][band].lmin                # [µm]
     lmax_band  = config_data['gratings'][band].lmax                # [µm]
-    wave_band  = get_wave_band(config_data=config_data, band=band) # [µm]
+    wave_band  = get_wave_band(instru=instru, band=band)           # [µm]
     dwave_band = np.gradient(wave_band)                            # [µm/bin]
     lmin_model = 0.9*lmin_band                                     # [µm] a bit larger for doppler shifts and to avoid edge effects
     lmax_model = 1.1*lmax_band                                     # [µm] a bit larger for doppler shifts and to avoid edge effects
@@ -1615,7 +1617,7 @@ def colormap_vrot(instru="HARMONI", band="H", T_planet=T_earth, T_star=T_sun, lg
     R_band     = config_data['gratings'][band].R                   # [dimensionless] 
     lmin_band  = config_data['gratings'][band].lmin                # [µm]
     lmax_band  = config_data['gratings'][band].lmax                # [µm]
-    wave_band  = get_wave_band(config_data=config_data, band=band) # [µm]
+    wave_band  = get_wave_band(instru=instru, band=band)           # [µm]
     dwave_band = np.gradient(wave_band)                            # [µm/bin]
     lmin_model = 0.9*lmin_band                                     # [µm] a bit larger for doppler shifts and to avoid edge effects
     lmax_model = 1.1*lmax_band                                     # [µm] a bit larger for doppler shifts and to avoid edge effects
@@ -1854,7 +1856,7 @@ def colormap_maxsep_phase_inc(instru="HARMONI", band="H", apodizer="NO_SP", stre
     R_band     = config_data['gratings'][band].R                   # [dimensionless] 
     lmin_band  = config_data['gratings'][band].lmin                # [µm]
     lmax_band  = config_data['gratings'][band].lmax                # [µm]
-    wave_band  = get_wave_band(config_data=config_data, band=band) # [µm]
+    wave_band  = get_wave_band(instru=instru, band=band)           # [µm]
     dwave_band = np.gradient(wave_band)                            # [µm/bin]
     R_model    = get_R_instru(config_data)                         # [dimensionless]
     lmin_model = 0.9*lmin_band                                     # [µm] a bit larger for doppler shifts and to avoid edge effects

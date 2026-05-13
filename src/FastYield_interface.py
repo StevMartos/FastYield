@@ -438,7 +438,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
             self.planet_table = self.planet_table[get_valid_mask(self.planet_table["PlanetMass"])]
         
         # WORKING ANGLE
-        iwa, owa = get_wa(config_data=self.config_data, band=self.band, sep_unit="mas")
+        iwa, owa = get_wa(instru=self.instru, band=self.band, sep_unit="mas")
         
         # calcul du SNR de chaque planète sur la bande
         self.SNR                                 = get_SNR_from_table(planet_table=self.planet_table, exposure_time=self.exposure_time.get(), band=self.band)
