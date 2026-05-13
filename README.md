@@ -30,6 +30,7 @@ FastYield currently includes configurations for the following instruments:
 - **ELT/ANDES** — molecular mapping
 - **VLT/ERIS** — molecular mapping
 - **VLT/HiRISE** — molecular mapping
+- - **VLT/CRIRES+** — molecular mapping
 - **JWST/MIRI-MRS** — molecular mapping
 - **JWST/NIRSpec IFU** — molecular mapping
 - **JWST/NIRCam** — ADI/RDI
