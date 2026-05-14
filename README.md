@@ -73,7 +73,7 @@ FastYield requires a local spectral library to perform S/N, contrast, and yield 
 
 The spectral library can be downloaded here:
 
-[Download the Spectra directory](https://filesender.renater.fr/?s=download&token=4f89dafe-2882-4d32-b477-5deff6886d22)
+[Download the Spectra directory](https://filesender.renater.fr/?s=download&token=938ee99e-dbf6-4a05-93b8-136f733c2712)
 
 After downloading, you should have a directory named:
 
