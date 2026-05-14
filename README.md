@@ -207,11 +207,7 @@ from src.FastYield_interface import FastYield_interface
 set_spectra_path("/path/to/Spectra")
 
 # To test the spectra path
-planet_spectrum = load_planet_spectrum(
-    T_planet=1000,
-    lg_planet=4.0,
-    model="BT-Settl",
-)
+planet_spectrum = load_planet_spectrum(T_planet=1000, lg_planet=4.0, model="BT-Settl")
 
 # To open the FastYield GUI
 FastYield_interface()
