@@ -201,7 +201,7 @@ Example of a minimal Python setup:
 ```python
 from src.config import set_spectra_path
 from src.spectrum import load_planet_spectrum
-from src.FastYield_interface imoprt FastYield_interface
+from src.FastYield_interface import FastYield_interface
 
 # Set this only if you have not defined FASTYIELD_SPECTRA_PATH.
 set_spectra_path("/path/to/Spectra")
