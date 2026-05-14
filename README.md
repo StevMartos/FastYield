@@ -231,13 +231,13 @@ If you would like to add a new instrument to FastYield, please contact:
 Please include, when available:
 
 - spectral range and spectral resolution for each band;
-- total system transmission for each band;
+- total system transmission (without tellurics) for each band;
 - representative PSF, either as a 2D image or a 3D spectral cube;
 - expected background flux;
-- expected read-out noise, in electrons per pixel;
-- dark current, in electrons per second per pixel;
-- effective spatial sampling, in arcseconds per pixel;
-- detector saturation limit, if relevant;
+- expected read-out noise;
+- expected dark current;
+- effective spatial sampling;
+- detector saturation limit;
 - coronagraphic and/or apodizer transmission, if relevant.
 
 ---
