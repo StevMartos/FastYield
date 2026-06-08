@@ -67,7 +67,7 @@ mol_list = ["H2O", "CO2", "O3", "N2O", "CO", "CH4", "O2", "NO", "SO2", "NO2", "N
 # Paths
 # -------------------------------------------------------------------------
 
-PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 
 sim_data_path  = PACKAGE_ROOT  / "sim_data"
 archive_path   = sim_data_path / "Archive_table"
