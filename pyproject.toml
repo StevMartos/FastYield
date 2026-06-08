@@ -40,17 +40,13 @@ dependencies = [
     "scikit-learn>=1.2",
     "statsmodels>=0.14",
     "corner>=2.2",
-]
-
-[project.optional-dependencies]
-gui = [
     "ttkwidgets>=0.13",
     "timezonefinder>=6.0",
     "pytz",
-]
-dace = [
     "dace-query",
 ]
+
+[project.optional-dependencies]
 dev = [
     "build",
     "twine",
