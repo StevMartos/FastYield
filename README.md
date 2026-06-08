@@ -191,18 +191,6 @@ On Linux or macOS, add the following line to your `~/.bashrc`, `~/.zshrc`, or eq
 export FASTYIELD_SPECTRA_PATH="/path/to/Spectra"
 ```
 
-For example:
-
-```bash
-export FASTYIELD_SPECTRA_PATH="/home/user/data/Spectra"
-```
-
-Then reload your shell configuration:
-
-```bash
-source ~/.bashrc
-```
-
 You can check that the path has been correctly defined with:
 
 ```bash
@@ -301,43 +289,6 @@ FastYield_interface()
 ```
 
 If you have already defined the environment variable `FASTYIELD_SPECTRA_PATH`, then the call to `set_spectra_path()` is not required.
-
----
-
-## Development workflow
-
-A typical development workflow is:
-
-```bash
-git clone https://github.com/StevMartos/FastYield.git
-cd FastYield
-python -m pip install -e ".[dev]"
-```
-
-Then test the package with:
-
-```bash
-python -c "import fastyield; print(fastyield.__version__)"
-python -c "from fastyield.FastCurves import FastCurves; print(FastCurves)"
-```
-
-Run the tests with:
-
-```bash
-pytest
-```
-
-Build the package locally with:
-
-```bash
-python -m build
-```
-
-This creates distribution files in:
-
-```text
-dist/
-```
 
 ---
 
