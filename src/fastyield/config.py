@@ -64,43 +64,11 @@ mol_list = ["H2O", "CO2", "O3", "N2O", "CO", "CH4", "O2", "NO", "SO2", "NO2", "N
 
 
 # -------------------------------------------------------------------------
-# Paths
+# Runtime paths
 # -------------------------------------------------------------------------
 
-PACKAGE_ROOT = Path(__file__).resolve().parents[2]
-
-sim_data_path  = PACKAGE_ROOT  / "sim_data"
-archive_path   = sim_data_path / "Archive_table"
-simulated_path = sim_data_path / "Simulated_table"
-colormaps_path = PACKAGE_ROOT  / "plots" / "colormaps"
-
-# Runtime user-defined Spectra path.
-# If None, FastYield will look for:
-#   1. FASTYIELD_SPECTRA_PATH environment variable
-#   2. PACKAGE_ROOT/sim_data/Spectra
-_spectra_path = None
-
-def set_spectra_path(path):
-    """
-    Set the user-defined path to the Spectra directory.
-
-    Parameters
-    ----------
-    path : str or pathlib.Path
-        Path to the Spectra directory itself, e.g.
-        /home/user/data/Spectra
-    """
-    global _spectra_path
-
-    path = Path(path).expanduser().resolve()
-
-    if not path.exists():
-        raise FileNotFoundError(f"Spectra path does not exist: {path}")
-
-    if not path.is_dir():
-        raise NotADirectoryError(f"Spectra path is not a directory: {path}")
-
-    _spectra_path = path
+PACKAGE_ROOT   = Path(__file__).resolve().parents[2]
+_sim_data_path = None
 
 
 
@@ -109,16 +77,17 @@ def _find_first_existing_dir(candidates, dirname):
     Return the first valid directory among candidate paths.
 
     Parameters
-    ----------
+    ----------get_sim_data_path()
     candidates : list of tuple[str, str or pathlib.Path]
         List of (label, path) candidates to test.
+
     dirname : str
         Human-readable directory name, used in the error message.
 
     Returns
     -------
     path : pathlib.Path
-        First valid directory found.
+        First valid directory.
 
     Raises
     ------
@@ -151,41 +120,112 @@ def _find_first_existing_dir(candidates, dirname):
         else:
             status = "unknown error"
 
-        msg.append(f"  - {label}: {path} ({status})")
+        msg.append(f" - {label}: {path} ({status})")
+
+    msg += [
+        "",
+        "Please define the FASTYIELD_SIM_DATA_PATH environment variable,",
+        "or call set_sim_data_path('/path/to/sim_data') before running FastYield.",
+    ]
 
     raise FileNotFoundError("\n".join(msg))
-    
-    
 
-def get_spectra_path():
+
+def set_sim_data_path(path):
     """
-    Return the active Spectra path.
+    Set the user-defined path to the FastYield sim_data directory.
+
+    Parameters
+    ----------
+    path : str or pathlib.Path
+        Path to the sim_data directory itself, for example:
+        /home/user/data/FastYield/sim_data
+    """
+    global _sim_data_path
+    global sim_data_path
+    global archive_path
+    global simulated_path
+
+    path = Path(path).expanduser().resolve()
+
+    if not path.exists():
+        raise FileNotFoundError(f"sim_data path does not exist: {path}")
+
+    if not path.is_dir():
+        raise NotADirectoryError(f"sim_data path is not a directory: {path}")
+
+    _sim_data_path = path
+
+    # Keep backward-compatible module-level variables updated.
+    sim_data_path  = path
+    archive_path   = path / "Archive_table"
+    simulated_path = path / "Simulated_table"
+
+
+def get_sim_data_path():
+    """
+    Return the active FastYield sim_data path.
 
     Priority:
-    1. path set by set_spectra_path()
-    2. FASTYIELD_SPECTRA_PATH environment variable
-    3. default local path: sim_data/Spectra
+    1. path set by set_sim_data_path()
+    2. FASTYIELD_SIM_DATA_PATH environment variable
+    3. local development path: PACKAGE_ROOT/sim_data
+    4. current working directory: ./sim_data
 
-    If one candidate is invalid, the next candidate is tested.
-    A FileNotFoundError is raised only if all candidates fail.
+    The sim_data directory is expected to contain Spectra/, Archive_table/,
+    Background/, PSF/, R_corr/, Simulated_table/, Systematics/, and Transmission/.
     """
     candidates = []
 
-    if _spectra_path is not None:
-        candidates.append(("set_spectra_path()", _spectra_path))
+    if _sim_data_path is not None:
+        candidates.append(("set_sim_data_path()", _sim_data_path))
 
-    env_path = os.getenv("FASTYIELD_SPECTRA_PATH")
+    env_path = os.getenv("FASTYIELD_SIM_DATA_PATH")
     if env_path is not None:
-        candidates.append(("FASTYIELD_SPECTRA_PATH", env_path))
+        candidates.append(("FASTYIELD_SIM_DATA_PATH", env_path))
 
-    candidates.append(("default local path", sim_data_path / "Spectra"))
+    # Useful when running from a local editable clone.
+    candidates.append(("local development path", PACKAGE_ROOT / "sim_data"))
 
-    return _find_first_existing_dir(candidates, "Spectra")
+    # Useful when running notebooks/scripts from a directory containing sim_data/.
+    candidates.append(("current working directory", Path.cwd() / "sim_data"))
 
+    return _find_first_existing_dir(candidates, "sim_data")
+
+
+def get_spectra_path():
+    """
+    Return the Spectra path.
+
+    Spectra is expected to be located inside sim_data:
+
+        sim_data/Spectra
+    """
+    return get_sim_data_path() / "Spectra"
 
 
 def get_vega_path():
     return get_spectra_path() / "star_spectrum" / "VEGA_Fnu.fits"
+
+
+# Default module-level paths.
+#
+# These are kept for backward compatibility with parts of the code that still
+# import sim_data_path, archive_path, or simulated_path directly.
+#
+# In a non-editable pip installation, users should define FASTYIELD_SIM_DATA_PATH
+# before importing FastYield, or call set_sim_data_path(...) before running
+# functions that need external data.
+try:
+    sim_data_path = get_sim_data_path()
+except FileNotFoundError:
+    sim_data_path = PACKAGE_ROOT / "sim_data"
+
+archive_path = sim_data_path / "Archive_table"
+simulated_path = sim_data_path / "Simulated_table"
+
+# Kept for compatibility if some plotting utilities still use it.
+colormaps_path = PACKAGE_ROOT / "plots" / "colormaps"
 
 
 

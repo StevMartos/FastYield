@@ -1,5 +1,5 @@
 # import FastYield modules
-from .config import config_data_list, lmin_bands, lmax_bands, rad2arcsec, sim_data_path, R0_max
+from .config import config_data_list, lmin_bands, lmax_bands, rad2arcsec, get_sim_data_path, R0_max
 
 # import astropy modules
 from astropy.io import fits
@@ -19,7 +19,6 @@ from scipy.optimize import brentq
 from functools import lru_cache
 
 # For fits warnings
-
 import warnings
 from astropy.io.fits.verify import VerifyWarning
 warnings.simplefilter("ignore", category=VerifyWarning)
@@ -34,12 +33,14 @@ warnings.filterwarnings("ignore", message="Header block contains null bytes*")
 @lru_cache(maxsize=32)
 def _load_instru_trans(instru, band):
     """Load *once* the native instrument-throughput curve for (instru, band)."""
-    wave, trans = fits.getdata(f"{sim_data_path}/Transmission/{instru}/transmission_{band}.fits")
+    sim_data_path = get_sim_data_path()
+    wave, trans   = fits.getdata(f"{sim_data_path}/Transmission/{instru}/transmission_{band}.fits")
     return wave, trans
 
 @lru_cache(maxsize=2)
 def _load_tell_trans(airmass, return_R=False):
     """Load *once* the native sky transmission curve for a given airmass."""
+    sim_data_path   = get_sim_data_path()
     wave_tell, tell = fits.getdata(f"{sim_data_path}/Transmission/sky_transmission_airmass_{airmass:.1f}.fits")
     if return_R:
         from .spectrum import get_resolution
@@ -51,6 +52,7 @@ def _load_tell_trans(airmass, return_R=False):
 @lru_cache(maxsize=32)
 def _load_psf_profile(instru, band, strehl, apodizer, coronagraph):
     """Load *once* the PSF profile arrays + header for (instru, band, strehl, apodizer, coronagraph)."""
+    sim_data_path = get_sim_data_path()
     if coronagraph is None:
         psf_file = f"{sim_data_path}/PSF/PSF_{instru}/PSF_{band}_{strehl}_{apodizer}.fits"
     else:
@@ -64,12 +66,14 @@ def _load_psf_profile(instru, band, strehl, apodizer, coronagraph):
 @lru_cache(maxsize=32)
 def _load_corona_profile(instru, band, strehl, apodizer, coronagraph):
     """Load *once* the coronagraphic profile arrays."""
+    sim_data_path                           = get_sim_data_path()
     sep, fraction_core, radial_transmission = fits.getdata(f"{sim_data_path}/PSF/PSF_{instru}/fraction_core_radial_transmission_{band}_{coronagraph}_{strehl}_{apodizer}.fits")
     return sep, fraction_core, radial_transmission
 
 @lru_cache(maxsize=32)
 def _load_stellar_modulation_function(instru, band, on_sky_data, T_star_sim, correction):
     """Load *once* stellar modulation functions [no unit]."""
+    sim_data_path = get_sim_data_path()
     if on_sky_data: 
         Ms      = fits.getdata(f"{sim_data_path}/Systematics/{instru}/Ms_onsky_star_center_s3d_{band}.fits")              # Stellar modulation function [no unit]
         pxscale = fits.getheader(f"{sim_data_path}/Systematics/{instru}/Ms_onsky_star_center_s3d_{band}.fits")['pxscale'] # [arcsec/px]
@@ -83,19 +87,22 @@ def _load_stellar_modulation_function(instru, band, on_sky_data, T_star_sim, cor
 @lru_cache(maxsize=32)
 def _load_corr_factor(instru, band):
     """Load *once* the corrective factor."""
-    sep, r_corr = fits.getdata(f"{sim_data_path}/R_corr/R_corr_{instru}/R_corr_{band}.fits")
+    sim_data_path = get_sim_data_path()
+    sep, r_corr   = fits.getdata(f"{sim_data_path}/R_corr/R_corr_{instru}/R_corr_{band}.fits")
     return sep, r_corr
 
 @lru_cache(maxsize=32)
 def _load_bkg_flux(instru, band, background):
     """Load *once* the background flux in [e-/px/s]."""
+    sim_data_path     = get_sim_data_path()
     raw_wave, raw_bkg = fits.getdata(f"{sim_data_path}/Background/{instru}/{background}/background_{band}.fits")
     return raw_wave, raw_bkg
 
 @lru_cache(maxsize=32)
 def _load_phi_m(post_processing, Rc):
     """Load *once* the effective correlation drift of systematics/speckles."""
-    sep, phi_m = fits.getdata(f"{sim_data_path}/Systematics/rho_m_{post_processing}_Rc{Rc}.fits")
+    sim_data_path = get_sim_data_path()
+    sep, phi_m    = fits.getdata(f"{sim_data_path}/Systematics/rho_m_{post_processing}_Rc{Rc}.fits")
     return sep, phi_m
 
 
