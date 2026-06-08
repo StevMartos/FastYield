@@ -12,10 +12,14 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-# Local/external spectral library
-sim_data/Spectra/
-Spectra/
-
 # Local temporary files
 *.tmp
 *.log
+
+# External FastYield data
+sim_data/*
+!sim_data/README.md
+!sim_data/.gitkeep
+
+# Legacy standalone spectral library
+Spectra/

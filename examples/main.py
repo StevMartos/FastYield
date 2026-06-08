@@ -1,14 +1,15 @@
 # import FastYield modules
-from fastyield.config import set_spectra_path
+from fastyield.config import set_sim_data_path
 from fastyield.FastCurves import FastCurves
 from fastyield.FastYield_interface import FastYield_interface
 from fastyield.FastYield import planet_table_classification, planet_table_statistics, yield_plot_instrus_texp, yield_plot_bands_texp, yield_hist_instrus_ptypes, yield_hist_instrus_ptypes_ELT, yield_corner_instru, yield_corner_instrus, yield_corner_models, yield_contrast_instru, yield_contrast_ELT_earthlike, get_archive_table, all_SNR_table, get_planet_table_SNR
 from fastyield.colormaps import colormap_bandwidth_resolution_with_constant_Nlambda, colormap_bandwidth_resolution_with_constant_Dlambda, colormap_bandwidth_Tp, colormap_bands_Tp, colormap_bands_ptypes_SNR, colormap_bands_ptypes_parameters, colormap_rv, colormap_vrot, colormap_maxsep_phase_inc
 
-# Required: set the path to your local Spectra directory.
-# This directory should contain the planet_spectrum/, star_spectrum/,
-# and molecular/ subdirectories.
-set_spectra_path("/home/martoss/Documents/PhD/work/Spectra")
+# Required if FASTYIELD_SIM_DATA_PATH is not defined:
+# set the path to your local FastYield sim_data directory.
+# This directory should contain the instrumental/simulation data folders
+# and the Spectra/ directory.
+# set_sim_data_path("/path/to/sim_data")
 
 
 
@@ -16,7 +17,7 @@ set_spectra_path("/home/martoss/Documents/PhD/work/Spectra")
 #                       Graphic User Interface (GUI):                          #
 #------------------------------------------------------------------------------#
 
-# FastYield_interface()
+FastYield_interface()
 
 
 
@@ -142,7 +143,7 @@ set_spectra_path("/home/martoss/Documents/PhD/work/Spectra")
 # colormap_rv(instru="HARMONI",    band="J", T_planet=300, T_star=3000, spectrum_contributions="reflected", model="flat", airmass=2.0, stellar_halo_photon_noise_limited=False)
 # colormap_vrot(instru="HARMONI", band="J", T_planet=300, T_star=3000, delta_rv=30, inc=0, spectrum_contributions="reflected", model="tellurics", airmass=2.0, stellar_halo_photon_noise_limited=False)
 
-colormap_maxsep_phase_inc(instru="HARMONI", band="H", apodizer="NO_SP", strehl="JQ1", coronagraph=None)
+# colormap_maxsep_phase_inc(instru="HARMONI", band="H", apodizer="NO_SP", strehl="JQ1", coronagraph=None)
 
 
 
