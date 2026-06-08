@@ -85,14 +85,6 @@ python -m pip install -e ".[dev]"
 
 In development mode, changes made directly inside the local repository are immediately reflected in the installed package.
 
-For example, if you modify:
-
-```text
-src/fastyield/FastCurves.py
-```
-
-then the local `fastyield` package will use the modified version.
-
 If you modify package metadata or dependencies in `pyproject.toml`, reinstall the package with:
 
 ```bash
@@ -260,50 +252,6 @@ FastYield_interface()
 ```
 
 If you have already defined the environment variable `FASTYIELD_SIM_DATA_PATH`, then the call to `set_sim_data_path()` is not required.
-
----
-
-## Development workflow
-
-A typical development workflow is:
-
-```bash
-git clone https://github.com/StevMartos/FastYield.git
-cd FastYield
-python -m pip install -e ".[dev]"
-```
-
-Then test the package with:
-
-```bash
-python -c "import fastyield; print(fastyield.__version__)"
-python -c "from fastyield.FastCurves import FastCurves; print(FastCurves)"
-python -c "from fastyield.FastYield_interface import FastYield_interface; print(FastYield_interface)"
-```
-
-Run the tests with:
-
-```bash
-pytest
-```
-
-Build the package locally with:
-
-```bash
-python -m build
-```
-
-This creates distribution files in:
-
-```text
-dist/
-```
-
-Before publishing or sharing a release, you can check the built distributions with:
-
-```bash
-twine check dist/*
-```
 
 ---
 
