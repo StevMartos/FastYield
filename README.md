@@ -1,3 +1,4 @@
+````markdown
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="FastYield%20logo.png">
@@ -51,10 +52,18 @@ FastYield can be installed directly from GitHub with `pip`.
 
 ### Standard installation
 
-Use this option if you only want to use the package:
+Use this option if you only want to use FastYield:
 
 ```bash
 python -m pip install git+https://github.com/StevMartos/FastYield.git
+````
+
+This installs FastYield and its required dependencies.
+
+To force `pip` to upgrade FastYield and all compatible dependencies to their latest available versions, use:
+
+```bash
+python -m pip install --upgrade --upgrade-strategy eager git+https://github.com/StevMartos/FastYield.git
 ```
 
 You can then test the installation with:
@@ -71,7 +80,7 @@ Use this option if you want to modify the code locally:
 ```bash
 git clone https://github.com/StevMartos/FastYield.git
 cd FastYield
-python -m pip install -e ".[dev,gui]"
+python -m pip install -e ".[dev]"
 ```
 
 In development mode, changes made directly inside the local repository are immediately reflected in the installed package.
@@ -84,43 +93,42 @@ src/fastyield/FastCurves.py
 
 then the local `fastyield` package will use the modified version.
 
-If you modify package metadata or dependencies in `pyproject.toml`, reinstall with:
+To force an update of FastYield and all compatible dependencies during a development installation, use:
 
 ```bash
-python -m pip install -e ".[dev,gui]"
+python -m pip install --upgrade --upgrade-strategy eager -e ".[dev]"
+```
+
+If you modify package metadata or dependencies in `pyproject.toml`, reinstall the package with:
+
+```bash
+python -m pip install -e ".[dev]"
 ```
 
 ---
 
 ## Dependencies
 
-The main dependencies are automatically installed from `pyproject.toml`.
+FastYield dependencies are automatically installed from `pyproject.toml`.
 
 FastYield mainly relies on:
 
-- [NumPy](https://numpy.org/)
-- [SciPy](https://scipy.org/)
-- [Astropy](https://www.astropy.org/)
-- [Matplotlib](https://matplotlib.org/)
-- [Pandas](https://pandas.pydata.org/)
-- [Numba](https://numba.pydata.org/)
-- [scikit-learn](https://scikit-learn.org/)
-- [statsmodels](https://www.statsmodels.org/)
-- [corner](https://corner.readthedocs.io/)
+* [NumPy](https://numpy.org/)
+* [SciPy](https://scipy.org/)
+* [Astropy](https://www.astropy.org/)
+* [Matplotlib](https://matplotlib.org/)
+* [Pandas](https://pandas.pydata.org/)
+* [tqdm](https://tqdm.github.io/)
+* [Numba](https://numba.pydata.org/)
+* [scikit-learn](https://scikit-learn.org/)
+* [statsmodels](https://www.statsmodels.org/)
+* [corner](https://corner.readthedocs.io/)
+* [ttkwidgets](https://github.com/TkinterEP/ttkwidgets)
+* [timezonefinder](https://github.com/jannikmi/timezonefinder)
+* [pytz](https://pythonhosted.org/pytz/)
+* [dace-query](https://dace-query.readthedocs.io/)
 
-Optional GUI-related dependencies can be installed with:
-
-```bash
-python -m pip install "fastyield[gui]"
-```
-
-or, from a local clone:
-
-```bash
-python -m pip install -e ".[gui]"
-```
-
-For development tools such as `pytest`, `ruff`, `build`, and `twine`, use:
+Development tools such as `pytest`, `ruff`, `build`, and `twine` are not required to use FastYield. They are only installed when using the development option:
 
 ```bash
 python -m pip install -e ".[dev]"
@@ -304,8 +312,7 @@ A typical development workflow is:
 ```bash
 git clone https://github.com/StevMartos/FastYield.git
 cd FastYield
-
-python -m pip install -e ".[dev,gui]"
+python -m pip install -e ".[dev]"
 ```
 
 Then test the package with:
@@ -315,13 +322,13 @@ python -c "import fastyield; print(fastyield.__version__)"
 python -c "from fastyield.FastCurves import FastCurves; print(FastCurves)"
 ```
 
-If tests are available, run:
+Run the tests with:
 
 ```bash
 pytest
 ```
 
-To build the package locally:
+Build the package locally with:
 
 ```bash
 python -m build
@@ -343,15 +350,15 @@ If you would like to add a new instrument to FastYield, please contact:
 
 Please include, when available:
 
-- spectral range and spectral resolution for each band;
-- total system transmission, excluding tellurics, for each band;
-- representative PSF, either as a 2D image or a 3D spectral cube;
-- expected background flux;
-- expected read-out noise;
-- expected dark current;
-- effective spatial sampling;
-- detector saturation limit;
-- coronagraphic and/or apodizer transmission, if relevant.
+* spectral range and spectral resolution for each band;
+* total system transmission, excluding tellurics, for each band;
+* representative PSF, either as a 2D image or a 3D spectral cube;
+* expected background flux;
+* expected read-out noise;
+* expected dark current;
+* effective spatial sampling;
+* detector saturation limit;
+* coronagraphic and/or apodizer transmission, if relevant.
 
 ---
 
@@ -359,8 +366,8 @@ Please include, when available:
 
 If you use FastYield or FastCurves in your work, please cite:
 
-- Bidot et al. 2024, *FastCurves: a performance estimation tool for molecular mapping*, A&A.
-- Martos et al. 2025, *Combining high-contrast imaging and high-resolution spectroscopy: MIRI/MRS on-sky results compared to expectations*, A&A.
+* Bidot et al. 2024, *FastCurves: a performance estimation tool for molecular mapping*, A&A.
+* Martos et al. 2025, *Combining high-contrast imaging and high-resolution spectroscopy: MIRI/MRS on-sky results compared to expectations*, A&A.
 
 ---
 
@@ -369,3 +376,7 @@ If you use FastYield or FastCurves in your work, please cite:
 For questions, bug reports, or instrument additions, please contact:
 
 [steven.martos@univ-grenoble-alpes.fr](mailto:steven.martos@univ-grenoble-alpes.fr)
+
+```
+```
+
