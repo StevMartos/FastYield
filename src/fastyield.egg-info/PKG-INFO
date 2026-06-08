@@ -69,15 +69,15 @@ For more details, see [Bidot et al. 2024](https://www.aanda.org/articles/aa/pdf/
 
 FastYield currently includes configurations for the following instruments:
 
-- **ELT/HARMONI** — molecular mapping
-- **ELT/ANDES** — molecular mapping
-- **VLT/ERIS** — molecular mapping
-- **VLT/HiRISE** — molecular mapping
-- **VLT/CRIRES+** — molecular mapping
-- **JWST/MIRI-MRS** — molecular mapping
-- **JWST/NIRSpec IFU** — molecular mapping
-- **JWST/NIRCam** — ADI/RDI
-- **OHP/VIPAPYRUS** — molecular mapping
+- **ELT/HARMONI**
+- **ELT/ANDES**
+- **VLT/ERIS**
+- **VLT/HiRISE**
+- **VLT/CRIRES+**
+- **JWST/MIRI-MRS**
+- **JWST/NIRSpec IFU**
+- **JWST/NIRCam**
+- **OHP/VIPAPYRUS**
 
 ---
 
