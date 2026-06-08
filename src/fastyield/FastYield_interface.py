@@ -1,9 +1,9 @@
 # import FastYield modules
-from src.config import instrus_with_systematics, SNR_thresh, ignore_reflected_thresh_um
-from src.get_specs import get_config_data, get_wa
-from src.spectrum import get_spectrum_contribution_name_model, get_thermal_reflected_spectrum
-from src.FastCurves import FastCurves
-from src.FastYield import load_planet_table, get_planet_index, get_valid_mask, get_SNR_from_table, get_size_from_SNR
+from .config import instrus_with_systematics, SNR_thresh, ignore_reflected_thresh_um
+from .get_specs import get_config_data, get_wa
+from .spectrum import get_spectrum_contribution_name_model, get_thermal_reflected_spectrum
+from .FastCurves import FastCurves
+from .FastYield import load_planet_table, get_planet_index, get_valid_mask, get_SNR_from_table, get_size_from_SNR
 
 # import astropy modules
 from astropy import units as u
@@ -31,8 +31,6 @@ from ttkwidgets.autocomplete import AutocompleteEntry
 from timezonefinder import TimezoneFinder
 from datetime import datetime
 import pytz
-
-sys.path.insert(0, '../src')
 
 main_color      = "#FF7F11" # dark orange
 secondary_color = "#1C1C1E" # black

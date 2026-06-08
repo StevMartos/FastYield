@@ -103,7 +103,61 @@ def set_spectra_path(path):
     _spectra_path = path
 
 
-def get_spectra_path(check_exists=True):
+
+def _find_first_existing_dir(candidates, dirname):
+    """
+    Return the first valid directory among candidate paths.
+
+    Parameters
+    ----------
+    candidates : list of tuple[str, str or pathlib.Path]
+        List of (label, path) candidates to test.
+    dirname : str
+        Human-readable directory name, used in the error message.
+
+    Returns
+    -------
+    path : pathlib.Path
+        First valid directory found.
+
+    Raises
+    ------
+    FileNotFoundError
+        If no candidate is a valid directory.
+    """
+    tried = []
+
+    for label, path in candidates:
+        if path is None:
+            continue
+
+        path = Path(path).expanduser().resolve()
+        tried.append((label, path))
+
+        if path.is_dir():
+            return path
+
+    msg = [
+        f"Could not find the {dirname} directory.",
+        "",
+        "Tried the following paths:",
+    ]
+
+    for label, path in tried:
+        if not path.exists():
+            status = "does not exist"
+        elif not path.is_dir():
+            status = "exists but is not a directory"
+        else:
+            status = "unknown error"
+
+        msg.append(f"  - {label}: {path} ({status})")
+
+    raise FileNotFoundError("\n".join(msg))
+    
+    
+
+def get_spectra_path():
     """
     Return the active Spectra path.
 
@@ -111,29 +165,23 @@ def get_spectra_path(check_exists=True):
     1. path set by set_spectra_path()
     2. FASTYIELD_SPECTRA_PATH environment variable
     3. default local path: sim_data/Spectra
+
+    If one candidate is invalid, the next candidate is tested.
+    A FileNotFoundError is raised only if all candidates fail.
     """
+    candidates = []
+
     if _spectra_path is not None:
-        path = _spectra_path
+        candidates.append(("set_spectra_path()", _spectra_path))
 
-    else:
-        env_path = os.getenv("FASTYIELD_SPECTRA_PATH")
+    env_path = os.getenv("FASTYIELD_SPECTRA_PATH")
+    if env_path is not None:
+        candidates.append(("FASTYIELD_SPECTRA_PATH", env_path))
 
-        if env_path is not None:
-            path = Path(env_path).expanduser().resolve()
-        else:
-            path = sim_data_path / "Spectra"
+    candidates.append(("default local path", sim_data_path / "Spectra"))
 
-    if check_exists and not path.is_dir():
-        raise FileNotFoundError(
-            "Could not find the Spectra directory.\n"
-            f"Expected path: {path}\n"
-            "Please either:\n"
-            "  - call set_spectra_path('/path/to/Spectra'), or\n"
-            "  - define the FASTYIELD_SPECTRA_PATH environment variable, or\n"
-            "  - place the Spectra directory in sim_data/Spectra."
-        )
+    return _find_first_existing_dir(candidates, "Spectra")
 
-    return path
 
 
 def get_vega_path():
@@ -349,43 +397,43 @@ config_data_CRIRES = {
 #------------------------------------------------------------------------------#
 
 config_data_MIRIMRS = {
-                       'name':           "MIRIMRS",                                               # Instrument name
-                       'telescope_name': "JWST",                                                  # Telescope name
-                       'type':           "IFU",                                                   # Instrument type
-                       'gratings':      {"1SHORT":  GratingInfo(4.90,  5.741,  (3320.+3710.)/2),  # Spectral range [µm], resolving power
-                                         "1MEDIUM": GratingInfo(5.66,  6.63,   (3750.+3190.)/2),  # Spectral range [µm], resolving power
-                                         "1LONG":   GratingInfo(6.53,  7.65,   (3610.+3100.)/2),  # Spectral range [µm], resolving power
-                                         "2SHORT":  GratingInfo(7.51,  8.77,   (3110.+2990.)/2),  # Spectral range [µm], resolving power
-                                         "2MEDIUM": GratingInfo(8.67,  10.13,  (2750.+3170.)/2),  # Spectral range [µm], resolving power
-                                         "2LONG":   GratingInfo(10.02, 11.70,  (2860.+3300.)/2),  # Spectral range [µm], resolving power
-                                         "3SHORT":  GratingInfo(11.55, 13.47,  (2530.+2880.)/2),  # Spectral range [µm], resolving power
-                                         "3MEDIUM": GratingInfo(13.34, 15.57,  (1790.+2640.)/2),  # Spectral range [µm], resolving power
-                                         "3LONG":   GratingInfo(15.42, 17.98,  (1980.+2790.)/2),  # Spectral range [µm], resolving power
-                                         "4SHORT":  GratingInfo(17.70, 20.915, (1460.+1930.)/2),  # Spectral range [µm], resolving power
-                                         "4MEDIUM": GratingInfo(20.69, 24.385, (1680.+1770.)/2),  # Spectral range [µm], resolving power
-                                         "4LONG":   GratingInfo(24.19, 27.90,  (1630.+1330.)/2)}, # Spectral range [µm], resolving power
-                      'lambda_range':   {"lambda_min": 4.90, "lambda_max": 27.90},                # Minimum and maximum instrumental wavelength range [µm]
-                      'size_core':       3,                                                       # Size in pixels of the FWHM  (here: side of the PSF core box)
-                      'R_cov':           2.4,                                                     # Spatial covariance factor   (here: for size_core = 3)
-                      'apodizers':      {"NO_SP": ApodizerInfo(1)},                               # Available apodizers
-                      'strehls':        ["NO_JQ"],                                                # Available strehls
-                      'coronagraphs':   [None],                                                   # Available coronagraphs
-                      'pxscale':        {"1SHORT":0.13, "1MEDIUM":0.13, "1LONG":0.13,             # Pixel scale [arcsec/px] (channel 1 with dithering)
-                                         "2SHORT":0.17, "2MEDIUM":0.17, "2LONG":0.17,             # Pixel scale [arcsec/px] (channel 2 with dithering)
-                                         "3SHORT":0.20, "3MEDIUM":0.20, "3LONG":0.20,             # Pixel scale [arcsec/px] (channel 3 with dithering)
-                                         "4SHORT":0.35, "4MEDIUM":0.35, "4LONG":0.35},            # Pixel scale [arcsec/px] (channel 4 with dithering)
-                      'pxscale0':       {"1SHORT":0.196, "1MEDIUM":0.196, "1LONG":0.196,          # Pixel scale [arcsec/px] (channel 1 without dithering)
-                                         "2SHORT":0.196, "2MEDIUM":0.196, "2LONG":0.196,          # Pixel scale [arcsec/px] (channel 2 without dithering)
-                                         "3SHORT":0.245, "3MEDIUM":0.245, "3LONG":0.245,          # Pixel scale [arcsec/px] (channel 3 without dithering)
-                                         "4SHORT":0.273, "4MEDIUM":0.273, "4LONG":0.273},         # Pixel scale [arcsec/px] (channel 4 without dithering)
-                      'FOV':             5.2,                                                     # Field Of View [arcsec]
-                      'sep_unit':        "arcsec",                                                # Unit for angular separation
-                      'detector':       {"RON":          19,                                      # Read-Out Noise [e-/px/read]
-                                         "RON_lim":      1.,                                      # Read-Out Noise limit [e-/px/read]
-                                         "dark_current": 0.2,                                     # Dark current [e-/px/s]
-                                         "minDIT":       2.775/60,                                # Minimum Detector Integration Time [mn]
-                                         "maxDIT":       5,                                       # Maximum Detector Integration Time [mn]
-                                         "saturation_e": 200_000},                                # Full well capacity [e-] 
+                       'name':           "MIRIMRS",                                                 # Instrument name
+                       'telescope_name': "JWST",                                                    # Telescope name
+                       'type':           "IFU",                                                     # Instrument type
+                       'gratings':      {"1SHORT":  GratingInfo(4.90,  5.741,  (3320.+3710.)/2),    # Spectral range [µm], resolving power
+                                         "1MEDIUM": GratingInfo(5.66,  6.63,   (3750.+3190.)/2),    # Spectral range [µm], resolving power
+                                         "1LONG":   GratingInfo(6.53,  7.65,   (3610.+3100.)/2),    # Spectral range [µm], resolving power
+                                         "2SHORT":  GratingInfo(7.51,  8.77,   (3110.+2990.)/2),    # Spectral range [µm], resolving power
+                                         "2MEDIUM": GratingInfo(8.67,  10.13,  (2750.+3170.)/2),    # Spectral range [µm], resolving power
+                                         "2LONG":   GratingInfo(10.02, 11.70,  (2860.+3300.)/2),    # Spectral range [µm], resolving power
+                                         "3SHORT":  GratingInfo(11.55, 13.47,  (2530.+2880.)/2),    # Spectral range [µm], resolving power
+                                         "3MEDIUM": GratingInfo(13.34, 15.57,  (1790.+2640.)/2),    # Spectral range [µm], resolving power
+                                         "3LONG":   GratingInfo(15.42, 17.98,  (1980.+2790.)/2),    # Spectral range [µm], resolving power
+                                         "4SHORT":  GratingInfo(17.70, 20.915, (1460.+1930.)/2),    # Spectral range [µm], resolving power
+                                         "4MEDIUM": GratingInfo(20.69, 24.385, (1680.+1770.)/2),    # Spectral range [µm], resolving power
+                                         "4LONG":   GratingInfo(24.19, 27.90,  (1630.+1330.)/2)},   # Spectral range [µm], resolving power
+                      'lambda_range':   {"lambda_min": 4.90, "lambda_max": 27.90},                  # Minimum and maximum instrumental wavelength range [µm]
+                      'size_core':       3,                                                         # Size in pixels of the FWHM  (here: side of the PSF core box)
+                      'R_cov':           2.4,                                                       # Spatial covariance factor   (here: for size_core = 3)
+                      'apodizers':      {"NO_SP": ApodizerInfo(1)},                                 # Available apodizers
+                      'strehls':        ["NO_JQ"],                                                  # Available strehls
+                      'coronagraphs':   [None],                                                     # Available coronagraphs
+                      'pxscale':        {"1SHORT":0.13, "1MEDIUM":0.13, "1LONG":0.13,               # Pixel scale [arcsec/px] (channel 1 with dithering)
+                                         "2SHORT":0.17, "2MEDIUM":0.17, "2LONG":0.17,               # Pixel scale [arcsec/px] (channel 2 with dithering)
+                                         "3SHORT":0.20, "3MEDIUM":0.20, "3LONG":0.20,               # Pixel scale [arcsec/px] (channel 3 with dithering)
+                                         "4SHORT":0.35, "4MEDIUM":0.35, "4LONG":0.35},              # Pixel scale [arcsec/px] (channel 4 with dithering)
+                      'pxscale0':       {"1SHORT":0.196, "1MEDIUM":0.196, "1LONG":0.196,            # Pixel scale [arcsec/px] (channel 1 without dithering)
+                                         "2SHORT":0.196, "2MEDIUM":0.196, "2LONG":0.196,            # Pixel scale [arcsec/px] (channel 2 without dithering)
+                                         "3SHORT":0.245, "3MEDIUM":0.245, "3LONG":0.245,            # Pixel scale [arcsec/px] (channel 3 without dithering)
+                                         "4SHORT":0.273, "4MEDIUM":0.273, "4LONG":0.273},           # Pixel scale [arcsec/px] (channel 4 without dithering)
+                      'FOV':             6.0,                                                       # Field Of View [arcsec]
+                      'sep_unit':        "arcsec",                                                  # Unit for angular separation
+                      'detector':       {"RON":          19,                                        # Read-Out Noise [e-/px/read]
+                                         "RON_lim":      1.,                                        # Read-Out Noise limit [e-/px/read]
+                                         "dark_current": 0.2,                                       # Dark current [e-/px/s]
+                                         "minDIT":       2.775/60,                                  # Minimum Detector Integration Time [mn]
+                                         "maxDIT":       5,                                         # Maximum Detector Integration Time [mn]
+                                         "saturation_e": 200_000},                                  # Full well capacity [e-] 
                      }
 
 
@@ -607,10 +655,13 @@ extra_bands = {
     # Approximate wavelength ranges in microns
     # ------------------------------------------------------------------
 
-    # --- Optical / near-optical ---
-    # "U": (0.320, 0.400),
-    # "B": (0.390, 0.490),
-    # "V": (0.500, 0.600),
+    # --- Near Ultra-Violet ---
+    "NUV": (0.200, 0.300),
+    
+    # --- Optical / near-optical ---    
+    "U": (0.320, 0.400),
+    "B": (0.390, 0.490),
+    "V": (0.500, 0.600),
     "R": (0.580, 0.750),
     "I": (0.700, 0.900),
     "z": (0.830, 0.950),

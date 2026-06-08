@@ -1,9 +1,9 @@
 # import FastYield modules
-from src.config import sim_data_path, rad2arcsec
-from src.get_specs import _load_stellar_modulation_function, get_config_data, get_transmission
-from src.utils import extract_jwst_data, PCA_subtraction, circular_mask, annular_mask, box_convolution, fill_nan_linear
-from src.spectrum import Spectrum, get_resolution, filtered_flux, _fft_filter_response, get_spectrum_band
-from src.data_processing import get_S_res, get_CCF_2D_rv, get_d_sim
+from .config import sim_data_path, rad2arcsec
+from .get_specs import _load_stellar_modulation_function, get_config_data, get_transmission
+from .utils import extract_jwst_data, PCA_subtraction, circular_mask, annular_mask, box_convolution, fill_nan_linear
+from .spectrum import get_resolution, filtered_flux, _fft_filter_response, get_spectrum_band
+from .data_processing import get_S_res, get_CCF_2D_rv, get_d_sim
 
 # import astropy modules
 from astropy.io import fits
@@ -863,7 +863,7 @@ def get_systematics(config_data, band, tellurics, apodizer, strehl, coronagraph,
         
         # Extracting 'fundamental-noiseless' data in [e-/bin/px] (S_noiseless = Ms * trans * Ss)
         if instru in {"MIRIMRS", "NIRSpec"}:
-            S_noiseless, wave_data, pxscale, _, trans, exposure_time_data, _ = extract_jwst_data(instru=instru, target_name="sim", band=band, crop_band=True, outliers=on_sky_data, sigma_outliers=sigma_outliers, file=file, X0=None, Y0=None, R_crop=None, verbose=False)
+            S_noiseless, wave_data, pxscale, _, trans, exposure_time_data, _ = extract_jwst_data(instru=instru, target_name="sim", band=band, crop_band=True, outliers=on_sky_data, file=file, X0=None, Y0=None, R_crop=None, verbose=False)
 
         # Stellar flux in [e-/bin] from data cube (sum over spatial axes) and divide by trans
         trans_Ss_data                     = np.nansum(S_noiseless, axis=(1, 2)) # [e-/bin]
@@ -1644,41 +1644,30 @@ def compute_sigma_base_2_al_spat_numba(h, wave, separation_rad, pxscale_rad, n_s
 
 
 
-def compute_sigma_base_al_spec_fast(h):
+def compute_sigma_base_2_al_spec_fast(h):
     """
-    Approximate the spectral-aliasing quadratic form using a few off-diagonals.
+    Approximate the spectral-aliasing quadratic form.
 
-    This fast approximation assumes that the spectral-aliasing covariance is
-    strongly localized around the diagonal, so that only the first few
-    neighbor couplings contribute significantly.
-
-    The returned quantity approximates, for each separation,
+    This function returns a variance-like base term,
 
         sigma_base_2 = h.T @ C_al_spec @ h,
 
-    where C_al_spec is the spectral-aliasing covariance matrix.
+    for each separation.
 
-    Parameters
-    ----------
-    h : ndarray
-        Two-dimensional array of shape (n_lambda, n_sep) containing the
-        spectral weighted halo for each separation.
+    The approximation keeps only the diagonal, first off-diagonal, and second
+    off-diagonal terms. The implemented off-diagonal coefficients are the
+    effective coefficients appearing directly in the quadratic form:
 
-    Returns
-    -------
-    sigma_base_2 : ndarray
-        One-dimensional array of shape (n_sep,) containing the approximate
-        quadratic form.
+        2*C_{i,i+1} = 1/2,
+        2*C_{i,i+2} = 2/256.
 
-    Notes
-    -----
-    The current approximation includes:
-      - the diagonal term,
-      - the first off-diagonal with an effective weight of 1/2,
-      - the second off-diagonal with an effective weight of 2/256.
+    Equivalently, the underlying symmetric covariance coefficients are
 
-    This approximation is only justified when the covariance kernel is narrow
-    in wavelength space.
+        C_{i,i+1} = 1/4,
+        C_{i,i+2} = 1/256.
+
+    These values are consistent with a narrow Gaussian spectral-aliasing kernel
+    whose local correlation length is set by the native wavelength sampling.
     """
     sigma_base_2 = np.sum(h * h, axis=0)
 

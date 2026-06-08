@@ -1,6 +1,6 @@
 # import FastYield modules
-from src.config import h, c, rad2arcsec, sim_data_path
-from src.get_specs import get_config_data
+from .config import h, c, rad2arcsec, sim_data_path
+from .get_specs import get_config_data
 
 # import astropy modules
 from astropy.io import fits
@@ -13,6 +13,9 @@ import matplotlib.colors as mcolors
 from matplotlib.cm import get_cmap
 from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib as mpl
+import matplotlib.patheffects as pe
+from matplotlib.patches import Rectangle
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes, mark_inset
 
 # import numpy modules
 import numpy as np
@@ -67,7 +70,6 @@ def log_interpolate(y_lo, y_hi, x_lo, x_hi, x):
     """
     if x_lo <= 0 or x_hi <= 0 or x <= 0:
         raise ValueError("Logarithmic interpolation requires strictly positive x values.")
-
     return linear_interpolate(y_lo, y_hi, np.log10(x_lo), np.log10(x_hi), np.log10(x))
 
 
@@ -394,37 +396,40 @@ def weighted_quantile(x, w, qs=(0.16, 0.5, 0.84)):
 
 
 
-def get_bracket_values(x, grid):
+def get_bracket_values(x, grid, rtol=1e-10, atol=1e-12):
     """
-    Return (x_lo, x_hi) bracketing 'x' on a sorted 1D grid.
+    Return (x_lo, x_hi) bracketing x on a sorted 1D grid.
 
-    Parameters
-    ----------
-    x : float
-        Target value to bracket.
-    grid : ndarray
-        1D monotonic grid.
-
-    Returns
-    -------
-    x_lo : float
-        Lower bracket (or boundary if x <= min(grid)).
-    x_hi : float
-        Upper bracket (or boundary if x >= max(grid)).
+    If x is equal, within tolerance, to a grid point, this function returns
+    that grid point twice. Values outside the grid are clipped to the nearest
+    boundary.
     """
-    grid = np.asarray(grid, float)
+    grid = np.asarray(grid, dtype=float)
+
     if grid.ndim != 1 or grid.size == 0:
         raise ValueError("'grid' must be a non-empty 1D array.")
 
-    if grid[0] > grid[-1]:
+    if np.any(~np.isfinite(grid)):
+        raise ValueError("'grid' must contain only finite values.")
+
+    if np.any(np.diff(grid) < 0):
         raise ValueError("'grid' should be in increasing order.")
 
-    if x <= grid[0]:
+    # Exact or near-exact grid match
+    match = np.isclose(grid, x, rtol=rtol, atol=atol)
+    if np.any(match):
+        x_grid = grid[np.where(match)[0][0]]
+        return x_grid, x_grid
+
+    # Boundary clipping
+    if x < grid[0]:
         return grid[0], grid[0]
-    if x >= grid[-1]:
+
+    if x > grid[-1]:
         return grid[-1], grid[-1]
 
-    idx = np.searchsorted(grid, x)
+    # Strictly inside the grid, not equal to a grid point
+    idx = np.searchsorted(grid, x, side="right")
     return grid[idx - 1], grid[idx]
 
 
@@ -506,59 +511,92 @@ def get_r_core(separation, profile, level=0.5):
 
 #################### Image processing/analysis functions ######################
 
-def box_convolution(data, size_core, mode="sum"):
+def box_convolution(data, size_core, mode="sum", nan_policy="ignore"):
     """
-    Fast box-convolution (sum or mean) with NaN handling.
+    Fast box-convolution with optional NaN propagation.
 
-    For each pixel (and each channel if 3D), computes either the sum or mean of all
-    finite values inside a centered size_core×size_core window. Windows are truncated
-    at borders (no wrap/reflect). If the window contains no finite values, the result
-    is NaN.
+    For each pixel (and each channel if 3D), computes either the sum or mean
+    inside a centered size_core x size_core window.
 
     Parameters
     ----------
     data : ndarray
-        Input array; either (NbLine, NbColumn) or (NbChannel, NbLine, NbColumn). Can contain NaNs.
-    size_core : int, optional (default: 3)
+        Input array; either (NbLine, NbColumn) or
+        (NbChannel, NbLine, NbColumn). Can contain NaNs.
+
+    size_core : int
         Odd side length of the square window.
-    mode : {"sum", "mean"}, optional (default: "sum")
-        Whether to compute summed values ("sum") or averaged values ("mean").
+
+    mode : {"sum", "mean"}, optional
+        - "sum"  : return the box-sum
+        - "mean" : return the box-mean
+
+    nan_policy : {"ignore", "propagate"}, optional
+        - "ignore" :
+            Ignore NaNs inside the window. This is the previous behavior.
+            The sum/mean is computed over finite values only.
+        - "propagate" :
+            If at least one NaN is present inside the window, the output
+            is set to NaN.
 
     Returns
     -------
     data_conv : ndarray
-        Same shape as 'data'. Box-sum or box-mean per pixel (and per channel if 3D).
+        Same shape as input data.
     """
+
     if data.ndim not in (2, 3):
         raise ValueError("Input must be 2D (NbLine, NbColumn) or 3D (NbChannel, NbLine, NbColumn).")
+
     if size_core < 1 or size_core % 2 != 1:
         raise ValueError("size_core must be a positive odd integer.")
+
     if mode not in ("sum", "mean"):
         raise ValueError("mode must be 'sum' or 'mean'.")
 
+    if nan_policy not in ("ignore", "propagate"):
+        raise ValueError("nan_policy must be 'ignore' or 'propagate'.")
+
     k = size_core
+
     if data.ndim == 3:
-        kernel = np.ones((1, k, k), dtype=float)  # no mixing along channel axis
+        kernel = np.ones((1, k, k), dtype=float)  # no channel mixing
     else:
         kernel = np.ones((k, k), dtype=float)
 
-    # Replace NaNs by 0 for sum pass
+    # Finite mask
     valid_mask = np.isfinite(data)
-    data_0     = np.where(valid_mask, data, 0.0)
 
-    # Box-sum of values
+    # Replace NaNs by 0 for convolution
+    data_0 = np.where(valid_mask, data, 0.0)
+
+    # Sum of finite values in the local box
     summed = convolve(data_0, kernel, mode="constant", cval=0.0)
+
+    # Number of finite values in the local box
+    count_valid = convolve(valid_mask.astype(float), kernel, mode="constant", cval=0.0)
 
     if mode == "sum":
         data_conv = summed
-    elif mode == "mean":
-        # Count of finite samples in each window
-        count = convolve(valid_mask.astype(float), kernel, mode="constant", cval=0.0)
-        with np.errstate(invalid="ignore", divide="ignore"):
-            data_conv = summed / count
 
-    # Enforce NaN where no valid entries
-    data_conv[data_conv==0] = np.nan
+    elif mode == "mean":
+        with np.errstate(invalid="ignore", divide="ignore"):
+            data_conv = summed / count_valid
+
+    # Case 1: no valid value in the window -> NaN
+    data_conv[count_valid == 0] = np.nan
+
+    # Case 2: propagate NaNs if requested
+    if nan_policy == "propagate":
+        # Effective box size at each pixel, accounting for truncated borders.
+        # This avoids treating outside-of-image padding as NaNs.
+        local_box_size = convolve(np.ones_like(data, dtype=float), kernel, mode="constant", cval=0.0)
+
+        # If fewer finite pixels than actual pixels in the truncated box,
+        # then there was at least one NaN inside the box.
+        has_nan = count_valid < local_box_size
+
+        data_conv[has_nan] = np.nan
 
     return data_conv
 
@@ -799,9 +837,9 @@ def compute_PSF_profile(PSF, pxscale, size_core, aperture_correction):
         profile[1, r] = np.nanmean(PSF[amask])
     profile[1, :] = profile[1, :] / pxscale**2
     
-    # Sanity check 
-    if np.any(profile[1]==0) or np.any(~np.isfinite(profile[1])):
-        raise ValueError("Invalid values inside 'profile[1]'")
+    # # Sanity check 
+    # if np.any(profile[1]==0) or np.any(~np.isfinite(profile[1])):
+    #     raise ValueError("Invalid values inside 'profile[1]'")
         
     return profile, fraction_core
 
@@ -899,6 +937,9 @@ def fitting_PSF(instru, data, wave, pxscale, model="gaussian", Y0=None, X0=None,
         NbLine, NbColumn = data.shape
         if Y0 is None or X0 is None: # First guess
             Y0, X0 = np.unravel_index(np.nanargmax(data, axis=None), data.shape)
+        else:
+            Y0 = int(round(Y0))
+            X0 = int(round(X0))
         img         = np.nan_to_num(data)
         ymin        = max(Y0 - 2*dpx    , 0)
         ymax        = min(Y0 + 2*dpx + 1, NbLine)
@@ -931,6 +972,9 @@ def fitting_PSF(instru, data, wave, pxscale, model="gaussian", Y0=None, X0=None,
         NbChannel, NbLine, NbColumn = data.shape
         if Y0 is None or X0 is None: # First guess
             Y0, X0 = np.unravel_index(np.nanargmax(np.nanmedian(np.nan_to_num(data), axis=0), axis=None), data[0].shape)
+        else:
+            Y0 = int(round(Y0))
+            X0 = int(round(X0))
         y0         = np.zeros((NbChannel)) + np.nan
         x0         = np.zeros((NbChannel)) + np.nan
         y0_err     = np.zeros((NbChannel)) + np.nan
@@ -1328,7 +1372,7 @@ def gaussian_lowpass_nanaware(y, sigma, eps: float = 1e-12, mode: str = "reflect
 
 
 
-def PCA_subtraction(S_res, N_PCA, y0=None, x0=None, size_core=None, PCA_annular=False, PCA_mask=False, scree_plot=False, PCA_plots=False, PCA_plots_PDF=False, path_PDF=None, wave=None, R=None, pxscale=None):
+def PCA_subtraction(S_res, N_PCA, y0=None, x0=None, size_core=None, PCA_annular=False, PCA_mask=False, scree_plot=False, PCA_plots=False, PCA_plots_PDF=False, path_PDF=None, wave=None, R=None, pxscale=None, sep_unit="arcsec"):
     """
     Perform PCA subtraction on the input data cube.
 
@@ -1428,7 +1472,7 @@ def PCA_subtraction(S_res, N_PCA, y0=None, x0=None, size_core=None, PCA_annular=
         # ---------------------------
         if PCA_plots:
             # Display up to the first 5 components interactively
-            from src.spectrum import get_psd
+            from .spectrum import get_psd
             Nk      = min(N_PCA, 5)
             cmap    = plt.get_cmap("rainbow", Nk)
             extent  = [-NbColumn/2*pxscale, NbColumn/2*pxscale, -NbLine/2*pxscale, NbLine/2*pxscale]
@@ -1470,8 +1514,8 @@ def PCA_subtraction(S_res, N_PCA, y0=None, x0=None, size_core=None, PCA_annular=
                 cbar = fig.colorbar(cax, ax=ax[k, 2], orientation='vertical', shrink=0.8)
                 cbar.set_label("Correlation", fontsize=14, labelpad=20, rotation=270)
                 if k == Nk - 1:
-                    ax[k, 2].set_xlabel('x offset (in ")', fontsize=14)
-                ax[k, 2].set_ylabel('y offset (in ")', fontsize=14)
+                    ax[k, 2].set_xlabel(f'x offset [{sep_unit}]', fontsize=14)
+                ax[k, 2].set_ylabel(f'y offset [{sep_unit}]', fontsize=14)
                 ax[k, 2].grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
                 ax[k, 2].minorticks_on()
 
@@ -1494,7 +1538,7 @@ def PCA_subtraction(S_res, N_PCA, y0=None, x0=None, size_core=None, PCA_annular=
                 ax[0].plot(wave, pca_comp, c=cmap_pdf(k), label=f"$n_k$ = {k+1}")
                 ax[0].legend(fontsize=14, loc="upper center")
                 ax[0].set_xlim(wave[0], wave[-1])
-                ax[0].set_xlabel("wavelength [µm]", fontsize=14)
+                ax[0].set_xlabel("Wavelength [µm]", fontsize=14)
                 ax[0].set_ylabel("modulation (normalized)", fontsize=14)
                 ax[0].grid(True)
                 
@@ -1516,9 +1560,9 @@ def PCA_subtraction(S_res, N_PCA, y0=None, x0=None, size_core=None, PCA_annular=
                 CCF[mask] = np.nan_to_num(numerator[mask]) / denom[mask]
                 cax = ax[2].imshow(CCF, extent=[-(CCF.shape[0] + 1) // 2 * pxscale, (CCF.shape[0]) // 2 * pxscale, -(CCF.shape[1] - 2) // 2 * pxscale, (CCF.shape[1]) // 2 * pxscale], zorder=3)
                 cbar = fig.colorbar(cax, ax=ax[2], orientation='vertical', shrink=0.8)
-                cbar.set_label("correlation", fontsize=14, labelpad=20, rotation=270)
-                ax[2].set_xlabel('x offset (in ")', fontsize=14)
-                ax[2].set_ylabel('y offset (in ")', fontsize=14)
+                cbar.set_label("Correlation", fontsize=14, labelpad=20, rotation=270)
+                ax[2].set_xlabel(f'x offset [{sep_unit}]', fontsize=14)
+                ax[2].set_ylabel(f'y offset [{sep_unit}]', fontsize=14)
                 ax[2].grid(True)
                 
                 pdf.savefig(fig, bbox_inches='tight')
@@ -1818,7 +1862,9 @@ def qqplot2_hirise(CCF_signal, CCF_bkgd, band, target_name):
 
 ########################## Extracting data functions ##########################
 
-def extract_jwst_data(instru, target_name, band, crop_band=True, outliers=False, sigma_outliers=5, file=None, crop_cube=True, X0=None, Y0=None, R_crop=None, verbose=True):
+# --- JWST ---
+
+def extract_jwst_data(instru, target_name, band, crop_band=True, outliers=False, file=None, crop_cube=True, X0=None, Y0=None, R_crop=None, verbose=True):
     """
     Load and preprocess a JWST IFU spectral cube (MIRI/MRS or NIRSpec/IFU).
 
@@ -1933,7 +1979,8 @@ def extract_jwst_data(instru, target_name, band, crop_band=True, outliers=False,
     get_transmission : Compute the instrumental transmission curve.
     sigma_clip : Sigma-clipping routine used for outlier rejection.
     """
-    
+    from .spectrum import get_resolution, filtered_flux
+
     # Instrument specs
     config_data = get_config_data(instru)
     area        = config_data['telescope']['area'] # collective area m2
@@ -1972,14 +2019,15 @@ def extract_jwst_data(instru, target_name, band, crop_band=True, outliers=False,
     elif instru == "NIRSpec":
         target_name   = hdr0['TARGNAME']
         exposure_time = f[0].header['EFFEXPTM']/60 # [mn]
-    DIT         = f[0].header['EFFINTTM']/60 # [mn]
-    pxsteradian = hdr1['PIXAR_SR']           # [Sr/px]
-    pxscale     = hdr1['CDELT1']*3600        # [arcsec/px]
-    dwave       = hdr1['CDELT3']             # [µm/bin]
+    DIT        = f[0].header['EFFINTTM']/60 # [mn]
+    pxscale    = hdr1['CDELT1']*3600        # [arcsec/px]
+    pxscale_Sr = hdr1['PIXAR_SR']           # [Sr/px]
+    dwave      = hdr1['CDELT3']             # [µm/bin]
 
     # Wavelength axis
     wave = (np.arange(hdr1['NAXIS3']) + hdr1['CRPIX3'] - 1) * hdr1['CDELT3'] + hdr1['CRVAL3'] # [µm]
-
+    R    = get_resolution(wavelength=wave, func=np.nanmedian)
+    
     # Retrieving data
     cube = f[1].data # [MJy/Sr]
     err  = f[2].data # [MJy/Sr]
@@ -1992,16 +2040,16 @@ def extract_jwst_data(instru, target_name, band, crop_band=True, outliers=False,
     NbChannel, NbLine, NbColumn = cube.shape
     
     # Converting data in total [ph/px]
-    cube *= pxsteradian*1e6                   # [MJy/Sr]       => [Jy/px]
-    cube *= 1e-26                             # [Jy/pixel]     => [J/s/m²/Hz/px]
+    cube *= pxscale_Sr*1e6                    # [MJy/Sr]       => [Jy/px]
+    cube *= 1e-26                             # [Jy/px]        => [J/s/m²/Hz/px]
     cube *= c/((wave[:, None, None]*1e-6)**2) # [J/s/m²/Hz/px] => [J/s/m²/m/px]
     cube *= dwave*1e-6                        # [J/s/m²/m/px]  => [J/s/m²/px]
     cube *= wave[:, None, None]*1e-6/(h*c)    # [J/s/m²/px]    => [ph/s/m²/px]
     cube *= area                              # [ph/s/m²/px]   => [ph/s/px]
     cube *= exposure_time*60                  # [ph/s/m²/px]   => [ph/px]
     
-    err *= pxsteradian*1e6                   # [MJy/Sr]       => [Jy/px]
-    err *= 1e-26                             # [Jy/pixel]     => [J/s/m²/Hz/px]
+    err *= pxscale_Sr*1e6                    # [MJy/Sr]       => [Jy/px]
+    err *= 1e-26                             # [Jy/px]        => [J/s/m²/Hz/px]
     err *= c/((wave[:, None, None]*1e-6)**2) # [J/s/m²/Hz/px] => [J/s/m²/m/px]
     err *= dwave*1e-6                        # [J/s/m²/m/px]  => [J/s/m²/px]
     err *= wave[:, None, None]*1e-6/(h*c)    # [J/s/m²/px]    => [ph/s/m²/px]
@@ -2017,11 +2065,10 @@ def extract_jwst_data(instru, target_name, band, crop_band=True, outliers=False,
         err       = err[band_mask]
         wave      = wave[band_mask]
         NbChannel = cube.shape[0]
-        from src.get_specs import get_transmission
+        from .get_specs import get_transmission
         trans = get_transmission(instru, wave, band, tellurics=False, apodizer="NO_SP", strehl="NO_JQ", coronagraph=None)
-        AC    = fits.getheader(f"{sim_data_path}/PSF/PSF_{instru}/PSF_{band}_NO_JQ_NO_SP.fits")['AC']
-        cube *= trans[:, None, None]/AC # [ph/px] => [e-/px] (AC is obviously already taken into account)
-        err  *= trans[:, None, None]/AC # [ph/px] => [e-/px] (AC is obviously already taken into account)
+        cube *= trans[:, None, None] # [ph/px] => [e-/px]
+        err  *= trans[:, None, None] # [ph/px] => [e-/px]
     else:
         trans = 1
 
@@ -2040,51 +2087,291 @@ def extract_jwst_data(instru, target_name, band, crop_band=True, outliers=False,
     cube[cube==0] = np.nan
     err[err==0]   = np.nan
     if outliers:
-        CUBE = cube.reshape(NbChannel, -1).copy()
-        ERR  = err.reshape(NbChannel,  -1).copy()
+        sigma_outliers = 10 # Hard coded parameters, seems to be the best one
+        CUBE           = cube.reshape(NbChannel, -1).copy()
+        ERR            = err.reshape(NbChannel,  -1).copy()
         for k in range(CUBE.shape[1]):
             if np.all(np.isnan(CUBE[:, k])):
                 continue
-            mask_CUBE = sigma_clip(np.ma.masked_invalid(CUBE[:, k]), sigma=sigma_outliers, masked=True).mask
-            mask_ERR  = sigma_clip(np.ma.masked_invalid(ERR[:, k]),  sigma=sigma_outliers, masked=True).mask
-            mask          = mask_CUBE | mask_ERR
+            CUBE_HF      = filtered_flux(CUBE[:, k], R=R, Rc=100, filter_type="gaussian")[0]
+            ERR_HF       = filtered_flux(ERR[:, k],  R=R, Rc=100, filter_type="gaussian")[0]
+            mask_CUBE_HF = sigma_clip(np.ma.masked_invalid(CUBE_HF), sigma=sigma_outliers, masked=True).mask
+            mask_ERR_HF  = sigma_clip(np.ma.masked_invalid(ERR_HF),  sigma=sigma_outliers, masked=True).mask
+            mask         = mask_CUBE_HF | mask_ERR_HF
+            # plt.figure(dpi=300, figsize=(10, 6))
+            # sig = np.nanstd(CUBE_HF)
+            # plt.plot(wave,        CUBE_HF)
+            # plt.plot(wave[~mask], CUBE_HF[~mask])
+            # plt.axhline(-sigma_outliers*sig, c="k")
+            # plt.axhline(+sigma_outliers*sig, c="k")
+            # plt.show()        
             CUBE[:, k][mask] = np.nan
-            ERR[:, k][mask] = np.nan
+            ERR[:, k][mask]  = np.nan
         cube = CUBE.reshape(NbChannel, NbLine, NbColumn)
         err  = ERR.reshape(NbChannel,   NbLine, NbColumn)
     
     # Printing (if needed)
-    if verbose :
-        from src.spectrum import get_resolution
-        R = get_resolution(wavelength=wave, func=np.nanmedian)
-        print("\n"+"\033[4m"+f"{band.replace('_', ' ')}-BAND (from {round(wave.min(), 2)} to {round(wave.max(), 2)} µm with R={R:.0f}):"+"\033[0m")
+    if verbose:
+        print("\n" + "\033[4m" + f"{band.replace('_', ' ')}-BAND (from {round(wave.min(), 2)} to {round(wave.max(), 2)} µm with R={R:.0f}):" + "\033[0m")
         print(f" Pixel scale  : {pxscale:.2f} arcsec/px")
         print(f" Exposure time: {exposure_time:.1f} mn (with DIT of {DIT*60:.1f} s)") 
-        fields = [  ("TITLE", "{}"),
-                    ("CATEGORY", "{}"),
-                    ("SCICAT", "{}"),
-                    ("DATE-OBS", "{}"),
-                    ("TARGPROP", "{}"),
-                    ("TARGNAME", "{}"),
-                    ("TARGTYPE", "{}"),
-                    ("TARGCAT", "{}"),
-                    ("TARGDESC", "{}"),
-                    ("TARG_RA", "{:.2f}"),
-                    ("TARG_DEC", "{:.2f}"),
-                    ("PATTTYPE", "{}")]
+    
+        fields = [
+            ("TITLE", "{}"),
+            ("CATEGORY", "{}"),
+            ("SCICAT", "{}"),
+            ("DATE-OBS", "{}"),
+            ("TARGPROP", "{}"),
+            ("TARGNAME", "{}"),
+            ("TARGTYPE", "{}"),
+            ("TARGCAT", "{}"),
+            ("TARGDESC", "{}"),
+            ("TARG_RA", "{:.2f}"),
+            ("TARG_DEC", "{:.2f}"),
+            ("PATTTYPE", "{}"),
+        ]
+    
         for key, fmt in fields:
             try:
                 print(f" {key:<13}: {fmt.format(hdr0[key])}")
             except KeyError:
                 pass
-
+    
+        # Barycentric wavelength reference information from SCI header
+        try:
+            print(f" {'VELOSYS':<13}: {hdr1['VELOSYS'] / 1e3:.3f} km/s")
+        except KeyError:
+            pass
+    
+        try:
+            print(f" {'SPECSYS':<13}: {hdr1['SPECSYS']}")
+        except KeyError:
+            pass
+    
     return cube, wave, pxscale, err, trans, exposure_time, DIT
+
+
+
+def pixel_to_sky_offset(y, x, y_ref, x_ref, pxscale):
+    """
+    Convert NumPy pixel coordinates into local sky offsets.
+
+    For JWST/MIRI MRS cubes with:
+        CTYPE1 = RA---TAN
+        CTYPE2 = DEC--TAN
+        PC1_1  = -1
+        PC2_2  = +1
+
+    Parameters
+    ----------
+    y, x : float
+        Pixel coordinates in NumPy convention: data[:, y, x].
+    y_ref, x_ref : float
+        Reference/star pixel coordinates.
+    pxscale : float
+        Pixel scale in arcsec/pixel.
+
+    Returns
+    -------
+    dra_cosdec : float
+        Offset in RA*cos(Dec), in arcsec. Positive values are to the East.
+    ddec : float
+        Offset in Dec, in arcsec. Positive values are to the North.
+    """
+    dra_cosdec = -(x - x_ref) * pxscale
+    ddec       =  (y - y_ref) * pxscale
+    return dra_cosdec, ddec
+
+
+
+def get_sky_extent(NbLine, NbColumn, y_ref, x_ref, pxscale):
+    """
+    Build an imshow extent in sky coordinates.
+
+    x-axis: Delta RA cos Dec [arcsec]
+    y-axis: Delta Dec [arcsec]
+
+    The x-axis is naturally reversed because PC1_1 = -1, giving the usual
+    astronomical orientation: North up, East left.
+    """
+    x_edges    = np.array([-0.5, NbColumn - 0.5])
+    y_edges    = np.array([-0.5, NbLine   - 0.5])
+    dra_edges  = -(x_edges - x_ref) * pxscale
+    ddec_edges =  (y_edges - y_ref) * pxscale
+
+    return [dra_edges[0], dra_edges[1], ddec_edges[0], ddec_edges[1]]
+
+
+
+def add_north_east_arrows(ax, loc=(0.88, 0.12), length=0.10, color="white", fontsize=13, lw=2.4, mutation_scale=14, zorder=300):
+    """
+    Add North/East orientation arrows in axes coordinates.
+
+    Assumes the usual astronomical display convention:
+        - North is up.
+        - East is left.
+    This is appropriate when the x-axis is Delta RA and is displayed with
+    ax.set_xlim(+FOV/2, -FOV/2).
+    """
+    x0, y0     = loc
+    stroke     = [pe.withStroke(linewidth=3.5, foreground="black", alpha=0.85)]
+    arrowprops = dict(arrowstyle="-|>", color=color, lw=lw, mutation_scale=mutation_scale, shrinkA=0, shrinkB=0)
+    ann_n      = ax.annotate("", xy=(x0, y0 + length), xytext=(x0, y0), xycoords=ax.transAxes, textcoords=ax.transAxes, arrowprops=arrowprops, zorder=zorder)
+    ann_e      = ax.annotate("", xy=(x0 - length, y0), xytext=(x0, y0), xycoords=ax.transAxes, textcoords=ax.transAxes, arrowprops=arrowprops, zorder=zorder)
+    ann_n.arrow_patch.set_path_effects(stroke)
+    ann_e.arrow_patch.set_path_effects(stroke)
+    txt_n = ax.text(x0, y0 + length + 0.025, "N", transform=ax.transAxes, color=color, fontsize=fontsize, weight="bold", ha="center", va="bottom", zorder=zorder)
+    txt_e = ax.text(x0 - length - 0.025, y0, "E", transform=ax.transAxes, color=color, fontsize=fontsize, weight="bold", ha="right", va="center", zorder=zorder)
+    txt_n.set_path_effects(stroke)
+    txt_e.set_path_effects(stroke)
+
+
+
+def plot_jwst_data(instru, band, target_name, planet_name, S, CCF_SNR, pxscale, FOV, sep_unit, size_core, y0, x0, y_star, x_star, y_planet, x_planet, radius, RA_offset, DEC_offset, band0, mag_star, exposure_time, calculation, SNR, T_planet, rv_planet, model, zoom_CCF_2D):
+    
+    NbChannel, NbLine, NbColumn = S.shape
+    
+    # Build display extent centered on the fitted star, in true sky coordinates.
+    extent = get_sky_extent(NbLine=NbLine, NbColumn=NbColumn, y_ref=y_star, x_ref=x_star, pxscale=pxscale)
+    
+    # Planet position in sky coordinates.
+    if x_planet is not None and y_planet is not None:
+        x_pos, y_pos = pixel_to_sky_offset(y=y_planet, x=x_planet, y_ref=y_star, x_ref=x_star, pxscale=pxscale)
+        sep_planet   = np.hypot(x_pos, y_pos)
+        print("\nEstimated planet projected offset:")
+        print(f"  Delta RA cos Dec = {x_pos:+.3f} {sep_unit}")
+        print(f"  Delta Dec        = {y_pos:+.3f} {sep_unit}")
+        print(f"  Separation       = {sep_planet:.3f} {sep_unit}")
+        sign_loc_planet = np.sign(y_pos)
+        sign_loc_star   = -sign_loc_planet
+    else:
+       sign_loc_star = +1 
+    
+    # --- Plot PSF ---
+    PSF      = np.nanmedian(np.nan_to_num(S), axis=0)
+    PSF     /= np.nanmax(PSF)
+    PSF_cmap = "inferno"
+    fig, ax  = plt.subplots(figsize=(8, 8), dpi=300)
+    im       = ax.imshow(PSF, extent=extent, origin="lower", zorder=2, norm=mpl.colors.LogNorm(vmin=None, vmax=1), cmap=PSF_cmap)
+    ax.set_title(f'{instru} PSF of {target_name} data on {band}-band', fontsize=18, fontweight="bold", pad=15)
+    ax.set_xlabel(rf'$\Delta$RA  [{sep_unit}]', fontsize=16)
+    ax.set_ylabel(rf'$\Delta$Dec [{sep_unit}]', fontsize=16)
+    ax.tick_params(which='both', top=True, right=True)
+    ax.minorticks_on()
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.4)
+    ax.tick_params(labelsize=12)
+    ax.plot(0, 0, marker='*', color='gold', markersize=18, zorder=4)
+    ax.text(0, sign_loc_star*size_core*pxscale, f"{target_name}", color='gold', fontsize=12, weight='bold', ha='center', va='bottom', zorder=100, bbox=dict(facecolor='black', edgecolor='none', boxstyle='round,pad=0.3', alpha=0.4))        
+    if y0 is not None and x0 is not None :
+        planet_text = planet_name if planet_name is not None else "Planet"
+        circle      = plt.Circle((x_pos, y_pos), radius, edgecolor='deepskyblue', fill=False, linewidth=2, zorder=3 )
+        ax.add_patch(circle)
+        ax.plot(x_pos, y_pos, marker='o', color='deepskyblue', markersize=6, zorder=4)
+        if RA_offset is not None and DEC_offset is not None:
+            ax.plot(RA_offset/1000, DEC_offset/1000, marker='X', color='black', markersize=7, zorder=4)
+        if zoom_CCF_2D :
+            scale        = 0.42
+            halfspan     = 4*size_core*pxscale # ~ 4 FWHM
+            cx, cy       = (x_pos, y_pos) if ((y0 is not None) and (x0 is not None)) else (0.0, 0.0)
+            zxmin, zxmax = cx - halfspan, cx + halfspan
+            zymin, zymax = cy - halfspan, cy + halfspan
+            rect = Rectangle((zxmin, zymin), zxmax - zxmin, zymax - zymin, fill=False, edgecolor='black', linewidth=1.5, linestyle='--', zorder=5)
+            ax.add_patch(rect)
+            axins = inset_axes(ax, width=f"{100*scale}%", height=f"{100*scale}%", loc="upper right", borderpad=1.0)
+            axins.imshow(PSF, extent=extent, origin="lower", zorder=2, norm=mpl.colors.LogNorm(vmin=None, vmax=1), cmap=PSF_cmap)
+            axins.plot(0, 0, marker='*', color='gold', markersize=18*(1+scale), zorder=4)
+            if (y0 is not None) and (x0 is not None):
+                circle_ins = plt.Circle((x_pos, y_pos), radius, edgecolor='deepskyblue', fill=False, linewidth=2, zorder=3 )
+                axins.add_patch(circle_ins)
+                axins.plot(x_pos, y_pos, marker='o', color='deepskyblue', markersize=6, zorder=4)
+                if RA_offset is not None and DEC_offset is not None:
+                    axins.plot(RA_offset/1000, DEC_offset/1000, marker='X', color='black', markersize=7, zorder=4)
+            axins.text(x_pos, y_pos + sign_loc_planet*size_core*pxscale, planet_text, color='deepskyblue', fontsize=12, weight='bold', ha='center', va='top', zorder=100, bbox=dict(facecolor='black', edgecolor='none', boxstyle='round,pad=0.3', alpha=0.4))
+            axins.set_xlim(zxmax, zxmin)  # keep East left
+            axins.set_ylim(zymin, zymax)
+            axins.tick_params(labelsize=10, which='both', top=True, right=True)
+            axins.minorticks_on()
+            mark_inset(ax, axins, loc1=2, loc2=4, fc="none", ec="black", linestyle="--", lw=1.2)
+        else:
+            ax.text(x_pos, y_pos + sign_loc_planet*size_core*pxscale, planet_text, color='deepskyblue', fontsize=12, weight='bold', ha='center', va='top', zorder=100, bbox=dict(facecolor='black', edgecolor='none', boxstyle='round,pad=0.3', alpha=0.4))
+    cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    cbar.set_label('$S$ (in raw contrast)', fontsize=16, rotation=270, labelpad=16)
+    cbar.ax.tick_params(labelsize=12)
+    cbar.ax.minorticks_on()
+    ax.set_xlim(+FOV/2, -FOV/2)   # East left
+    ax.set_ylim(-FOV/2, +FOV/2)   # North up
+    add_north_east_arrows(ax, loc=(0.95, 0.05), length=0.10, color="white", fontsize=13, lw=2.4, mutation_scale=14)
+    param_box = (f"Band: {band}\n{band0}={round(mag_star, 1):.1f}  |  $t_{{exp}}$={round(exposure_time):.0f} mn")
+    ax.text(0.02, 0.98, param_box, transform=ax.transAxes, ha='left', va='top', fontsize=12, color='white', bbox=dict(facecolor='black', edgecolor='white', linewidth=0.6, alpha=0.35, boxstyle='round,pad=0.3'))
+    plt.tight_layout()
+    plt.show()
+    
+    # --- Plot CCF ---
+    CCF_thr  = 5 
+    CCF_cmap = "coolwarm"
+    fig, ax  = plt.subplots(figsize=(8, 8), dpi=300)
+    im       = ax.imshow(CCF_SNR, extent=extent, origin="lower", zorder=2, cmap=CCF_cmap, vmin=-CCF_thr, vmax=CCF_thr, interpolation='nearest')
+    ax.set_title(f'{instru} CCF of {planet_name if planet_name is not None else target_name} on {band}-band', fontsize=18, fontweight="bold", pad=15)
+    ax.set_xlabel(rf'$\Delta$RA  [{sep_unit}]', fontsize=16)
+    ax.set_ylabel(rf'$\Delta$Dec [{sep_unit}]', fontsize=16)
+    ax.tick_params(which='both', top=True, right=True)
+    ax.minorticks_on()
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.4)
+    ax.tick_params(labelsize=12)      
+    ax.plot(0, 0, marker='*', color='gold', markersize=18, zorder=4)
+    ax.text(0, sign_loc_star*size_core*pxscale, f"{target_name}", color='gold', fontsize=12, weight='bold', ha='center', va='bottom', zorder=100, bbox=dict(facecolor='black', edgecolor='none', boxstyle='round,pad=0.3', alpha=0.4))        
+    if y0 is not None and x0 is not None :
+        planet_text = planet_name if planet_name is not None else "Planet"
+        if calculation == "SNR":
+            planet_text += f"\nS/N={SNR:.1f}"
+        circle = plt.Circle((x_pos, y_pos), radius, edgecolor='deepskyblue', fill=False, linewidth=2, zorder=3 )
+        ax.add_patch(circle)
+        ax.plot(x_pos, y_pos, marker='o', color='deepskyblue', markersize=6, zorder=4)
+        if RA_offset is not None and DEC_offset is not None:
+            ax.plot(RA_offset/1000, DEC_offset/1000, marker='X', color='black', markersize=7, zorder=4)
+        if zoom_CCF_2D :
+            scale        = 0.42
+            halfspan     = 4*size_core*pxscale # ~ 4 FWHM
+            cx, cy       = (x_pos, y_pos) if ((y0 is not None) and (x0 is not None)) else (0.0, 0.0)
+            zxmin, zxmax = cx - halfspan, cx + halfspan
+            zymin, zymax = cy - halfspan, cy + halfspan
+            rect = Rectangle((zxmin, zymin), zxmax - zxmin, zymax - zymin, fill=False, edgecolor='black', linewidth=1.5, linestyle='--', zorder=5)
+            ax.add_patch(rect)
+            axins = inset_axes(ax, width=f"{100*scale}%", height=f"{100*scale}%", loc="upper right", borderpad=1.0)
+            axins.imshow(CCF_SNR, extent=extent, origin="lower", zorder=2, cmap=CCF_cmap, vmin=-CCF_thr, vmax=CCF_thr, interpolation='nearest')
+            axins.plot(0, 0, marker='*', color='gold', markersize=18*(1+scale), zorder=4)
+            if (y0 is not None) and (x0 is not None):
+                circle_ins = plt.Circle((x_pos, y_pos), radius, edgecolor='deepskyblue', fill=False, linewidth=2, zorder=3 )
+                axins.add_patch(circle_ins)
+                axins.plot(x_pos, y_pos, marker='o', color='deepskyblue', markersize=6, zorder=4)
+                if RA_offset is not None and DEC_offset is not None:
+                    axins.plot(RA_offset/1000, DEC_offset/1000, marker='X', color='black', markersize=7, zorder=4)
+            axins.text(x_pos, y_pos + sign_loc_planet*size_core*pxscale, planet_text, color='deepskyblue', fontsize=12, weight='bold', ha='center', va='top', zorder=100, bbox=dict(facecolor='black', edgecolor='none', boxstyle='round,pad=0.3', alpha=0.4))
+            axins.set_xlim(zxmax, zxmin)  # keep East left
+            axins.set_ylim(zymin, zymax)
+            axins.tick_params(labelsize=10, which='both', top=True, right=True)
+            axins.minorticks_on()
+            mark_inset(ax, axins, loc1=2, loc2=4, fc="none", ec="black", linestyle="--", lw=1.2)
+        else:
+            ax.text(x_pos, y_pos + 1.5*sign_loc_planet*size_core*pxscale, planet_text, color='deepskyblue', fontsize=12, weight='bold', ha='center', va='top', zorder=100, bbox=dict(facecolor='black', edgecolor='none', boxstyle='round,pad=0.3', alpha=0.4))
+    cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    cbar.set_label('CCF [S/N]', fontsize=16, rotation=270, labelpad=25)
+    cbar.ax.tick_params(labelsize=12)
+    cbar.set_ticks(np.linspace(-CCF_thr, CCF_thr, 11))
+    cbar.ax.minorticks_on()
+    ax.set_xlim(+FOV/2, -FOV/2)   # East left
+    ax.set_ylim(-FOV/2, +FOV/2)   # North up
+    add_north_east_arrows(ax, loc=(0.95, 0.05), length=0.10, color="white", fontsize=13, lw=2.4, mutation_scale=14)
+    param_box = (rf'$T_{{p}}$={int(round(T_planet))} K  |  RV={round(rv_planet)} km/s' + '\n' + f'Band: {band}  |  Model: {model}')
+    ax.text(0.02, 0.98, param_box, transform=ax.transAxes, ha='left', va='top', fontsize=12, color='white', bbox=dict(facecolor='black', edgecolor='white', linewidth=0.6, alpha=0.35, boxstyle='round,pad=0.3'))
+    plt.tight_layout()
+    plt.show()
 
 
 
 ###########################################################################################
 
-
+# --- VIPA ---
 
 def compute_filter_variance_factor(N, R_sampling, Rc, filter_type, Rc_init, filter_init_type, Rc_noise, filter_noise_type, Rc_conv, filter_conv_type):
     """
@@ -2158,7 +2445,7 @@ def compute_filter_variance_factor(N, R_sampling, Rc, filter_type, Rc_init, filt
       uses different real-space boundaries (e.g., reflect), small discrepancies
       can occur near the edges.
     """
-    from src.spectrum import _fft_filter_response
+    from .spectrum import _fft_filter_response
 
     # Frequency grid and "resolution" axis (your convention)
     # f   = np.fft.fftfreq(N)          # cycles / HR sample
@@ -2252,7 +2539,7 @@ def compute_rebin_variance_factor(lamHR, maskHR, lamLR, dlam, R_sampling, Rc_ini
         fn(N_i) = (1 / N_i) * sum_{tau = -(N_i-1)}^{N_i-1} (N_i - |tau|) * C[tau].
     When no filters are applied, C is a delta and fn = 1 for all bins.
     """
-    from src.spectrum import _fft_filter_response
+    from .spectrum import _fft_filter_response
 
     # --- HR samples per LR bin (N_i) ---
     LRedges = np.hstack([lamLR - 0.5*dlam, lamLR[-1] + 0.5*dlam[-1]])
@@ -2432,7 +2719,7 @@ def extract_vipa_data(instru, target_name, gain, label_fiber, degrade_data=True,
     * The final “rms_z” prints provide a quick sanity check:
         rms_z ≈ std(noise / sigma)  (and similarly for HF).
     """
-    from src.spectrum import filtered_flux, rebin_spectrum_mean
+    from .spectrum import filtered_flux, rebin_spectrum_mean
 
     f                                                   = fits.open(f"data/{instru}/VIPA_Final_Spectrum_{target_name}_gain_{gain}_fiber_{label_fiber}.fits")
     wave0, flux0, sigma0, weight0, trans0, sigma_trans0 = f[0].data
@@ -2583,7 +2870,7 @@ def extract_vipa_data(instru, target_name, gain, label_fiber, degrade_data=True,
         noise, _, _           = rebin_spectrum_mean(specHR=noise0, sigmaHR=None,         weightHR=None,    lamHR=wave0, lamLR=wave)
         trans, sigma_trans, _ = rebin_spectrum_mean(specHR=trans0, sigmaHR=sigma_trans0, weightHR=None,    lamHR=wave0, lamLR=wave)
         
-        # from src.spectrum import rebin_spectrum_overlap
+        # from .spectrum import rebin_spectrum_overlap
         # flux, sigma, weight, _   = rebin_spectrum_overlap(specHR=flux0,  sigmaHR=sigma0, weightHR=weight0, lamHR=wave0, lamLR=wave, dlam=dwave)
         # noise, _, _, _           = rebin_spectrum_overlap(specHR=noise0, sigmaHR=None,   weightHR=None,    lamHR=wave0, lamLR=wave, dlam=dwave)
         # trans, sigma_trans, _, _ = rebin_spectrum_overlap(specHR=trans0,  sigmaHR=sigma_trans0, weightHR=None, lamHR=wave0, lamLR=wave, dlam=dwave)
@@ -2665,7 +2952,7 @@ def extract_vipa_data(instru, target_name, gain, label_fiber, degrade_data=True,
 
 
 def extract_hirise_data(target_name, interpolate, degrade_resolution, R, Rc, filter_type, order_by_order, outliers, sigma_outliers, only_high_pass=False, cut_fringes=False, Rmin=None, Rmax=None, use_weight=True, mask_nan_values=False, keep_only_good=False, wave_input=None, reference_fibers=True, crop_tell_orders=False, shift_star_corr=False, verbose=True): # OPENING DATA AND DEGRADATING THE RESOLUTION (if wanted)
-    from src.spectrum import Spectrum, filtered_flux, interpolate_flux_with_error, estimate_resolution
+    from .spectrum import Spectrum, filtered_flux, interpolate_flux_with_error, estimate_resolution
     
     # hard coded values
     # GAIN     = np.nanmean([2.28, 2.19, 2.00]) # in e-/ADU
@@ -3089,7 +3376,7 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R, Rc, fil
 
 ############################## PSF interpolation+extrapolation over separation, lambda, IWA and WFE ################################
 
-def interp_extrap_sep(separation_ref, separation_new, y_ref, mode="log", tail_model="powerlaw"):
+def interp_extrap_sep(separation_ref, separation_new, y_ref, mode="log", tail_model="powerlaw", slope=None):
     """
     Interpolate a 1D radial profile onto a new separation grid, with explicit edge handling.
 
@@ -3166,8 +3453,9 @@ def interp_extrap_sep(separation_ref, separation_new, y_ref, mode="log", tail_mo
             else:
                 logx = np.log(x[valid])
                 logy = np.log(y[valid])
-    
-                slope, _ = np.polyfit(logx, logy, 1)   # slope should be negative
+                
+                if slope is None: # should be ~ -3
+                    slope, _ = np.polyfit(logx, logy, 1)   # slope should be negative
                 
                 if (not np.isfinite(slope)) or (slope >= 0):
                     y_new[m_hi] = y_ref[-1]
@@ -4075,8 +4363,7 @@ def plot_PSF(instru, coronagraph, apodizer, strehl, pxscale, sep_unit, wave, PSF
 def plot_profiles(instru, coronagraph, apodizer, strehl, pxscale, sep_unit, size_core, wave, wave_raw, separation, PSF_profile_density_2D, fraction_core_2D, radial_transmission_2D, type_PSF, title_suffix):
     
     N_wave, N_sep = PSF_profile_density_2D.shape
-    
-    cmap_wave = plt.get_cmap("Spectral_r", N_wave)
+    cmap_wave     = plt.get_cmap("Spectral_r", N_wave)
     
     if coronagraph is None:
         nrows  = 2
@@ -4088,7 +4375,9 @@ def plot_profiles(instru, coronagraph, apodizer, strehl, pxscale, sep_unit, size
     else:
         nrows  = 3
         sharex = True
-        title = f"ELT/{instru} {type_PSF} PSF without apodizer in {strehl} strehl \n with Lyot coronagraph"
+        title  = f"ELT/{instru} {type_PSF} PSF without apodizer in {strehl} strehl \n with Lyot coronagraph"
+        if instru == "HWO":
+            title  = f"{instru} PSF without aberration with {coronagraph}"
     pxscale_suffix = "" if pxscale is None else f" with {pxscale} mas/px pxscale"
     title += pxscale_suffix
     title += title_suffix
@@ -4100,9 +4389,9 @@ def plot_profiles(instru, coronagraph, apodizer, strehl, pxscale, sep_unit, size
     axs[0].set_yscale('log')
     axs[0].set_xscale('log')
     axs[0].set_xlim(separation[1], separation[-1])
-    axs[0].set_ylim(1e-10, 1e-1)
-    axs[0].set_xlabel(f"Separation [{sep_unit}]",       fontsize=10)
-    axs[0].set_ylabel("Mean flux fraction density per px", fontsize=10)
+    axs[0].set_ylim(1e-12, 1e-1)
+    axs[0].set_xlabel(f"Separation [{sep_unit}]",                         fontsize=10)
+    axs[0].set_ylabel(rf"Mean flux fraction density [{sep_unit}$^{-2}$]", fontsize=10)
     axs[0].grid(True, which='both', linestyle='--', linewidth=0.5)
     axs[0].minorticks_on()
     axs[0].tick_params(labelsize=8)
@@ -4111,7 +4400,7 @@ def plot_profiles(instru, coronagraph, apodizer, strehl, pxscale, sep_unit, size
         axs[0].plot(separation, PSF_profile_density_2D[iw], c=cmap_wave(iw))
     
     # Subplot 2: Flux inside the FWHM
-    axs[1].set_ylim(1e-1, 100)
+    axs[1].set_ylim(1e-2, 100)
     axs[1].set_yscale('log')
     axs[1].set_ylabel("Core PSF flux fraction [%]", fontsize=10)
     axs[1].grid(True, which='both', linestyle='--', linewidth=0.5)

@@ -1,0 +1,68 @@
+[build-system]
+requires = ["setuptools>=77.0.3", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fastyield"
+version = "0.1.0"
+description = "Exoplanet detection and performance estimation using molecular mapping."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [
+    { name = "Steven Martos", email = "steven.martos@univ-grenoble-alpes.fr" }
+]
+keywords = [
+    "exoplanets",
+    "high-contrast imaging",
+    "molecular mapping",
+    "spectroscopy",
+    "instrument performance"
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Astronomy",
+    "Operating System :: OS Independent",
+]
+
+dependencies = [
+    "numpy>=1.23",
+    "scipy>=1.10",
+    "astropy>=6.0",
+    "matplotlib>=3.7",
+    "pandas>=2.0",
+    "tqdm>=4.0",
+    "numba>=0.58",
+    "scikit-learn>=1.2",
+    "statsmodels>=0.14",
+    "corner>=2.2",
+]
+
+[project.optional-dependencies]
+gui = [
+    "ttkwidgets>=0.13",
+    "timezonefinder>=6.0",
+    "pytz",
+]
+dace = [
+    "dace-query",
+]
+dev = [
+    "build",
+    "twine",
+    "pytest",
+    "ruff",
+]
+
+[project.urls]
+Homepage = "https://github.com/StevMartos/FastYield"
+Repository = "https://github.com/StevMartos/FastYield"
+Issues = "https://github.com/StevMartos/FastYield/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["fastyield*"]

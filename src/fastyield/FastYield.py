@@ -1,9 +1,9 @@
 # import FastYield modules
-from src.config import R0_max, LMIN, LMAX, bands, instrus, instrus_with_systematics, colors_instru, simulated_path, archive_path, thermal_models, reflected_models, ignore_reflected_thresh_um, SNR_thresh, planet_types, planet_types_reduced, m_u, kB, G, vesc_earth, sim_data_path
-from src.get_specs import get_config_data, get_band_lims, get_wa, get_R_instru
-from src.utils import faded
-from src.spectrum import load_vega_spectrum, get_mag, get_spectrum_contribution_name_model, get_thermal_reflected_spectrum, get_counts_from_density, get_wave_K, get_wave_model
-from src.FastCurves import FastCurves
+from .config import R0_max, LMIN, LMAX, bands, instrus, instrus_with_systematics, colors_instru, simulated_path, archive_path, thermal_models, reflected_models, ignore_reflected_thresh_um, SNR_thresh, planet_types, planet_types_reduced, m_u, kB, G, vesc_earth, sim_data_path
+from .get_specs import get_config_data, get_band_lims, get_wa, get_R_instru
+from .utils import faded
+from .spectrum import load_vega_spectrum, get_mag, get_spectrum_contribution_name_model, get_thermal_reflected_spectrum, get_counts_from_density, get_wave_K, get_wave_model
+from .FastCurves import FastCurves
 
 # import astropy modules
 from astropy import constants as const
@@ -34,6 +34,7 @@ import time
 from tqdm import tqdm
 from multiprocessing import Pool, cpu_count
 import corner
+import pandas as pd
 
 # For fits warnings
 import warnings
@@ -55,6 +56,7 @@ def mass_to_size(mass, s0, ds, mass_min=None, mass_max=None):
     t = (np.log10(np.clip(mass, mass_min, mass_max)) - np.log10(mass_min)) / (np.log10(mass_max) - np.log10(mass_min))
     t = np.clip(t, 0, 1)
     return s0 + ds * t
+
 
 
 def get_filename_table(table, instru, apodizer, strehl, coronagraph, systematics, PCA, name_model):
@@ -553,7 +555,7 @@ def inject_known_values(planet_table):
     _IKV(planet_table, planet_name="KOINTREAU-4 b", value=1900, unit=u.K,      quantity="teff", obj="planet", uncertainty=150.0)  # https://arxiv.org/pdf/2602.10198
     
     _IKV(planet_table, planet_name="CWISEP J193518.59-154620.3 b", value=23.84, unit=mag_unit, quantity="Kmag", obj="planet", uncertainty=0.60)  # https://arxiv.org/html/2508.17176v1 (get_mag_from_mag(T=390, lg=4.511, model="BT-Settl", mag_input=15.420, band0_input="F1000W", band0_output="K") + get_mag_from_mag(T=390, lg=4.511, model="BT-Settl", mag_input=14.211, band0_input="F1280W", band0_output="K"))/2
-    _IKV(planet_table, planet_name="CWISEP J193518.59-154620.3 b", value=13.85, unit=mag_unit, quantity="Kmag", obj="star",   uncertainty=0.30)  # https://arxiv.org/pdf/2508.17176 (get_mag_from_mag(T=5541, lg=4.457, model="BT-NextGen", mag_input=14.000, band0_input="F1000W", band0_output="K") + get_mag_from_mag(T=5541, lg=4.457, model="BT-NextGen", mag_input=13.631, band0_input="F1280W", band0_output="K"))/2
+    _IKV(planet_table, planet_name="CWISEP J193518.59-154620.3 b", value=21.87, unit=mag_unit, quantity="Kmag", obj="star",   uncertainty=0.30)  # https://arxiv.org/pdf/2508.17176 (get_mag_from_mag(T=482, lg=4.457, model="BT-NextGen", mag_input=14.000, band0_input="F1000W", band0_output="K") + get_mag_from_mag(T=482, lg=4.457, model="BT-NextGen", mag_input=13.631, band0_input="F1280W", band0_output="K"))/2
     _IKV(planet_table, planet_name="CWISEP J193518.59-154620.3 b", value=482,   unit=u.K,      quantity="teff", obj="star",   uncertainty=60.0)  # https://arxiv.org/pdf/2508.17176
 
     _IKV(planet_table, planet_name="2MASS J11011926-7732383 b", value=12.81, unit=mag_unit, quantity="Kmag",     obj="planet", uncertainty=0.25)   # https://arxiv.org/pdf/astro-ph/0407344 get_mag_from_mag(T=1616, lg=4.3857, model="BT-Settl", mag_input=15.5, band0_input="J", band0_output="K")
@@ -815,9 +817,7 @@ def plot_matching_planets(matching_planets, exposure_time, mode, planet_types=pl
     instru : str or None
         Optional instrument label for the figure title.
     """
-    
-    import pandas as pd
-    
+        
     def _format_range(criteria, key):
         min_key = f"{key}_min"
         max_key = f"{key}_max"
@@ -1753,8 +1753,8 @@ def get_archive_table(seed=None):
 #######################################################################################################################
 
 def warmup_instrument_caches(instru, config_data, apodizer, strehl, coronagraph, background):
-    from src.get_specs import _get_transmission, get_PSF_profile, get_logit_coronagraphic_profile_interp, get_R_corr_interp, get_bkg_flux_band
-    from src.spectrum import get_wave_band
+    from .get_specs import _get_transmission, get_PSF_profile, get_logit_coronagraphic_profile_interp, get_R_corr_interp, get_bkg_flux_band
+    from .spectrum import get_wave_band
     tellurics = config_data["base"] == "ground"
     for band in config_data["gratings"]:
         get_wave_band(instru=instru, band=band)
