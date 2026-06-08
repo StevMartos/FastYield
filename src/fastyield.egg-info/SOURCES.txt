@@ -20,4 +20,3 @@ src/fastyield.egg-info/SOURCES.txt
 src/fastyield.egg-info/dependency_links.txt
 src/fastyield.egg-info/requires.txt
 src/fastyield.egg-info/top_level.txt
-tests/test_import.py

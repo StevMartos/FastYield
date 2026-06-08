@@ -8,8 +8,9 @@ numba>=0.58
 scikit-learn>=1.2
 statsmodels>=0.14
 corner>=2.2
-
-[dace]
+ttkwidgets>=0.13
+timezonefinder>=6.0
+pytz
 dace-query
 
 [dev]
@@ -17,8 +18,3 @@ build
 twine
 pytest
 ruff
-
-[gui]
-ttkwidgets>=0.13
-timezonefinder>=6.0
-pytz

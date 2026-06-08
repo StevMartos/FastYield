@@ -136,7 +136,7 @@ This directory contains the instrumental data, simulation data, and spectral lib
 
 The `sim_data/` directory can be downloaded here:
 
-[Download the sim_data directory](https://filesender.renater.fr/?s=download&token=049d0dd8-c4ff-44ad-927c-77273b14de12)
+[Download the sim_data directory](https://filesender.renater.fr/?s=download&token=3b2d34b8-666a-4f8a-a55f-b9d79a2544b9)
 
 After downloading and extracting the archive, you should have a directory named:
 
@@ -155,6 +155,7 @@ sim_data/
 ├── Simulated_table/
 ├── Systematics/
 ├── Transmission/
+├── PCS/
 └── Spectra/
     ├── planet_spectrum/
     ├── star_spectrum/
@@ -275,6 +276,30 @@ Please include, when available:
 
 ---
 
+## WP7 / PCS usage
+
+A dedicated script is provided for users involved in the PCS Working Package 7 activities:
+
+```text
+PCS_FastYield.py
+```
+
+This script provides a practical FastYield-based framework for exploring the expected detection performance of ELT/PCS-like instrumental configurations. It connects PCS instrumental assumptions, high-contrast imaging inputs, stellar and planetary spectral models, detector assumptions, and the FastYield population-level formalism in order to estimate signal-to-noise ratios and detection probabilities over a multidimensional instrumental design grid.
+
+In practice, `PCS_FastYield.py` can be used to explore how the expected detection yield depends on parameters such as spectral resolution, central wavelength, bandwidth, wavefront error, inner working angle, instrumental transmission, residual systematic or speckle modulation level, and field of view. The script includes both IFU-like and imager-like observing configurations, and can be used to compare differential imaging and molecular mapping regimes in a common framework.
+
+A detailed methodology note is included with the package:
+
+```text
+PCS_FastYield.pdf
+```
+
+This note explains the assumptions and calculations implemented in `PCS_FastYield.py`, including the PCS instrumental inputs, the adopted planet catalog, the spectral prescriptions, the throughput and background budgets, the DI and MM formalisms, the treatment of systematic and speckle residuals, and the construction of the final detection-probability grids.
+
+Users interested in modifying the PCS assumptions or contributing new instrumental inputs are encouraged to read this note first, since it provides the reference description of the current implementation.
+
+---
+
 ## References
 
 If you use FastYield or FastCurves in your work, please cite:
@@ -289,4 +314,5 @@ If you use FastYield or FastCurves in your work, please cite:
 For questions, bug reports, or instrument additions, please contact:
 
 [steven.martos@univ-grenoble-alpes.fr](mailto:steven.martos@univ-grenoble-alpes.fr)
+
 
