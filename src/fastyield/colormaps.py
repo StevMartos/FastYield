@@ -21,7 +21,7 @@ from astropy.io import fits
 # import other modules
 from tqdm import tqdm
 from multiprocessing import Pool, cpu_count
-
+from pathlib import Path
 
 colormaps_path  = str(colormaps_path) + "/"
 plots_colormaps = ["SNR", "lost_signal"]
@@ -45,7 +45,7 @@ def _init_cm_ctx(ctx):
 # GAIN_SNR(Bandwidth vs Resolution) (with constant Nlambda)
 #
 
-def colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_planet=T_earth, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, delta_rv=drv_earth, vsini_planet=vrot_earth, vsini_star=vrot_sun, spectrum_contributions="reflected", model="tellurics", airmass=airmass_earth, Rc=100, filter_type="gaussian", noise_regime=True, Nlambda=None, title=None, title_weight=None, num=100):
+def colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_planet=T_earth, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, delta_rv=drv_earth, vsini_planet=vrot_earth, vsini_star=vrot_sun, spectrum_contributions="reflected", model="tellurics", airmass=airmass_earth, Rc=100, filter_type="gaussian", noise_regime="photon", Nlambda=None, title=None, title_weight=None, save=False, num=100):
     
     # Get instru specs
     if instru != "all":
@@ -73,7 +73,7 @@ def colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_plan
             Nl = int(round(np.nanmedian(Nl)))
     
     # Global model-bandwidth (with constant dl step, must be evenly spaced in order to create the model spectra, for the rotational broadening with Vsini)
-    lmin = 0.6
+    lmin = 0.4
     if spectrum_contributions == "reflected" or tellurics:
         lmax = 6 # [µm]
     else:
@@ -120,6 +120,10 @@ def colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_plan
         trans_tell            = Spectrum(wavelength=wave_tell, flux=trans_tell).interpolate_wavelength(wave_output=wave_instru, renorm=False, fill_value=(trans_tell[0], trans_tell[-1])) 
     else:
         trans_tell = None
+        
+    planet.plot()
+    star.plot()
+    trans_tell.plot()
     
     # Defining arrays
     R_arr       = np.logspace(np.log10(Rc), np.log10(R_model), num=num)
@@ -167,8 +171,8 @@ def colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_plan
             cmap       = plt.get_cmap(cmap_colormaps)
             cbar_label = '$GAIN_{S/N}$ [%]'
         else:
-            data = 100 * lost_signal
-            cmap = plt.get_cmap(cmap_colormaps+'_r')
+            data       = 100 * lost_signal
+            cmap       = plt.get_cmap(cmap_colormaps+'_r')
             cbar_label = r'Lost signal $\beta/\alpha$ [%]'
         
         # Heatmap with pcolormesh
@@ -236,10 +240,18 @@ def colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_plan
             for i, l in enumerate(labels):
                 plt.annotate(l, (x_instru[i], 1.2*y_instru[i]), ha='center', fontsize=12, fontweight="bold")
 
-        plt.legend(fontsize=12, loc="upper right", frameon=True, edgecolor="gray", facecolor="whitesmoke")        
+        plt.legend(fontsize=12, loc="lower right", frameon=True, edgecolor="gray", facecolor="whitesmoke")        
         plt.tight_layout()
-        filename = f"colormaps_bandwidth_resolution/Colormap_bandwidth_resolution_with_constant_Nlambda_{plot}_{instru}_{spectrum_contributions}_{model}_Rc{Rc}_Tp{T_planet}K_Ts{T_star}K_drv{delta_rv}kms_broad{vsini_planet}kms_Nl{Nl}_{noise_regime}"
-        plt.savefig(colormaps_path + filename + ("_with_tellurics" if tellurics else "") + ".png", format='png', bbox_inches='tight')
+        
+        if save:
+            output_dir = Path(colormaps_path) / "colormaps_bandwidth_resolution"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            filename = f"colormaps_bandwidth_resolution/Colormap_bandwidth_resolution_with_constant_Nlambda_{plot}_{instru}_{spectrum_contributions}_{model}_Rc{Rc:.0f}_Tp{T_planet:.0f}K_Ts{T_star:.0f}K_drv{delta_rv:.0f}kms_broad{vsini_planet:.0f}kms_Nl{Nl:.0f}_{noise_regime}"
+            if tellurics:
+                filename += "_with_tellurics"
+            output_path = output_dir / f"{filename}.png"
+            plt.savefig(output_path, format="png", bbox_inches="tight")
+        
         plt.show()
         
     return l0_arr, R_arr, SNR, lost_signal, signal, sigma, planet, star
@@ -327,9 +339,12 @@ def process_colormap_bandwidth_resolution_with_constant_Nlambda(i):
         planet_HF, planet_LF = filtered_flux(planet_R_crop, R=R, Rc=Rc, filter_type=filter_type)
         star_HF, star_LF     = filtered_flux(star_R_crop,   R=R, Rc=Rc, filter_type=filter_type)
         template             = trans*planet_HF
-        template             = template / np.sqrt(np.nansum(template**2))
-        alpha                = np.nansum(trans*planet_HF * template)
-        beta                 = np.nansum(trans*star_HF*planet_LF/star_LF * template)
+        norm                 = np.sqrt(np.nansum(template**2))
+        if not np.isfinite(norm) or norm <= 0:
+            continue
+        template /= norm        
+        alpha     = np.nansum(trans*planet_HF * template)
+        beta      = np.nansum(trans*star_HF*planet_LF/star_LF * template)
         if "photon" in noise_regime or "halo" in noise_regime:
             sigma_CCF = np.sqrt(np.nansum(trans*star_R_crop * template**2)) # stellar halo photon noise
             #sigma     = np.sqrt(trans*star_R_crop)
@@ -359,7 +374,7 @@ def process_colormap_bandwidth_resolution_with_constant_Nlambda(i):
 # GAIN_SNR(Bandwidth vs Resolution) (with constant Dlambda)
 #
 
-def colormap_bandwidth_resolution_with_constant_Dlambda(instru="HARMONI", T_planet=T_earth, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, delta_rv=drv_earth, vsini_planet=vrot_earth, vsini_star=vrot_earth, spectrum_contributions="reflected", model="tellurics", airmass=airmass_earth, Rc=100, filter_type="gaussian", stellar_halo_photon_noise_limited=False, num=100):
+def colormap_bandwidth_resolution_with_constant_Dlambda(instru="HARMONI", T_planet=T_earth, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, delta_rv=drv_earth, vsini_planet=vrot_earth, vsini_star=vrot_earth, spectrum_contributions="reflected", model="tellurics", airmass=airmass_earth, Rc=100, filter_type="gaussian", stellar_halo_photon_noise_limited=False, save=False, num=100):
     
     # Get instru specs
     config_data = get_config_data(instru)
@@ -508,11 +523,18 @@ def colormap_bandwidth_resolution_with_constant_Dlambda(instru="HARMONI", T_plan
         plt.errorbar(x_instru, y_instru, xerr=x_dl, fmt='o', color='k', linestyle='None', capsize=5, label=f"{instru} bands")
         for i, l in enumerate(labels):
             plt.annotate(l, (x_instru[i], 1.2*y_instru[i]), ha='center', fontsize=12)
-
         plt.legend(fontsize=14, loc="upper left", frameon=True, edgecolor="gray", facecolor="whitesmoke")        
         plt.tight_layout()
-        filename = f"colormaps_bandwidth_resolution/Colormap_bandwidth_resolution_with_constant_Dlambda_{plot}_{instru}_{spectrum_contributions}_{model}_Rc{Rc}_Tp{T_planet}K_Ts{T_star}K_drv{delta_rv}kms_broad{vsini_planet}kms_Dl{Dl}um_{noise_regime.replace(' ', '_')}"
-        plt.savefig(colormaps_path + filename + ("_with_tellurics" if tellurics else "") + ".png", format='png', bbox_inches='tight')
+        
+        if save:
+            output_dir = Path(colormaps_path) / "colormaps_bandwidth_resolution"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            filename = f"colormaps_bandwidth_resolution/Colormap_bandwidth_resolution_with_constant_Dlambda_{plot}_{instru}_{spectrum_contributions}_{model}_Rc{Rc}_Tp{T_planet}K_Ts{T_star}K_drv{delta_rv}kms_broad{vsini_planet}kms_Dl{Dl}um_{noise_regime.replace(' ', '_')}"
+            if tellurics:
+                filename += "_with_tellurics"
+            output_path = output_dir / f"{filename}.png"
+            plt.savefig(output_path, format="png", bbox_inches="tight")
+
         plt.show()
         
     return l0_arr, R_arr, SNR, lost_signal
@@ -608,7 +630,7 @@ def process_colormap_bandwidth_resolution_with_constant_Dlambda(i):
 # GAIN_SNR(Bandwidth vs Planet Temperature)
 #
 
-def colormap_bandwidth_Tp(instru, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, delta_rv=drv_earth, vsini_planet=vrot_earth, vsini_star=vrot_sun, spectrum_contributions="thermal", model="BT-Settl", airmass=airmass_earth, Rc=100, filter_type="gaussian", stellar_halo_photon_noise_limited=True, num=100):
+def colormap_bandwidth_Tp(instru, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, delta_rv=drv_earth, vsini_planet=vrot_earth, vsini_star=vrot_sun, spectrum_contributions="thermal", model="BT-Settl", airmass=airmass_earth, Rc=100, filter_type="gaussian", stellar_halo_photon_noise_limited=True, save=False, num=100):
     
     # Get instru specs
     config_data = get_config_data(instru)
@@ -752,8 +774,16 @@ def colormap_bandwidth_Tp(instru, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_s
 
         plt.legend(fontsize=14, loc="upper left", frameon=True, edgecolor="gray", facecolor="whitesmoke")        
         plt.tight_layout()
-        filename = f"colormaps_bandwidth_Tp/Colormap_bandwidth_Tp_{plot}_{instru}_{spectrum_contributions}_{model}_Rc{Rc}_Ts{T_star}K_drv{delta_rv}kms_broad{vsini_planet}kms_Nl{Nl}_R{R}_{noise_regime.replace(' ', '_')}"
-        plt.savefig(colormaps_path + filename + ("_with_tellurics" if tellurics else "") + ".png", format='png', bbox_inches='tight')
+        
+        if save:
+            output_dir = Path(colormaps_path) / "colormaps_bandwidth_resolution"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            filename   = f"colormaps_bandwidth_Tp/Colormap_bandwidth_Tp_{plot}_{instru}_{spectrum_contributions}_{model}_Rc{Rc}_Ts{T_star}K_drv{delta_rv}kms_broad{vsini_planet}kms_Nl{Nl}_R{R}_{noise_regime.replace(' ', '_')}"
+            if tellurics:
+                filename += "_with_tellurics"
+            output_path = output_dir / f"{filename}.png"
+            plt.savefig(output_path, format="png", bbox_inches="tight")
+        
         plt.show()
         
     return l0_arr, T_arr, SNR, lost_signal, l0_opti
@@ -878,7 +908,7 @@ def process_colormap_bandwidth_Tp(i):
 # GAIN_SNR(Bands vs Planet Temperature)
 #
 
-def colormap_bands_Tp(instru, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, delta_rv=drv_earth, vsini_planet=vrot_earth, vsini_star=vrot_sun, spectrum_contributions="thermal", model="BT-Settl", airmass=airmass_earth, Rc=100, filter_type="gaussian", stellar_halo_photon_noise_limited=True, num=100):    
+def colormap_bands_Tp(instru, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, delta_rv=drv_earth, vsini_planet=vrot_earth, vsini_star=vrot_sun, spectrum_contributions="thermal", model="BT-Settl", airmass=airmass_earth, Rc=100, filter_type="gaussian", stellar_halo_photon_noise_limited=True, save=False, num=100):    
     
     # Get instru specs
     config_data = get_config_data(instru)
@@ -985,8 +1015,16 @@ def colormap_bands_Tp(instru, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, 
         plt.xlim(-0.5, len(bands)-0.5)
         plt.xticks(bands_idx, bands)
         plt.tight_layout()
-        filename = f"colormaps_bands_Tp/Colormap_bands_Tp_{plot}_{instru}_{spectrum_contributions}_{model}_Rc{Rc}_Ts{T_star}K_drv{delta_rv}kms_broad{vsini_planet}kms_{noise_regime.replace(' ', '_')}"
-        plt.savefig(colormaps_path + filename + ("_with_tellurics" if tellurics else "") + ".png", format='png', bbox_inches='tight')
+        
+        if save:
+            output_dir = Path(colormaps_path) / "colormaps_bandwidth_resolution"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            filename   = f"colormaps_bands_Tp/Colormap_bands_Tp_{plot}_{instru}_{spectrum_contributions}_{model}_Rc{Rc}_Ts{T_star}K_drv{delta_rv}kms_broad{vsini_planet}kms_{noise_regime.replace(' ', '_')}"
+            if tellurics:
+                filename += "_with_tellurics"
+            output_path = output_dir / f"{filename}.png"
+            plt.savefig(output_path, format="png", bbox_inches="tight")
+        
         plt.show()
     
     return bands, T_arr, SNR, lost_signal
@@ -1067,7 +1105,7 @@ def process_colormap_bands_Tp(i):
 # GAIN_SNR(Bands vs Planet Types)
 #
 
-def colormap_bands_ptypes_SNR(mode="multi", instru="HARMONI", thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl="JQ1", systematics=False, PCA=False, planet_types=planet_types):
+def colormap_bands_ptypes_SNR(mode="multi", instru="HARMONI", thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl="JQ1", systematics=False, PCA=False, planet_types=planet_types, save=False):
     
     # Get instru specs
     config_data = get_config_data(instru)
@@ -1175,8 +1213,14 @@ def colormap_bands_ptypes_SNR(mode="multi", instru="HARMONI", thermal_model="aut
     plt.ylim(-0.5, len(bands)-0.5)
     plt.yticks(bands_idx, bands)
     plt.tight_layout()
-    filename = f"colormaps_bands_planets_snr/colormap_bands_ptypes_SNR_{instru}_{strehl}_{suffix}_{name_model}_{mode}"
-    plt.savefig(colormaps_path + filename + ".png", format='png', bbox_inches='tight')
+    
+    if save:
+        output_dir  = Path(colormaps_path) / "colormaps_bandwidth_resolution"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        filename    = f"colormaps_bands_planets_snr/colormap_bands_ptypes_SNR_{instru}_{strehl}_{suffix}_{name_model}_{mode}"
+        output_path = output_dir / f"{filename}.png"
+        plt.savefig(output_path, format="png", bbox_inches="tight")
+    
     plt.show()
     
     return planet_types_arr, bands, SNR
@@ -1187,7 +1231,7 @@ def colormap_bands_ptypes_SNR(mode="multi", instru="HARMONI", thermal_model="aut
 # GAIN_UNCERTAINTIES(Bands vs Planet Types)
 #
 
-def colormap_bands_ptypes_parameters(mode="multi", Nmax=10, instru="HARMONI", thermal_model="auto", reflected_model="auto", exposure_time=10*60, apodizer="NO_SP", strehl="JQ1", coronagraph=None, systematics=False, PCA=False, PCA_mask=False, N_PCA=20, Rc=100, filter_type="gaussian", planet_types=planet_types):
+def colormap_bands_ptypes_parameters(mode="multi", Nmax=10, instru="HARMONI", thermal_model="auto", reflected_model="auto", exposure_time=10*60, apodizer="NO_SP", strehl="JQ1", coronagraph=None, systematics=False, PCA=False, PCA_mask=False, N_PCA=20, Rc=100, filter_type="gaussian", planet_types=planet_types, save=False):
     
     def normalize_if_possible(x):
         x    = np.asarray(x, dtype=float)
@@ -1389,8 +1433,14 @@ def colormap_bands_ptypes_parameters(mode="multi", Nmax=10, instru="HARMONI", th
     cbar.ax.text(1.2, -0.05, 'Poor precision', ha='center', va='top',    fontsize=14, transform=cbar.ax.transAxes, weight='bold', color='blue')
     
     fig.suptitle(f"Error fluctuations for {instru} ({'with' if tellurics else 'without'} tellurics absorption)\nin {spectrum_contributions} light with {thermal_model}+{reflected_model} models", fontsize=28, y=1.05)  # Position du titre remontée    
-    filename = f"colormaps_bands_planets_snr/colormap_bands_ptypes_parameters_{instru}_{apodizer}_{strehl}{coronagraph_str}_{suffix}_{name_model}_{mode}"
-    plt.savefig(colormaps_path + filename + ".png", format='png', bbox_inches='tight')
+
+    if save:
+        output_dir  = Path(colormaps_path) / "colormaps_bandwidth_resolution"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        filename    = f"colormaps_bands_planets_snr/colormap_bands_ptypes_parameters_{instru}_{apodizer}_{strehl}{coronagraph_str}_{suffix}_{name_model}_{mode}"    
+        output_path = output_dir / f"{filename}.png"
+        plt.savefig(output_path, format="png", bbox_inches="tight")
+    
     plt.show()
     
     return planet_types_arr, bands, gain_sigma_T, gain_sigma_lg, gain_sigma_vsini, gain_sigma_rv
@@ -1401,7 +1451,7 @@ def colormap_bands_ptypes_parameters(mode="multi", Nmax=10, instru="HARMONI", th
 # GAIN_SNR(STAR_RV VS DELTA_RV)
 #
 
-def colormap_rv(instru="HARMONI", band="H", T_planet=T_earth, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, vsini_planet=vrot_earth, vsini_star=vrot_sun, spectrum_contributions="reflected", model="tellurics", airmass=airmass_earth, Rc=100, filter_type="gaussian", stellar_halo_photon_noise_limited=True, title=None, title_weight=None, num=100):
+def colormap_rv(instru="HARMONI", band="H", T_planet=T_earth, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, vsini_planet=vrot_earth, vsini_star=vrot_sun, spectrum_contributions="reflected", model="tellurics", airmass=airmass_earth, Rc=100, filter_type="gaussian", stellar_halo_photon_noise_limited=True, title=None, title_weight=None, save=False, num=100):
     
     # Get instru specs
     config_data = get_config_data(instru)
@@ -1538,14 +1588,21 @@ def colormap_rv(instru="HARMONI", band="H", T_planet=T_earth, T_star=T_sun, lg_p
             title_text = title
         plt.title(title_text, fontsize=16, pad=24, weight=title_weight)
         plt.tight_layout()
-        filename = f"colormaps_rv/Colormap_rv_{plot}_{instru}_{band}_{spectrum_contributions}_{model}_Rc{Rc}_Tp{T_planet}K_Ts{T_star}K_broad{vsini_planet}kms_{noise_regime.replace(' ', '_')}"
-        plt.savefig(colormaps_path + filename + ("_with_tellurics" if tellurics else "") + ".png", format='png', bbox_inches='tight')
+        
+        if save:
+            output_dir = Path(colormaps_path) / "colormaps_bandwidth_resolution"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            filename   = f"colormaps_rv/Colormap_rv_{plot}_{instru}_{band}_{spectrum_contributions}_{model}_Rc{Rc}_Tp{T_planet}K_Ts{T_star}K_broad{vsini_planet}kms_{noise_regime.replace(' ', '_')}"
+            if tellurics:
+                filename += "_with_tellurics"
+            output_path = output_dir / f"{filename}.png"
+            plt.savefig(output_path, format="png", bbox_inches="tight")
+        
         plt.show()
     
     return delta_rv_arr, rv_star_arr, SNR, lost_signal
 
 def process_colormap_rv(i):
-    
     rv_star_arr                       = _CM_CTX["rv_star_arr"]  # [km/s]
     delta_rv_arr                      = _CM_CTX["delta_rv_arr"] # [km/s]
     R_band                            = _CM_CTX["R_band"]       # [dimensionless]
@@ -1595,7 +1652,7 @@ def process_colormap_rv(i):
 # GAIN_SNR(STAR_Vsini VS PLANET_Vsini)
 #
 
-def colormap_vrot(instru="HARMONI", band="H", T_planet=T_earth, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, delta_rv=drv_earth, inc=90, spectrum_contributions="reflected", model="tellurics", airmass=airmass_earth, Rc=100, filter_type="gaussian", stellar_halo_photon_noise_limited=True, title=None, title_weight=None, num=100):
+def colormap_vrot(instru="HARMONI", band="H", T_planet=T_earth, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, delta_rv=drv_earth, inc=90, spectrum_contributions="reflected", model="tellurics", airmass=airmass_earth, Rc=100, filter_type="gaussian", stellar_halo_photon_noise_limited=True, title=None, title_weight=None, save=False, num=100):
     """
     https://www.aanda.org/articles/aa/pdf/2022/03/aa42314-21.pdf
     """
@@ -1727,8 +1784,16 @@ def colormap_vrot(instru="HARMONI", band="H", T_planet=T_earth, T_star=T_sun, lg
         plt.title(title_text, fontsize=16, pad=24, weight=title_weight)
 
         plt.tight_layout()
-        filename = f"colormaps_vrot/Colormap_vrot_{plot}_{instru}_{band}_{spectrum_contributions}_{model}_Rc{Rc}_Tp{T_planet}K_Ts{T_star}K_drv{delta_rv}kms_inc{inc}deg_{noise_regime.replace(' ', '_')}"
-        plt.savefig(colormaps_path + filename + ("_with_tellurics" if tellurics else "") + ".png", format='png', bbox_inches='tight')
+
+        if save:
+            output_dir = Path(colormaps_path) / "colormaps_bandwidth_resolution"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            filename   = f"colormaps_vrot/Colormap_vrot_{plot}_{instru}_{band}_{spectrum_contributions}_{model}_Rc{Rc}_Tp{T_planet}K_Ts{T_star}K_drv{delta_rv}kms_inc{inc}deg_{noise_regime.replace(' ', '_')}"
+            if tellurics:
+                filename += "_with_tellurics"
+            output_path = output_dir / f"{filename}.png"
+            plt.savefig(output_path, format="png", bbox_inches="tight")
+            
         plt.show()
     
     return vrot_planet_arr, vrot_star_arr, SNR, lost_signal
@@ -1959,12 +2024,6 @@ def colormap_maxsep_phase_inc(instru="HARMONI", band="H", apodizer="NO_SP", stre
         # Layout
         #fig.set_title("Lambert phase function", fontsize=16, pad=14)
         plt.show()
-        
-        
-        
-        
-        
-        
     else:
         star_spectrum_broad_ref = None
         g_arr                   = None
@@ -2286,8 +2345,10 @@ def colormap_MM_DI_R_Tp(lmin=1, lmax=2.5, Rmin=1_000, Rmax=100_000, Tmin=200, Tm
     plt.title(title_text, fontsize=16, pad=14)
     
     plt.tight_layout()
-    filename = f"colormaps_bandwidth_Tp/Colormap_MM_DI_R_Tp_residual_signal_{tellurics}_{spectrum_contributions}_{model}_Rc{Rc}_Ts{T_star}K_drv{delta_rv}kms_broad{vsini_planet}kms"
-    plt.savefig(colormaps_path + filename + ("_with_tellurics" if tellurics else "") + ".png", format='png', bbox_inches='tight')
+    filename   = f"colormaps_bandwidth_Tp/Colormap_MM_DI_R_Tp_residual_signal_{tellurics}_{spectrum_contributions}_{model}_Rc{Rc}_Ts{T_star}K_drv{delta_rv}kms_broad{vsini_planet}kms"    
+    output_dir = colormaps_path + filename + ("_with_tellurics" if tellurics else "") + ".png"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_dir, format='png', bbox_inches='tight')
     plt.show()
         
     return R_arr, T_arr, residual_signal
