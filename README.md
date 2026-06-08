@@ -17,8 +17,8 @@ The molecular mapping approach relies on stellar-halo subtraction through spectr
 
 For more details, see:
 
-- [Bidot et al. 2024](https://www.aanda.org/articles/aa/pdf/2024/02/aa46185-23.pdf)
-- [Martos et al. 2025](https://arxiv.org/pdf/2504.06890)
+* [Bidot et al. 2024](https://www.aanda.org/articles/aa/pdf/2024/02/aa46185-23.pdf)
+* [Martos et al. 2025](https://arxiv.org/pdf/2504.06890)
 
 <p align="center">
   <picture>
@@ -33,15 +33,15 @@ For more details, see:
 
 FastYield currently includes configurations for the following instruments:
 
-- **ELT/HARMONI**
-- **ELT/ANDES**
-- **VLT/ERIS**
-- **VLT/HiRISE**
-- **VLT/CRIRES+**
-- **JWST/MIRI-MRS**
-- **JWST/NIRSpec IFU**
-- **JWST/NIRCam**
-- **OHP/VIPAPYRUS**
+* **ELT/HARMONI**
+* **ELT/ANDES**
+* **VLT/ERIS**
+* **VLT/HiRISE**
+* **VLT/CRIRES+**
+* **JWST/MIRI-MRS**
+* **JWST/NIRSpec IFU**
+* **JWST/NIRCam**
+* **OHP/VIPAPYRUS**
 
 ---
 
@@ -55,7 +55,7 @@ Use this option if you only want to use FastYield:
 
 ```bash
 python -m pip install git+https://github.com/StevMartos/FastYield.git
-````
+```
 
 This installs FastYield and its required dependencies.
 
@@ -70,6 +70,7 @@ You can then test the installation with:
 ```bash
 python -c "import fastyield; print(fastyield.__version__)"
 python -c "from fastyield.FastCurves import FastCurves; print(FastCurves)"
+python -c "from fastyield.FastYield_interface import FastYield_interface; print(FastYield_interface)"
 ```
 
 ### Development installation
@@ -92,16 +93,16 @@ src/fastyield/FastCurves.py
 
 then the local `fastyield` package will use the modified version.
 
-To force an update of FastYield and all compatible dependencies during a development installation, use:
-
-```bash
-python -m pip install --upgrade --upgrade-strategy eager -e ".[dev]"
-```
-
 If you modify package metadata or dependencies in `pyproject.toml`, reinstall the package with:
 
 ```bash
 python -m pip install -e ".[dev]"
+```
+
+To force an update of FastYield and all compatible dependencies during a development installation, use:
+
+```bash
+python -m pip install --upgrade --upgrade-strategy eager -e ".[dev]"
 ```
 
 ---
@@ -137,131 +138,98 @@ python -m pip install -e ".[dev]"
 
 ## External data
 
-FastYield requires external data for most S/N, contrast, and yield calculations.
+FastYield requires an external `sim_data/` directory for most S/N, contrast, and yield calculations.
 
-There are two main types of data:
+This directory contains the instrumental data, simulation data, and spectral library used by the package. The Python package itself contains the code, while the large scientific data files are distributed separately.
 
-1. the **instrumental and simulation data** stored in `sim_data/`;
-2. the **spectral library** stored in `Spectra/`.
+The `sim_data/` directory can be downloaded here:
 
-The Python package itself contains the code. The large scientific data files should be kept locally and made available to FastYield through the appropriate paths.
+[Download the sim_data directory](https://filesender.renater.fr/?s=download&token=049d0dd8-c4ff-44ad-927c-77273b14de12)
 
----
-
-## Spectral library
-
-FastYield requires a local spectral library to perform S/N, contrast, and yield calculations. This library contains the stellar, planetary, molecular, and albedo spectra used by the package.
-
-The spectral library can be downloaded here:
-
-[Download the Spectra directory](https://filesender.renater.fr/?s=download&token=938ee99e-dbf6-4a05-93b8-136f733c2712)
-
-After downloading, you should have a directory named:
+After downloading and extracting the archive, you should have a directory named:
 
 ```text
-Spectra/
+sim_data/
 ```
 
-This directory should contain subdirectories such as:
+The expected structure is:
 
 ```text
-Spectra/
-├── planet_spectrum/
-├── star_spectrum/
-└── molecular/
+sim_data/
+├── Archive_table/
+├── Background/
+├── PSF/
+├── R_corr/
+├── Simulated_table/
+├── Systematics/
+├── Transmission/
+└── Spectra/
+    ├── planet_spectrum/
+    ├── star_spectrum/
+    └── molecular/
 ```
 
 ---
 
-## Setting the Spectra path
+## Setting the sim_data path
 
-The `Spectra` directory is not stored directly inside the Python package because it can be large. FastYield therefore needs to know where this directory is located on your machine.
+FastYield needs to know where the external `sim_data/` directory is located on your machine.
 
-There are three possible ways to define the path.
-
----
+There are two possible ways to define this path.
 
 ### Option 1 — Recommended: environment variable
 
-This is the recommended solution if you want FastYield to automatically find your `Spectra` directory every time you use it.
+This is the recommended solution if you want FastYield to automatically find your `sim_data/` directory every time you use it.
 
 On Linux or macOS, add the following line to your `~/.bashrc`, `~/.zshrc`, or equivalent shell configuration file:
 
 ```bash
-export FASTYIELD_SPECTRA_PATH="/path/to/Spectra"
+export FASTYIELD_SIM_DATA_PATH="/path/to/sim_data"
+```
+
+Then reload your shell configuration:
+
+```bash
+source ~/.bashrc
 ```
 
 You can check that the path has been correctly defined with:
 
 ```bash
-echo $FASTYIELD_SPECTRA_PATH
+echo $FASTYIELD_SIM_DATA_PATH
 ```
-
----
 
 ### Option 2 — Set the path from Python
 
 You can also define the path directly in your Python script:
 
 ```python
-from fastyield.config import set_spectra_path
+from fastyield.config import set_sim_data_path
 
-set_spectra_path("/path/to/Spectra")
+set_sim_data_path("/path/to/sim_data")
 ```
 
 For example:
 
 ```python
-from fastyield.config import set_spectra_path
+from fastyield.config import set_sim_data_path
 
-set_spectra_path("/home/user/data/Spectra")
+set_sim_data_path("/home/user/data/FastYield/sim_data")
 ```
 
-This should be done before loading any stellar, planetary, albedo, or molecular spectrum.
-
----
-
-### Option 3 — Default local location
-
-If no path is provided, FastYield will look for the `Spectra` directory in the default local location:
-
-```text
-FastYield/sim_data/Spectra
-```
-
-Therefore, you may also place the downloaded `Spectra` directory directly inside:
-
-```text
-FastYield/sim_data/
-```
-
-so that the final structure is:
-
-```text
-FastYield/
-├── sim_data/
-│   └── Spectra/
-│       ├── planet_spectrum/
-│       ├── star_spectrum/
-│       └── molecular/
-├── src/
-│   └── fastyield/
-└── ...
-```
-
-This default layout is especially convenient when using FastYield in development mode from a local clone.
+This should be done before running any FastYield function that needs instrumental data, simulation data, or spectra.
 
 ---
 
 ## Path priority
 
-FastYield searches for the `Spectra` directory in the following order:
+FastYield searches for the `sim_data/` directory in the following order:
 
-1. the path defined with `set_spectra_path("/path/to/Spectra")`;
-2. the `FASTYIELD_SPECTRA_PATH` environment variable;
-3. the default local path `sim_data/Spectra`.
+1. the path defined with `set_sim_data_path("/path/to/sim_data")`;
+2. the `FASTYIELD_SIM_DATA_PATH` environment variable;
+3. the default local path `sim_data/`, useful when working from a local clone of the repository.
 
-This means that users can either keep the spectral library inside the repository or store it elsewhere on their machine.
+This means that users can either keep `sim_data/` inside a local clone of the repository or store it elsewhere on their machine.
 
 ---
 
@@ -270,14 +238,17 @@ This means that users can either keep the spectral library inside the repository
 Example of a minimal Python setup:
 
 ```python
-from fastyield.config import set_spectra_path
+from fastyield.config import set_sim_data_path
 from fastyield.spectrum import load_planet_spectrum
 from fastyield.FastYield_interface import FastYield_interface
 
-# Set this only if you have not defined FASTYIELD_SPECTRA_PATH.
-set_spectra_path("/path/to/Spectra")
+# Required if FASTYIELD_SIM_DATA_PATH is not defined:
+# set the path to your local FastYield sim_data directory.
+# This directory should contain the instrumental/simulation data folders
+# and the Spectra/ directory.
+set_sim_data_path("/path/to/sim_data")
 
-# Test the spectra path by loading a planetary spectrum.
+# Test the data path by loading a planetary spectrum.
 planet_spectrum = load_planet_spectrum(
     T_planet=1000,
     lg_planet=4.0,
@@ -288,7 +259,51 @@ planet_spectrum = load_planet_spectrum(
 FastYield_interface()
 ```
 
-If you have already defined the environment variable `FASTYIELD_SPECTRA_PATH`, then the call to `set_spectra_path()` is not required.
+If you have already defined the environment variable `FASTYIELD_SIM_DATA_PATH`, then the call to `set_sim_data_path()` is not required.
+
+---
+
+## Development workflow
+
+A typical development workflow is:
+
+```bash
+git clone https://github.com/StevMartos/FastYield.git
+cd FastYield
+python -m pip install -e ".[dev]"
+```
+
+Then test the package with:
+
+```bash
+python -c "import fastyield; print(fastyield.__version__)"
+python -c "from fastyield.FastCurves import FastCurves; print(FastCurves)"
+python -c "from fastyield.FastYield_interface import FastYield_interface; print(FastYield_interface)"
+```
+
+Run the tests with:
+
+```bash
+pytest
+```
+
+Build the package locally with:
+
+```bash
+python -m build
+```
+
+This creates distribution files in:
+
+```text
+dist/
+```
+
+Before publishing or sharing a release, you can check the built distributions with:
+
+```bash
+twine check dist/*
+```
 
 ---
 
@@ -326,7 +341,4 @@ If you use FastYield or FastCurves in your work, please cite:
 For questions, bug reports, or instrument additions, please contact:
 
 [steven.martos@univ-grenoble-alpes.fr](mailto:steven.martos@univ-grenoble-alpes.fr)
-
-```
-```
 
