@@ -1,10 +1,10 @@
 # import FastYield modules
-from src.config import c, R0_max, config_data_list, T_earth, lg_earth, vrot_earth, drv_earth, airmass_earth, T_sun, lg_sun, vrot_sun, M_earth, M_sun, AU, G, colormaps_path, sim_data_path
-from src.get_specs import _load_tell_trans, get_config_data, get_transmission, get_PSF_profile, get_R_instru
-from src.spectrum import get_counts_from_density, load_vega_spectrum, get_wave_K, get_wave_band, get_wavelength_axis_constant_R, filtered_flux, Spectrum, load_star_spectrum, load_planet_spectrum, load_albedo_spectrum, get_spectrum_contribution_name_model, get_thermal_reflected_spectrum
-from src.FastCurves import FastCurves
-from src.FastYield import planet_types, load_planet_table, get_SNR_from_table, find_matching_planets, plot_matching_planets
-from src.signal_noise import compute_sigma_base_al_spec_fast
+from .config import c, R0_max, config_data_list, T_earth, lg_earth, vrot_earth, drv_earth, airmass_earth, T_sun, lg_sun, vrot_sun, M_earth, M_sun, AU, G, colormaps_path, sim_data_path
+from .get_specs import _load_tell_trans, get_config_data, get_transmission, get_PSF_profile, get_R_instru
+from .spectrum import get_counts_from_density, load_vega_spectrum, get_wave_K, get_wave_band, get_wavelength_axis_constant_R, filtered_flux, Spectrum, load_star_spectrum, load_planet_spectrum, load_albedo_spectrum, get_spectrum_contribution_name_model, get_thermal_reflected_spectrum
+from .FastCurves import FastCurves
+from .FastYield import planet_types, load_planet_table, get_SNR_from_table, find_matching_planets, plot_matching_planets
+from .signal_noise import compute_sigma_base_2_al_spec_fast
 
 # import matplotlib modules
 import matplotlib.pyplot as plt
@@ -338,9 +338,9 @@ def process_colormap_bandwidth_resolution_with_constant_Nlambda(i):
             #sigma     = np.ones_like(template)
         elif "systematic" in noise_regime:
             h         = trans*star_R_crop * template
-            sigma_CCF = np.sqrt(compute_sigma_base_al_spec_fast(h=h))
+            sigma_CCF = np.sqrt(compute_sigma_base_2_al_spec_fast(h=h))
         
-        #from src.signal_noise import get_fn_MM, get_fn_MM_exact, get_fn_HF_LF
+        #from .signal_noise import get_fn_MM, get_fn_MM_exact, get_fn_HF_LF
         #fn_MM, _          = get_fn_HF_LF(N=len(template), R=R, Rc=Rc, filter_type=filter_type, empirical=False)
         #fn_MM             = get_fn_MM_exact(trans=trans, Ss=star_R_crop, template=template, R=R, Rc=Rc, filter_type=filter_type, sigma=sigma)
         #fn_MM             = get_fn_MM(template=template, R=R, Rc=Rc, filter_type=filter_type, sigma=sigma)
@@ -1858,7 +1858,7 @@ def colormap_maxsep_phase_inc(instru="HARMONI", band="H", apodizer="NO_SP", stre
     lmax_band  = config_data['gratings'][band].lmax                # [µm]
     wave_band  = get_wave_band(instru=instru, band=band)           # [µm]
     dwave_band = np.gradient(wave_band)                            # [µm/bin]
-    R_model    = get_R_instru(config_data)                         # [dimensionless]
+    R_model    = get_R_instru(instru=instru)                       # [dimensionless]
     lmin_model = 0.9*lmin_band                                     # [µm] a bit larger for doppler shifts and to avoid edge effects
     lmax_model = 1.1*lmax_band                                     # [µm] a bit larger for doppler shifts and to avoid edge effects
     dl_model   = lmin_model / (2*R_model)                          # [µm/bin] Nyquist sampling of a spectrum with max resolving power R_model: 2 samples per resolution element at lmin_model
@@ -1905,9 +1905,9 @@ def colormap_maxsep_phase_inc(instru="HARMONI", band="H", apodizer="NO_SP", stre
     log_fraction_core_interp = interp1d(np.log10(separation[valid]), np.log10(fraction_core[valid]), bounds_error=False, fill_value="extrapolate")
     
     # Defining arrays
-    max_sep_arr = np.logspace(np.log10(sep_min), np.log10(sep_max), num)                 # [arcsec]: dim i
-    phase_arr   = np.linspace(0,                 2*np.pi,           num, endpoint=False) # [rad]:    dim j
-    inc_arr     = np.linspace(0,                 90,                num)                 # [deg]:    dim k
+    max_sep_arr = np.logspace(np.log10(sep_min), np.log10(sep_max), num)                # [arcsec]: dim i
+    phase_arr   = np.linspace(0,                 2*np.pi,           num, endpoint=True) # [rad]:    dim j
+    inc_arr     = np.linspace(0,                 90,                num)                # [deg]:    dim k
     SNR_halo_3D = np.zeros((num, num, num))
     SNR_syst_3D = np.zeros((num, num, num))
     
@@ -1916,32 +1916,55 @@ def colormap_maxsep_phase_inc(instru="HARMONI", band="H", apodizer="NO_SP", stre
             
     # Compute phase angle and Lambert phase function (if needed)
     if spectrum_contributions == "reflected":
-        
         star_spectrum_broad_ref  = star_spectrum.broad(vrot_star) # [J/µm]
-        
         a_arr = np.arccos(- np.sin(inc_arr[None, :]*np.pi/180) * np.cos(phase_arr[:, None]) ) # Phase angle
         g_arr = ( np.sin(a_arr) + (np.pi - a_arr) * np.cos(a_arr) ) / np.pi                   # Lambert phase function
         
         # Plot the Lambert phase function as a function of phase and inclination
-        plt.figure(figsize=(10, 6), dpi=300)
-        plt.xlabel(r"Inclination $i$ [°]", fontsize=14)
-        plt.ylabel(r"Phase $\varphi$ [rad]", fontsize=14)
-        plt.xlim(inc_arr[0],   inc_arr[-1])
-        plt.ylim(phase_arr[0], phase_arr[-1])
-        plt.tick_params(axis='both', which='major', labelsize=12)
-        plt.minorticks_on()
-        mesh = plt.pcolormesh(inc_arr, phase_arr, g_arr, shading='auto', vmin=np.nanmin(g_arr), vmax=np.nanmax(g_arr))
-        cs   = plt.contour(inc_arr,    phase_arr, g_arr, colors='k', linewidths=0.6, alpha=0.7)
-        plt.clabel(cs, inline=True, fontsize=8)
-        ax   = plt.gca()
-        cbar = plt.colorbar(mesh, ax=ax, pad=0.025, shrink=1)
+        fig, ax = plt.subplots(figsize=(11, 7), dpi=300)
+        mesh    = ax.pcolormesh(inc_arr, phase_arr, g_arr, shading="auto", vmin=0.0, vmax=1.0)
+        levels  = np.linspace(0, 1.0, 11)
+        cs      = ax.contour(inc_arr, phase_arr, g_arr, levels=levels, colors="k", linewidths=0.6, alpha=0.7)
+        ax.clabel(cs, inline=True, fontsize=8, fmt="%.2f")
+        # Axes
+        ax.set_xlabel(r"Inclination $i$ [°]",   fontsize=14)
+        ax.set_ylabel(r"Phase $\varphi$ [rad]", fontsize=14, labelpad=10)
+        ax.set_xlim(inc_arr[0],   inc_arr[-1])
+        ax.set_ylim(phase_arr[0], phase_arr[-1])
+        ax.tick_params(axis="both", which="major", labelsize=12)
+        ax.minorticks_on()
+        # Key orbital phases on the y-axis
+        ax.set_yticks([0, 0.5 * np.pi, np.pi, 1.5 * np.pi, 2.0 * np.pi])
+        ax.set_yticklabels([r"$0$", r"$\pi/2$", r"$\pi$", r"$3\pi/2$", r"$2\pi$"], fontsize=12)
+        # Colorbar
+        cbar = fig.colorbar(mesh, ax=ax, pad=0.025, shrink=1)
         cbar.minorticks_on()
-        cbar.set_ticks(contour_levels/100)
+        cbar.set_ticks(levels)
         cbar.ax.tick_params(labelsize=12)
         cbar.set_label(r"Lambert phase function $g(\alpha)$", rotation=270, labelpad=20, fontsize=14)
-        #plt.title("Lambert phase function", fontsize=16, pad=14)
-        plt.tight_layout()
+        # Additional annotations: inclination
+        ax.text(0,  -0.08, "Pole-on", transform=ax.get_xaxis_transform(), ha="center", va="top", fontsize=12, weight="bold", clip_on=False)
+        ax.text(90, -0.08, "Edge-on", transform=ax.get_xaxis_transform(), ha="center", va="top", fontsize=12, weight="bold", clip_on=False)
+        # Additional annotations: orbital phases inside the panel
+        x_label = inc_arr[0] + 0.005 * (inc_arr[-1] - inc_arr[0])
+        phase_labels = [
+            (0.0+0.05,         "Inferior conjunction", "bottom"),
+            (0.5 * np.pi,      "Red quadrature",       "center"),
+            (np.pi,            "Superior conjunction", "center"),
+            (1.5 * np.pi,      "Blue quadrature",      "center"),
+            (2.0 * np.pi-0.05, "Inferior conjunction", "top"),
+        ]
+        for y, label, va in phase_labels:
+            ax.text(x_label, y, label, ha="left", va=va, fontsize=12, color="white", bbox=dict(facecolor="black", edgecolor="none", alpha=0.45, pad=1.8))
+        # Layout
+        #fig.set_title("Lambert phase function", fontsize=16, pad=14)
         plt.show()
+        
+        
+        
+        
+        
+        
     else:
         star_spectrum_broad_ref = None
         g_arr                   = None

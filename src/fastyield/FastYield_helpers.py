@@ -87,7 +87,7 @@ def _print_section(title, char="="):
 def _print_kv(key, value, width=38):
     print(f"{key:<{width}} : {value}")
 
-def print_simulation_summary(instru, instru_type, detector, post_processing, D, S, N_mirror, trans_dust, RON0, RON_lim, DC0, saturation_e, min_DIT, max_DIT, N_px, coronagraph, apodizer, strehl, thermal_model, reflected_model, SNR_thr, exposure_time, size_core, A_FWHM, Rc, filter_type, table_type, band_regime, light_regime, sep_min, sep_max, N_PT_raw, N_PT, force_new_calc, l0=None, R=None, Nl=None, Dl=None, WFE=None, IWA=None, trans_instru=None, sigma_m=None, FoV=None):
+def print_simulation_summary(instru, instru_type, detector, post_processing, D, S, N_mirror, trans_dust, RON0, RON_lim, DC0, saturation_e, min_DIT, max_DIT, coronagraph, apodizer, strehl, thermal_model, reflected_model, SNR_thr, exposure_time, size_core, A_FWHM, Rc, filter_type, table_type, band_regime, light_regime, sep_min, sep_max, N_PT_raw, N_PT, force_new_calc, N_px=None, l0=None, R=None, Nl=None, Dl=None, WFE=None, C_raw=None, IWA=None, trans_instru=None, sigma_m=None, FoV=None):
     _print_section("FastYield simulation summary")
 
     # General configuration
@@ -103,7 +103,8 @@ def print_simulation_summary(instru, instru_type, detector, post_processing, D, 
     _print_kv("Collecting area S", f"{_fmt_scalar(S)} m²")
     _print_kv("ELT mirrors", _fmt_scalar(N_mirror))
     _print_kv("Dust transmission", _fmt_scalar(trans_dust))
-    _print_kv("Detector linear size", f"{_fmt_scalar(N_px)} px")
+    if N_px is not None:
+        _print_kv("Detector linear size", f"{_fmt_scalar(N_px)} px")
     _print_kv("RON0", f"{_fmt_scalar(RON0)} e-/px/read")
     _print_kv("RON floor", f"{_fmt_scalar(RON_lim)} e-/px")
     _print_kv("Dark current", f"{_fmt_scalar(DC0)} e-/px/mn")
@@ -148,17 +149,19 @@ def print_simulation_summary(instru, instru_type, detector, post_processing, D, 
         _print_kv("Delta_lambda", _fmt_axis(Dl, unit=" µm", log_hint=False))
     if WFE is not None:
         _print_kv("WFE", _fmt_axis(WFE, unit=" nm RMS", log_hint=False))
+    if C_raw is not None:
+        _print_kv("C_raw", _fmt_axis(C_raw, log_hint=True))
     if IWA is not None:
         _print_kv("IWA", _fmt_axis(IWA, unit=" mas", log_hint=True))
     if trans_instru is not None:
-        _print_kv("gamma_instru", _fmt_axis(trans_instru, unit="e-/ph", log_hint=False))
+        _print_kv("trans_instru", _fmt_axis(trans_instru, unit="e-/ph", log_hint=False))
     if sigma_m is not None:
         _print_kv("sigma_m", _fmt_axis(100*np.asarray(sigma_m), unit=" %", log_hint=True))
     if FoV is not None:
         _print_kv("FoV", _fmt_axis(FoV, unit=" mas", log_hint=True))
 
     axes_lengths = []
-    for arr in (R, l0, Nl, Dl, WFE, IWA, trans_instru, sigma_m, FoV):
+    for arr in (R, l0, Nl, Dl, WFE, C_raw, IWA, trans_instru, sigma_m, FoV):
         if arr is not None:
             axes_lengths.append(len(arr))
     if axes_lengths:

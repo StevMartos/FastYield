@@ -1,5 +1,5 @@
 # import FastYield modules
-from src.config import config_data_list, lmin_bands, lmax_bands, rad2arcsec, sim_data_path, R0_max
+from .config import config_data_list, lmin_bands, lmax_bands, rad2arcsec, sim_data_path, R0_max
 
 # import astropy modules
 from astropy.io import fits
@@ -42,7 +42,7 @@ def _load_tell_trans(airmass, return_R=False):
     """Load *once* the native sky transmission curve for a given airmass."""
     wave_tell, tell = fits.getdata(f"{sim_data_path}/Transmission/sky_transmission_airmass_{airmass:.1f}.fits")
     if return_R:
-        from src.spectrum import get_resolution
+        from .spectrum import get_resolution
         R_tell = get_resolution(wavelength=wave_tell, func=np.array)
         return wave_tell, tell, R_tell
     else:
@@ -264,7 +264,7 @@ def _get_transmission(instru, band, tellurics, apodizer, strehl=None, coronagrap
     """
     Cached version of get_transmission()
     """
-    from src.spectrum import get_wave_band
+    from .spectrum import get_wave_band
     wave_band   = get_wave_band(instru=instru, band=band)
     trans       = get_transmission(instru=instru, wave_band=wave_band, band=band, tellurics=tellurics, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, fill_value=fill_value)
     return trans
@@ -313,7 +313,7 @@ def get_transmission(instru, wave_band, band, tellurics, apodizer, strehl=None, 
     # 3) Telluric transmission (only if necessary, i.e. for ground based observation)
     if tellurics: # if ground-based observation
         # import spectrum modules
-        from src.spectrum import Spectrum
+        from .spectrum import Spectrum
         wave_tell, tell = _load_tell_trans(airmass=1.0)
         trans          *= Spectrum(wave_tell, tell).degrade_resolution(wave_band, renorm=False, gaussian_filtering=gaussian_filtering).flux # degraded tellurics transmission on the considered band
 
@@ -493,7 +493,7 @@ def get_PSF_profile(band, strehl, apodizer, coronagraph, instru, separation_plan
         
     # Extrapolation of the separation axis to the planet's separation (if needed)
     if separation[-1] > raw_separation[-1]:
-        from src.utils import power_law_extrapolation
+        from .utils import power_law_extrapolation
                 
         try: 
             if new_extrapolation:
@@ -569,7 +569,7 @@ def get_R_corr_interp(instru, band):
 
 @lru_cache(maxsize=64)
 def get_bkg_flux_band(instru, band, background_level):
-    from src.spectrum import get_wave_band
+    from .spectrum import get_wave_band
     wave_band         = get_wave_band(instru=instru, band=band)        # [µm]
     wave_raw, bkg_raw = _load_bkg_flux(instru, band, background_level) # [µm] and [e-/bin/px/s]  
     bkg_raw_density   = bkg_raw / np.gradient(wave_raw)                # [e-/µm/px/s]
@@ -579,11 +579,160 @@ def get_bkg_flux_band(instru, band, background_level):
 
 
 
+# -------------------------------------------------------------------------
+# Detector specs
+# -------------------------------------------------------------------------
 
+def get_detector_specs(detector):
+    """
+    Return detector parameters used by the FastYield noise model.
 
+    Important
+    ---------
+    These values are effective detector prescriptions for yield simulations.
+    They are not complete detector models.
 
+    In particular:
+    - VIS_CCD is a classical visible CCD prescription. It is more conservative
+      than EMCCD because it does not assume photon-counting operation.
+    - EMCCD should ideally include clock-induced charge, EM gain, thresholding,
+      and excess-noise effects.
+    - SAPHIRA / APD detectors should ideally include avalanche gain and excess
+      noise factor.
+    - UV_MCP, MKID, and TES are photon-counting detectors and do not naturally
+      map onto a classical RON/DC/full-well model. Here they are approximated
+      with effective read noise, dark count, and saturation parameters.
 
+    Units
+    -----
+    RON0         : [e-/px/read]
+    RON_lim      : [e-/px/DIT]
+    DC0          : [e-/px/mn]
+    saturation_e : [e-/px]
+    N_px         : [px]
+    min_DIT      : [mn/DIT]
+    max_DIT      : [mn/DIT]
+    """
 
+    if detector == "H2RG":
+        return dict(
+            family="HgCdTe_HxRG",
+            valid_range_um=(0.8, 2.5),
+            RON0=10.0,
+            RON_lim=1.0,
+            DC0=0.0053 * 60,
+            saturation_e=64_000,
+            N_px=2048,
+            min_DIT=1.4725 / 60,
+            max_DIT=10.0,
+        )
+
+    elif detector == "H4RG":
+        return dict(
+            family="HgCdTe_HxRG",
+            valid_range_um=(0.8, 2.5),
+            RON0=5.0,
+            RON_lim=1.0,
+            DC0=0.0053 * 60,
+            saturation_e=64_000,
+            N_px=4096,
+            min_DIT=1.4725 / 60,
+            max_DIT=10.0,
+        )
+
+    elif detector == "SAPHIRA":
+        return dict(
+            family="HgCdTe_APD",
+            valid_range_um=(0.8, 2.5),
+            RON0=0.8,
+            RON_lim=0.2,
+            DC0=0.01 * 60,
+            saturation_e=80_000,
+            N_px=320,
+            min_DIT=0.001 / 60,
+            max_DIT=1.0,
+        )
+    
+    elif detector == "VIS_CCD":
+        return dict(
+            family="Si_CCD",
+            valid_range_um=(0.35, 1.00),
+            RON0=3.0,
+            RON_lim=1.0,
+            DC0=1e-3 * 60,
+            saturation_e=150_000,
+            N_px=4096,
+            min_DIT=1.0 / 60,
+            max_DIT=10.0,
+        )
+    
+    elif detector == "EMCCD":
+        return dict(
+            family="Si_EMCCD",
+            valid_range_um=(0.30, 1.00),
+            RON0=0.1,
+            RON_lim=0.0,
+            DC0=1e-4 * 60,
+            saturation_e=80_000,
+            N_px=1024,
+            min_DIT=0.001 / 60,
+            max_DIT=10.0,
+        )
+
+    elif detector == "SKIPPER_CCD":
+        return dict(
+            family="Si_Skipper_CCD",
+            valid_range_um=(0.30, 1.05),
+            RON0=0.068,
+            RON_lim=0.0,
+            DC0=1e-4 * 60,
+            saturation_e=50_000,
+            N_px=4096,
+            min_DIT=1.0 / 60,
+            max_DIT=60.0,
+        )
+
+    elif detector == "UV_MCP":
+        return dict(
+            family="UV_MCP",
+            valid_range_um=(0.10, 0.35),
+            RON0=0.0,
+            RON_lim=0.0,
+            DC0=1e-5 * 60,
+            saturation_e=1e12,
+            N_px=4096,
+            min_DIT=0.001 / 60,
+            max_DIT=60.0,
+        )
+
+    elif detector == "MKID":
+        return dict(
+            family="Microwave_Kinetic_Inductance_Detector",
+            valid_range_um=(0.35, 2.50),
+            RON0=0.0,
+            RON_lim=0.0,
+            DC0=1e-4 * 60,
+            saturation_e=1e12,
+            N_px=2048,
+            min_DIT=0.001 / 60,
+            max_DIT=60.0,
+        )
+
+    elif detector == "TES":
+        return dict(
+            family="Transition_Edge_Sensor",
+            valid_range_um=(0.10, 2.00),
+            RON0=0.0,
+            RON_lim=0.0,
+            DC0=1e-5 * 60,
+            saturation_e=1e12,
+            N_px=1024,
+            min_DIT=0.001 / 60,
+            max_DIT=60.0,
+        )
+
+    else:
+        raise KeyError(f"Please define specs for the {detector} detector.")
 
 
 

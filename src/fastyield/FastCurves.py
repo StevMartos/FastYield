@@ -1,11 +1,11 @@
 # import FastYield modules
-from src.config import instrus, bands, rad2arcsec, R0_max
-from src.get_specs import _get_transmission, get_PSF_profile, get_config_data, get_wa, get_band_lims, get_R_instru, get_logit_coronagraphic_profile_interp, get_R_corr_interp, get_bkg_flux_band
-from src.utils import airy_profile, get_r_core
-from src.spectrum import filtered_flux, get_mag, get_resolution, get_spectrum_instru, get_spectrum_band, load_star_spectrum, load_planet_spectrum, load_vega_spectrum, get_counts_from_density
-from src.signal_noise import get_DIT_RON, get_delta_cos_theta_syst, get_alpha_cos_theta_syst, get_beta, get_fn_MM, get_systematics, compute_sigma_base_2_al_spat_numba, compute_sigma_base_2_al_spec_numba, compute_sigma_base_2_speck_numba, compress_h_for_sigma_base_2, compute_sigma_base_al_spec_fast
-from src.data_processing import get_d_sim, parameters_retrieval
-from src.prints_helpers import print_header, print_subheader, print_info, print_metric, print_warning, print_time, sci
+from .config import instrus, bands, rad2arcsec, R0_max
+from .get_specs import _get_transmission, get_PSF_profile, get_config_data, get_wa, get_band_lims, get_R_instru, get_logit_coronagraphic_profile_interp, get_R_corr_interp, get_bkg_flux_band
+from .utils import airy_profile, get_r_core
+from .spectrum import filtered_flux, get_mag, get_resolution, get_spectrum_instru, get_spectrum_band, load_star_spectrum, load_planet_spectrum, load_vega_spectrum, get_counts_from_density
+from .signal_noise import get_DIT_RON, get_delta_cos_theta_syst, get_alpha_cos_theta_syst, get_beta, get_fn_MM, get_systematics, compute_sigma_base_2_al_spat_numba, compute_sigma_base_2_al_spec_numba, compute_sigma_base_2_speck_numba, compress_h_for_sigma_base_2, compute_sigma_base_2_al_spec_fast
+from .data_processing import get_d_sim, parameters_retrieval, plot_CCF_1D_rv
+from .prints_helpers import print_header, print_subheader, print_info, print_metric, print_warning, print_time, sci
 
 # import matplotlib modules
 import matplotlib.pyplot as plt
@@ -381,7 +381,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
                         # Interpolation + extrapolation (if needed) on the current separation axis
                         sigma_syst_prime = np.exp(interp1d(separation_syst, np.log(np.sqrt(sigma_syst_prime_2)), bounds_error=False, fill_value="extrapolate")(separation))
                         if separation[-1] > separation_syst[-1]: # Systematic profile extrapolation
-                            from src.utils import power_law_extrapolation    
+                            from .utils import power_law_extrapolation    
                             slope                       = hdr_PSF["slope"]
                             mask_tail                   = separation >= separation_syst[-1]
                             sigma_syst_prime[mask_tail] = power_law_extrapolation(x=separation[mask_tail], x0=separation_syst[-1], y0=np.sqrt(sigma_syst_prime_2)[-1], slope=slope)
@@ -399,6 +399,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
                         Ss        = Ss[mask_wave]
                         Sp        = Sp[mask_wave]
                         trans     = trans[mask_wave]
+                        trans_Ss  = trans_Ss[mask_wave]
                         wave_band = wave_band[mask_wave]
                         Mp        = Mp[mask_wave]
                         
@@ -676,7 +677,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
             print_metric("Detector Integration Time",       "DIT",        f"{DIT:.3f}",                   "mn")
             print_metric("Saturating DIT",                  "DIT_sat",    f"{DIT_saturation:.3f}",        "mn")
             print_metric("Effective post-UTR RON",          "RON_eff",    f"{RON_eff:.3f}",               "e-/DIT")
-            print_metric("Mean total system transmission",  "trans",      f"{100*np.nanmean(trans):.1f}", "%")
+            print_metric("Mean total system transmission",  "trans",      f"{100*np.nanmedian(trans):.1f}", "%")
             if separation_planet is not None and coronagraph is not None:
                 print_metric("Fraction of flux in the FWHM", "f_FWHM", f"{100*fraction_core[idx_planet_sep]:.1f}", f"% (at {separation_planet:.1f} {sep_unit})")
             elif coronagraph is None:
@@ -815,7 +816,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
                         ax_contrast.set_xscale('log')
                         ax_contrast.set_xlim(IWA, separation[-1])
                     if mag_planet is None:
-                        ax_contrast.axvline(separation_planet, color="black", linestyle="--", label=f"{planet_name}" if planet_name is not None else "planet")
+                        ax_contrast.axvline(separation_planet, color="black", linestyle="-", alpha=0.5, label=f"{planet_name}" if planet_name is not None else "planet")
                         leg_loc = "upper right"
                     else:
                         if planet_to_star_ratio > ax_contrast.get_ylim()[1] or (planet_to_star_ratio > ax_contrast.get_ylim()[0] and planet_to_star_ratio < ax_contrast.get_ylim()[1]):
@@ -901,6 +902,8 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
             # -----------
             if calculation == "corner plot" and instru_type != "imager":
                 
+                stellar_component = True
+                
                 wave_model = planet_spectrum.wavelength # [µm]
                 
                 # airmass value, if model == "tellurics"
@@ -931,9 +934,13 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
                 if post_processing.lower() in {"molecular mapping", "mm"}:
                     sigma_fund *= np.sqrt(fn_MM)
                 
-                
-                # # Displaying CCF
-                # n = 
+                # Displaying CCF
+                n     = np.random.normal(0, sigma_fund, len(wave_band))
+                n_HF  = filtered_flux(flux=n, R=R_band, Rc=Rc, filter_type=filter_type)[0]
+                d_n   = d + n_HF
+                d_bkg = np.random.normal(0, sigma_fund, size=(100, len(wave_band)))
+                planet_spectrum_instru_tot_wo_shift = planet_spectrum_instru_tot.doppler_shift(-planet_spectrum_instru_tot.rv)
+                plot_CCF_1D_rv(instru=instru, band=band, target_name=planet_name, d=d_n, d_bkg=d_bkg, wave=wave_band, trans=trans, R=R_band, Rc=Rc, filter_type=filter_type, model=model_planet, T=T_planet, lg=lg_planet, rv_arr=np.linspace(-1_000, 1_000, 4_000), rv=rv_planet, vsini=vsini_planet, epsilon=0.8, fastbroad=True, airmass=airmass, star_spectrum=star_spectrum, wave_model=wave_model, template_wo_shift=planet_spectrum_instru_tot_wo_shift, degrade_resolution=True, stellar_component=stellar_component, trans_Ss=trans_Ss, pca=pca, cut_fringes=False, Rmin=None, Rmax=None, renorm_d_sim=False, sigma_l=sigma_fund, calc_logL=False, method_logL=None, weight=None, compare_data=False, verbose=False, show=True, smooth_PSD=1, noise=None, rv_star=rv_star, zoom_CCF=True)
                 
                 # Priors
                 N         = 20
@@ -943,7 +950,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
                 rv_arr    = np.linspace(rv_planet-10,           rv_planet+10,   N)
 
                 # Running retrieval and displaying corner plot
-                uncertainties = parameters_retrieval(instru=instru, band=band, target_name=planet_name, d=d, wave=wave_band, trans=trans, R=R_band, Rc=Rc, filter_type=filter_type, model=model_planet, T_arr=T_arr, lg_arr=lg_arr, rv_arr=rv_arr, vsini_arr=vsini_arr, T=T_planet, lg=lg_planet, rv=rv_planet, vsini=vsini_planet, epsilon=0.8, fastbroad=True, airmass=airmass, star_spectrum=star_spectrum, wave_model=wave_model, template=planet_spectrum_instru_tot, degrade_resolution=True, stellar_component=stellar_component, trans_Ss=trans_Ss, pca=pca, calc_d_sim=True, renorm_d_sim=False, sigma_l=sigma_fund, calc_logL=True, method_logL="classic", weight=None, SNR_estimate=False, SNR_CCF=SNR_CCF, force_new_est=True, save=False, fastcurves=True, exposure_time=exposure_time, show=show_plot, verbose=verbose)
+                uncertainties = parameters_retrieval(instru=instru, band=band, target_name=planet_name, d=d, wave=wave_band, trans=trans, R=R_band, Rc=Rc, filter_type=filter_type, model=model_planet, T_arr=T_arr, lg_arr=lg_arr, rv_arr=rv_arr, vsini_arr=vsini_arr, T=T_planet, lg=lg_planet, rv=rv_planet, vsini=vsini_planet, epsilon=0.8, fastbroad=True, airmass=airmass, star_spectrum=star_spectrum, wave_model=wave_model, template=planet_spectrum_instru_tot, degrade_resolution=True, stellar_component=stellar_component, trans_Ss=trans_Ss, pca=pca, calc_d_sim=False, renorm_d_sim=False, sigma_l=sigma_fund, calc_logL=True, method_logL="classic", weight=None, SNR_estimate=False, SNR_CCF=SNR_CCF, force_new_est=True, save=False, fastcurves=True, exposure_time=exposure_time, show=show_plot, verbose=verbose)
                 
                 # Adding the uncertainties of the band to the list
                 uncertainties_bands.append(uncertainties)
@@ -1081,7 +1088,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
                 if fast_comp:
                     sigma_base_2_DI      = compute_sigma_base_2_speck_numba(  h=h_DI_c[:, idx_planet_sep:idx_planet_sep+1], wave=wave_band_DI_c, separation_rad=np.array([separation_planet_rad]), D=D)
                     sigma_base_2_al_spat = compute_sigma_base_2_al_spat_numba(h=h_MM_c[:, idx_planet_sep:idx_planet_sep+1], wave=wave_band_MM_c, separation_rad=np.array([separation_planet_rad]), pxscale_rad=pxscale_rad)
-                    sigma_base_2_al_spec = compute_sigma_base_al_spec_fast(   h=h_MM[:, idx_planet_sep:idx_planet_sep+1])
+                    sigma_base_2_al_spec = compute_sigma_base_2_al_spec_fast(   h=h_MM[:, idx_planet_sep:idx_planet_sep+1])
                 else:
                     sigma_base_2_DI      = compute_sigma_base_2_speck_numba(  h=h_DI[:, idx_planet_sep:idx_planet_sep+1], wave=wave_band, separation_rad=np.array([separation_planet_rad]), D=D)
                     sigma_base_2_al_spat = compute_sigma_base_2_al_spat_numba(h=h_MM[:, idx_planet_sep:idx_planet_sep+1], wave=wave_band, separation_rad=np.array([separation_planet_rad]), pxscale_rad=pxscale_rad)
@@ -1094,7 +1101,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
                 if fast_comp:
                     sigma_base_2_DI      = compute_sigma_base_2_speck_numba(  h=h_DI_c, wave=wave_band_DI_c, separation_rad=separation_rad, D=D)
                     sigma_base_2_al_spat = compute_sigma_base_2_al_spat_numba(h=h_MM_c, wave=wave_band_MM_c, separation_rad=separation_rad, pxscale_rad=pxscale_rad)
-                    sigma_base_2_al_spec = compute_sigma_base_al_spec_fast(   h=h_MM)
+                    sigma_base_2_al_spec = compute_sigma_base_2_al_spec_fast(   h=h_MM)
                 else:
                     sigma_base_2_DI      = compute_sigma_base_2_speck_numba(  h=h_DI, wave=wave_band, separation_rad=separation_rad, D=D)
                     sigma_base_2_al_spat = compute_sigma_base_2_al_spat_numba(h=h_MM, wave=wave_band, separation_rad=separation_rad, pxscale_rad=pxscale_rad)
