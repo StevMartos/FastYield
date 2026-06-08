@@ -1,24 +1,31 @@
-<picture align="center">
-  <source media="(prefers-color-scheme: dark)" srcset="FastYield logo.png">
-  <img alt="FastYield Logo" src="FastYield logo.png">
-</picture>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="FastYield%20logo.png">
+    <img alt="FastYield Logo" src="FastYield%20logo.png">
+  </picture>
+</p>
 
 # FastYield
 
-**FastYield** is a Python package for exoplanet detection and performance estimation using high-contrast imaging combined with medium- to high-resolution spectroscopy, with a particular focus on the **molecular mapping** technique.
+**FastYield** is a Python package for estimating exoplanet detection performances with high-contrast imaging combined with medium- to high-resolution spectroscopy, with a particular focus on the **molecular mapping** technique.
 
-FastYield is an extended version of [FastCurves](https://github.com/ABidot/FastCurves). FastCurves estimates detection limits from instrumental parameters such as PSF profiles, transmission, detector characteristics, background, and spectral resolution, together with planetary properties such as magnitude, temperature, surface gravity, and albedo. It can also provide retrieval-performance estimates through corner plots.
+FastYield is an extended version of [FastCurves](https://github.com/ABidot/FastCurves). FastCurves estimates detection limits from instrumental properties such as PSF profiles, transmission, detector characteristics, background, and spectral resolution, together with planetary properties such as magnitude, temperature, surface gravity, and albedo. It can also provide retrieval-performance estimates through corner plots.
 
-FastYield builds on this framework by applying the FastCurves formalism to archival or synthetic planet catalogs, making it possible to estimate the expected **detection yield** of a given instrument or observing configuration.
+FastYield builds on this framework by applying the FastCurves formalism to archival or synthetic planet catalogs. It can therefore be used to estimate the expected **detection yield** of a given instrument, survey, or observing configuration.
 
 The molecular mapping approach relies on stellar-halo subtraction through spectral high-pass filtering, followed by cross-correlation with planetary atmospheric templates. This makes it particularly efficient at reducing low-frequency stellar and speckle residuals while exploiting the high-frequency molecular signatures of exoplanet spectra.
 
-For more details, see [Bidot et al. 2024](https://www.aanda.org/articles/aa/pdf/2024/02/aa46185-23.pdf) and [Martos et al. 2025](https://arxiv.org/pdf/2504.06890).
+For more details, see:
 
-<picture align="center">
-  <source media="(prefers-color-scheme: dark)" srcset="FastYield example.png">
-  <img alt="FastYield Example" src="FastYield example.png">
-</picture>
+- [Bidot et al. 2024](https://www.aanda.org/articles/aa/pdf/2024/02/aa46185-23.pdf)
+- [Martos et al. 2025](https://arxiv.org/pdf/2504.06890)
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="FastYield%20example.png">
+    <img alt="FastYield Example" src="FastYield%20example.png">
+  </picture>
+</p>
 
 ---
 
@@ -40,30 +47,97 @@ FastYield currently includes configurations for the following instruments:
 
 ## Installation
 
-### Clone the repository
+FastYield can be installed directly from GitHub with `pip`.
+
+### Standard installation
+
+Use this option if you only want to use the package:
+
+```bash
+python -m pip install git+https://github.com/StevMartos/FastYield.git
+```
+
+You can then test the installation with:
+
+```bash
+python -c "import fastyield; print(fastyield.__version__)"
+python -c "from fastyield.FastCurves import FastCurves; print(FastCurves)"
+```
+
+### Development installation
+
+Use this option if you want to modify the code locally:
 
 ```bash
 git clone https://github.com/StevMartos/FastYield.git
 cd FastYield
+python -m pip install -e ".[dev,gui]"
 ```
 
-### Install the required Python packages
+In development mode, changes made directly inside the local repository are immediately reflected in the installed package.
 
-FastYield requires several standard scientific Python packages:
+For example, if you modify:
+
+```text
+src/fastyield/FastCurves.py
+```
+
+then the local `fastyield` package will use the modified version.
+
+If you modify package metadata or dependencies in `pyproject.toml`, reinstall with:
+
+```bash
+python -m pip install -e ".[dev,gui]"
+```
+
+---
+
+## Dependencies
+
+The main dependencies are automatically installed from `pyproject.toml`.
+
+FastYield mainly relies on:
 
 - [NumPy](https://numpy.org/)
 - [SciPy](https://scipy.org/)
-- [Matplotlib](https://matplotlib.org/)
 - [Astropy](https://www.astropy.org/)
+- [Matplotlib](https://matplotlib.org/)
 - [Pandas](https://pandas.pydata.org/)
 - [Numba](https://numba.pydata.org/)
-- [ttkwidgets](https://github.com/TkinterEP/ttkwidgets)
+- [scikit-learn](https://scikit-learn.org/)
+- [statsmodels](https://www.statsmodels.org/)
+- [corner](https://corner.readthedocs.io/)
 
-They can be installed with:
+Optional GUI-related dependencies can be installed with:
 
 ```bash
-pip install numpy scipy matplotlib astropy pandas numba ttkwidgets
+python -m pip install "fastyield[gui]"
 ```
+
+or, from a local clone:
+
+```bash
+python -m pip install -e ".[gui]"
+```
+
+For development tools such as `pytest`, `ruff`, `build`, and `twine`, use:
+
+```bash
+python -m pip install -e ".[dev]"
+```
+
+---
+
+## External data
+
+FastYield requires external data for most S/N, contrast, and yield calculations.
+
+There are two main types of data:
+
+1. the **instrumental and simulation data** stored in `sim_data/`;
+2. the **spectral library** stored in `Spectra/`.
+
+The Python package itself contains the code. The large scientific data files should be kept locally and made available to FastYield through the appropriate paths.
 
 ---
 
@@ -94,13 +168,13 @@ Spectra/
 
 ## Setting the Spectra path
 
-The `Spectra` directory is not stored directly inside the GitHub repository because it can be large. FastYield therefore needs to know where this directory is located on your machine.
+The `Spectra` directory is not stored directly inside the Python package because it can be large. FastYield therefore needs to know where this directory is located on your machine.
 
 There are three possible ways to define the path.
 
 ---
 
-### Option 1 — Recommended: use an environment variable
+### Option 1 — Recommended: environment variable
 
 This is the recommended solution if you want FastYield to automatically find your `Spectra` directory every time you use it.
 
@@ -135,16 +209,15 @@ echo $FASTYIELD_SPECTRA_PATH
 You can also define the path directly in your Python script:
 
 ```python
-from src.config import set_spectra_path
+from fastyield.config import set_spectra_path
 
-# Required: set the path to your local Spectra directory.
 set_spectra_path("/path/to/Spectra")
 ```
 
 For example:
 
 ```python
-from src.config import set_spectra_path
+from fastyield.config import set_spectra_path
 
 set_spectra_path("/home/user/data/Spectra")
 ```
@@ -155,7 +228,7 @@ This should be done before loading any stellar, planetary, albedo, or molecular 
 
 ### Option 3 — Default local location
 
-If no path is provided, FastYield will look for the `Spectra` directory in the default location:
+If no path is provided, FastYield will look for the `Spectra` directory in the default local location:
 
 ```text
 FastYield/sim_data/Spectra
@@ -177,8 +250,11 @@ FastYield/
 │       ├── star_spectrum/
 │       └── molecular/
 ├── src/
+│   └── fastyield/
 └── ...
 ```
+
+This default layout is especially convenient when using FastYield in development mode from a local clone.
 
 ---
 
@@ -199,22 +275,63 @@ This means that users can either keep the spectral library inside the repository
 Example of a minimal Python setup:
 
 ```python
-from src.config import set_spectra_path
-from src.spectrum import load_planet_spectrum
-from src.FastYield_interface import FastYield_interface
+from fastyield.config import set_spectra_path
+from fastyield.spectrum import load_planet_spectrum
+from fastyield.FastYield_interface import FastYield_interface
 
 # Set this only if you have not defined FASTYIELD_SPECTRA_PATH.
 set_spectra_path("/path/to/Spectra")
 
-# To test the spectra path
-planet_spectrum = load_planet_spectrum(T_planet=1000, lg_planet=4.0, model="BT-Settl")
+# Test the spectra path by loading a planetary spectrum.
+planet_spectrum = load_planet_spectrum(
+    T_planet=1000,
+    lg_planet=4.0,
+    model="BT-Settl",
+)
 
-# To open the FastYield GUI
+# Open the FastYield graphical interface.
 FastYield_interface()
-
 ```
 
 If you have already defined the environment variable `FASTYIELD_SPECTRA_PATH`, then the call to `set_spectra_path()` is not required.
+
+---
+
+## Development workflow
+
+A typical development workflow is:
+
+```bash
+git clone https://github.com/StevMartos/FastYield.git
+cd FastYield
+
+python -m pip install -e ".[dev,gui]"
+```
+
+Then test the package with:
+
+```bash
+python -c "import fastyield; print(fastyield.__version__)"
+python -c "from fastyield.FastCurves import FastCurves; print(FastCurves)"
+```
+
+If tests are available, run:
+
+```bash
+pytest
+```
+
+To build the package locally:
+
+```bash
+python -m build
+```
+
+This creates distribution files in:
+
+```text
+dist/
+```
 
 ---
 
@@ -227,7 +344,7 @@ If you would like to add a new instrument to FastYield, please contact:
 Please include, when available:
 
 - spectral range and spectral resolution for each band;
-- total system transmission (without tellurics) for each band;
+- total system transmission, excluding tellurics, for each band;
 - representative PSF, either as a 2D image or a 3D spectral cube;
 - expected background flux;
 - expected read-out noise;
@@ -243,7 +360,7 @@ Please include, when available:
 If you use FastYield or FastCurves in your work, please cite:
 
 - Bidot et al. 2024, *FastCurves: a performance estimation tool for molecular mapping*, A&A.
-- Martos et al. 2025, *Combining high-contrast imaging and high-resolution spectroscopy: MIRI/MRS on-sky results compared to expectations*.
+- Martos et al. 2025, *Combining high-contrast imaging and high-resolution spectroscopy: MIRI/MRS on-sky results compared to expectations*, A&A.
 
 ---
 
