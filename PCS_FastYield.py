@@ -6,13 +6,13 @@ os.environ["NUMEXPR_NUM_THREADS"]  = "1"
 os.environ["NUMBA_NUM_THREADS"]    = "1"
 
 # import FastYield modules
-from src.config import rad2arcsec, h, c, R0_min, R0_max, lmin_bands, lmax_bands
-from src.utils import plot_trans_tell_tel, plot_bkg_skycalc
-from src.get_specs import _load_tell_trans, get_detector_specs
-from src.FastYield import load_planet_table, get_mask_planet_type
-from src.FastYield_helpers import print_simulation_summary, make_suffix, write_meta, memmap_nbytes, format_nbytes, create_memmap_with_log
-from src.spectrum import get_wavelength_axis_constant_R, Spectrum, load_vega_spectrum, get_thermal_reflected_spectrum, filtered_flux, get_wave_K, get_counts_from_density
-from src.signal_noise import compress_h_for_sigma_base_2, compute_sigma_base_2_speck_numba, compute_sigma_base_2_al_spat_numba, compute_sigma_base_2_al_spec_fast
+from fastyield.config import rad2arcsec, h, c, R0_min, R0_max, lmin_bands, lmax_bands, get_sim_data_path
+from fastyield.utils import plot_trans_tell_tel, plot_bkg_skycalc
+from fastyield.get_specs import _load_tell_trans, get_detector_specs
+from fastyield.FastYield import load_planet_table, get_mask_planet_type
+from fastyield.FastYield_helpers import print_simulation_summary, make_suffix, write_meta, memmap_nbytes, format_nbytes, create_memmap_with_log
+from fastyield.spectrum import get_wavelength_axis_constant_R, Spectrum, load_vega_spectrum, get_thermal_reflected_spectrum, filtered_flux, get_wave_K, get_counts_from_density
+from fastyield.signal_noise import compress_h_for_sigma_base_2, compute_sigma_base_2_speck_numba, compute_sigma_base_2_al_spat_numba, compute_sigma_base_2_al_spec_fast
 
 # import astropy modules
 from astropy.io import fits
@@ -42,6 +42,7 @@ import gc
 nproc     = max(cpu_count() - 1, 1)
 chunksize = 8
 
+# TODO :
 # Required if FASTYIELD_SIM_DATA_PATH is not defined:
 # set the path to your local FastYield sim_data directory.
 # This directory should contain the instrumental/simulation data folders
@@ -1117,11 +1118,7 @@ def main():
     detector = "PCS_visNIR_conservative"
 
     # --- Paths --- 
-    try:
-        ROOT = Path(__file__).resolve().parent
-    except NameError:
-        ROOT = Path.cwd()
-    instru_dir = ROOT / "data" / instru
+    instru_dir = get_sim_data_path() / instru
     sim_dir    = instru_dir / "FastYield_simulations"
     psf_dir    = instru_dir / "PSF_simulations"
     sim_dir.mkdir(parents=True, exist_ok=True)
