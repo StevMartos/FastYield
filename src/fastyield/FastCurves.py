@@ -48,7 +48,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
     cos_theta_est_data = None  # Estimated correlation in the data (for show_cos_theta_est=True)
     show_cos_theta_est = False # To see the impact of the noise on the estimated correlation in order to retrieve the true mismatch
     show_t_syst        = False # To see the systematics time domination
-    show_contributions = False  # To see the noise contributions plots for contrast calculations
+    show_contributions = True  # To see the noise contributions plots for contrast calculations
     show_syst_budget   = False # To see the speckle noise budget for Differential Imaging techniques to be more advantageous than molecular mapping and systematics noise budget
     
     # ------------------
@@ -1012,7 +1012,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
                         cos_theta_p_data = np.clip(a=cos_theta_p_data, a_min=-1, a_max=1)
                         print(f" cos_theta_est_data = {cos_theta_est_data:.3f} => cos_theta_p_data = {cos_theta_p_data:.3f}")
                     ax_cos_theta_est.axvline(separation_planet, c='black', ls="-", alpha=0.5, label=f'Angular separation{for_planet_name}')
-                    ax_cos_theta_est.plot([separation_planet, separation_planet], [cos_theta_est[idx_planet_sep], cos_theta_est[idx_planet_sep]], 'rX', ms=11, label=rf"cos $\theta_{{est}}${for_planet_name} ({cos_theta_est[idx_planet_sep]:.2f})")
+                    ax_cos_theta_est.plot([separation_planet, separation_planet], [cos_theta_est[idx_planet_sep], cos_theta_est[idx_planet_sep]], marker="o", ms=11, color="crimson", label=rf"cos $\theta_{{est}}${for_planet_name} ({cos_theta_est[idx_planet_sep]:.2f})")
                     ax_cos_theta_est.legend(loc="upper left", fontsize=12, frameon=True, fancybox=True, shadow=True, borderpad=1)
                 fig_cos_theta_est.tight_layout()
                 fig_cos_theta_est.show()
@@ -1457,10 +1457,10 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
                 ax_SNR.set_xscale('log')
                 ax_SNR.set_xlim(IWA, max(np.max(arr) for arr in separation_bands))
             ax_SNR.axvline(x=separation_planet, color='black', linestyle='-', alpha=0.5)
-            ax_SNR.plot([separation_planet], [SNR_max_planet], 'rX', ms=11)        
+            ax_SNR.plot([separation_planet], [SNR_max_planet], marker="o", ms=11, color="crimson")        
             ax_legend = ax_SNR.twinx()
-            ax_legend.plot([], [], '--', c='k', label=f'Angular separation{for_planet_name}')
-            ax_legend.plot([], [], 'X', c='r', label=f'Max S/N{for_planet_name} ({round(SNR_max_planet, 2)})')
+            ax_legend.plot([], [], '-', c='black', alpha=0.5, label=f'Angular separation{for_planet_name}')
+            ax_legend.plot([], [], 'o', c='crimson', label=f'Max S/N{for_planet_name} ({round(SNR_max_planet, 2)})')
             ax_legend.legend(loc='lower right', fontsize=12, frameon=True, fancybox=True, shadow=True, borderpad=1)
             ax_legend.tick_params(axis='y', colors='w')
         ax_SNR.set_ylim(0)
