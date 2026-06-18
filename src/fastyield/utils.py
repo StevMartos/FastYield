@@ -1,10 +1,10 @@
 # import FastYield modules
-from .config import h, c, rad2arcsec, sim_data_path
-from .get_specs import get_config_data
+from fastyield.config import h, c, rad2arcsec, get_sim_data_path
+from fastyield.get_specs import get_config_data
 
 # import astropy modules
 from astropy.io import fits
-from astropy.stats import sigma_clip
+from astropy.stats import sigma_clip, mad_std
 from astropy.time import Time
 
 # import matplotlib modules
@@ -32,6 +32,7 @@ from scipy.optimize import lsq_linear
 from tqdm import tqdm
 from sklearn.decomposition import PCA
 import statsmodels.api as sm
+from pathlib import Path
  
 
 
@@ -868,6 +869,8 @@ def register_PSF_profile(instru, profile, fraction_core, band, strehl, apodizer,
     hdr       = fits.Header()
     hdr["FC"] = (fraction_core, "Core flux fraction")
     
+    sim_data_path = get_sim_data_path()
+    
     if coronagraph is None:
         psf_file = f"{sim_data_path}/PSF/PSF_{instru}/PSF_{band}_{strehl}_{apodizer}.fits"
     else:
@@ -1546,7 +1549,7 @@ def PCA_subtraction(S_res, N_PCA, y0=None, x0=None, size_core=None, PCA_annular=
                 res, psd = get_psd(wave, pca_comp, R=R, smooth=0)
                 ax[1].plot(res, psd, c=cmap_pdf(k))
                 ax[1].set_xlim(10, R)
-                ax[1].set_xlabel("resolution", fontsize=14)
+                ax[1].set_xlabel("Resolution", fontsize=14)
                 ax[1].set_xscale('log')
                 ax[1].set_yscale('log')
                 ax[1].set_ylabel("PSD", fontsize=14)
@@ -1685,7 +1688,7 @@ def cut_spectral_frequencies(input_flux, R, Rmin, Rmax, filter_type='empirical',
             plt.xscale('log')
             plt.yscale('log')
             plt.legend()
-            plt.xlabel("resolution")
+            plt.xlabel("Resolution")
             plt.ylabel("PSD")
             plt.show()
     else:
@@ -1696,7 +1699,7 @@ def cut_spectral_frequencies(input_flux, R, Rmin, Rmax, filter_type='empirical',
         plt.plot(np.fft.fftshift(res_values), abs(np.fft.fftshift(filter_response))**2, label=f'{filter_type.capitalize()} Filter Response')
         plt.plot(np.fft.fftshift(res_values), abs(np.fft.fftshift(fft_values * filter_response))**2, label='Filtered PSD')
         plt.xscale('log') ; plt.yscale('log')
-        plt.xlabel("resolution") ; plt.ylabel("PSD")
+        plt.xlabel("Resolution") ; plt.ylabel("PSD")
         plt.legend()
         plt.show()
     fft_values                = fft_values * filter_response
@@ -1817,7 +1820,7 @@ def qqplot_CCF(CCF_map, sep_lim, sep_unit, pxscale, band, target_name):
 
   
   
-def qqplot2_hirise(CCF_signal, CCF_bkgd, band, target_name):
+def qqplot2_fiber(CCF_signal, CCF_bkgd, band, target_name):
     """
     Q–Q plots comparing signal CCF distribution to a set of background CCF maps.
 
@@ -2397,11 +2400,11 @@ def compute_filter_variance_factor(N, R_sampling, Rc, filter_type, Rc_init, filt
     N : int
         FFT length (assumes uniformly sampled data). Also sets the
         frequency resolution used in the calculation.
-    R_sampling : float
+    R_sampling : float or array
         Sampling resolving power of the HR grid (Nyquist convention).
         Defines the resolution mapping 'res = 2 * R_sampling * f' with
         'f = np.fft.fftfreq(N)'.
-    Rc : float
+    Rc : float or array
         Cutoff (in "resolution" units) of the **considered** filter for which
         you want the variance fractions.
     filter_type : {'gaussian', 'gaussian_fast', 'gaussian_true', 'step', 'smoothstep'}
@@ -2445,33 +2448,31 @@ def compute_filter_variance_factor(N, R_sampling, Rc, filter_type, Rc_init, filt
       uses different real-space boundaries (e.g., reflect), small discrepancies
       can occur near the edges.
     """
-    from .spectrum import _fft_filter_response
-
-    # Frequency grid and "resolution" axis (your convention)
-    # f   = np.fft.fftfreq(N)          # cycles / HR sample
-    # res = 2.0 * R_sampling * f
+    from fastyield.spectrum import _fft_filter_response
+    
+    R_sampling = None if R_sampling is None else np.nanmedian(R_sampling)
+    Rc_init    = None if Rc_init    is None else np.nanmedian(Rc_init)
+    Rc_noise   = None if Rc_noise   is None else np.nanmedian(Rc_noise)
+    Rc_conv    = None if Rc_conv    is None else np.nanmedian(Rc_conv)
+    Rc         = None if Rc         is None else np.nanmedian(Rc)
 
     # Initially white noise
     TF_noise = np.ones(N, dtype=np.complex128) # initially white noise
 
     # 1) Optional initial HR coloring at Rc_init
     if Rc_init is not None and filter_init_type is not None:
-        ftype_init = "gaussian_fast" if (filter_init_type == "gaussian") else filter_init_type
-        TF_noise = TF_noise * _fft_filter_response(N=N, R=R_sampling, Rc=Rc_init, filter_type=ftype_init)[1]
+        TF_noise   = TF_noise * _fft_filter_response(N=N, R=R_sampling, Rc=Rc_init, filter_type=filter_init_type)[1]
 
     # 2) Optional extra low-pass
     if Rc_noise is not None and filter_noise_type is not None:
-        ftype_lp = "gaussian_fast" if (filter_noise_type == "gaussian") else filter_noise_type
-        TF_noise = TF_noise * _fft_filter_response(N=N, R=R_sampling, Rc=Rc_noise, filter_type=ftype_lp)[1]
+        TF_noise = TF_noise * _fft_filter_response(N=N, R=R_sampling, Rc=Rc_noise, filter_type=filter_noise_type)[1]
 
     # 3) Optional convolution broadening
     if Rc_conv is not None and filter_conv_type is not None:
-        ftype_cv = "gaussian_fast" if (filter_conv_type == "gaussian") else filter_conv_type
-        TF_noise = TF_noise * _fft_filter_response(N=N, R=R_sampling, Rc=Rc_conv, filter_type=ftype_cv)[1]
+        TF_noise = TF_noise * _fft_filter_response(N=N, R=R_sampling, Rc=Rc_conv, filter_type=filter_conv_type)[1]
     
     # Frequency response of the considered filtering
-    ftype      = "gaussian_fast" if (filter_type == "gaussian") else filter_type
-    H_HF, H_LF = _fft_filter_response(N=N, R=R_sampling, Rc=Rc, filter_type=ftype)
+    H_HF, H_LF = _fft_filter_response(N=N, R=R_sampling, Rc=Rc, filter_type=filter_type)
     
     POWER = np.nansum( np.abs(TF_noise)**2 )
     fn_LF = np.nansum( np.abs(TF_noise*H_LF)**2 ) / POWER
@@ -2540,6 +2541,11 @@ def compute_rebin_variance_factor(lamHR, maskHR, lamLR, dlam, R_sampling, Rc_ini
     When no filters are applied, C is a delta and fn = 1 for all bins.
     """
     from .spectrum import _fft_filter_response
+    
+    R_sampling = None if R_sampling is None else np.nanmedian(R_sampling)
+    Rc_init    = None if Rc_init    is None else np.nanmedian(Rc_init)
+    Rc_noise   = None if Rc_noise   is None else np.nanmedian(Rc_noise)
+    Rc_conv    = None if Rc_conv    is None else np.nanmedian(Rc_conv)
 
     # --- HR samples per LR bin (N_i) ---
     LRedges = np.hstack([lamLR - 0.5*dlam, lamLR[-1] + 0.5*dlam[-1]])
@@ -2552,27 +2558,20 @@ def compute_rebin_variance_factor(lamHR, maskHR, lamLR, dlam, R_sampling, Rc_ini
     Nmax = int(np.nanmax(count))
     M    = 1 << int(np.ceil(np.log2(max(2048, 8*Nmax + 1))))  # power-of-two, >= ~8*Nmax
 
-    # Frequency grid and "resolution" axis (your convention)
-    # f   = np.fft.fftfreq(M)          # cycles / HR sample
-    # res = 2.0 * R_sampling * f
-
     # --- Total frequency response H(f) ---
     H = np.ones(M, dtype=np.complex128)
 
     # 1) Optional initial HR coloring at Rc_init
     if Rc_init is not None and filter_init_type is not None:
-        ftype_init = "gaussian_fast" if (filter_init_type == "gaussian") else filter_init_type
-        H          = H * _fft_filter_response(N=M, R=R_sampling, Rc=Rc_init, filter_type=ftype_init)[1]
+        H = H * _fft_filter_response(N=M, R=R_sampling, Rc=Rc_init, filter_type=filter_init_type)[1]
 
     # 2) Optional extra low-pass
     if Rc_noise is not None and filter_noise_type is not None:
-        ftype_lp = "gaussian_fast" if (filter_noise_type == "gaussian") else filter_noise_type
-        H        = H * _fft_filter_response(N=M, R=R_sampling, Rc=Rc_noise, filter_type=ftype_lp)[1]
+        H = H * _fft_filter_response(N=M, R=R_sampling, Rc=Rc_noise, filter_type=filter_noise_type)[1]
 
     # 3) Optional convolution broadening
     if Rc_conv is not None and filter_conv_type is not None:
-        ftype_cv = "gaussian_fast" if (filter_conv_type == "gaussian") else filter_conv_type
-        H        = H * _fft_filter_response(N=M, R=R_sampling, Rc=Rc_conv, filter_type=ftype_cv)[1]
+        H = H * _fft_filter_response(N=M, R=R_sampling, Rc=Rc_conv, filter_type=filter_conv_type)[1]
 
     # --- Normalized autocovariance on the HR grid: C = IFFT(|H|^2), with C[0]=1 ---
     C   = np.fft.ifft(np.abs(H)**2).real
@@ -2593,340 +2592,345 @@ def compute_rebin_variance_factor(lamHR, maskHR, lamLR, dlam, R_sampling, Rc_ini
 
 
 
-def extract_vipa_data(instru, target_name, gain, label_fiber, degrade_data=True, outliers=False, sigma_outliers=5, use_weight=True, mask_nan_values=False, filter_noise=False, R_target=80_000, Rc=100, filter_type="gaussian", verbose=True):
-    """
-    Load a VIPA 1D spectrum from FITS and optionally:
-      (i) filter high-frequency content (assumed noise above the instrumental R),
-      (ii) degrade the effective resolving power by Gaussian convolution,
-      (iii) rebin to a Nyquist grid at the target resolution,
-      while propagating 1σ uncertainties consistently (including correlated-noise effects),
-      and producing a “high-pass” version of the flux if a transmission vector is provided.
-
-    Workflow (high level)
-    ---------------------
-    1) Read arrays from the FITS file:
-       (wave0, flux0, sigma0, weight0, trans0, sigma_trans0) plus header keywords.
-       Wavelengths are converted from nm to µm.
-    2) Optional outlier masking via high-pass residual clipping on flux (and trans if present).
-    3) Build a “realistic” noise realization ('noise0') consistent with 'sigma0'
-       and optionally color it with the same initial low-pass as the data.
-    4) Optional low-pass filtering at Rc = R_instru (e.g. smoothstep) to remove
-       content deemed above the instrumental resolution. Uncertainties are scaled by
-         sigma = sigma * sqrt(fn_LF),
-       where 'fn_LF' is the fraction of input noise variance transmitted through the LP,
-       computed with 'compute_filter_variance_factor(…, this_filter=(Rc, type))'.
-    5) Optional resolution degradation to R_target < R_instru by Gaussian convolution.
-       The cutoff equivalent (Rc_conv) is derived from sigma_kernel; uncertainties are
-       scaled by the corresponding variance fraction (as above).
-    6) Rebin to a Nyquist grid at R_target:
-         λ_Nyquist step = λ_centre / (2*R_target)  (here approximated with the band midpoint).
-       Rebinning uses top-hat averaging. Because pre-filtering introduces correlations,
-       the naive i.i.d. error propagation is corrected by a per-bin factor:
-         sigma_rebinned = sigma_rebinned * sqrt(F),
-       where 'F' is returned by 'compute_rebin_variance_factor(…)' built from the
-       total noise coloring prior to the rebinning.
-    7) If a transmission vector 'trans' is present, compute the “high-pass” product
-       following the multiplicative model:
-         flux_HF = trans * HP(flux / trans),
-       propagate its uncertainty with
-         sigma_HF = sqrt(fn_HF) * sigma,
-       where 'fn_HF' is computed for the chosen HF/LF split (Rc, filter_type)
-       on the colored noise PSD.
-    8) Optional weighting: 'weight' is normalized to max=1 and applied to
-       (sigma, noise, sigma_HF, noise_HF) for downstream compatibility.
-
-    Parameters
-    ----------
-    instru : str
-        Instrument name (used to locate the FITS file under 'data/{instru}/…').
-    target_name : str
-        Target identifier (part of the FITS filename).
-    gain : int or str
-        Detector gain setting (part of the FITS filename).
-    label_fiber : str
-        Fiber label (part of the FITS filename).
-    degrade_data : bool, default True
-        If True, degrade to 'R_target' (Gaussian LSF broadening + Nyquist rebin).
-        If False, keep the native sampling (no convolution, no rebin).
-    outliers : bool, default False
-        If True, sigma-clip high-pass residuals to flag and mask outliers.
-    sigma_outliers : float, default 5
-        Clipping threshold (in σ) for outlier detection in the HF residuals.
-    use_weight : bool, default True
-        If True, normalize 'weight' to [0,1] and multiply (sigma, noise, sigma_HF, noise_HF)
-        by 'weight' to keep S/N consistent with later weighted fits.
-    mask_nan_values : bool, default False
-        If True, propagate NaN masks to all returned arrays.
-    filter_noise : bool, default False
-        If True, apply an additional low-pass at Rc = R_instru (default shape: "smoothstep")
-        before any resolution degradation/rebinning, and scale uncertainties by the
-        corresponding variance fraction.
-    R_target : float, default 80_000
-        Desired resolving power for the degraded+rebinned spectrum (must satisfy
-        R_target ≤ R_instru if 'degrade_data=True').
-    Rc : float, default 100
-        Cutoff parameter (in the “resolution” axis, res = 2*R*f) used for the final HF/LF
-        split when building 'flux_HF'/'sigma_HF'.
-    filter_type : {'gaussian','gaussian_fast','gaussian_true','step','smoothstep'}, default 'gaussian'
-        Filter shape used by 'filtered_flux' and the HF/LF split when computing
-        'flux_HF'/'sigma_HF'. The internal frequency-domain helpers map 'gaussian'
-        to the discrete 'gaussian_fast' variant for consistency.
-    verbose : bool, default True
-        If True, print a summary and sanity-check metrics (e.g., rms_z).
-
-    Returns
-    -------
-    wave : (M,) ndarray
-        Output wavelength grid (µm). If 'degrade_data=True', this is the Nyquist grid
-        at 'R_target'; otherwise it is the native 'wave0'.
-    flux : (M,) ndarray
-        Processed flux on 'wave'.
-    sigma : (M,) ndarray
-        1-σ uncertainty on 'flux', including (i) filter-induced variance reduction and
-        (ii) rebinning correction for correlated noise.
-    noise : (M,) ndarray
-        Realistic noise realization consistent with 'sigma' and the applied filters
-        (useful for residual checks).
-    flux_HF : (M,) ndarray or None
-        High-pass product 'trans * HP(flux/trans)' if a transmission vector is present;
-        otherwise None.
-    sigma_HF : (M,) ndarray or None
-        1-σ uncertainty for 'flux_HF' using 'sqrt(fn_HF)' scaling; None if 'trans' is absent.
-    noise_HF : (M,) ndarray or None
-        High-pass of 'noise/trans' multiplied by 'trans'; None if 'trans' is absent.
-    weight : (M,) ndarray or None
-        Normalized weight function (max=1) on the output grid if 'use_weight=True';
-        otherwise None.
-    trans : (M,) ndarray or None
-        Transmission vector rebinned to 'wave' if present in the input; otherwise None.
-    sigma_trans : (M,) ndarray or None
-        1-σ uncertainty on 'trans' after filtering/rebinning if applicable; otherwise None.
-    exposure_time : float
-        Exposure time in minutes (from the FITS header).
-
-    Notes
-    -----
-    * Assumes uniformly sampled input for filtering stages; if your native grid is
-      not uniform, resample upstream (the function rebins only at the end).
-    * Variance fractions for filters are computed in the frequency domain with the
-      already-colored input noise PSD; this avoids the “white-noise” assumption bias.
-    * Rebin-variance correction uses the frequency-domain window of the top-hat
-      average and the colored noise autocovariance (via 'compute_rebin_variance_factor').
-    * Boundary conditions are effectively circular in frequency-domain filtering;
-      small edge discrepancies may remain if your data have strong discontinuities.
-    * If 'R_target == R_instru' and 'degrade_data=True', no convolution is applied;
-      only the Nyquist rebinning step occurs.
-    * The final “rms_z” prints provide a quick sanity check:
-        rms_z ≈ std(noise / sigma)  (and similarly for HF).
-    """
-    from .spectrum import filtered_flux, rebin_spectrum_mean
-
-    f                                                   = fits.open(f"data/{instru}/VIPA_Final_Spectrum_{target_name}_gain_{gain}_fiber_{label_fiber}.fits")
-    wave0, flux0, sigma0, weight0, trans0, sigma_trans0 = f[0].data
-    wave0                                               = wave0 * 1e-3         # [nm] => [µm]
-    header                                              = f[0].header
-    exposure_time                                       = header["INTTIME"]/60 # [mn]
-    lmin                                                = header["lmin"]*1e-3  # [nm] => [µm]
-    lmax                                                = header["lmax"]*1e-3  # [nm] => [µm]
-    R_instru                                            = header["R"]
-    R_sampling                                          = header["R_sampling"]
-    date_obs                                            = header['ACQTIME1']
-    try:
-        T_star                                          = header["TEFF"] 
-        lg_star                                         = header["LG"] 
-        rv_star_bary                                    = header["RV_bary"]
-        rv_star_corr                                    = header["bary_corr"]
-        rv_star_obs                                     = header["RV_obs"]
-        vsini_star                                      = header["Vsin(i)"]
-        magH_star                                       = header["mag(H)"]
-        is_star = True
-    except:
-        is_star = False
-    f.close()
-        
-    if degrade_data and R_target > R_instru:
-        raise KeyError(f"The target resolution ({R_target}) can not be greater than the instrumental resolution ({R_instru}).")
-        
-    if verbose:
-        print()
-        print(" Observation Summary")
-        print("=" * 40)
-        print(f" Target name      : {target_name}")
-        print(f" Observation date : {date_obs}")
-        print(f" Exposure time    : {round(exposure_time, 1):>6} mn")
-        if is_star:
-            print()
-            print("Star Properties")
-            print("=" * 40)
-            print(f" H-band mag : {round(magH_star, 1):>6}")
-            print(f" Teff       : {round(T_star, 0):>6} K")
-            print(f" logg       : {round(lg_star, 1):>6} dex[cm/s2]")
-            print(f" Vsini      : {round(vsini_star, 2):>6} km/s")
-            print(f" RV (bary)  : {round(rv_star_bary, 3):>6} km/s")
-            print(f" RV (obs)   : {round(rv_star_obs, 3):>6} km/s")
-            print(f" Bary corr  : {round(rv_star_corr, 3):>6} km/s")
-        print()
-        print("Spectral Properties")
-        print("=" * 40)
-        print(f" R (instrument)        : {R_instru:.0f}")
-        print(f" R (sampling)          : {R_sampling:.0f}")
-        if degrade_data:
-            print(f" R (target)            : {R_target:.0f}")
-        if Rc is not None:
-            print(f" Rc (cutoff frequency) : {Rc:.0f}")
-        print(f" Filter                : {filter_type}")
-        print()
+def extract_vipa_data(path_data, instru, target_name, band, gain, label_fiber, degrade_data=True, outliers=False, sigma_outliers=5, use_weight=True, mask_nan_values=False, filter_noise=False, extract_full_sequence=False, R_target=80_000, Rc=100, filter_type="gaussian", verbose=True):
+    from fastyield.spectrum import Spectrum, filtered_flux, get_resolution, get_wavelength_axis_constant_dl
     
-    # Missing values
+    def _mask(arr, mask):
+        if arr is None:
+            return None
+        arr = arr.copy()
+        if arr.ndim == 1:
+            arr[mask] = np.nan
+        elif arr.ndim == 2:
+            arr[:, mask] = np.nan
+        else:
+            raise ValueError(f"Sequence array must be 1D or 2D, got shape {arr.shape}.")
+        return arr
+
+    def _scale_sigma(sigma_seq, variance_factor):
+        if sigma_seq is None:
+            return None
+        variance_factor = np.asarray(variance_factor, dtype=float)
+        if sigma_seq.ndim == 1:
+            return sigma_seq * np.sqrt(variance_factor)
+        if sigma_seq.ndim == 2:
+            return sigma_seq * np.sqrt(variance_factor)[None, :]
+        raise ValueError(f"sigma_seq must be 1D or 2D, got shape {sigma_seq.shape}.")
+    
+    
+    filename = Path(path_data) / f"VIPA_Final_Spectrum_{target_name}_band_{band}_gain_{gain}_fiber_{label_fiber}.fits"
+    with fits.open(filename) as hdul:
+
+        # Header
+        header = hdul[0].header.copy()
+    
+        # Spectrum table
+        spec          = hdul["SPECTRUM"].data
+        wave0         = np.asarray(spec["WAVELENGTH"],       dtype=float) * 1e-3  # [nm] => [µm]
+        R0            = np.asarray(spec["RESOLUTION"],       dtype=float)
+        flux0         = np.asarray(spec["FLUX"],             dtype=float)
+        sigma0        = np.asarray(spec["FLUX_ERR"],         dtype=float)
+        weight0       = np.asarray(spec["WEIGHT"],           dtype=float)
+        trans0        = np.asarray(spec["TRANSMISSION"],     dtype=float)
+        sigma_trans0  = np.asarray(spec["TRANSMISSION_ERR"], dtype=float)
+    
+        # Optional full DIT sequence
+        NDIT       = header["NDIT"]
+        flux_seq0  = None
+        sigma_seq0 = None
+        if extract_full_sequence:
+            if "FLUX_SEQ" not in hdul:
+                raise ValueError(f"extract_full_sequence=True, but no FLUX_SEQ extension found in {filename}.")
+            if "SIGMA_SEQ" not in hdul:
+                raise ValueError(f"extract_full_sequence=True, but no SIGMA_SEQ extension found in {filename}.")
+            flux_seq0  = np.asarray(hdul["FLUX_SEQ"].data, dtype=float)
+            sigma_seq0 = np.asarray(hdul["SIGMA_SEQ"].data, dtype=float)
+            if flux_seq0.ndim != 2:
+                raise ValueError(f"FLUX_SEQ must be 2D with shape (NDIT, Nlambda), got {flux_seq0.shape}.")
+            if flux_seq0.shape[1] != wave0.size:
+                raise ValueError(f"FLUX_SEQ has {flux_seq0.shape[1]} wavelength bins, but SPECTRUM has {wave0.size}.")
+            if sigma_seq0.ndim == 1:
+                if sigma_seq0.shape[0] != wave0.size:
+                    raise ValueError(f"1D SIGMA_SEQ has shape {sigma_seq0.shape}, but expected ({wave0.size},).")
+            elif sigma_seq0.ndim == 2:
+                if sigma_seq0.shape != flux_seq0.shape:
+                    raise ValueError(f"2D SIGMA_SEQ has shape {sigma_seq0.shape}, but FLUX_SEQ has shape {flux_seq0.shape}.")
+            else:
+                raise ValueError(f"SIGMA_SEQ must be 1D or 2D, got shape {sigma_seq0.shape}.")
+        
+        # Time sequence and RV axis
+        time_jd = None
+        RV_obs  = None
+        RV_bar  = None
+        cor_bar = None
+        if "TIME_SEQ" in hdul:
+            time_seq = hdul["TIME_SEQ"].data
+            if "TIME_JD" in time_seq.names:
+                time_jd = np.asarray(time_seq["TIME_JD"], dtype=float)
+            if "RV_OBS" in time_seq.names:
+                RV_obs = np.asarray(time_seq["RV_OBS"], dtype=float)
+            if "RV_BAR" in time_seq.names:
+                RV_bar = np.asarray(time_seq["RV_BAR"], dtype=float)
+            if "COR_BAR" in time_seq.names:
+                cor_bar = np.asarray(time_seq["COR_BAR"], dtype=float)
+    
+    
+    # Estimating R_sampling
+    R_sampling0 = get_resolution(wavelength=wave0, func=np.array)
+    
+    
+    # Prints
+    if verbose:
+        line = "─" * 78
+    
+        def _print_value(label, value, fmt="", unit="", sigma=None, sigma_fmt=None):
+            if value is None:
+                return
+            if isinstance(value, (float, int, np.floating, np.integer)) and not np.isfinite(value):
+                return
+            if sigma is None or (isinstance(sigma, (float, int, np.floating, np.integer)) and not np.isfinite(sigma)):
+                print(f"   {label:<28}: {value:{fmt}}{unit}")
+            else:
+                if sigma_fmt is None:
+                    sigma_fmt = fmt
+                print(f"   {label:<28}: {value:{fmt}} ± {sigma:{sigma_fmt}}{unit}")
+        
+        def _print_header(key, label, fmt="", unit="", scale=1.0, sigma_key=None, sigma_fmt=None, sigma_scale=1.0):
+            if key in header:
+                value = header[key] * scale if isinstance(header[key], (float, int, np.floating, np.integer)) else header[key]
+                sigma = None
+                if sigma_key is not None and sigma_key in header:
+                    sigma_header = header[sigma_key]
+                    if sigma_header is not None and (not isinstance(sigma_header, (float, int, np.floating, np.integer)) or np.isfinite(sigma_header)):
+                        sigma = sigma_header * sigma_scale if isinstance(sigma_header, (float, int, np.floating, np.integer)) else sigma_header
+                _print_value(label, value, fmt=fmt, unit=unit, sigma=sigma, sigma_fmt=sigma_fmt)
+                
+        print(f"\n\033[1m\033[4mVIPA extracted spectrum: {target_name} ({band}-band, fiber {label_fiber})\033[0m")
+        print(line)
+        print(" Observation")
+        _print_value("Target name", target_name)
+        _print_header("ACQTIME1", "Observation date")
+        _print_header("INTTIME", "Exposure time", ">10.2f", " mn", scale=1/60)
+        _print_value("Band", band)
+        _print_value("Gain", gain)
+        _print_value("Fiber", label_fiber)
+        if extract_full_sequence:
+            _print_value("Full sequence requested", str(extract_full_sequence), ">10")
+            _print_value("Sequence available", str(flux_seq0 is not None), ">10")
+            if flux_seq0 is not None:
+                _print_value("Number of DITs", NDIT, ">10d")
+        print(line)
+        print(" Target properties")
+        _print_header(f"{band}", "Magnitude", ">10.2f", f" mag ({band})", sigma_key=f"E{band}", sigma_fmt=".2f")
+        _print_header("TEFF", "Effective temperature", ">10.0f", " K", sigma_key="TEFFERR", sigma_fmt=".0f")
+        _print_header("LOGG", "Surface gravity", ">10.2f", " dex [cm/s²]", sigma_key="LOGGERR", sigma_fmt=".2f")
+        _print_header("VSINI", "Projected rotation", ">10.2f", " km/s", sigma_key="VSINIERR", sigma_fmt=".2f")
+        _print_header("VMACRO", "Macroturbulence", ">10.2f", " km/s", sigma_key="VMACERR", sigma_fmt=".2f")
+        _print_header("RA", "Right ascension", ">10.6f", " deg", sigma_key="RAERR", sigma_fmt=".2e")
+        _print_header("DEC", "Declination", ">10.6f", " deg", sigma_key="DECERR", sigma_fmt=".2e")
+        _print_header("RV_BAR", "Barycentric RV", ">10.3f", " km/s", sigma_key="RVERR", sigma_fmt=".3f")
+        _print_header("COR_BAR", "Barycentric correction", ">10.3f", " km/s")
+        _print_header("RV_OBS", "Observed-frame RV", ">10.3f", " km/s", sigma_key="RVERR", sigma_fmt=".3f")
+        if RV_obs is not None and np.any(np.isfinite(RV_obs)):
+            print(f"   {'Observed RV range':<28}: {np.nanmin(RV_obs):>10.3f} to {np.nanmax(RV_obs):.3f} km/s")
+        if cor_bar is not None and np.any(np.isfinite(cor_bar)):
+            print(f"   {'Correction range':<28}: {np.nanmin(cor_bar):>10.3f} to {np.nanmax(cor_bar):.3f} km/s")
+        print(line)
+        print(" Spectral setup")
+        _print_value("Wavelength range", f"{header['LMIN']*1e-3:.3f} to {header['LMAX']*1e-3:.3f} µm" if "LMIN" in header and "LMAX" in header else None)
+        _print_value("Instrumental resolution", np.nanmedian(R0), ">10.0f")
+        _print_value("Sampling resolution", np.nanmedian(R_sampling0), ">10.0f")
+        if degrade_data:
+            _print_value("Target resolution", R_target, ">10.0f")
+        if Rc is not None:
+            _print_value("Cut-off resolution Rc", Rc, ">10.0f")
+            _print_value("Filter type", filter_type)
+        _print_value("Degrade data", str(degrade_data), ">10")
+        _print_value("Filter noise", str(filter_noise), ">10")
+        _print_value("Outlier rejection", str(outliers), ">10")
+        if outliers:
+            _print_value("Outlier sigma threshold", sigma_outliers, ">10.1f")
+        _print_value("Use weight", str(use_weight), ">10")
+        _print_value("Mask NaN values", str(mask_nan_values), ">10")
+        print(line)
+    
+    
+    # Initial missing values
     nan_values0  = ~np.isfinite(flux0)
     nan_values0 |= ~np.isfinite(trans0)
+    if extract_full_sequence:
+        nan_values0 |= np.any(~np.isfinite(flux_seq0), axis=0)
+    
     
     # (first) OUTLIERS FILTERING (if wanted)
     if outliers:
-        NbNaN0 = nan_values0.sum()
-        flux0_HF     = filtered_flux(flux0, R=R_sampling, Rc=Rc, filter_type=filter_type)[0]
-        nan_values0 |= sigma_clip(np.ma.masked_invalid(flux0_HF), sigma=sigma_outliers).mask
-        trans0_HF    = filtered_flux(trans0, R=R_sampling, Rc=Rc, filter_type=filter_type)[0]
-        nan_values0 |= sigma_clip(np.ma.masked_invalid(trans0_HF), sigma=sigma_outliers).mask
-        flux0_HF     = trans0 * filtered_flux(flux0/trans0, R=R_sampling, Rc=Rc, filter_type=filter_type)[0]
-        nan_values0 |= sigma_clip(np.ma.masked_invalid(flux0_HF), sigma=sigma_outliers).mask
+        NbNaN0       = nan_values0.sum()
+        flux0_HF     =          filtered_flux(flux0,        R=R_sampling0, Rc=Rc, filter_type=filter_type)[0]
+        trans0_HF    =          filtered_flux(trans0,       R=R_sampling0, Rc=Rc, filter_type=filter_type)[0]
+        signal0_HF   = trans0 * filtered_flux(flux0/trans0, R=R_sampling0, Rc=Rc, filter_type=filter_type)[0]
+        nan_values0 |= sigma_clip(np.ma.masked_invalid(flux0_HF),   sigma=sigma_outliers).mask
+        nan_values0 |= sigma_clip(np.ma.masked_invalid(trans0_HF),  sigma=sigma_outliers).mask
+        nan_values0 |= sigma_clip(np.ma.masked_invalid(signal0_HF), sigma=sigma_outliers).mask
+        if extract_full_sequence:
+            for idit in range(NDIT):
+                flux0_HF_DIT   =          filtered_flux(flux_seq0[idit],        R=R_sampling0, Rc=Rc, filter_type=filter_type)[0]
+                signal0_HF_DIT = trans0 * filtered_flux(flux_seq0[idit]/trans0, R=R_sampling0, Rc=Rc, filter_type=filter_type)[0]
+                nan_values0   |= sigma_clip(np.ma.masked_invalid(flux0_HF_DIT),   sigma=sigma_outliers).mask
+                nan_values0   |= sigma_clip(np.ma.masked_invalid(signal0_HF_DIT), sigma=sigma_outliers).mask
         print(f"{nan_values0.sum() - NbNaN0} outliers found...")
-        weight0[nan_values0]      = np.nan
-        flux0[nan_values0]        = np.nan
-        sigma0[nan_values0]       = np.nan
-        trans0[nan_values0]       = np.nan
-        sigma_trans0[nan_values0] = np.nan
+        flux0        = _mask(flux0,        nan_values0)
+        sigma0       = _mask(sigma0,       nan_values0)
+        trans0       = _mask(trans0,       nan_values0)
+        sigma_trans0 = _mask(sigma_trans0, nan_values0)
+        weight0      = _mask(weight0,      nan_values0)
+        if extract_full_sequence:
+            flux_seq0  = _mask(flux_seq0,  nan_values0)
+            sigma_seq0 = _mask(sigma_seq0, nan_values0)
+    
     
     # Realistic noise realisation (for residual comparison purposes)
     noise0  = np.random.normal(0, sigma0, len(wave0)) # white noise at sigma0    
+    Rc_init = R0
+    noise0  = filtered_flux(noise0, R=R_sampling0, Rc=Rc_init, filter_type=filter_type)[1] # the noise is not entirely white.. (low pass filter at Rc_init)
+    noise0  = noise0 * np.sqrt(np.nanmean(sigma0**2)) / np.nanstd(noise0)
     
-    Rc_init          = R_instru
-    filter_init_type = "gaussian"
-    
-    # Rc_init          = None
-    # filter_init_type = None
-    
-    if Rc_init is not None:
-        noise0 = filtered_flux(noise0, R=R_sampling, Rc=Rc_init, filter_type=filter_init_type)[1] # the noise is not entirely white.. (low pass filter at Rc_init)
-    
-    noise0 = noise0 * np.sqrt(np.nanmean(sigma0**2)) / np.nanstd(noise0)
     
     # Low-pass (if wanted): every "signal" above R_instru is filtered and is assumed to be noise
     if filter_noise:
-        Rc_noise          = R_instru
-        filter_noise_type = "gaussian"
-        
-        flux0  = filtered_flux(flux=flux0,  R=R_sampling, Rc=Rc_noise, filter_type=filter_noise_type)[1]
-        noise0 = filtered_flux(flux=noise0, R=R_sampling, Rc=Rc_noise, filter_type=filter_noise_type)[1]
-        
+        Rc_noise = R0
+        flux0    = filtered_flux(flux=flux0,  R=R_sampling0, Rc=Rc_noise, filter_type=filter_type)[1]
+        trans0   = filtered_flux(flux=trans0, R=R_sampling0, Rc=Rc_noise, filter_type=filter_type)[1]
+        noise0   = filtered_flux(flux=noise0, R=R_sampling0, Rc=Rc_noise, filter_type=filter_type)[1]
         # Assuming constant sigma: estimating the power fraction of noise that would be filtered
-        fn_LF  = compute_filter_variance_factor(N=len(wave0), R_sampling=R_sampling, Rc=Rc_noise, filter_type=filter_noise_type, Rc_init=Rc_init, filter_init_type=filter_init_type, Rc_noise=None, filter_noise_type=None, Rc_conv=None, filter_conv_type=None)[1]
-        sigma0 = sigma0 * np.sqrt(fn_LF)
-        
-        trans0       = filtered_flux(flux=trans0, R=R_sampling, Rc=Rc_noise, filter_type=filter_noise_type)[1]
-        sigma_trans0 = sigma_trans0 * np.sqrt(fn_LF)
-        
+        fn_LF        = compute_filter_variance_factor(N=len(wave0), R_sampling=R_sampling0, Rc=Rc_noise, filter_type=filter_type, Rc_init=Rc_init, filter_init_type=filter_type, Rc_noise=None, filter_noise_type=None, Rc_conv=None, filter_conv_type=None)[1]
+        sigma0       = _scale_sigma(sigma0,       fn_LF)
+        sigma_trans0 = _scale_sigma(sigma_trans0, fn_LF)
+        if extract_full_sequence:
+            flux_seq0  = np.asarray([filtered_flux(flux=row, R=R_sampling0, Rc=Rc_noise, filter_type=filter_type)[1] for row in flux_seq0], dtype=float)
+            sigma_seq0 = _scale_sigma(sigma_seq0, fn_LF)
     else:
-        Rc_noise          = None
-        filter_noise_type = None
+        Rc_noise = None
+    
     
     # Artificially degrating the data to an arbitrary resolution R (if wanted)
     if degrade_data:
         
-        # --- Convoluing the data to R_target
-        
-        if R_target == R_instru:
-            Rc_conv          = None # No convolution needed
-            filter_conv_type = None
-
-        else:
-            sigma_kernel     = np.sqrt(  (R_sampling / R_target)**2 - (R_sampling / R_instru)**2 ) / np.sqrt(2*np.log(2))
-            Rc_conv          = 2*R_sampling / (np.pi * sigma_kernel) * np.sqrt(np.log(2)/2)
-            filter_conv_type = "gaussian"
-            
-            flux0  = filtered_flux(flux=flux0,  R=R_sampling, Rc=Rc_conv, filter_type=filter_conv_type)[1]
-            noise0 = filtered_flux(flux=noise0, R=R_sampling, Rc=Rc_conv, filter_type=filter_conv_type)[1]
-
-            # Assuming constant sigma: estimating the power fraction of noise that would be filtered
-            fn_LF  = compute_filter_variance_factor(N=len(wave0), R_sampling=R_sampling, Rc=Rc_conv, filter_type=filter_conv_type, Rc_init=Rc_init, filter_init_type=filter_init_type, Rc_noise=Rc_noise, filter_noise_type=filter_noise_type, Rc_conv=None, filter_conv_type=None)[1]
-            sigma0 = sigma0 * np.sqrt(fn_LF)
-            
-            trans0       = filtered_flux(flux=trans0,  R=R_sampling, Rc=Rc_conv, filter_type=filter_conv_type)[1]
-            sigma_trans0 = sigma_trans0 * np.sqrt(fn_LF)
-        
-        # --- Rebinning to Nyquist sampling
-        
         # Nyquist sampled wavelength axis
-        R     = R_target
-        dl    = (lmin + lmax)/2 /(2*R)
-        wave  = np.arange(lmin, lmax, dl)
+        wave  = get_wavelength_axis_constant_dl(lmin=header["LMIN"]*1e-3, lmax=header["LMAX"]*1e-3, R=R_target)        
         dwave = np.gradient(wave)
         
+        # New sampling resolution
+        R_sampling = get_resolution(wavelength=wave, func=np.array)
+
         # Interpolating weight
         nan_values = interp1d(wave0, nan_values0, bounds_error=False, fill_value=np.nan)(wave) != 0
         
-        # Rebinning data
-        flux, sigma, weight   = rebin_spectrum_mean(specHR=flux0,  sigmaHR=sigma0,       weightHR=weight0, lamHR=wave0, lamLR=wave)
-        noise, _, _           = rebin_spectrum_mean(specHR=noise0, sigmaHR=None,         weightHR=None,    lamHR=wave0, lamLR=wave)
-        trans, sigma_trans, _ = rebin_spectrum_mean(specHR=trans0, sigmaHR=sigma_trans0, weightHR=None,    lamHR=wave0, lamLR=wave)
+        # Degrading data
+        bin_type        = "mean" # "mean" or "overlap"
+        Spectrum_flux   = Spectrum(wavelength=wave0, flux=flux0,   sigma=sigma0,       R=R0).degrade_resolution(wave_output=wave, R_output=R_target, filter_type=filter_type, bin_type=bin_type)
+        Spectrum_trans  = Spectrum(wavelength=wave0, flux=trans0,  sigma=sigma_trans0, R=R0).degrade_resolution(wave_output=wave, R_output=R_target, filter_type=filter_type, bin_type=bin_type)
+        Spectrum_weight = Spectrum(wavelength=wave0, flux=weight0, sigma=None,         R=R0).degrade_resolution(wave_output=wave, R_output=R_target, filter_type=filter_type, bin_type=bin_type)
+        Spectrum_noise  = Spectrum(wavelength=wave0, flux=noise0,  sigma=None,         R=R0).degrade_resolution(wave_output=wave, R_output=R_target, filter_type=filter_type, bin_type=bin_type)
         
-        # from .spectrum import rebin_spectrum_overlap
-        # flux, sigma, weight, _   = rebin_spectrum_overlap(specHR=flux0,  sigmaHR=sigma0, weightHR=weight0, lamHR=wave0, lamLR=wave, dlam=dwave)
-        # noise, _, _, _           = rebin_spectrum_overlap(specHR=noise0, sigmaHR=None,   weightHR=None,    lamHR=wave0, lamLR=wave, dlam=dwave)
-        # trans, sigma_trans, _, _ = rebin_spectrum_overlap(specHR=trans0,  sigmaHR=sigma_trans0, weightHR=None, lamHR=wave0, lamLR=wave, dlam=dwave)
+        # Retrieving data from Spectrum classes
+        flux        = Spectrum_flux.flux
+        sigma       = Spectrum_flux.sigma
+        R           = Spectrum_flux.R
+        trans       = Spectrum_trans.flux
+        sigma_trans = Spectrum_trans.sigma
+        weight      = Spectrum_weight.flux
+        noise       = Spectrum_noise.flux
+        
+        # Assuming constant sigma: estimating the power fraction of noise that would be filtered by the convolution
+        q                             = np.nanmedian(R_sampling0) / np.nanmedian(R_sampling) # = dl_output / dl_input
+        sigma_bin                     = np.sqrt(np.maximum(q**2 - 1.0, 0.0) / 12.0)          # [input px]
+        sigma_kernel_2                = (R_sampling0 / np.sqrt(2*np.log(2)))**2 * ( 1/R_target**2 - 1/R0**2 ) - sigma_bin**2
+        sigma_kernel                  = np.sqrt(np.clip(a=sigma_kernel_2, a_min=0, a_max=None))
+        sigma_kernel[sigma_kernel==0] = np.nan
+        Rc_conv                       = 2*R_sampling0 / (np.pi * sigma_kernel) * np.sqrt(np.log(2)/2)
+        fn_LF                         = compute_filter_variance_factor(N=len(wave0), R_sampling=R_sampling0, Rc=Rc_conv, filter_type=filter_type, Rc_init=Rc_init, filter_init_type=filter_type, Rc_noise=Rc_noise, filter_noise_type=filter_type, Rc_conv=None, filter_conv_type=None)[1]
+        sigma                         = _scale_sigma(sigma,       fn_LF)
+        sigma_trans                   = _scale_sigma(sigma_trans, fn_LF)
         
         # Rebinning does not propagate correctly the sigmas since it assumses i.d.d noise:
-        fn_rebin    = compute_rebin_variance_factor(lamHR=wave0, maskHR=~nan_values0, lamLR=wave, dlam=dwave, R_sampling=R_sampling, Rc_init=Rc_init, filter_init_type=filter_init_type, Rc_noise=Rc_noise, filter_noise_type=filter_noise_type, Rc_conv=Rc_conv, filter_conv_type=filter_conv_type)
-        sigma       = sigma       * np.sqrt(fn_rebin)
-        sigma_trans = sigma_trans * np.sqrt(fn_rebin)
-        
-        # New sampling resolution
-        R_sampling = R
+        fn_rebin    = compute_rebin_variance_factor(lamHR=wave0, maskHR=~nan_values0, lamLR=wave, dlam=dwave, R_sampling=R_sampling0, Rc_init=Rc_init, filter_init_type=filter_type, Rc_noise=Rc_noise, filter_noise_type=filter_type, Rc_conv=Rc_conv, filter_conv_type=filter_type)
+        sigma       = _scale_sigma(sigma,       fn_rebin)
+        sigma_trans = _scale_sigma(sigma_trans, fn_rebin)
+
+        # Degrading full sequence, if requested
+        if extract_full_sequence:
+            flux_seq  = np.asarray([Spectrum(wavelength=wave0, flux=flux_seq0[idit], sigma=None, R=R0).degrade_resolution(wave_output=wave, R_output=R_target, filter_type=filter_type, bin_type=bin_type).flux for idit in range(NDIT)], dtype=float)        
+            sigma_seq = Spectrum(wavelength=wave0, flux=np.zeros_like(sigma_seq0), sigma=sigma_seq0, R=R0).degrade_resolution(wave_output=wave, R_output=R_target, filter_type=filter_type, bin_type=bin_type).sigma
+            sigma_seq = _scale_sigma(sigma_seq, fn_LF*fn_rebin)
+        else:
+            flux_seq = sigma_seq = None
 
     # Otherwise, takes the raw data
     else:
-        Rc_conv          = None # No convolution needed
-        filter_conv_type = None
-        R                = R_instru
-        wave             = wave0
-        weight           = weight0
-        nan_values       = nan_values0
-        flux             = flux0
-        sigma            = sigma0
-        noise            = noise0
-        trans            = trans0
-        sigma_trans      = sigma_trans0
-        
+        Rc_conv     = None # No convolution needed
+        R           = R0
+        R_sampling  = R_sampling0
+        wave        = wave0
+        weight      = weight0
+        nan_values  = nan_values0
+        flux        = flux0
+        sigma       = sigma0
+        noise       = noise0
+        trans       = trans0
+        sigma_trans = sigma_trans0
+        flux_seq    = flux_seq0  if extract_full_sequence else None
+        sigma_seq   = sigma_seq0 if extract_full_sequence else None
+    
+    
     # MM-like post-processing
-    flux_HF  = trans * filtered_flux(flux/trans,  R=R_sampling, Rc=Rc, filter_type=filter_type)[0]
-    noise_HF = trans * filtered_flux(noise/trans, R=R_sampling, Rc=Rc, filter_type=filter_type)[0]        
+    signal_HF = trans * filtered_flux(flux/trans,  R=R_sampling, Rc=Rc, filter_type=filter_type)[0]
+    noise_HF  = trans * filtered_flux(noise/trans, R=R_sampling, Rc=Rc, filter_type=filter_type)[0]        
     
     # Assuming constant sigma: estimating the power fraction of noise that would be filtered
-    fn_HF    = compute_filter_variance_factor(N=len(wave), R_sampling=R_sampling, Rc=Rc, filter_type=filter_type, Rc_init=Rc_init, filter_init_type=filter_init_type, Rc_noise=Rc_noise, filter_noise_type=filter_noise_type, Rc_conv=Rc_conv, filter_conv_type=filter_conv_type)[0]
-    sigma_HF = np.sqrt(fn_HF) * sigma
+    fn_HF    = compute_filter_variance_factor(N=len(wave), R_sampling=R_sampling, Rc=Rc, filter_type=filter_type, Rc_init=Rc_init, filter_init_type=filter_type, Rc_noise=Rc_noise, filter_noise_type=filter_type, Rc_conv=Rc_conv, filter_conv_type=filter_type)[0]
+    sigma_HF = _scale_sigma(sigma, fn_HF)
+    
+    # Post-processing full sequence, if requested
+    if extract_full_sequence:
+        signal_seq_HF = np.asarray([trans * filtered_flux(flux=flux_seq[idit] / trans, R=R_sampling, Rc=Rc, filter_type=filter_type)[0] for idit in range(NDIT)], dtype=float)
+        sigma_seq_HF  = _scale_sigma(sigma_seq, fn_HF)
+    else:
+        signal_seq_HF = None
+        sigma_seq_HF  = None
+    
     
     # (final) OUTLIERS FILTERING (if wanted)
     if outliers:
         NbNaN       = nan_values.sum()
-        flux_HF     = filtered_flux(flux, R=R_sampling, Rc=Rc, filter_type=filter_type)[0]
-        nan_values |= sigma_clip(np.ma.masked_invalid(flux_HF), sigma=sigma_outliers).mask
-        trans_HF    = filtered_flux(trans, R=R_sampling, Rc=Rc, filter_type=filter_type)[0]
-        nan_values |= sigma_clip(np.ma.masked_invalid(trans_HF), sigma=sigma_outliers).mask
-        flux_HF     = trans * filtered_flux(flux/trans, R=R_sampling, Rc=Rc, filter_type=filter_type)[0]
-        nan_values |= sigma_clip(np.ma.masked_invalid(flux_HF), sigma=sigma_outliers).mask
+        flux_HF     =         filtered_flux(flux,       R=R_sampling, Rc=Rc, filter_type=filter_type)[0]
+        trans_HF    =         filtered_flux(trans,      R=R_sampling, Rc=Rc, filter_type=filter_type)[0]
+        signal_HF   = trans * filtered_flux(flux/trans, R=R_sampling, Rc=Rc, filter_type=filter_type)[0]
+        nan_values |= sigma_clip(np.ma.masked_invalid(flux_HF),   sigma=sigma_outliers).mask
+        nan_values |= sigma_clip(np.ma.masked_invalid(trans_HF),  sigma=sigma_outliers).mask
+        nan_values |= sigma_clip(np.ma.masked_invalid(signal_HF), sigma=sigma_outliers).mask
+        if extract_full_sequence:
+            for idit in range(NDIT):
+                flux_HF_DIT   =         filtered_flux(flux_seq[idit],       R=R_sampling, Rc=Rc, filter_type=filter_type)[0]
+                signal_HF_DIT = trans * filtered_flux(flux_seq[idit]/trans, R=R_sampling, Rc=Rc, filter_type=filter_type)[0]
+                nan_values   |= sigma_clip(np.ma.masked_invalid(flux_HF_DIT),   sigma=sigma_outliers).mask
+                nan_values   |= sigma_clip(np.ma.masked_invalid(signal_HF_DIT), sigma=sigma_outliers).mask
         print(f"{nan_values.sum() - NbNaN} outliers found...")
-
+    
     # Removing the flagged NaN values
     if mask_nan_values:
-        weight[nan_values]      = np.nan
-        flux[nan_values]        = np.nan
-        sigma[nan_values]       = np.nan
-        noise[nan_values]       = np.nan
-        trans[nan_values]       = np.nan
-        sigma_trans[nan_values] = np.nan
-        flux_HF[nan_values]     = np.nan
-        sigma_HF[nan_values]    = np.nan
-        noise_HF[nan_values]    = np.nan
+        flux        = _mask(flux,        nan_values)
+        sigma       = _mask(sigma,       nan_values)
+        trans       = _mask(trans,       nan_values)
+        sigma_trans = _mask(sigma_trans, nan_values)
+        weight      = _mask(weight,      nan_values)
+        signal_HF   = _mask(signal_HF,   nan_values)
+        sigma_HF    = _mask(sigma_HF,    nan_values)
+        noise_HF    = _mask(noise_HF,    nan_values)
+        if extract_full_sequence:
+            flux_seq      = _mask(flux_seq,      nan_values)
+            sigma_seq     = _mask(sigma_seq,     nan_values)
+            signal_seq_HF = _mask(signal_seq_HF, nan_values)
+            sigma_seq_HF  = _mask(sigma_seq_HF,  nan_values)
 
     # Weight function (if wanted)
     if use_weight:
@@ -2934,16 +2938,28 @@ def extract_vipa_data(instru, target_name, gain, label_fiber, degrade_data=True,
     else:
         weight = None
     
+    
     # Sigma propagation sanity check
     if verbose:
         print()
-        print(f"rms_z      = {np.sqrt(np.nanmean((noise / sigma)**2)):.3f} ({np.nanstd(noise) / np.sqrt(np.nanmean(sigma**2)):.3f})")
-        print(f"rms_z (HF) = {np.sqrt(np.nanmean((noise_HF / sigma_HF)**2)):.3f} ({np.nanstd(noise_HF) / np.sqrt(np.nanmean(sigma_HF**2)):.3f})")
+        print(f"sigma(noise)    / sigma    = {100*np.nanstd(noise) / np.sqrt(np.nanmean(sigma**2)):.1f} %")
+        print(f"sigma_HF(noise) / sigma_HF = {100*np.nanstd(noise_HF) / np.sqrt(np.nanmean(sigma_HF**2)):.1f} %")
+        if extract_full_sequence:
+            sigma_seq_emp                           = mad_std(np.nan_to_num(flux_seq), axis=0, ignore_nan=True)
+            sigma_seq_emp[sigma_seq_emp == 0]       = np.nan
+            sigma_seq_HF_emp                        = mad_std(np.nan_to_num(signal_seq_HF), axis=0, ignore_nan=True)
+            sigma_seq_HF_emp[sigma_seq_HF_emp == 0] = np.nan
+            print(f"sigma(seq.)     / sigma    = {100*np.sqrt(np.nanmean(sigma_seq**2))*np.sqrt(header['NDIT']) / np.sqrt(np.nanmean(sigma**2)):.1f} %")
+            print(f"sigma_HF(seq.)  / sigma_HF = {100*np.sqrt(np.nanmean(sigma_seq_HF**2))*np.sqrt(header['NDIT']) / np.sqrt(np.nanmean(sigma_HF**2)):.1f} %")
+            print(f"seq. sanity check          = {100*np.sqrt(np.nanmean(sigma_seq_emp**2)) / np.sqrt(np.nanmean(sigma_seq**2)):.1f} %")
+            print(f"HF seq. sanity check       = {100*np.sqrt(np.nanmean(sigma_seq_HF_emp**2)) / np.sqrt(np.nanmean(sigma_seq_HF**2)):.1f} %")
+            
     
     # Filters dictionnary
-    filters = dict(Rc_init=Rc_init, filter_init_type_init=filter_init_type, Rc_noise=Rc_noise, filter_noise_type_init=filter_noise_type, Rc_conv=Rc_conv, filter_conv_type_init=filter_conv_type)
+    filters = dict(Rc_init=Rc_init, filter_init_type_init=filter_type, Rc_noise=Rc_noise, filter_noise_type_init=filter_type, Rc_conv=Rc_conv, filter_conv_type_init=filter_type)
     
-    return wave, flux, sigma, noise, flux_HF, sigma_HF, noise_HF, weight, trans, sigma_trans, exposure_time, filters, R
+    
+    return wave, flux, sigma, noise, signal_HF, sigma_HF, noise_HF, weight, trans, sigma_trans, flux_seq, sigma_seq, signal_seq_HF, sigma_seq_HF, filters, R, header, time_jd, RV_obs, RV_bar, cor_bar
 
 
 

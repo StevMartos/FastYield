@@ -1,6 +1,6 @@
 # import FastYield modules
 from .config import c, R0_max, config_data_list, T_earth, lg_earth, vrot_earth, drv_earth, airmass_earth, T_sun, lg_sun, vrot_sun, M_earth, M_sun, AU, G, colormaps_path, sim_data_path
-from .get_specs import _load_tell_trans, get_config_data, get_transmission, get_PSF_profile, get_R_instru
+from .get_specs import load_tell_trans, get_config_data, get_transmission, get_PSF_profile, get_R_instru
 from .spectrum import get_counts_from_density, load_vega_spectrum, get_wave_K, get_wave_band, get_wavelength_axis_constant_R, filtered_flux, Spectrum, load_star_spectrum, load_planet_spectrum, load_albedo_spectrum, get_spectrum_contribution_name_model, get_thermal_reflected_spectrum
 from .FastCurves import FastCurves
 from .FastYield import planet_types, load_planet_table, get_SNR_from_table, find_matching_planets, plot_matching_planets
@@ -116,7 +116,7 @@ def colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_plan
     
     # Tellurics transmission spectrum (from SkyCalc), if needed  
     if tellurics:
-        wave_tell, trans_tell = _load_tell_trans(airmass=1.0)
+        wave_tell, trans_tell = load_tell_trans(airmass=1.0)
         trans_tell            = Spectrum(wavelength=wave_tell, flux=trans_tell).interpolate_wavelength(wave_output=wave_instru, renorm=False, fill_value=(trans_tell[0], trans_tell[-1])) 
     else:
         trans_tell = None
@@ -437,7 +437,7 @@ def colormap_bandwidth_resolution_with_constant_Dlambda(instru="HARMONI", T_plan
     
     # Tellurics transmission spectrum (from SkyCalc), if needed  
     if tellurics :
-        wave_tell, trans_tell = _load_tell_trans(airmass=1.0)
+        wave_tell, trans_tell = load_tell_trans(airmass=1.0)
         trans_tell            = Spectrum(wavelength=wave_tell, flux=trans_tell).interpolate_wavelength(wave_output=wave_instru, renorm=False, fill_value=(trans_tell[0], trans_tell[-1])) 
     else:
         trans_tell = None
@@ -679,7 +679,7 @@ def colormap_bandwidth_Tp(instru, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_s
         
     # Tellurics transmission spectrum (from SkyCalc), if needed  
     if tellurics :
-        wave_tell, trans_tell = _load_tell_trans(airmass=1.0)
+        wave_tell, trans_tell = load_tell_trans(airmass=1.0)
         trans_tell            = Spectrum(wavelength=wave_tell, flux=trans_tell).interpolate_wavelength(wave_output=wave_instru, renorm=False, fill_value=(trans_tell[0], trans_tell[-1])) 
     else:
         trans_tell = None
@@ -939,7 +939,7 @@ def colormap_bands_Tp(instru, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, 
         
     # Tellurics transmission spectrum (from SkyCalc), if needed  
     if tellurics :
-        wave_tell, trans_tell = _load_tell_trans(airmass=1.0)
+        wave_tell, trans_tell = load_tell_trans(airmass=1.0)
         trans_tell            = Spectrum(wavelength=wave_tell, flux=trans_tell).interpolate_wavelength(wave_output=wave_instru, renorm=False, fill_value=(trans_tell[0], trans_tell[-1])) 
     else:
         trans_tell = None
@@ -2272,7 +2272,7 @@ def colormap_MM_DI_R_Tp(lmin=1, lmax=2.5, Rmin=1_000, Rmax=100_000, Tmin=200, Tm
     
     # Tellurics transmission spectrum (from SkyCalc), if needed  
     if tellurics :
-        wave_tell, trans_tell = _load_tell_trans(airmass=1.0)
+        wave_tell, trans_tell = load_tell_trans(airmass=1.0)
         trans_tell            = Spectrum(wavelength=wave_tell, flux=trans_tell).interpolate_wavelength(wave_output=wave_instru, renorm=False, fill_value=(trans_tell[0], trans_tell[-1])) 
     else:
         trans_tell = None

@@ -39,7 +39,7 @@ def _load_instru_trans(instru, band):
 
 @lru_cache(maxsize=2)
 def _load_tell_trans(airmass, return_R=False):
-    """Load *once* the native sky transmission curve for a given airmass."""
+    """Load *once* the native sky transmission curve for a given airmass (cached version)."""
     sim_data_path   = get_sim_data_path()
     wave_tell, tell = fits.getdata(f"{sim_data_path}/Transmission/sky_transmission_airmass_{airmass:.1f}.fits")
     if return_R:
@@ -47,7 +47,15 @@ def _load_tell_trans(airmass, return_R=False):
         R_tell = get_resolution(wavelength=wave_tell, func=np.array)
         return wave_tell, tell, R_tell
     else:
-        return wave_tell, tell
+        return wave_tell, tell, None
+
+def load_tell_trans(airmass, return_R=False):
+    """Load *once* the native sky transmission curve for a given airmass (uncached version)."""
+    wave_tell, tell, R_tell = _load_tell_trans(airmass=airmass, return_R=return_R)
+    if return_R:
+        return np.copy(wave_tell), np.copy(tell), np.copy(R_tell)
+    else:
+        return np.copy(wave_tell), np.copy(tell)
 
 @lru_cache(maxsize=32)
 def _load_psf_profile(instru, band, strehl, apodizer, coronagraph):
@@ -321,7 +329,7 @@ def get_transmission(instru, wave_band, band, tellurics, apodizer, strehl=None, 
     if tellurics: # if ground-based observation
         # import spectrum modules
         from .spectrum import Spectrum
-        wave_tell, tell = _load_tell_trans(airmass=1.0)
+        wave_tell, tell = load_tell_trans(airmass=1.0)
         trans          *= Spectrum(wave_tell, tell).degrade_resolution(wave_band, renorm=False, gaussian_filtering=gaussian_filtering).flux # degraded tellurics transmission on the considered band
 
     # Numerical cleanup
