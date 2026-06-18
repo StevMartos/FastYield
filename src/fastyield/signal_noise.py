@@ -34,7 +34,7 @@ warnings.filterwarnings("ignore", message="Header block contains null bytes*")
 # -------------------------------------------------------------------------
 
 @lru_cache(maxsize=50)
-def estimate_RON_UTR(N, RON0, RON_lim=0.):
+def estimate_RON_UTR(N, RON0, RON_lim):
     """
     Estimate the effective readout noise (RON) for an Up-the-Ramp (UTR) sampling scheme (see: https://ntrs.nasa.gov/api/citations/20070034922/downloads/20070034922.pdf)
 
@@ -72,10 +72,7 @@ def estimate_RON_UTR(N, RON0, RON_lim=0.):
 
     RON_eff_2 = (RON0**2) * 12 * (N - 1) / (N * (N + 1)) + RON_lim**2
     
-    RON_eff = min(np.sqrt(RON_eff_2), RON0)
-
-    return RON_eff
-
+    return np.sqrt(RON_eff_2)
 
 
 def get_DIT_RON(config_data, instru_type, apodizer, PSF_profile, separation, star_spectrum_band, exposure_time, min_DIT, max_DIT, trans, RON0, RON_lim, saturation_e, input_DIT, separation_planet=None):
