@@ -10,6 +10,7 @@ from astropy.stats import sigma_clip
 # import matplotlib modules
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes, mark_inset
+from matplotlib.ticker import MaxNLocator, ScalarFormatter
 
 # import numpy modules
 import numpy as np
@@ -547,11 +548,11 @@ def get_CCF_2D_rv(instru, S_res, wave, trans, R, Rc, filter_type, model, T, lg, 
     # 5) Prepare data matrix once
     S2D        = S_res.reshape(NbChannel, Npix)
     valid_data = np.isfinite(S2D)
-    S0         = np.nan_to_num(S2D, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32, copy=False)
-    M0         = valid_data.astype(np.float32, copy=False)
+    S0         = np.nan_to_num(S2D, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float64, copy=False)
+    M0         = valid_data.astype(np.float64, copy=False)
 
     # 6) Build all RV-shifted templates
-    Tmat = np.full((Nrv, NbChannel), np.nan, dtype=np.float32)
+    Tmat = np.full((Nrv, NbChannel), np.nan, dtype=np.float64)
     
     # 7) Loop over RV values (vectorize across all pixels inside)
     for k in range(len(rv_arr)):
@@ -576,18 +577,18 @@ def get_CCF_2D_rv(instru, S_res, wave, trans, R, Rc, filter_type, model, T, lg, 
             continue
         t /= norm  # normalized global template
         
-        Tmat[k, :] = t.astype(np.float32)
+        Tmat[k, :] = t.astype(np.float64)
     
     # 8) Remove invalid RV templates
     valid_rv = np.isfinite(Tmat).any(axis=1)
     if not np.any(valid_rv):
         return None, None
-    T0 = np.nan_to_num(Tmat, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32, copy=False)
+    T0 = np.nan_to_num(Tmat, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float64, copy=False)
 
     # 9) Fast matrix products
     numerator   = T0 @ S0
     denominator = np.sqrt((T0**2) @ M0)
-    CCF2D       = np.full_like(numerator, np.nan, dtype=np.float32)
+    CCF2D       = np.full_like(numerator, np.nan, dtype=np.float64)
     good        = denominator > 0
     CCF2D[good] = numerator[good] / denominator[good]
     CCF         = CCF2D.reshape(Nrv, NbLine, NbColumn)
@@ -951,7 +952,10 @@ def get_CCF_1D_rv(instru, band, d, d_bkg, wave, trans, R, Rc, filter_type, model
             if compare_data:
                 fig.suptitle(f"{instru} {tn} data sets, with R={np.nanmedian(R):.0f} and $R_c$={Rc} \n correlation strength = {round(np.nansum(d * template_shift) / np.sqrt(np.nansum(d**2) * np.nansum(template_shift**2)), 3)}", fontsize=20)
             else:
-                fig.suptitle(f"{instru} {tn} data and {model} template on {band}-band,\n with $T$={round(T)}K, lg={round(lg, 1)}, rv={round(rv, 1)}km/s, vsini={round(vsini, 1)}km/s, R={int(np.nanmedian(R)):.0f} and $R_c$={Rc} (correlation strength = {round(np.nansum(d * template_shift) / np.sqrt(np.nansum(d**2) * np.nansum(template_shift**2)), 3)})", fontsize=20)
+                if lg is None:
+                    fig.suptitle(f"{instru} {tn} data and {model} template on {band}-band,\n with $T$={T:.0f}K, rv={rv:.1f}km/s, vsini={vsini:.1f}km/s, R={int(np.nanmedian(R)):.0f} and $R_c$={Rc:.0f} (correlation strength = {np.nansum(d * template_shift) / np.sqrt(np.nansum(d**2) * np.nansum(template_shift**2)):.3f})", fontsize=20)
+                else:
+                    fig.suptitle(f"{instru} {tn} data and {model} template on {band}-band,\n with $T$={T:.0f}K, lg={lg:.1f}, rv={rv:.1f}km/s, vsini={vsini:.1f}km/s, R={int(np.nanmedian(R)):.0f} and $R_c$={Rc:.0f} (correlation strength = {np.nansum(d * template_shift) / np.sqrt(np.nansum(d**2) * np.nansum(template_shift**2)):.3f})", fontsize=20)
 
             # Plot high-pass filtered data and template
             axs[0, 0].set_ylabel("High-pass flux", fontsize=14)
@@ -1208,13 +1212,13 @@ def plot_CCF_1D_rv(instru, band, target_name, d, d_bkg, wave, trans, R, Rc, filt
     
     # Estimating RV
     if calc_logL:
-        P                                               = np.exp(logL[mask_prior] - np.nanmax(logL[mask_prior]))
-        dv                                              = np.gradient(rv_arr[mask_prior])
-        norm                                            = np.nansum(P * dv)
-        P                                               = P / norm
-        _, optimal_values, uncertainties, bounds_1sigma = estimate_uncertainties_1sigma(P=P, func_marg=np.nansum, params=[rv_arr[mask_prior]])
-        rv                                              = optimal_values[0]
-        sigma_rv                                        = uncertainties[0]
+        P                                            = np.exp(logL[mask_prior] - np.nanmax(logL[mask_prior]))
+        dv                                           = np.gradient(rv_arr[mask_prior])
+        norm                                         = np.nansum(P * dv)
+        P                                            = P / norm
+        optimal_values, uncertainties, bounds_1sigma = estimate_uncertainties_1sigma(P=P, func_marg=np.nansum, params=[rv_arr[mask_prior]])
+        rv                                           = optimal_values[0]
+        sigma_rv                                     = uncertainties[0]
     else:
         rv       = rv_arr[mask_prior][np.nanargmax(CCF[mask_prior])]
         sigma_rv = None
@@ -1271,7 +1275,10 @@ def plot_CCF_1D_rv(instru, band, target_name, d, d_bkg, wave, trans, R, Rc, filt
         if compare_data:
             title += f"\nwith $R_c$ = {Rc}"
         else:
-            title += f"\nat $T$ = {T:.0f}K, "+r"$\log g$ = "+f"{lg:.2f} and Vsini = {vsini:.2f} km/s with $R_c$ = {Rc}"
+            if lg is None:
+                title += f"\nat $T$ = {T:.0f}K and Vsini = {vsini:.2f} km/s with $R_c$ = {Rc}"
+            else:
+                title += f"\nat $T$ = {T:.0f}K, "+r"$\log g$ = "+f"{lg:.2f} and Vsini = {vsini:.2f} km/s with $R_c$ = {Rc}"
         ax1.set_title(title, fontsize=16, pad=15)        
         ax1.set_xlabel("Observed radial velocity [km/s]", fontsize=16, labelpad=10)
         ax1.set_ylabel("CCF [S/N]",                       fontsize=16, labelpad=10)
@@ -1777,13 +1784,13 @@ def plot_CCF_vsini(instru, band, target_name, d, d_bkg, wave, trans, R, Rc, filt
     
     # Estimating Vsini
     if calc_logL:
-        P                                               = np.exp(logL[mask_prior] - np.nanmax(logL[mask_prior]))
-        dv                                              = np.gradient(vsini_arr[mask_prior])
-        norm                                            = np.nansum(P * dv)
-        P                                               = P / norm
-        _, optimal_values, uncertainties, bounds_1sigma = estimate_uncertainties_1sigma(P=P, func_marg=np.nansum, params=[vsini_arr[mask_prior]])
-        vsini                                           = optimal_values[0]
-        sigma_vsini                                     = uncertainties[0]
+        P                                            = np.exp(logL[mask_prior] - np.nanmax(logL[mask_prior]))
+        dv                                           = np.gradient(vsini_arr[mask_prior])
+        norm                                         = np.nansum(P * dv)
+        P                                            = P / norm
+        optimal_values, uncertainties, bounds_1sigma = estimate_uncertainties_1sigma(P=P, func_marg=np.nansum, params=[vsini_arr[mask_prior]])
+        vsini                                        = optimal_values[0]
+        sigma_vsini                                  = uncertainties[0]
     else:
         vsini       = vsini_arr[mask_prior][np.nanargmax(CCF[mask_prior])]
         sigma_vsini = None
@@ -1811,7 +1818,10 @@ def plot_CCF_vsini(instru, band, target_name, d, d_bkg, wave, trans, R, Rc, filt
         if compare_data:
             title += f"\nwith $R_c$ = {Rc}"
         else:
-            title += f"\nat $T$ = {round(T)}K, "+r"$\log g$ = "+f"{round(lg, 1)} and RV = {round(rv, 1)} km/s\nwith $R_c$ = {Rc}"
+            if lg is None:
+                title += f"\nat $T$ = {T:.0f}K and RV = {rv:.1f} km/s\nwith $R_c$ = {Rc:.0f}"
+            else:
+                title += f"\nat $T$ = {T:.0f}K, "+r"$\log g$ = "+f"{lg:.1f} and RV = {rv:.1f} km/s\nwith $R_c$ = {Rc:.0f}"
         ax1.set_title(title, fontsize=18, pad=15)        
         ax1.set_xlabel("Rotational Velocity [km/s]", fontsize=14, labelpad=10)
         ax1.set_ylabel("CCF [S/N]", fontsize=14, labelpad=10)
@@ -1888,7 +1898,7 @@ def get_priors(SNR_CCF, SNR_estimate, wave, d, R, model, T, lg, rv, vsini):
     valid = np.isfinite(d)
     wv    = wave[valid]                         # [µm]
     dw    = np.gradient(wv)                     # [µm/px] 
-    FWHM  = wv / R                              # [µm] width of a resolution element
+    FWHM  = wv / np.nanmedian(R)                              # [µm] width of a resolution element
     N_eff = np.nansum(dw / FWHM)
     N_eff = max(N_eff, 1.0)
     
@@ -1902,7 +1912,7 @@ def get_priors(SNR_CCF, SNR_estimate, wave, d, R, model, T, lg, rv, vsini):
     Dlg      = max(5 * sigma_lg, 0.5)           # 5σ half-width, min 0.5 dex
     
     # Instrumental resolution element in velocity [km/s]
-    delta_v_res = c * 1e-3 / R # [km/s]
+    delta_v_res = np.nanmedian(c * 1e-3 / R) # [km/s]
     
     # --- v sin i ---
     w_inst      = delta_v_res
@@ -1918,27 +1928,30 @@ def get_priors(SNR_CCF, SNR_estimate, wave, d, R, model, T, lg, rv, vsini):
     # Base grids from the model bounds
     T_grid, lg_grid = get_model_grid(model)
 
-    if R < 5000: # No vsini retrieval
+    if np.nanmedian(R) < 5000: # No vsini retrieval
         N = 30
     else:
         N = 20
 
-    T_arr  = np.linspace(max(T_grid[0],   T  - DT),  min(T_grid[-1],  T  + DT),  N + 1, dtype=np.float32)
-    lg_arr = np.linspace(max(lg_grid[0],  lg - Dlg), min(lg_grid[-1], lg + Dlg), N + 1, dtype=np.float32)
-
-    if R > 5000: # Enough resolution to retrieve Vsini
-        vsini_arr = np.linspace(max(0, vsini - Dvsini), min(80, vsini + Dvsini), N + 1, dtype=np.float32)
+    T_arr  = np.linspace(max(T_grid[0],   T  - DT),  min(T_grid[-1],  T  + DT),  N + 1, dtype=np.float64)
+    if lg is None:
+        lg_arr = lg_grid
     else:
-        vsini_arr = np.array([vsini], dtype=np.float32)
+        lg_arr = np.linspace(max(lg_grid[0],  lg - Dlg), min(lg_grid[-1], lg + Dlg), N + 1, dtype=np.float64)
+    
+    if np.nanmedian(R) > 5000: # Enough resolution to retrieve Vsini
+        vsini_arr = np.linspace(max(0, vsini - Dvsini), min(80, vsini + Dvsini), N + 1, dtype=np.float64)
+    else:
+        vsini_arr = np.array([vsini], dtype=np.float64)
 
     if SNR_estimate:
         # refined sampling near rv + large wings
-        left   = np.linspace(-1000,           rv - 0.5 * Drv,  100,                     dtype=np.float32)
-        core   = np.linspace(rv - 0.5 * Drv,  rv + 0.5 * Drv,  max(10, int(Drv / 0.5)), dtype=np.float32)
-        right  = np.linspace(rv + 0.5 * Drv,  1000,            100,                     dtype=np.float32)
+        left   = np.linspace(-1000,           rv - 0.5 * Drv,  100,                     dtype=np.float64)
+        core   = np.linspace(rv - 0.5 * Drv,  rv + 0.5 * Drv,  max(10, int(Drv / 0.5)), dtype=np.float64)
+        right  = np.linspace(rv + 0.5 * Drv,  1000,            100,                     dtype=np.float64)
         rv_arr = np.concatenate([left, core, right])
     else:
-        rv_arr = np.linspace(rv - Drv, rv + Drv, N + 1, dtype=np.float32)
+        rv_arr = np.linspace(rv - Drv, rv + Drv, N + 1, dtype=np.float64)
     
     return T_arr, lg_arr, rv_arr, vsini_arr, Drv
 
@@ -2012,11 +2025,11 @@ def process_parameters_estimation(args):
 
     Nvsini      = len(vsini_arr)
     Nrv         = len(rv_arr)
-    corr_2D     = np.full((Nvsini, Nrv), np.nan, dtype=np.float32)
-    SNR_2D      = np.full((Nvsini, Nrv), np.nan, dtype=np.float32)
-    auto_2D     = np.full((Nvsini, Nrv), np.nan, dtype=np.float32)
-    logL_2D     = np.full((Nvsini, Nrv), np.nan, dtype=np.float32)
-    logL_2D_sim = np.full((Nvsini, Nrv), np.nan, dtype=np.float32)
+    corr_2D     = np.full((Nvsini, Nrv), np.nan, dtype=np.float64)
+    SNR_2D      = np.full((Nvsini, Nrv), np.nan, dtype=np.float64)
+    auto_2D     = np.full((Nvsini, Nrv), np.nan, dtype=np.float64)
+    logL_2D     = np.full((Nvsini, Nrv), np.nan, dtype=np.float64)
+    logL_2D_sim = np.full((Nvsini, Nrv), np.nan, dtype=np.float64)
     
     # Build a base template at (T, lg) with/without pre-broadening/pre-shift
     template    = get_template(instru=instru, wave=wave, R=R, model=model, T=T, lg=lg, rv=0, vsini=0, epsilon=epsilon, fastbroad=fastbroad, airmass=airmass, star_spectrum=star_spectrum, wave_model=wave_model, to_counts=False)
@@ -2107,15 +2120,17 @@ def process_parameters_estimation(args):
         
         # S/N computation
         if SNR_estimate:
-            if np.sum(mask_noise) < 3:
+            finite_noise = mask_noise & np.isfinite(SNR_2D[k, :])
+            if np.sum(finite_noise) < 3:
                 continue
-            SNR_2D[k, :]  -= np.nanmean(SNR_2D[k, mask_noise])
-            auto_2D[k, :] -= np.nanmean(auto_2D[k, mask_noise])
-            sigma2_tot     = np.nanvar(SNR_2D[k, mask_noise])
+            SNR_2D[k, :] -= np.nanmean(SNR_2D[k, finite_noise])
+            if np.any(np.isfinite(auto_2D[k, finite_noise])):
+                auto_2D[k, :] -= np.nanmean(auto_2D[k, finite_noise])
+            sigma2_tot = np.nanvar(SNR_2D[k, finite_noise])
             auto_max       = np.nanmax(auto_2D[k, :]) if np.any(np.isfinite(auto_2D[k, :])) else np.nan
             peak_max       = np.nanmax(SNR_2D[k, mask_prior]) if np.any(np.isfinite(SNR_2D[k, mask_prior])) else np.nan
             if (np.isfinite(auto_max) and auto_max != 0 and np.isfinite(peak_max) and np.isfinite(sigma2_tot)):
-                sigma2_auto = np.nanvar(auto_2D[k, mask_noise] * peak_max / auto_max)
+                sigma2_auto = np.nanvar(auto_2D[k, finite_noise] * peak_max / auto_max)
             else:
                 sigma2_auto = np.nan
             if np.isfinite(sigma2_auto) and sigma2_auto < sigma2_tot:
@@ -2189,11 +2204,12 @@ def parameters_retrieval(instru, band, target_name, d, wave, trans, R, Rc, filte
             print(f"\nNew parameter grid computation: {e}")
             
         # ---------- Construct grids if needed ----------
-        if any(arr is None for arr in (T_arr, lg_arr, vsini_arr, rv_arr)) or SNR_estimate:
-            
+        if any(arr is None for arr in (T_arr, lg_arr, vsini_arr, rv_arr)):
             if any(x is None for x in (T, lg, vsini, rv)):
-                raise ValueError("If explicit grids are not provided, you must supply T, lg, vsini, rv to center the search.")
-            
+                if "mol" in model and lg is None:
+                    pass
+                else:
+                    raise ValueError("If explicit grids are not provided, you must supply T, lg, vsini, rv to center the search.")
             T_arr, lg_arr, rv_arr, vsini_arr, Drv = get_priors(SNR_CCF=SNR_CCF, SNR_estimate=SNR_estimate, wave=wave, d=d, R=R, model=model, T=T, lg=lg, rv=rv, vsini=vsini)
             
         # Adding x in x_arr if necessary
@@ -2276,10 +2292,10 @@ def parameters_retrieval(instru, band, target_name, d, wave, trans, R, Rc, filte
         Nlg         = len(lg_arr)
         Nvsini      = len(vsini_arr)
         Nrv         = len(rv_arr)
-        corr_4D     = np.full((NT, Nlg, Nvsini, Nrv), np.nan, dtype=np.float32)
-        SNR_4D      = np.full((NT, Nlg, Nvsini, Nrv), np.nan, dtype=np.float32)
-        logL_4D     = np.full((NT, Nlg, Nvsini, Nrv), np.nan, dtype=np.float32)
-        logL_sim_4D = np.full((NT, Nlg, Nvsini, Nrv), np.nan, dtype=np.float32)
+        corr_4D     = np.full((NT, Nlg, Nvsini, Nrv), np.nan, dtype=np.float64)
+        SNR_4D      = np.full((NT, Nlg, Nvsini, Nrv), np.nan, dtype=np.float64)
+        logL_4D     = np.full((NT, Nlg, Nvsini, Nrv), np.nan, dtype=np.float64)
+        logL_sim_4D = np.full((NT, Nlg, Nvsini, Nrv), np.nan, dtype=np.float64)
         
         if verbose:
             print()
@@ -2311,17 +2327,22 @@ def parameters_retrieval(instru, band, target_name, d, wave, trans, R, Rc, filte
         
         # SNR Map
         if SNR_estimate:
-            plot_window = 5*1e-3*c/R  # [km/s]; 5 * c_kms / R
+            R_med       = float(np.nanmedian(R))
+            plot_window = 5.0 * c * 1e-3 / R_med  # [km/s]
             valid_rv    = (rv_arr >= rv - plot_window) & (rv_arr <= rv + plot_window)
-            SNR_4D      = SNR_4D[:, :, :, valid_rv]
-            rv_arr      = rv_arr[valid_rv]
-            idx_max_SNR     = np.unravel_index(np.nanargmax(SNR_4D), SNR_4D.shape)
-            SNR_2D          = np.nan_to_num(SNR_4D[:, :, idx_max_SNR[2], idx_max_SNR[3]].transpose())
+            if np.sum(valid_rv) == 0:
+                raise ValueError("No RV point remains inside the S/N plotting window.")
+            SNR_4D_plot = SNR_4D[:, :, :, valid_rv]
+            rv_arr_plot = rv_arr[valid_rv]
+            if not np.any(np.isfinite(SNR_4D_plot)):
+                raise ValueError("SNR_4D contains no finite value in the selected RV plotting window.")
+            idx_max_SNR     = np.unravel_index(np.nanargmax(SNR_4D_plot), SNR_4D_plot.shape)
+            SNR_2D          = np.nan_to_num(SNR_4D_plot[:, :, idx_max_SNR[2], idx_max_SNR[3]].transpose())
             T_SNR_found     = T_arr[idx_max_SNR[0]]
             lg_SNR_found    = lg_arr[idx_max_SNR[1]]
             vsini_SNR_found = vsini_arr[idx_max_SNR[2]]
-            rv_SNR_found    = rv_arr[idx_max_SNR[3]]
-            print(f" {'Maximum S/N:':<25} {np.nanmax(SNR_4D):>6.3f}   =>  T = {T_SNR_found:.0f} K,  log(g) = {lg_SNR_found:.2f},  RV = {rv_SNR_found:.1f} km/s")
+            rv_SNR_found    = rv_arr_plot[idx_max_SNR[3]]
+            print(f" {'Maximum S/N:':<25} {np.nanmax(SNR_4D_plot):>6.3f}   =>  T = {T_SNR_found:.0f} K,  log(g) = {lg_SNR_found:.2f},  RV = {rv_SNR_found:.1f} km/s")
             label_text = rf"max at $T_\mathrm{{eff}}$ = {T_SNR_found:.0f} K, {lg_SNR_found}, $V\sin i$ = {vsini_SNR_found:.1f} km/s, $RV$ = {rv_SNR_found:.1f} km/s"
             y_for_plot = lg_arr
             y_point    = lg_SNR_found
@@ -2379,7 +2400,6 @@ def parameters_retrieval(instru, band, target_name, d, wave, trans, R, Rc, filte
             if calc_logL:
                 idx_max_logL     = np.unravel_index(np.nanargmax(logL_4D), logL_4D.shape)
                 logL_2D          = logL_4D[:, :, idx_max_logL[2], idx_max_logL[3]].transpose()
-                #logL_2D          = (logL_2D - np.nanmin(logL_2D)) / np.nanmax(logL_2D - np.nanmin(logL_2D))
                 T_logL_found     = T_arr[idx_max_logL[0]]
                 lg_logL_found    = lg_arr[idx_max_logL[1]]
                 vsini_logL_found = vsini_arr[idx_max_logL[2]]
@@ -2440,103 +2460,161 @@ def parameters_retrieval(instru, band, target_name, d, wave, trans, R, Rc, filte
                     plt.show()
 
     # ---------- Corner plot / 1σ uncertainties ----------
-    param_names = BF_values = optimal_values = uncertainties_1sigma = None
+    param_names = BF_values = optimal_values = uncertainties_1sigma = bounds_1sigma = None
+
     if calc_logL and sigma_l is not None and not SNR_estimate:
         
         params      = [T_arr, lg_arr, vsini_arr, rv_arr]
         param_names = ["T", "logg", "Vsini", "RV"]
         param_units = ["K", "dex", "km/s", "km/s"]
         
-        # For FastCurves retrieval estimation 
-        if fastcurves:
-            param_names, BF_values, optimal_values, uncertainties_1sigma, bounds_1sigma = custom_corner_plot(logL_4D, params, param_names, param_units, target_name, band, instru, model, R, Rc, sim=False, exposure_time=exposure_time, show=show)
-            if calc_d_sim:
-                custom_corner_plot(logL_sim_4D, params, param_names, param_units, target_name, band, instru, model, R, Rc, sim=True, exposure_time=exposure_time, show=show)
-            return uncertainties_1sigma
+        param_names, BF_values, optimal_values, uncertainties_1sigma, bounds_1sigma = custom_corner_plot(logL_4D, params, param_names, param_units, target_name, band, instru, model, R, Rc, sim=False, exposure_time=exposure_time, show=show)
+    
+        if calc_d_sim:
+            custom_corner_plot(logL_sim_4D, params, param_names, param_units, target_name, band, instru, model, R, Rc, sim=True, exposure_time=exposure_time, show=show)
         
-        # For real data retrieval
-        else:
-            if show and calc_logL:
-                param_names, BF_values, optimal_values, uncertainties_1sigma, bounds_1sigma = custom_corner_plot(logL_4D, params, param_names, param_units, target_name, band, instru, model, R, Rc, sim=False, exposure_time=exposure_time, show=show)
-                if calc_d_sim:
-                    custom_corner_plot(logL_sim_4D, params, param_names, param_units, target_name, band, instru, model, R, Rc, sim=True, exposure_time=exposure_time, show=show)
+        if fastcurves:
+            return uncertainties_1sigma
     
     return T_arr, lg_arr, vsini_arr, rv_arr, corr_4D, SNR_4D, logL_4D, logL_sim_4D, param_names, BF_values, optimal_values, uncertainties_1sigma, bounds_1sigma
 
 
 
 def estimate_uncertainties_1sigma(P, func_marg, params):
-    BF_values      = []
+    """
+    Estimate marginalized best-fit values and 1-sigma credible intervals
+    for each parameter from a multidimensional posterior probability array.
+
+    Parameters
+    ----------
+    P : ndarray
+        Multidimensional posterior probability array. Its dimensions must match
+        the parameter grids given in params.
+    func_marg : callable
+        Function used to marginalize the posterior over unwanted axes.
+        Typically np.nansum.
+    params : list of ndarray
+        List of parameter grids, one per dimension of P.
+
+    Returns
+    -------
+    optimal_values : list
+        Median value of each marginalized 1D posterior.
+    uncertainties : list
+        Symmetric 1-sigma uncertainty, defined as half of the 16th-84th percentile interval.
+    bounds_1sigma : list of tuple
+        Lower and upper bounds of the 68% credible interval.
+    """
+
+    # Output containers
     optimal_values = []
     uncertainties  = []
     bounds_1sigma  = []
 
+    # Number of dimensions / parameters in the posterior
     ndim = len(params)
+
+    # Loop over each parameter axis
     for i, param_values in enumerate(params):
 
-        param_values   = np.asarray(param_values, dtype=float)
+        # Convert the parameter grid to a clean float array
+        param_values = np.asarray(param_values, dtype=float)
+
+        # Marginalize the posterior over all axes except the current parameter axis
         axes           = tuple(j for j in range(ndim) if j != i)
         marginalized_p = func_marg(P, axis=axes)
+
+        # Clean invalid values in the marginalized posterior
         marginalized_p = np.asarray(marginalized_p, dtype=float)
         marginalized_p = np.nan_to_num(marginalized_p, nan=0.0, posinf=0.0, neginf=0.0)
 
+        # Safety check: the marginalized posterior must match the parameter grid size
         if marginalized_p.size != param_values.size:
             raise ValueError(f"Shape mismatch for parameter axis {i}: marginalized_p has size {marginalized_p.size}, but param_values has size {param_values.size}.")
 
-        if np.nansum(marginalized_p) <= 0:
+        # Sort the parameter grid and reorder the posterior consistently
+        order          = np.argsort(param_values)
+        param_values   = param_values[order]
+        marginalized_p = marginalized_p[order]
+
+        # Remove duplicated parameter values, which would break interpolation
+        unique_values, unique_indices = np.unique(param_values, return_index=True)
+        param_values   = unique_values
+        marginalized_p = marginalized_p[unique_indices]
+
+        # If the parameter grid or posterior is not usable, return NaNs for this parameter
+        if param_values.size < 2 or np.nansum(marginalized_p) <= 0:
             optimal_values.append(np.nan)
             uncertainties.append(np.nan)
             bounds_1sigma.append((np.nan, np.nan))
             continue
 
-        # Mode, refined on a fine linear grid
-        f_interp      = interp1d(param_values, marginalized_p, kind="linear", bounds_error=False, fill_value=0.0)
-        dparam_values = np.nanmedian(np.gradient(param_values))
-        values_fine   = np.arange(param_values[0], param_values[-1], dparam_values/10)
-        p_fine        = f_interp(values_fine)
+        # Estimate the typical parameter sampling step
+        dparam = np.nanmedian(np.diff(param_values))
+
+        # Reject invalid or non-positive sampling steps
+        if not np.isfinite(dparam) or dparam <= 0:
+            optimal_values.append(np.nan)
+            uncertainties.append(np.nan)
+            bounds_1sigma.append((np.nan, np.nan))
+            continue
+
+        # Interpolate the marginalized posterior on a finer linear grid
+        f_interp    = interp1d(param_values, marginalized_p, kind="linear", bounds_error=False, fill_value=0.0)
+        values_fine = np.linspace(param_values[0], param_values[-1], max(1000, 10 * param_values.size))
+        p_fine      = np.nan_to_num(f_interp(values_fine), nan=0.0, posinf=0.0, neginf=0.0)
+
+        # If the interpolated posterior is empty, return NaNs for this parameter
+        if np.nansum(p_fine) <= 0:
+            optimal_values.append(np.nan)
+            uncertainties.append(np.nan)
+            bounds_1sigma.append((np.nan, np.nan))
+            continue
         
-        # Mode on the fine grid
-        BF_value = values_fine[np.nanargmax(p_fine)]
-        
-        # CDF on the fine grid
+        # Compute the normalization of the interpolated 1D posterior
         dx_fine   = np.gradient(values_fine)
         norm_fine = np.nansum(p_fine * dx_fine)
-        
+
+        # Reject invalid normalization
         if not np.isfinite(norm_fine) or norm_fine <= 0:
             optimal_values.append(np.nan)
             uncertainties.append(np.nan)
             bounds_1sigma.append((np.nan, np.nan))
             continue
-        
-        cdf_fine  = np.cumsum(p_fine * dx_fine) / norm_fine
-        cdf_fine /= cdf_fine[-1]
-        
-        lower_bound  = np.interp(0.16, cdf_fine, values_fine)
-        upper_bound  = np.interp(0.84, cdf_fine, values_fine)
-        uncertainty  = max(0.5 * (upper_bound - lower_bound), 0.001)
-        
-        # TODO: test median value instead
+
+        # Build the cumulative distribution function
+        cdf_fine = np.cumsum(p_fine * dx_fine) / norm_fine
+
+        # Enforce monotonicity to avoid numerical interpolation issues
+        cdf_fine = np.maximum.accumulate(cdf_fine)
+
+        # Normalize exactly to one at the end
+        cdf_fine = cdf_fine / cdf_fine[-1]
+
+        # Extract the 16th, 50th, and 84th percentiles
+        lower_bound   = np.interp(0.16, cdf_fine, values_fine)
         optimal_value = np.interp(0.50, cdf_fine, values_fine)
-    
-        BF_values.append(BF_value)
+        upper_bound   = np.interp(0.84, cdf_fine, values_fine)
+
+        # Define a symmetric 1-sigma uncertainty from the percentile interval
+        uncertainty = max(0.5 * (upper_bound - lower_bound), 0.001)
+
+        # Store results for the current parameter
         optimal_values.append(optimal_value)
         uncertainties.append(uncertainty)
         bounds_1sigma.append((lower_bound, upper_bound))
 
-    return BF_values, optimal_values, uncertainties, bounds_1sigma
+    return optimal_values, uncertainties, bounds_1sigma
 
 
 
-def gaussian_equivalent_credible_levels(sigmas=(1, 2, 3, 4, 5)):
-    """
-    Convert Gaussian-equivalent sigma labels into enclosed probability masses.
-
-    1σ -> 68.27%
-    2σ -> 95.45%
-    3σ -> 99.73%
-    etc.
-    """
-    return [erf(s / np.sqrt(2.0)) for s in sigmas]
+def gaussian_equivalent_credible_levels(sigmas=(1, 2, 3, 4, 5), ndim=2):
+    sigmas = np.asarray(sigmas, dtype=float)
+    if ndim == 1:
+        return [erf(s / np.sqrt(2.0)) for s in sigmas]
+    if ndim == 2:
+        return list(1.0 - np.exp(-0.5 * sigmas**2))
+    raise ValueError("Only ndim=1 and ndim=2 are implemented.")
 
 
 
@@ -2579,7 +2657,7 @@ def get_hpd_levels_2d(P2D, x, y, sigmas=(1, 2, 3, 4, 5)):
     cdf = np.cumsum(mass_sorted)
     cdf = cdf / cdf[-1]
 
-    cred_levels = gaussian_equivalent_credible_levels(sigmas)
+    cred_levels = gaussian_equivalent_credible_levels(sigmas, ndim=2)
 
     levels = []
     labels = []
@@ -2632,14 +2710,17 @@ def custom_corner_plot(logL, params, param_names, param_units, target_name, band
         raise ValueError("No parameter dimension remains after dropping size-1 axes.")
     
     # Best-fit and marginalized 1D intervals
-    BF_values, optimal_values, uncertainties_1sigma, bounds_1sigma = estimate_uncertainties_1sigma(P, func_marg, params)
-
+    optimal_values, uncertainties_1sigma, bounds_1sigma = estimate_uncertainties_1sigma(P, func_marg, params)
+    
+    if np.any(np.isfinite(P)) and np.nanmax(P) > 0:
+        idx_ml    = np.unravel_index(np.nanargmax(P), P.shape)
+        BF_values = [params[idim][idx_ml[idim]] for idim in range(ndim)]
+    else:
+        BF_values = [np.nan] * ndim
+    
     xmin = np.array([np.nanmin(param) for param in params])
     xmax = np.array([np.nanmax(param) for param in params])
     
-    precision = 3 # numbers after coma
-    from matplotlib.ticker import MaxNLocator, ScalarFormatter
-
     # Plot
     if show:
 
