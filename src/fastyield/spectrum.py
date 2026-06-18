@@ -1802,7 +1802,7 @@ class Spectrum:
             spectrum_vsini       = self.copy()
             spectrum_vsini.flux  = flux
             spectrum_vsini.vsini = spectrum_vsini.vsini + vsini
-            return spectrum_vsini 
+            return spectrum_vsini
 
     #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
