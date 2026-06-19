@@ -17,7 +17,7 @@ from fastyield.colormaps import colormap_bandwidth_resolution_with_constant_Nlam
 #                       Graphic User Interface (GUI):                          #
 #------------------------------------------------------------------------------#
 
-# FastYield_interface()
+#FastYield_interface()
 
 
 
@@ -55,7 +55,7 @@ from fastyield.colormaps import colormap_bandwidth_resolution_with_constant_Nlam
 #                           Update FastYield:                                  #
 #------------------------------------------------------------------------------#
 
-# get_archive_table()                               # ~ 7 mn
+get_archive_table()                               # ~ 7 mn
 # all_SNR_table(table="Archive", instrus=instrus) # ~ 15 hours
 
 # get_planet_table_SNR(instru="HARMONI", table="Archive", thermal_model="auto", reflected_model="auto",  apodizer="NO_SP",   strehl="JQ1", coronagraph=None, systematics=False) # ~ 3mn

@@ -965,7 +965,8 @@ def get_counts_from_density(wave, density):
     counts = np.nansum(density * wave*1e-6/(h*c) * dwave) # [J/s/m2/µm]*wave*1e-6/(h*c)  => [ph/s/m2/µm]*dwave => sum([ph/s/m2/bin]) => [ph/s/m2]
     
     if not np.isfinite(counts) or counts <= 0.0:
-        raise ValueError("Integrated photon fluxes must be finite and strictly positive.")
+        return np.nan
+        #raise ValueError("Integrated photon fluxes must be finite and strictly positive.")
     
     return counts
 

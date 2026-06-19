@@ -2667,13 +2667,20 @@ def extract_vipa_data(path_data, instru, target_name, band, gain, label_fiber, d
             time_seq = hdul["TIME_SEQ"].data
             if "TIME_JD" in time_seq.names:
                 time_jd = np.asarray(time_seq["TIME_JD"], dtype=float)
+                if np.all(np.isnan(time_jd)):
+                    time_jd = None
             if "RV_OBS" in time_seq.names:
                 RV_obs = np.asarray(time_seq["RV_OBS"], dtype=float)
+                if np.all(np.isnan(RV_obs)):
+                    RV_obs = None
             if "RV_BAR" in time_seq.names:
                 RV_bar = np.asarray(time_seq["RV_BAR"], dtype=float)
+                if np.all(np.isnan(RV_bar)):
+                    RV_bar = None
             if "COR_BAR" in time_seq.names:
                 cor_bar = np.asarray(time_seq["COR_BAR"], dtype=float)
-    
+                if np.all(np.isnan(cor_bar)):
+                    cor_bar = None
     
     # Estimating R_sampling
     R_sampling0 = get_resolution(wavelength=wave0, func=np.array)
