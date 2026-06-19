@@ -1,9 +1,10 @@
 # import FastYield modules
-from .config import R0_max, LMIN, LMAX, bands, instrus, instrus_with_systematics, colors_instru, simulated_path, archive_path, thermal_models, reflected_models, ignore_reflected_thresh_um, SNR_thresh, planet_types, planet_types_reduced, m_u, kB, G, vesc_earth, sim_data_path
+from .config import T_sun, R0_max, LMIN, LMAX, bands, instrus, instrus_with_systematics, colors_instru, simulated_path, archive_path, thermal_models, reflected_models, ignore_reflected_thresh_um, SNR_thresh, planet_types, planet_types_reduced, m_u, kB, G, vesc_earth, sim_data_path
 from .get_specs import get_config_data, get_band_lims, get_wa, get_R_instru
 from .utils import faded
 from .spectrum import load_vega_spectrum, get_mag, get_spectrum_contribution_name_model, get_thermal_reflected_spectrum, get_counts_from_density, get_wave_K, get_wave_model
 from .FastCurves import FastCurves
+from .prints_helpers import print_warning
 
 # import astropy modules
 from astropy import constants as const
@@ -163,7 +164,7 @@ def inject_dace_values(planet_table):
     dc_names               = np.asarray(planet_table_dace["planet_name"], dtype=object)
     common, pt_idx, dc_idx = np.intersect1d(pt_names, dc_names, return_indices=True)
     missing                = np.setdiff1d(dc_names, common)
-    print(f"\nInjecting DACE (https://dace.unige.ch/exoplanets/) values for {len(common)} planets:")
+    print(f"\n(2a) Injecting DACE (https://dace.unige.ch/exoplanets/) values for {len(common)} planets:")
     print(f"   {len(dc_names) - len(common)} DACE planets are not present in the NASA exo-archive: {missing}")
 
     def _assign(pt_colname, dc_colname, dc_unit, postproc=None):
@@ -216,7 +217,7 @@ def inject_dace_values(planet_table):
     _assign("-DeltaDistance", "distance_lower", u.pc)
     # Stellar RV, vsini (km/s), age (Gyr), Teff (K), M (Msun), R (Rsun), K-mag and metallicity
     _assign("StarRadialVelocity", "radial_velocity",             u.km/u.s)
-    _assign("StarVrot",           "stellar_rotational_velocity", u.km/u.s)
+    _assign("StarVsini",          "stellar_rotational_velocity", u.km/u.s)
     _assign("StarAge",            "stellar_age",                 u.Gyr)
     _assign("StarTeff",           "stellar_eff_temp",            u.K)
     _assign("StarMass",           "stellar_mass",                u.Msun)
@@ -229,14 +230,13 @@ def inject_dace_values(planet_table):
 
 
 
-
 def _IKV(planet_table, planet_name, value, unit, quantity, obj, uncertainty=None, reference="inject_known_values()"):
     """
-    Inject a known value into a planet table, only if the corresponding field is empty.
-
-    This helper is intended to safely fill missing values in a planet catalogue
-    without overwriting already valid entries. The target column is inferred from
-    the requested physical quantity and object type.
+    Inject a known value into a planet table.
+    
+    If a valid value already exists, a warning is printed, but the value is still
+    overwritten. The target column is inferred from the requested physical
+    quantity and object type.
 
     Parameters
     ----------
@@ -247,7 +247,7 @@ def _IKV(planet_table, planet_name, value, unit, quantity, obj, uncertainty=None
         Name of the planet for which the value should be injected.
 
     value : float
-        Value to inject, expressed in the unit provided by `unit`.
+        Value to inject, expressed in the unit provided by 'unit'.
 
     unit : astropy.units.Unit
         Unit of the input value.
@@ -263,7 +263,7 @@ def _IKV(planet_table, planet_name, value, unit, quantity, obj, uncertainty=None
 
     uncertainty : float, optional
         Symmetric uncertainty on the injected value, expressed in the same unit
-        as `value`. If provided, both +Delta and -Delta columns are filled.
+        as 'value'. If provided, both +Delta and -Delta columns are filled.
 
     reference : str, optional
         Reference string written into the associated reference column.
@@ -304,8 +304,10 @@ def _IKV(planet_table, planet_name, value, unit, quantity, obj, uncertainty=None
     elif "distance" in quantity_lower:
         colname = "Distance"
     elif "sma" in quantity_lower:
-        colname = "SMA"
-
+        colname = "SMA"  
+    if "colname" not in locals():
+        raise ValueError(f"Unsupported quantity/object combination: quantity={quantity!r}, obj={obj!r}")
+        
     ref_colname   = f"{colname}Ref"
     plus_colname  = f"+Delta{colname}"
     minus_colname = f"-Delta{colname}"
@@ -313,25 +315,26 @@ def _IKV(planet_table, planet_name, value, unit, quantity, obj, uncertainty=None
     # Check whether a valid value is already present
     current_value = planet_table[colname][idx]
     if np.isfinite(planet_table[colname][idx]):
-        raise ValueError(f"A valid {colname} value already exists for {planet_name}: {current_value}.")
-
+        print_warning(f"WARNING: A valid {colname} value already exists for {planet_name}: {current_value} (new value: {value*unit}).")
+    
     # Inject the value and its reference
     target_unit = planet_table[colname].unit
     if target_unit is None:
-        converted_value = value
+        planet_table[colname][idx] = value
     else:
         converted_value = (value * unit).to_value(target_unit)
-    planet_table[colname][idx]     = converted_value * target_unit    
+        planet_table[colname][idx] = converted_value * target_unit
     planet_table[ref_colname][idx] = reference
-
+    
     # Inject symmetric uncertainties, if provided
     if uncertainty is not None:
         if target_unit is None:
-            converted_uncertainty = np.abs(uncertainty)
+            planet_table[plus_colname][idx]  = +np.abs(uncertainty)
+            planet_table[minus_colname][idx] = -np.abs(uncertainty)
         else:
             converted_uncertainty = (np.abs(uncertainty) * unit).to_value(target_unit)
-        planet_table[plus_colname][idx]  = +converted_uncertainty * target_unit
-        planet_table[minus_colname][idx] = -converted_uncertainty * target_unit
+            planet_table[plus_colname][idx]  = +converted_uncertainty * target_unit
+            planet_table[minus_colname][idx] = -converted_uncertainty * target_unit
     
 
 
@@ -341,7 +344,7 @@ def inject_known_values(planet_table):
 
     This function fills missing catalogue entries using literature values or
     explicitly documented model-based estimates. Values are injected through
-    `_IKV`, which prevents overwriting already valid entries and writes
+    '_IKV', which prevents overwriting already valid entries and writes
     the corresponding reference flag.
 
     Notes
@@ -686,120 +689,176 @@ def get_evolutionary_model(planet_table):
 
 
 
-def get_planet_type(planet):
+def _get_value(x):
     """
-    Classify a single planet row using the global 'planet_types' rules.
+    Return the numerical value of an input quantity.
 
-    Expects
-    -------
-    planet : astropy.table.Row (from your main table)
-        Must provide 'PlanetMass', 'PlanetRadius', 'PlanetTeff' as quantities
-        convertible to M_earth, R_earth, and K, respectively.
-
-    Returns
-    -------
-    str
-        A human-readable planet type label (first matching rule),
-        or an informative 'Unidentified' string if no match / missing data.
+    This helper makes the code compatible with both plain floats and
+    astropy Quantity-like objects.
     """
-    # Extract properties from the planet
-    mass   = planet["PlanetMass"].value
-    radius = planet["PlanetRadius"].value
-    teff   = planet["PlanetTeff"].value
-    
-    # If values are missing, return "Unidentified"
-    if not np.isfinite(mass):
+    return x.value if hasattr(x, "value") else x
+
+
+
+def _distance_to_interval(x, xmin, xmax, log=False, scale=1.0):
+    """
+    Compute the distance of a value to an interval.
+
+    The distance is zero if the value is inside the interval. If the value is
+    outside, the distance is measured relative to the closest boundary.
+
+    Parameters
+    ----------
+    x : float
+        Value to test.
+
+    xmin, xmax : float
+        Lower and upper bounds of the interval.
+
+    log : bool, optional
+        If True, compute the distance in log-space. This is useful for mass
+        and radius, which span several orders of magnitude.
+
+    scale : float, optional
+        Normalization scale used for linear distances.
+    """
+    # Inside the interval: perfect match.
+    if xmin <= x <= xmax:
+        return 0.0
+    # Logarithmic distance, useful for mass and radius.
+    if log:
+        if x <= 0:
+            return np.inf
+        if x < xmin:
+            return np.log10(xmin / x) if xmin > 0 else 0.0
+        return np.log10(x / xmax) if np.isfinite(xmax) else 0.0
+    # Linear distance below the interval.
+    if x < xmin:
+        return (xmin - x) / scale
+    # Linear distance above the interval.
+    return (x - xmax) / scale if np.isfinite(xmax) else 0.0
+
+
+
+def _closest_planet_type(mass, radius, teff, planet_types_ref=planet_types):
+    """
+    Return the closest planet type based on mass, radius, and temperature.
+
+    A planet inside a category box has a distance of zero to that category.
+    A planet outside all boxes is attached to the closest category.
+    """
+    best_ptype = None
+    best_score = np.inf
+    for ptype, criteria in planet_types_ref.items():
+        # Distance to the allowed mass range.
+        dm = _distance_to_interval(mass, criteria["mass_min"], criteria["mass_max"], log=True)
+        # Distance to the allowed radius range.
+        dr = _distance_to_interval(radius, criteria["radius_min"], criteria["radius_max"], log=True)
+        # Distance to the allowed temperature range.
+        # The scale=500.0 keeps temperature differences reasonably normalized.
+        dt = _distance_to_interval(teff, criteria["teff_min"], criteria["teff_max"], log=False, scale=500.0)
+        # Combined distance in the normalized (mass, radius, temperature) space.
+        score = dm**2 + dr**2 + dt**2
+        # Keep the first best match. This preserves dictionary order in case of ties.
+        if score < best_score:
+            best_ptype = ptype
+            best_score = score
+    return best_ptype
+
+
+
+def get_planet_type(planet, planet_types_ref=planet_types):
+    """
+    Assign a planet type from mass, radius, and temperature.
+
+    If mass, radius, and temperature are finite and physically positive where
+    required, a planet type is returned. Planets outside the nominal category
+    boxes are attached to the closest category. Missing or non-physical values
+    remain unidentified.
+    """
+    mass   = float(_get_value(planet["PlanetMass"]))
+    radius = float(_get_value(planet["PlanetRadius"]))
+    teff   = float(_get_value(planet["PlanetTeff"]))
+    if not np.isfinite(mass) or mass <= 0:
         return "Unidentified - missing mass"
-    if not np.isfinite(radius):
+    if not np.isfinite(radius) or radius <= 0:
         return "Unidentified - missing radius"
     if not np.isfinite(teff):
         return "Unidentified - missing temperature"
-    
-    # Loop through planet types to find a match
-    for ptype, criteria in planet_types.items():
-        mass_match   = (mass   >= criteria["mass_min"])   and (mass   <= criteria["mass_max"])
-        radius_match = (radius >= criteria["radius_min"]) and (radius <= criteria["radius_max"])
-        teff_match   = (teff   >= criteria["teff_min"])   and (teff   <= criteria["teff_max"])
-        if mass_match and radius_match and teff_match:
-            return ptype  # Return the first matching type
-    
-    return "Unidentified - outside class"
+    return _closest_planet_type(mass, radius, teff, planet_types_ref=planet_types_ref)
 
 
 
-def find_matching_planets(criteria, planet_table, mode, selected_planets=None, Nmax=None):
+def find_matching_planets(ptype, planet_table, mode, selected_planets=None, Nmax=None):
     """
-    Filter a pandas DataFrame of planets against numeric box constraints.
+    Select planets assigned to a given planet type.
 
-    Parameters
-    ----------
-    criteria : dict
-        Keys: 'mass_min', 'mass_max', 'radius_min', 'radius_max', 'teff_min', 'teff_max'
-        Units are expected to match the DataFrame columns (already scalar floats).
-    planet_table : astropy.table.QTable
-    mode : {"unique", "multi"}
-        - "unique": Return a *single* highest-SNR row not already in 'selected_planets'.
-        - "multi" : Return all rows (optionally truncated by 'Nmax').
-    selected_planets : set[str], optional
-        Names already chosen (used for unique mode).
-    Nmax : int or None
-        Limit on count when mode="multi".
-
-    Returns
-    -------
-    list[dict] or list[pandas.Series]
-        - mode="unique" : [row] or [] if none
-        - mode="multi"  : list of dict rows (<= Nmax) or []
+    This function assumes that planet_table is a pandas DataFrame containing
+    the temporary column '_AssignedPlanetType', usually created by
+    build_match_dict(). In 'multi' mode, all planets assigned to the requested
+    type are returned. In 'unique' mode, only the planet with the highest SNR is
+    returned, while avoiding planets already selected for another type.
     """
-    # Build the query string dynamically
-    query = " & ".join([
-        f"PlanetMass >= {criteria['mass_min']}",
-        f"PlanetMass <= {criteria['mass_max']}",
-        f"PlanetRadius >= {criteria['radius_min']}",
-        f"PlanetRadius <= {criteria['radius_max']}",
-        f"PlanetTeff >= {criteria['teff_min']}",
-        f"PlanetTeff <= {criteria['teff_max']}"
-    ])
-    
-    # Remove empty conditions from query
-    query            = " & ".join(filter(None, query.split(" & ")))
-    filtered_planets = planet_table.query(query) if query else planet_table
-    
-    # Mode 'unique': Pick only ONE planet with the highest SNR
-    if mode == 'unique':
-        filtered_planets = filtered_planets[~filtered_planets["PlanetName"].isin(selected_planets)]
-        if not filtered_planets.empty:
-            chosen_planet = filtered_planets.loc[filtered_planets["SNR"].idxmax()]
-            selected_planets.add(chosen_planet["PlanetName"])
-            return [chosen_planet]
-        return []
-    
-    # Mode 'multi': Return all filtered planets, limited to Nmax if specified
-    elif mode == 'multi':
-        # Limit the number of results if Nmax is set
-        if Nmax is not None:
-            filtered_planets = filtered_planets.iloc[:Nmax]
-        return filtered_planets.head(Nmax).to_dict(orient='records') if not filtered_planets.empty else []
+    # Initialize the set of already selected planets for unique-mode selection.
+    if selected_planets is None:
+        selected_planets = set()
+
+    # Basic safety checks.
+    if mode not in ("unique", "multi"):
+        raise ValueError("mode must be either 'unique' or 'multi'.")
+    if "_AssignedPlanetType" not in planet_table.columns:
+        raise KeyError("planet_table must contain the '_AssignedPlanetType' column. Use build_match_dict() to create it.")
+
+    # Select planets assigned to the requested planet type.
+    filtered_planets = planet_table.loc[planet_table["_AssignedPlanetType"] == ptype].copy()
+
+    # Unique mode: keep only the best-SNR planet not already selected.
+    if mode == "unique":
+        filtered_planets = filtered_planets.loc[~filtered_planets["PlanetName"].isin(selected_planets)]
+        if filtered_planets.empty:
+            return []
+        if "SNR" not in filtered_planets.columns:
+            raise KeyError("planet_table must contain an 'SNR' column when mode='unique'.")
+        snr       = pd.to_numeric(filtered_planets["SNR"], errors="coerce")
+        valid_snr = np.isfinite(snr.to_numpy())
+        if not np.any(valid_snr):
+            return []
+        chosen_idx    = snr.loc[valid_snr].idxmax()
+        chosen_planet = filtered_planets.loc[chosen_idx]
+        selected_planets.add(chosen_planet["PlanetName"])
+        return [chosen_planet]
+
+    # Multi mode: return all matching planets, optionally limited to Nmax.
+    if Nmax is not None:
+        filtered_planets = filtered_planets.head(Nmax)
+
+    return filtered_planets.to_dict(orient="records") if not filtered_planets.empty else []
 
 
 
-def build_match_dict(table, planet_types, mode="multi", Nmax=None):
+def build_match_dict(planet_table, planet_types, mode="multi", Nmax=None):
     """
-    Build {ptype: list_of_matches} by applying 'find_matching_planets' for each rule.
+    Build a dictionary of planets matched to each planet type.
 
-    Parameters
-    ----------
-    table : astropy.table.Table or QTable
-        Converted internally to pandas for filtering.
-    planet_types : dict
-        Your rule dictionary for typing (same shape used by get_planet_type()).
-    mode : {"unique","multi"}
-        See 'find_matching_planets'.
-    Nmax : int or None
-        Forwarded to 'find_matching_planets' when mode="multi".
+    Each planet is assigned once with get_planet_type(), including the
+    nearest-category fallback for planets outside the nominal boxes. The
+    resulting temporary '_AssignedPlanetType' column is then used to build:
+
+        {ptype: list_of_matching_planets}
+
+    This avoids recomputing the planet classification for every planet type.
     """
-    df = table.to_pandas()
-    return {ptype: find_matching_planets(criteria=criteria, planet_table=df, mode=mode, Nmax=Nmax) for ptype, criteria in planet_types.items()}
+    # Convert to pandas if needed, and copy to avoid modifying the input planet_table.
+    df = planet_table.to_pandas().copy() if hasattr(planet_table, "to_pandas") else planet_table.copy()
+
+    # Assign each planet to one planet type only once.
+    df["_AssignedPlanetType"] = df.apply(lambda row: get_planet_type(row, planet_types_ref=planet_types), axis=1)
+
+    # Shared set used only in unique mode to prevent the same planet from being selected several times.
+    selected_planets = set()
+
+    # Build the output dictionary.
+    return {ptype: find_matching_planets(ptype=ptype, planet_table=df, mode=mode, selected_planets=selected_planets, Nmax=Nmax) for ptype in planet_types}
 
 
 
@@ -888,31 +947,25 @@ def get_SNR_from_table(planet_table, exposure_time, band):
     """
     Compute SNR from a table with per-band signal/noise/DIT columns.
 
-    Parameters
-    ----------
-    table : astropy.table.Table/QTable (row-wise or column-wise access)
-        Must contain the columns:
-          f'signal_{band}', f'sigma_fund_{band}', f'sigma_syst_{band}', f'DIT_{band}'
-        Units are ignored; we operate on floats.
-    exposure_time : float
-        Total exposure time in the same units as DIT_{band}. If DIT is in seconds,
-        pass seconds; if minutes, pass minutes.
-    band : str
-        Name of the internal/instrument band suffix used in your columns.
-
-    Returns
-    -------
-    np.ndarray
-        SNR values (shape = len(table)).
+    Invalid rows are returned as NaN. This avoids divisions by zero and
+    prevents invalid DIT/noise values from producing misleading infinite SNRs.
     """
-    DIT        = np.asarray(planet_table[f'DIT_{band}'],        dtype=float) # mn/DIT
-    signal     = np.asarray(planet_table[f'signal_{band}'],     dtype=float) # signal/DIT
-    sigma_fund = np.asarray(planet_table[f'sigma_fund_{band}'], dtype=float) # noise/DIT
-    sigma_syst = np.asarray(planet_table[f'sigma_syst_{band}'], dtype=float) # noise/DIT
-    N_DIT      = exposure_time / DIT
-    S          = N_DIT * signal
-    N          = np.sqrt(N_DIT*sigma_fund**2 + N_DIT**2*sigma_syst**2)
-    SNR        = S / N
+    DIT        = np.asarray(planet_table[f"DIT_{band}"],        dtype=float)
+    signal     = np.asarray(planet_table[f"signal_{band}"],     dtype=float)
+    sigma_fund = np.asarray(planet_table[f"sigma_fund_{band}"], dtype=float)
+    sigma_syst = np.asarray(planet_table[f"sigma_syst_{band}"], dtype=float)
+    SNR        = np.full(len(planet_table), np.nan, dtype=float)
+    
+    valid = (np.isfinite(DIT) & np.isfinite(signal) & np.isfinite(sigma_fund) & np.isfinite(sigma_syst) & (DIT > 0))
+
+    N_DIT = exposure_time / DIT[valid]
+    S     = N_DIT * signal[valid]
+    N     = np.sqrt(N_DIT * sigma_fund[valid]**2 + N_DIT**2 * sigma_syst[valid]**2)
+
+    valid_noise                 = np.isfinite(N) & (N > 0)
+    idx_valid                   = np.where(valid)[0]
+    SNR[idx_valid[valid_noise]] = S[valid_noise] / N[valid_noise]
+
     return SNR
 
 
@@ -937,9 +990,10 @@ def get_size_from_SNR(SNR, s0=50, ds=200, SNR_min=SNR_thresh, SNR_max=1_000):
         Marker sizes (same shape as input SNR).
     """
     SNR_min = max(1e-30, SNR_min)
+    SNR     = np.asarray(SNR, dtype=float)
     SNR     = np.clip(SNR, SNR_min, SNR_max)
-    t       = (np.log10(SNR)) / (np.log10(SNR_max))
-    t[t<0]  = 0
+    t       = np.log10(SNR) / np.log10(SNR_max)
+    t       = np.maximum(t, 0)
     return s0 + ds * t
 
 
@@ -1134,7 +1188,7 @@ def get_planet_table_magnitudes(planet_table):
     # Magnitude estimations
     print()
     with Pool(processes=cpu_count()//2) as pool: 
-        for (idx, mags) in tqdm(pool.imap(process_magnitudes, [(idx) for idx in range(len(planet_table))]), total=len(planet_table), desc="(6) Estimating all magnitudes"):
+        for (idx, mags) in tqdm(pool.imap(process_magnitudes, [(idx) for idx in range(len(planet_table))]), total=len(planet_table), desc="(13) Estimating all magnitudes"):
             for instru in instrus:
                 planet_table[idx][f"StarINSTRUmag({instru})"]                      = mags[f"StarINSTRUmag({instru})"]
                 planet_table[idx][f"PlanetINSTRUmag({instru})(thermal+reflected)"] = mags[f"PlanetINSTRUmag({instru})(thermal+reflected)"]
@@ -1352,7 +1406,7 @@ def get_archive_table(seed=None):
     # Note: no dedicated pl_orblper_reflink column is available in pscomppars.
     # We keep pl_orbtper_reflink as ArgPeriRef only as a proxy reference for the orbital periastron solution.
 
-    print("\nRetrieving NASA archive table from https://exoplanetarchive.ipac.caltech.edu/TAP")
+    print("\n(1) Retrieving NASA archive table from https://exoplanetarchive.ipac.caltech.edu/TAP")
     svc   = vo.dal.TAPService("https://exoplanetarchive.ipac.caltech.edu/TAP")
     query = f"SELECT {COLS_TO_PULL} FROM pscomppars"
     job   = svc.submit_job(query, maxrec=100000)
@@ -1384,7 +1438,7 @@ def get_archive_table(seed=None):
                 "pl_orbsmax":     u.AU,
                }
 
-    print("\nNormalizing units...")
+    print("Normalizing units...")
     for colname in planet_table.colnames:
         current_unit = planet_table[colname].unit
         if current_unit is not None and str(current_unit) in UNIT_MAP:
@@ -1395,13 +1449,10 @@ def get_archive_table(seed=None):
             planet_table[colname] = planet_table[colname].value * new_unit
 
     # Rename to our house schema
-    print("\nRenaming columns...")
+    print("Renaming columns...")
     planet_table.rename_columns(COLS_TO_PULL.split(", "), NEW_NAMES)
 
-
-    # -----------------------------------------------------------------------------
-    # 2) Make float-like columns plain (non-masked) Quantities; keep strings as Column
-    # -----------------------------------------------------------------------------
+    # Make float-like columns plain (non-masked) Quantities; keep strings as Column
     for colname in list(planet_table.colnames):
         col = planet_table[colname]
         # Keep integer and object/string columns as plain Columns
@@ -1432,17 +1483,21 @@ def get_archive_table(seed=None):
         if col.dtype.kind == "f":
             assert not hasattr(col, "mask"), f"{colname} is still masked!"
 
-
-    # -----------------------------------------------------------------------------
-    # 3) Saving raw pull and re-load via the loader
-    # -----------------------------------------------------------------------------
-    print(f"\nSaving the raw archive planet_table ({len(planet_table)} planets) to {archive_path}Archive_Pull_Raw.ecsv ...\n")
+    # Saving raw pull and re-load via the loader
+    print(f"Saving the raw archive planet_table ({len(planet_table)} planets) to {archive_path}Archive_Pull_Raw.ecsv ...\n")
     planet_table.write(f"{archive_path}/Archive_Pull_Raw.ecsv", format='ascii.ecsv', overwrite=True)
     planet_table = load_planet_table("Archive_Pull_Raw.ecsv")
+    planet_table_classification_histogram(planet_table)
 
+    # Discovery-method masks
+    im_mask = planet_table["DiscoveryMethod"] == "Imaging"
+    rv_mask = planet_table["DiscoveryMethod"] == "Radial Velocity"
+    tr_mask = planet_table["DiscoveryMethod"] == "Transit"
+    ot_mask = (~im_mask) & (~rv_mask) & (~tr_mask) # Other: “Microlensing”, “Astrometry”, “Transit Timing Variations”...
+    
 
     # -----------------------------------------------------------------------------
-    # 4) Inject DACE values (vectorized, unit-aware) and known missing values for papers
+    # 2) Inject DACE values (vectorized, unit-aware) and known missing values for papers
     # -----------------------------------------------------------------------------
     try:
         planet_table = inject_dace_values(planet_table)
@@ -1466,41 +1521,38 @@ def get_archive_table(seed=None):
     planet_table["PlanetKmag(thermal+reflected)Ref"]    = np.full(len(planet_table), "", dtype="<U32")
 
     # Also injecting known missing values
-    print("\nInjecting known K-band magnitudes and temperatures for directly-imaged planets...")
+    print("\n(2b) Injecting known K-band magnitudes and temperatures for directly-imaged planets...")
     planet_table = inject_known_values(planet_table)
     print_missing_known_values(planet_table)
-
-
-    # -----------------------------------------------------------------------------
-    # 5) Discovery-method masks
-    # -----------------------------------------------------------------------------    
-    im_mask = planet_table["DiscoveryMethod"] == "Imaging"
-    rv_mask = planet_table["DiscoveryMethod"] == "Radial Velocity"
-    tr_mask = planet_table["DiscoveryMethod"] == "Transit"
-    ot_mask = (~im_mask) & (~rv_mask) & (~tr_mask) # Other: “Microlensing”, “Astrometry”, “Transit Timing Variations”...
-
+    
 
     # -----------------------------------------------------------------------------
-    # 6) Filling missing star radius via using L/Lsun = (R/Rsun)^2 (T/Tsun)^4 => R/Rsun = sqrt(L/Lsun) * (Tsun/T)^2
+    # 3) Filling missing star radius via L/Lsun = (R/Rsun)^2 (T/Tsun)^4
+    #    => R/Rsun = sqrt(L/Lsun) * (Tsun/T)^2
     # -----------------------------------------------------------------------------
     # Missing StarLum values are estimated from V magnitude and distance without extinction or bolometric correction.
     # This is only a fallback approximation, mainly used to recover approximate StarRadius and irradiation levels.
-
+        
     # StarLum from V and Distance (no extinction correction here)
     abs_V = planet_table["StarVmag"].value - 5 * np.log10((planet_table["Distance"] / (10 * u.pc)).value)
+    
     # L/Lsun ≈ 10^{-0.4 (M_V - M_V,⊙)} with M_V,⊙ ≈ 4.83
-    star_lum_from_V                     = (- (abs_V - 4.83) / 2.5) * u.dex(u.solLum)
-    sl_invalid                          = get_invalid_mask(planet_table["StarLum"])
-    planet_table["StarLum"][sl_invalid] = star_lum_from_V[sl_invalid]
-
+    star_lum_from_V                    = (-(abs_V - 4.83) / 2.5) * u.dex(u.solLum)
+    sl_invalid                         = get_invalid_mask(planet_table["StarLum"])
+    sl_filled                          = sl_invalid & get_valid_mask(star_lum_from_V)
+    planet_table["StarLum"][sl_filled] = star_lum_from_V[sl_filled]
+    
     # StarRadius from StarLum and StarTeff
-    R_over_Rsun                            = np.sqrt(10**planet_table["StarLum"].to_value(u.dex(u.solLum))) * (5772 * u.K / planet_table["StarTeff"])**2
-    sr_invalid                             = get_invalid_mask(planet_table["StarRadius"])
-    planet_table["StarRadius"][sr_invalid] = R_over_Rsun[sr_invalid] * u.R_sun
+    R_over_Rsun                           = np.sqrt(10**planet_table["StarLum"].to_value(u.dex(u.solLum))) * (T_sun * u.K / planet_table["StarTeff"])**2
+    sr_invalid                            = get_invalid_mask(planet_table["StarRadius"])
+    sr_filled                             = sr_invalid & get_valid_mask(R_over_Rsun)
+    planet_table["StarRadius"][sr_filled] = R_over_Rsun[sr_filled] * u.R_sun
+    
+    print(f"\n(3) Filling missing StarRadius from StarLum and StarTeff for {sr_filled.sum()}/{len(planet_table)} targets")
 
 
     # -----------------------------------------------------------------------------
-    # 7) Assumptions and computations for geometry and kinematics
+    # 4) Assumptions and computations for geometry and kinematics
     # -----------------------------------------------------------------------------    
 
     # Phase [rad] (Photometric/geometric convention: phi=0 => inferior conjunction, phi=pi/2 => quadrature 'redshift', phi=pi => superior conjunction and phi=3pi/2 => quadrature 'blueshift')
@@ -1550,12 +1602,12 @@ def get_archive_table(seed=None):
     Kp                                  = ( np.sqrt( const.G*(Ms+Mp) / a ) * np.sin(i) / np.sqrt( 1 - e**2 ) ).to(u.km/u.s)
     planet_table['DeltaRadialVelocity'] = Kp * (np.cos(nu+omega) + e*np.cos(omega))
 
-    print("\n(1) Hypothesis (mostly optimistic): Planets are assumed to be at their quadrature and:")
+    print("\n(4) Geometry and kinematics hypothesis:")
     print(f"                  => Phase   = {phi0:.2f} rad   (for all planets)")
     print(f"                  => Inc     = {i0:.0f}°        (for {len(planet_table[i_invalid])}/{len(planet_table)} missing values)")
     print(f"                  => Ecc     = {e0:.1f}        (for {len(planet_table[e_invalid])}/{len(planet_table)} missing values)")
     print(f"                  => ArgPeri = U(0, 360°) (for {len(planet_table[omega_invalid])}/{len(planet_table)} missing values)")
-        
+    
     # Lambert phase function: g(alpha)
     alpha                   = np.arccos(-np.sin(i) * np.cos(phi))
     planet_table["alpha"]   = alpha.value * u.rad
@@ -1576,7 +1628,7 @@ def get_archive_table(seed=None):
 
 
     # -----------------------------------------------------------------------------
-    # 8) v sin i priors for stars and planets (fills only where missing)
+    # 5) v sin i priors for stars and planets (fills only where missing)
     # -----------------------------------------------------------------------------
     # The NASA archive st_vsin value is already a projected velocity, v sin(i), not an equatorial velocity.
     # We keep StarVrot as the internal equatorial-rotation column used by FastYield.
@@ -1613,7 +1665,7 @@ def get_archive_table(seed=None):
     planet_table["StarVsini"] = planet_table["StarVrot"] * planet_table["sini"]
 
     svr_filled = m1 | m2 | m3 | m4 | m5
-    print(f"\nFilling star Vrot according to adopted priors for {svr_filled.sum()}/{len(planet_table)} planets")
+    print(f"\n(5a) Filling star Vrot according to adopted priors for {svr_filled.sum()}/{len(planet_table)} planets")
 
     # Planetary v sin i
     planet_table["PlanetVrot"] = np.zeros(len(planet_table)) * u.km / u.s
@@ -1634,10 +1686,12 @@ def get_archive_table(seed=None):
     planet_table["PlanetVrot"][planet_table["PlanetVrot"] < 0 * u.km / u.s] = 0 * u.km / u.s
 
     planet_table["PlanetVsini"] = planet_table["PlanetVrot"] * planet_table["sini"]
+    
+    print("\n(5b) Filling planet Vrot and PlanetVsini according to adopted priors (for all planets)")
 
 
     # -----------------------------------------------------------------------------
-    # 9) Estimating missing planet temperatures
+    # 6) Estimating missing planet temperatures
     # -----------------------------------------------------------------------------
     # PlanetTeff is the operational planet temperature used by FastYield for thermal models.
     # Archive pl_eqt is kept as PlanetTeff because it is heterogeneous by construction:
@@ -1655,7 +1709,7 @@ def get_archive_table(seed=None):
     # Intrinsic cooling temperature and radius from the evolutionary model, using Sonora Bobcat: Marley et al. (2021, Astrophysical Journal, Volume 920, Issue 2, id.85.)
     ptint_em, pr_em, _ = get_evolutionary_model(planet_table)
 
-    print(f"\n(2) Hypothesis (possibly pessimistic for young planets): Planets are assumed to be at their equilibrium temperature with insolation when missing (A_B={bond_albedo}, 4π redistribution) + Internal energy when evolutionary model is possible")
+    print("\n(6) Hypothesis (possibly pessimistic for young planets):")
     pteff_invalid  = get_invalid_mask(planet_table["PlanetTeff"])
     pteq_valid     = get_valid_mask(pteq)
     ptint_em_valid = get_valid_mask(ptint_em)
@@ -1664,20 +1718,26 @@ def get_archive_table(seed=None):
     planet_table["PlanetTeffRef"][pteff_filling] = f"Equilibrium temperature (A_B={bond_albedo}, 4π redistribution) + Internal energy (when possible)"
     print(f"                  => Missing PlanetTeff = (Teq**4 + Tint**4)**0.25, with Teq from irradiation (A_B={bond_albedo}, 4π redistribution) and Tint from the evolutionary model (Sonora Bobcat) when available (for {pteff_filling.sum()}/{len(planet_table)} planets)")
 
-
+    # Clipping outlier temperatures
+    planet_table["PlanetTeff"][planet_table["PlanetTeff"] > 3000*u.K] = 3000*u.K
+    
+    
     # -----------------------------------------------------------------------------
-    # 10) Filling missing radius from evolutionary model if possible
+    # 7) Filling missing radius from evolutionary model if possible
     # -----------------------------------------------------------------------------
     pr_invalid                                  = get_invalid_mask(planet_table["PlanetRadius"])
     pr_em_valid                                 = get_valid_mask(pr_em)
     pr_filling                                  = pr_invalid & pr_em_valid
     planet_table["PlanetRadius"][pr_filling]    = pr_em[pr_filling]
     planet_table["PlanetRadiusRef"][pr_filling] = "Evolutionary model"
-    print(f"\nFilling planet radius from evolutionary model for {pr_filling.sum()}/{len(planet_table)}")
+    print(f"\n(7) Filling planet radius from evolutionary model for {pr_filling.sum()}/{len(planet_table)}")
 
+    # Clipping outlier radius
+    planet_table["PlanetRadius"][planet_table["PlanetRadius"] > 40*u.R_earth] = 40*u.R_earth
+    
 
     # -----------------------------------------------------------------------------
-    # 11) Compute planet logg and missing star logg (from M and R) where possible
+    # 8) Compute planet logg and missing star logg (from M and R) where possible
     # -----------------------------------------------------------------------------
 
     # PlanetLogg from PlanetMass and PlanetRadius
@@ -1688,21 +1748,30 @@ def get_archive_table(seed=None):
     g_star                                = const.G * planet_table["StarMass"] / planet_table["StarRadius"]**2
     slg_invalid                           = get_invalid_mask(planet_table["StarLogg"])
     planet_table["StarLogg"][slg_invalid] = np.log10(g_star.to(u.cm / u.s**2).value)[slg_invalid] * u.dex(u.cm / u.s**2)
+    
+    # Final fallback: median by discovery method (log g is not critical here)
+    slg_invalid = get_invalid_mask(planet_table["StarLogg"])
+    plg_invalid = get_invalid_mask(planet_table["PlanetLogg"])
+    for det_mask in (im_mask, rv_mask, tr_mask, ot_mask):
+        planet_table["StarLogg"][slg_invalid & det_mask]   = np.nanmedian(planet_table["StarLogg"][det_mask])
+        planet_table["PlanetLogg"][plg_invalid & det_mask] = np.nanmedian(planet_table["PlanetLogg"][det_mask])
+    
+    print("\n(8) Computing star and planet logg from (M and R) where possible")
 
 
     # -----------------------------------------------------------------------------
-    # 13) Filter down to rows usable for S/N calculations
+    # 9) Filter down to rows usable for S/N calculations
     # -----------------------------------------------------------------------------
-
-    ste_valid   = get_valid_mask(planet_table["StarTeff"])
+    
+    steff_valid = get_valid_mask(planet_table["StarTeff"])
     pteff_valid = get_valid_mask(planet_table["PlanetTeff"])
     skm_valid   = get_valid_mask(planet_table["StarKmag"])
     pr_valid    = get_valid_mask(planet_table["PlanetRadius"]) | get_valid_mask(planet_table["PlanetKmag(thermal+reflected)"]) # If the Kmag is known, the planet radius is not usefull since the normalisation is already known
     d_valid     = get_valid_mask(planet_table["Distance"])
     sma_valid   = get_valid_mask(planet_table["SMA"])
-    snr_valid   = ste_valid & pteff_valid & skm_valid & pr_valid & d_valid & sma_valid
-    print(f"\n(3) Filtering planets for S/N computations: keeping {len(planet_table[snr_valid])}/{len(planet_table)} planets")
-    print(f"                  => Missing StarTeff:     IM: {round(100*len(planet_table[~ste_valid & im_mask])/len(planet_table[im_mask]))}% | RV: {round(100*len(planet_table[~ste_valid & rv_mask])/len(planet_table[rv_mask]))}% | TR: {round(100*len(planet_table[~ste_valid & tr_mask])/len(planet_table[tr_mask]))}% | OT: {round(100*len(planet_table[~ste_valid & ot_mask])/len(planet_table[ot_mask]))}%")
+    snr_valid   = steff_valid & pteff_valid & skm_valid & pr_valid & d_valid & sma_valid
+    print(f"\n(9) Filtering planets for S/N computations: keeping {len(planet_table[snr_valid])}/{len(planet_table)} planets")
+    print(f"                  => Missing StarTeff:     IM: {round(100*len(planet_table[~steff_valid & im_mask])/len(planet_table[im_mask]))}% | RV: {round(100*len(planet_table[~steff_valid & rv_mask])/len(planet_table[rv_mask]))}% | TR: {round(100*len(planet_table[~steff_valid & tr_mask])/len(planet_table[tr_mask]))}% | OT: {round(100*len(planet_table[~steff_valid & ot_mask])/len(planet_table[ot_mask]))}%")
     print(f"                  => Missing PlanetTeff:   IM: {round(100*len(planet_table[~pteff_valid & im_mask])/len(planet_table[im_mask]))}% | RV: {round(100*len(planet_table[~pteff_valid & rv_mask])/len(planet_table[rv_mask]))}% | TR: {round(100*len(planet_table[~pteff_valid & tr_mask])/len(planet_table[tr_mask]))}% | OT: {round(100*len(planet_table[~pteff_valid & ot_mask])/len(planet_table[ot_mask]))}%")
     print(f"                  => Missing StarKmag:     IM: {round(100*len(planet_table[~skm_valid & im_mask])/len(planet_table[im_mask]))}% | RV: {round(100*len(planet_table[~skm_valid & rv_mask])/len(planet_table[rv_mask]))}% | TR: {round(100*len(planet_table[~skm_valid & tr_mask])/len(planet_table[tr_mask]))}% | OT: {round(100*len(planet_table[~skm_valid & ot_mask])/len(planet_table[ot_mask]))}%")
     print(f"                  => Missing PlanetRadius: IM: {round(100*len(planet_table[~pr_valid & im_mask])/len(planet_table[im_mask]))}% | RV: {round(100*len(planet_table[~pr_valid & rv_mask])/len(planet_table[rv_mask]))}% | TR: {round(100*len(planet_table[~pr_valid & tr_mask])/len(planet_table[tr_mask]))}% | OT: {round(100*len(planet_table[~pr_valid & ot_mask])/len(planet_table[ot_mask]))}%")
@@ -1713,7 +1782,7 @@ def get_archive_table(seed=None):
 
 
     # -----------------------------------------------------------------------------
-    # 14) Classifying planet types
+    # 10) Classifying planet types
     # -----------------------------------------------------------------------------
     # Creating planet type column
     planet_table["PlanetType"] = np.full(len(planet_table), "Unidentified", dtype="<U32")
@@ -1721,9 +1790,12 @@ def get_archive_table(seed=None):
     # Classifying (from 'planet_types')
     for idx in range(len(planet_table)):
         planet_table[idx]["PlanetType"] = get_planet_type(planet_table[idx])
-
+        
+    print("\n(10) Classifying planets per type...")
+    
+    
     # -----------------------------------------------------------------------------
-    # 15) Determining whether the rocky ("Earth-Like") planets have atmosphere
+    # 11) Determining whether the rocky ("Earth-Like") planets have atmosphere
     # -----------------------------------------------------------------------------
     # Creating planet atmosphere column
     planet_table["HasAtmosphere"] = np.full(len(planet_table), True, dtype=bool)
@@ -1752,14 +1824,14 @@ def get_archive_table(seed=None):
     no_atmosphere                                = rocky_planets & (no_retention | blown_atmosphere) 
     planet_table["HasAtmosphere"][no_atmosphere] = False
 
-    print("\n(4) Flagging rocky planets without atmosphere:")
+    print("\n(11) Flagging rocky planets without atmosphere:")
     print(f"Rocky planets without retention:           {(rocky_planets & no_retention).sum()} / {rocky_planets.sum()}")
     print(f"Rocky planets with blown atmosphere:       {(rocky_planets & blown_atmosphere).sum()} / {rocky_planets.sum()}")
     print(f"Rocky planets with either (no atmosphere): {no_atmosphere.sum()} / {rocky_planets.sum()}")
 
 
     # --------------------------------------------------------------------------------------------------------
-    # 16) Telluric-equivalent airmass for rocky planets with atmosphere (X_eq = airmass = 2.0 at Earth values)
+    # 12) Telluric-equivalent airmass for rocky planets with atmosphere (X_eq = airmass = 2.0 at Earth values)
     # --------------------------------------------------------------------------------------------------------
     # Heuristic proxy used only to scale the Earth-like telluric albedo template.
     # By construction, X_eq = 2 for Earth-like gravity when P_ref = 1 bar and eta = 1.
@@ -1779,7 +1851,7 @@ def get_archive_table(seed=None):
     X_eq        = np.clip(X_eq.to_value(u.dimensionless_unscaled), X_min, X_max) * u.dimensionless_unscaled
 
     planet_table["TelluricEquivalentAirmass"] = X_eq
-    print("\n(5) Assigning telluric-equivalent airmass values")
+    print("\n(12) Assigning telluric-equivalent airmass values...")
     
     
     # -------------------------------------------------------------------
@@ -1792,12 +1864,13 @@ def get_archive_table(seed=None):
     # 18) Saving final table
     # ----------------------
     print(f"\nTotal number of planets for FastYield calculations: {len(planet_table)}")
-    print(f"\nGenerating the table took {round((time.time()-time1)/60, 1)} mn")
+    print(f"Generating the table took {round((time.time()-time1)/60, 1)} mn")
     planet_table.write(f"{archive_path}/Archive_Pull_For_FastYield.ecsv", format='ascii.ecsv', overwrite=True)
     
     # Few sanity check plots
-    planet_table_classification()
-    planet_table_statistics()
+    planet_table_classification(planet_table)
+    planet_table_classification_histogram(planet_table)
+    planet_table_statistics(planet_table)
     
     return planet_table
 
@@ -2034,12 +2107,19 @@ def get_planet_table_SNR(instru, table="Archive", thermal_model="None", reflecte
                 planet_table[idx][f"Planet{band}mag(reflected)"] = mags[f"Planet{band}mag(reflected)"]
             if spectrum_contributions == "thermal+reflected":
                 planet_table[idx][f"Planet{band}mag(thermal+reflected)"] = mags[f"Planet{band}mag(thermal+reflected)"]
-        SNR     = np.sqrt(exposure_time/DIT_band) * signal_planet / np.sqrt( sigma_fund_planet**2 + (exposure_time/DIT_band)*sigma_syst_planet**2 )
-        idx_max = SNR.argmax() # Best band idx
-        planet_table[idx]["signal_INSTRU"]     = signal_planet[idx_max]
-        planet_table[idx]["sigma_fund_INSTRU"] = sigma_fund_planet[idx_max]
-        planet_table[idx]["sigma_syst_INSTRU"] = sigma_syst_planet[idx_max]
-        planet_table[idx]["DIT_INSTRU"]        = DIT_band[idx_max]
+        SNR       = np.sqrt(exposure_time / DIT_band) * signal_planet / np.sqrt(sigma_fund_planet**2 + (exposure_time / DIT_band) * sigma_syst_planet**2)
+        valid_snr = np.isfinite(SNR)
+        if np.any(valid_snr):
+            idx_max = np.where(valid_snr)[0][np.nanargmax(SNR[valid_snr])]
+            planet_table[idx]["signal_INSTRU"]     = signal_planet[idx_max]
+            planet_table[idx]["sigma_fund_INSTRU"] = sigma_fund_planet[idx_max]
+            planet_table[idx]["sigma_syst_INSTRU"] = sigma_syst_planet[idx_max]
+            planet_table[idx]["DIT_INSTRU"]        = DIT_band[idx_max]
+        else:
+            planet_table[idx]["signal_INSTRU"]     = np.nan
+            planet_table[idx]["sigma_fund_INSTRU"] = np.nan
+            planet_table[idx]["sigma_syst_INSTRU"] = np.nan
+            planet_table[idx]["DIT_INSTRU"]        = np.nan
         for nb, band in enumerate(name_band):
             planet_table[idx][f"signal_{band}"]     = signal_planet[nb]
             planet_table[idx][f"sigma_fund_{band}"] = sigma_fund_planet[nb]
@@ -2104,8 +2184,9 @@ def all_SNR_table(table="Archive", instrus=instrus): # takes ~ 13 hours
 # Classifications and statistics plots #
 ########################################
 
-def planet_table_classification():
-    planet_table = load_planet_table("Archive_Pull_For_FastYield.ecsv")
+def planet_table_classification(planet_table=None):
+    if planet_table is None:
+        planet_table = load_planet_table("Archive_Pull_For_FastYield.ecsv")
     
     radius = np.array(planet_table["PlanetRadius"].value) # R_earth
     mass   = np.array(planet_table["PlanetMass"].value)   # M_earth
@@ -2240,9 +2321,366 @@ def planet_table_classification():
 
 
 
-def planet_table_statistics():
+
+def planet_table_classification_histogram(planet_table):
+    """
+    Plot the number of planets per planet type with visual circle markers.
+
+    The plot shows:
+    - a horizontal histogram of the number of planets per type,
+    - one circle per type,
+    - circle size proportional to the characteristic radius of the type,
+    - circle edge width proportional to the characteristic mass of the type,
+    - circle color based on a simplified temperature category:
+      Cold (<500 K), Warm (500-1000 K), Hot (>=1000 K).
+
+    If a 'PlanetType' column already exists, it is used directly.
+    Otherwise, planet types are computed with get_planet_type().
+
+    Parameters
+    ----------
+    planet_table : astropy.table.Table, astropy.table.QTable, or pandas.DataFrame
+        Table containing either a 'PlanetType' column or the columns needed
+        by get_planet_type().
+
+    Returns
+    -------
+    fig, (ax_circ, ax_bar) : matplotlib Figure and Axes
+        Figure and axes of the plot.
+    """
+    # ------------------------------------------------------------------
+    # Small helpers
+    # ------------------------------------------------------------------
+    def _has_column(table, name):
+        """Return True if the table contains the requested column."""
+        if hasattr(table, "colnames"):
+            return name in table.colnames
+        return name in table.columns
+
+    def _representative_positive_value(vmin, vmax):
+        """
+        Return a representative value for a positive interval.
+
+        If the lower bound is zero, use a fraction of the upper bound instead
+        of the upper bound itself. This avoids overestimating open low-radius
+        or low-mass categories such as Sub-Earth.
+        """
+        if np.isfinite(vmin) and np.isfinite(vmax):
+            if vmin > 0 and vmax > 0:
+                return np.sqrt(vmin * vmax)
+            if vmin <= 0 and vmax > 0:
+                return 0.70 * vmax
+        if np.isfinite(vmin) and vmin > 0:
+            return float(vmin)
+        if np.isfinite(vmax) and vmax > 0:
+            return float(vmax)
+        return np.nan
+
+    def _linear_center(vmin, vmax):
+        """Return a representative value for a linear interval."""
+        if np.isfinite(vmin) and np.isfinite(vmax):
+            return 0.5 * (vmin + vmax)
+        if np.isfinite(vmin):
+            return float(vmin)
+        if np.isfinite(vmax):
+            return float(vmax)
+        return np.nan
+
+    def _temperature_category(teff):
+        """Map a characteristic temperature to one of three broad categories."""
+        if not np.isfinite(teff):
+            return "Unidentified"
+        if teff < 500:
+            return "Cold (<500 K)"
+        elif teff < 1000:
+            return "Warm (500–1000 K)"
+        else:
+            return "Hot (≥1000 K)"
+
+    def _radius_to_marker_size(radius, rmin, rmax, dmin=6.5, dmax=32.0, gamma=0.54):
+        """
+        Convert a characteristic radius into a scatter-marker area.
+
+        The scaling is applied to a visual marker diameter, then converted to
+        an area for scatter(). The exponent gamma enhances the contrast among
+        small planets, making Sub-Earth, Earth-like, and Super-Earth types more
+        distinguishable.
+        """
+        if not np.isfinite(radius):
+            radius = 4.0
+        if not np.isfinite(rmin) or not np.isfinite(rmax) or rmin <= 0 or rmax <= 0 or rmin == rmax:
+            visual_diameter = 16.0
+        else:
+            radius = np.clip(radius, rmin, rmax)
+            t = (np.log10(radius) - np.log10(rmin)) / (np.log10(rmax) - np.log10(rmin))
+            t = np.clip(t, 0, 1)
+            # Slight boost around terrestrial radii so that R = 1 R_earth
+            # remains visible compared to the smallest categories.
+            visual_diameter = dmin + (dmax - dmin) * t**gamma
+            if 0.85 <= radius <= 1.20:
+                visual_diameter *= 1.12
+        return visual_diameter**2
+
+    def _mass_to_linewidth(mass, mmin, mmax, lwmin=1.0, lwmax=3.5):
+        """Convert a characteristic mass into a marker edge width."""
+        if not np.isfinite(mass):
+            return 2.0
+        if not np.isfinite(mmin) or not np.isfinite(mmax) or mmin <= 0 or mmax <= 0 or mmin == mmax:
+            return 1.8
+        mass = np.clip(mass, mmin, mmax)
+        t    = (np.log10(mass) - np.log10(mmin)) / (np.log10(mmax) - np.log10(mmin))
+        t    = np.clip(t, 0, 1)
+        return lwmin + (lwmax - lwmin) * t
+
+    def _format_radius_label(r):
+        """Format radius labels for the legend."""
+        if r >= 10:
+            return f"{r:.0f} R$_\\oplus$"
+        return f"{r:.1f} R$_\\oplus$"
+
+    def _format_mass_label(m):
+        """Format mass labels for the legend."""
+        if m >= 100:
+            return f"{m:.0f} M$_\\oplus$"
+        if m >= 10:
+            return f"{m:.1f} M$_\\oplus$"
+        return f"{m:.1f} M$_\\oplus$"
+    
+    if planet_table is None:
+        planet_table = load_planet_table("Archive_Pull_For_FastYield.ecsv")
+    
+    # ------------------------------------------------------------------
+    # Circle colors: simplified temperature categories
+    # ------------------------------------------------------------------
+    temp_colors = {"Cold (<500 K)": "#4D9FD3", "Warm (500–1000 K)": "#E49A43", "Hot (≥1000 K)": "#D94B41", "Unidentified": "#BDBDBD"}
+
+    # ------------------------------------------------------------------
+    # Retrieve or compute planet types
+    # ------------------------------------------------------------------
+    if _has_column(planet_table, "PlanetType"):
+        planet_types_array = np.asarray(planet_table["PlanetType"], dtype=str)
+    else:
+        if hasattr(planet_table, "colnames"):
+            planet_types_array = np.array([get_planet_type(planet_table[i]) for i in range(len(planet_table))], dtype=str)
+        else:
+            planet_types_array = np.array([get_planet_type(row) for _, row in planet_table.iterrows()], dtype=str)
+
+    planet_types_array = np.char.strip(planet_types_array)
+    planet_types_array[planet_types_array == ""] = "Unidentified"
+
+    # ------------------------------------------------------------------
+    # Count planets per type
+    # ------------------------------------------------------------------
+    counts = pd.Series(planet_types_array).value_counts()
+
+    mask_unidentified = counts.index.str.contains("Unidentified", case=False, regex=False)
+    identified_counts = counts[~mask_unidentified].sort_values(ascending=False)
+    unknown_counts    = counts[mask_unidentified].sort_values(ascending=False)
+
+    counts = pd.concat([identified_counts, unknown_counts])
+
+    labels = counts.index.to_numpy()
+    values = counts.values.astype(int)
+    y_pos  = np.arange(len(labels))
+    ntypes = len(labels)
+
+    # ------------------------------------------------------------------
+    # Characteristic values for each type
+    # ------------------------------------------------------------------
+    radius_ref = np.full(ntypes, np.nan, dtype=float)
+    mass_ref   = np.full(ntypes, np.nan, dtype=float)
+    teff_ref   = np.full(ntypes, np.nan, dtype=float)
+    temp_cat   = np.empty(ntypes, dtype=object)
+    is_unknown = np.array(["Unidentified" in lbl for lbl in labels], dtype=bool)
+
+    for i, ptype in enumerate(labels):
+        if is_unknown[i] or ptype not in planet_types:
+            temp_cat[i] = "Unidentified"
+            continue
+
+        criteria = planet_types[ptype]
+
+        radius_ref[i] = _representative_positive_value(criteria["radius_min"], criteria["radius_max"])
+        mass_ref[i]   = _representative_positive_value(criteria["mass_min"], criteria["mass_max"])
+        teff_ref[i]   = _linear_center(criteria["teff_min"], criteria["teff_max"])
+        temp_cat[i]   = _temperature_category(teff_ref[i])
+
+    finite_r = radius_ref[np.isfinite(radius_ref) & (radius_ref > 0)]
+    finite_m = mass_ref[np.isfinite(mass_ref) & (mass_ref > 0)]
+
+    rmin = np.nanmin(finite_r) if len(finite_r) > 0 else 0.6
+    rmax = np.nanmax(finite_r) if len(finite_r) > 0 else 12.0
+    mmin = np.nanmin(finite_m) if len(finite_m) > 0 else 0.1
+    mmax = np.nanmax(finite_m) if len(finite_m) > 0 else 1000.0
+
+    marker_sizes = np.array([_radius_to_marker_size(r, rmin, rmax) for r in radius_ref], dtype=float)
+    marker_lws   = np.array([_mass_to_linewidth(m, mmin, mmax) for m in mass_ref], dtype=float)
+    marker_cols  = np.array([temp_colors.get(tc, "#BDBDBD") for tc in temp_cat], dtype=object)
+
+    # Unidentified categories: grey and Neptune-like size, to avoid overlap.
+    unidentified_radius = 4.0
+    marker_sizes[is_unknown] = _radius_to_marker_size(unidentified_radius, rmin, rmax)
+    marker_lws[is_unknown]   = 2.2
+    marker_cols[is_unknown]  = temp_colors["Unidentified"]
+
+    # ------------------------------------------------------------------
+    # Histogram colors
+    # ------------------------------------------------------------------
+    cmap = plt.get_cmap("magma")
+    n_identified = len(identified_counts)
+    identified_bar_colors = cmap(np.linspace(0.82, 0.30, max(n_identified, 1)))
+
+    bar_colors = []
+    j = 0
+
+    for i in range(ntypes):
+        if is_unknown[i]:
+            bar_colors.append("#BDBDBD")
+        else:
+            bar_colors.append(identified_bar_colors[j])
+            j += 1
+
+    # ------------------------------------------------------------------
+    # Figure layout
+    # ------------------------------------------------------------------
+    fig_height = max(8.2, 0.50 * ntypes + 1.9)
+    fig, (ax_circ, ax_bar) = plt.subplots(1, 2, figsize=(16.0, fig_height), dpi=300, sharey=True, gridspec_kw={"width_ratios": [2.0, 8.0], "wspace": 0.02})
+
+    # ------------------------------------------------------------------
+    # Left panel: planet-type circles
+    # ------------------------------------------------------------------
+    ax_circ.scatter(np.full(ntypes, 0.58), y_pos, s=marker_sizes, c=marker_cols, edgecolors="black", linewidths=marker_lws, zorder=3)
+
+    ax_circ.set_xlim(0, 1)
+    ax_circ.set_xticks([])
+    ax_circ.set_yticks(y_pos)
+    ax_circ.set_yticklabels(labels, fontsize=13)
+    ax_circ.invert_yaxis()
+    ax_circ.tick_params(axis="y", length=0)
+
+    for spine in ax_circ.spines.values():
+        spine.set_visible(False)
+
+    # ------------------------------------------------------------------
+    # Right panel: histogram
+    # ------------------------------------------------------------------
+    bars = ax_bar.barh(y_pos, values, color=bar_colors, edgecolor="black", linewidth=0.9, alpha=0.88, zorder=2)
+
+    xmax = np.nanmax(values) if len(values) > 0 else 1
+    ax_bar.set_xlim(0, xmax * 1.22)
+    ax_bar.set_xlabel("Number of planets", fontsize=17)
+    ax_bar.set_yticks(y_pos)
+    ax_bar.tick_params(axis="y", left=False, labelleft=False)
+    ax_bar.grid(axis="x", linestyle="--", linewidth=0.8, alpha=0.28, zorder=1)
+    ax_bar.set_axisbelow(True)
+    ax_bar.tick_params(axis="x", labelsize=12)
+
+    ax_bar.spines["top"].set_visible(False)
+    ax_bar.spines["right"].set_visible(False)
+    ax_bar.spines["left"].set_visible(False)
+
+    # Bar labels
+    for bar, value in zip(bars, values):
+        ax_bar.text(bar.get_width() + 0.014 * xmax, bar.get_y() + bar.get_height() / 2, f"{int(value)}", va="center", ha="left", fontsize=12.5, fontweight="bold", color="#1a1a1a")
+
+    # ------------------------------------------------------------------
+    # Global title
+    # ------------------------------------------------------------------
+    total_planets = int(np.sum(values))
+
+    fig.suptitle(f"Planet population by type ({total_planets} planets)", fontsize=23, fontweight="bold", y=0.95)
+
+    # ------------------------------------------------------------------
+    # Inset legend: temperature categories
+    # ------------------------------------------------------------------
+    ax_temp = ax_bar.inset_axes([0.57, 0.58, 0.41, 0.27])
+    ax_temp.set_xlim(0, 1)
+    ax_temp.set_ylim(0, 1)
+    ax_temp.set_xticks([])
+    ax_temp.set_yticks([])
+    ax_temp.set_facecolor((1, 1, 1, 0.97))
+
+    for spine in ax_temp.spines.values():
+        spine.set_color("0.70")
+        spine.set_linewidth(1.2)
+
+    ax_temp.text(0.50, 0.88, "Temperature bands", ha="center", va="center", fontsize=18, fontweight="bold")
+
+    temp_items = [("Cold (<500 K)", temp_colors["Cold (<500 K)"]), ("Warm (500–1000 K)", temp_colors["Warm (500–1000 K)"]), ("Hot (≥1000 K)", temp_colors["Hot (≥1000 K)"])]
+
+    y_items = [0.65, 0.44, 0.23]
+
+    for (label, color), yy in zip(temp_items, y_items):
+        ax_temp.scatter(0.15, yy, s=230, facecolor=color, edgecolor="black", linewidth=1.3)
+        ax_temp.text(0.29, yy, label, ha="left", va="center", fontsize=15)
+
+    # ------------------------------------------------------------------
+    # Inset legend: circle encoding
+    # ------------------------------------------------------------------
+    ax_enc = ax_bar.inset_axes([0.49, 0.10, 0.49, 0.40])
+    ax_enc.set_xlim(0, 1)
+    ax_enc.set_ylim(0, 1)
+    ax_enc.set_xticks([])
+    ax_enc.set_yticks([])
+    ax_enc.set_facecolor((1, 1, 1, 0.97))
+
+    for spine in ax_enc.spines.values():
+        spine.set_color("0.70")
+        spine.set_linewidth(1.2)
+
+    ax_enc.text(0.50, 0.92, "Circle encoding", ha="center", va="center", fontsize=18, fontweight="bold")
+
+    # -------------------------
+    # Radius legend
+    # -------------------------
+    ax_enc.text(0.08, 0.78, "Size → radius", ha="left", va="center", fontsize=15, color="dimgray", fontweight="bold")
+
+    radius_examples = np.array([0.8, 1.0, 1.5, 4.0, 8.0])
+    radius_examples = radius_examples[(radius_examples >= rmin * 0.8) & (radius_examples <= rmax * 1.1)]
+
+    if len(radius_examples) == 0:
+        radius_examples = np.array([rmin, 0.5 * (rmin + rmax), rmax])
+
+    x_rad = np.linspace(0.12, 0.88, len(radius_examples))
+    y_rad = 0.59
+
+    for r, xx in zip(radius_examples, x_rad):
+        ax_enc.scatter(xx, y_rad, s=_radius_to_marker_size(r, rmin, rmax), facecolor="white", edgecolor="black", linewidth=1.3)
+        ax_enc.text(xx, 0.39, _format_radius_label(r), ha="center", va="center", fontsize=13.5)
+
+    # -------------------------
+    # Mass legend
+    # -------------------------
+    ax_enc.text(0.08, 0.24, "Edge width → mass", ha="left", va="center", fontsize=15, color="dimgray", fontweight="bold")
+
+    mass_examples = np.array([1.0, 20.0, 600.0])
+    mass_examples = mass_examples[(mass_examples >= mmin * 0.8) & (mass_examples <= mmax * 1.2)]
+
+    if len(mass_examples) == 0:
+        mass_examples = np.array([mmin, np.sqrt(mmin * mmax), mmax])
+
+    x_marker = 0.14
+    x_label  = 0.27
+    y_mass   = np.linspace(0.16, 0.04, len(mass_examples))
+
+    for m, yy in zip(mass_examples[::-1], y_mass):
+        ax_enc.scatter(x_marker, yy, s=360, facecolor="white", edgecolor="black", linewidth=_mass_to_linewidth(m, mmin, mmax))
+        ax_enc.text(x_label, yy, _format_mass_label(m), ha="left", va="center", fontsize=13.5)
+
+    # ------------------------------------------------------------------
+    # Final layout
+    # ------------------------------------------------------------------
+    fig.subplots_adjust(left=0.27, right=0.97, top=0.93, bottom=0.06, wspace=0.02)
+    plt.show()
+
+
+
+def planet_table_statistics(planet_table=None):
+    
+    if planet_table is None:
+        planet_table = load_planet_table("Archive_Pull_For_FastYield.ecsv")
+        
     smooth_corner = 1
-    planet_table  = load_planet_table("Archive_Pull_For_FastYield.ecsv")
     planet_table  = planet_table[get_valid_mask(planet_table["PlanetMass"])]
 
     ndim       = 5 # Mp, Rp, Tp, d, a
@@ -2324,17 +2762,17 @@ def yield_plot_instrus_texp(thermal_model="auto", reflected_model="auto", fracti
         ratio = norm_harmoni = norm_andes = norm_eris = norm_hirise = norm_mirimrs = norm_nircam = norm_nirspec = 1
     
     for i in range(len(exposure_time)):
-        SNR_harmoni          = get_SNR_from_table(table=planet_table_harmoni,          exposure_time=exposure_time[i], band="INSTRU")
-        SNR_andes            = get_SNR_from_table(table=planet_table_andes,            exposure_time=exposure_time[i], band="INSTRU")
-        SNR_eris             = get_SNR_from_table(table=planet_table_eris,             exposure_time=exposure_time[i], band="INSTRU")
-        SNR_hirise           = get_SNR_from_table(table=planet_table_hirise,           exposure_time=exposure_time[i], band="INSTRU")
-        SNR_mirimrs_non_syst = get_SNR_from_table(table=planet_table_mirimrs_non_syst, exposure_time=exposure_time[i], band="INSTRU")
-        SNR_mirimrs_syst     = get_SNR_from_table(table=planet_table_mirimrs_syst,     exposure_time=exposure_time[i], band="INSTRU")
-        SNR_mirimrs_syst_pca = get_SNR_from_table(table=planet_table_mirimrs_syst_pca, exposure_time=exposure_time[i], band="INSTRU")
-        SNR_nircam           = get_SNR_from_table(table=planet_table_nircam,           exposure_time=exposure_time[i], band="INSTRU")
-        SNR_nirspec_non_syst = get_SNR_from_table(table=planet_table_nirspec_non_syst, exposure_time=exposure_time[i], band="INSTRU")
-        SNR_nirspec_syst     = get_SNR_from_table(table=planet_table_nirspec_syst,     exposure_time=exposure_time[i], band="INSTRU")
-        SNR_nirspec_syst_pca = get_SNR_from_table(table=planet_table_nirspec_syst_pca, exposure_time=exposure_time[i], band="INSTRU")
+        SNR_harmoni          = get_SNR_from_table(planet_table=planet_table_harmoni,          exposure_time=exposure_time[i], band="INSTRU")
+        SNR_andes            = get_SNR_from_table(planet_table=planet_table_andes,            exposure_time=exposure_time[i], band="INSTRU")
+        SNR_eris             = get_SNR_from_table(planet_table=planet_table_eris,             exposure_time=exposure_time[i], band="INSTRU")
+        SNR_hirise           = get_SNR_from_table(planet_table=planet_table_hirise,           exposure_time=exposure_time[i], band="INSTRU")
+        SNR_mirimrs_non_syst = get_SNR_from_table(planet_table=planet_table_mirimrs_non_syst, exposure_time=exposure_time[i], band="INSTRU")
+        SNR_mirimrs_syst     = get_SNR_from_table(planet_table=planet_table_mirimrs_syst,     exposure_time=exposure_time[i], band="INSTRU")
+        SNR_mirimrs_syst_pca = get_SNR_from_table(planet_table=planet_table_mirimrs_syst_pca, exposure_time=exposure_time[i], band="INSTRU")
+        SNR_nircam           = get_SNR_from_table(planet_table=planet_table_nircam,           exposure_time=exposure_time[i], band="INSTRU")
+        SNR_nirspec_non_syst = get_SNR_from_table(planet_table=planet_table_nirspec_non_syst, exposure_time=exposure_time[i], band="INSTRU")
+        SNR_nirspec_syst     = get_SNR_from_table(planet_table=planet_table_nirspec_syst,     exposure_time=exposure_time[i], band="INSTRU")
+        SNR_nirspec_syst_pca = get_SNR_from_table(planet_table=planet_table_nirspec_syst_pca, exposure_time=exposure_time[i], band="INSTRU")
 
         yield_harmoni[i]          = ratio * len(planet_table_harmoni[SNR_harmoni > SNR_thresh])                   / norm_harmoni
         yield_andes[i]            = ratio * len(planet_table_andes[SNR_andes > SNR_thresh])                       / norm_andes
@@ -2498,16 +2936,16 @@ def yield_hist_instrus_ptypes(exposure_time=10*60, thermal_model="auto", reflect
     #planet_table_nirspec_syst_pca = load_planet_table(f"Archive_Pull_NIRSpec_NO_SP_NO_JQ_with_systematics+PCA_{thermal_model}+None.ecsv")
     planet_table_nirspec_syst_pca = load_planet_table(f"Archive_Pull_NIRSpec_NO_SP_NO_JQ_with_systematics_{thermal_model}+None.ecsv")
     
-    planet_table_harmoni["SNR"]          = np.fmax(get_SNR_from_table(table=planet_table_harmoni,  exposure_time=exposure_time, band="INSTRU"), get_SNR_from_table(table=planet_table_harmoni_sp_prox, exposure_time=exposure_time, band="INSTRU"))
-    planet_table_andes["SNR" ]           = np.fmax(get_SNR_from_table(table=planet_table_andes,    exposure_time=exposure_time, band="INSTRU"), get_SNR_from_table(table=planet_table_andes_lyot,      exposure_time=exposure_time, band="INSTRU"))
-    planet_table_eris["SNR"]             = get_SNR_from_table(table=planet_table_eris,             exposure_time=exposure_time, band="INSTRU")
-    planet_table_mirimrs_non_syst["SNR"] = get_SNR_from_table(table=planet_table_mirimrs_non_syst, exposure_time=exposure_time, band="INSTRU")
-    planet_table_mirimrs_syst["SNR"]     = get_SNR_from_table(table=planet_table_mirimrs_syst,     exposure_time=exposure_time, band="INSTRU")
-    planet_table_mirimrs_syst_pca["SNR"] = get_SNR_from_table(table=planet_table_mirimrs_syst_pca, exposure_time=exposure_time, band="INSTRU")
-    planet_table_nircam["SNR"]           = get_SNR_from_table(table=planet_table_nircam,           exposure_time=exposure_time, band="INSTRU")
-    planet_table_nirspec_non_syst["SNR"] = get_SNR_from_table(table=planet_table_nirspec_non_syst, exposure_time=exposure_time, band="INSTRU")
-    planet_table_nirspec_syst["SNR"]     = get_SNR_from_table(table=planet_table_nirspec_syst,     exposure_time=exposure_time, band="INSTRU")
-    planet_table_nirspec_syst_pca["SNR"] = get_SNR_from_table(table=planet_table_nirspec_syst_pca, exposure_time=exposure_time, band="INSTRU")
+    planet_table_harmoni["SNR"]          = np.fmax(get_SNR_from_table(planet_table=planet_table_harmoni,  exposure_time=exposure_time, band="INSTRU"), get_SNR_from_table(planet_table=planet_table_harmoni_sp_prox, exposure_time=exposure_time, band="INSTRU"))
+    planet_table_andes["SNR" ]           = np.fmax(get_SNR_from_table(planet_table=planet_table_andes,    exposure_time=exposure_time, band="INSTRU"), get_SNR_from_table(planet_table=planet_table_andes_lyot,      exposure_time=exposure_time, band="INSTRU"))
+    planet_table_eris["SNR"]             = get_SNR_from_table(planet_table=planet_table_eris,             exposure_time=exposure_time, band="INSTRU")
+    planet_table_mirimrs_non_syst["SNR"] = get_SNR_from_table(planet_table=planet_table_mirimrs_non_syst, exposure_time=exposure_time, band="INSTRU")
+    planet_table_mirimrs_syst["SNR"]     = get_SNR_from_table(planet_table=planet_table_mirimrs_syst,     exposure_time=exposure_time, band="INSTRU")
+    planet_table_mirimrs_syst_pca["SNR"] = get_SNR_from_table(planet_table=planet_table_mirimrs_syst_pca, exposure_time=exposure_time, band="INSTRU")
+    planet_table_nircam["SNR"]           = get_SNR_from_table(planet_table=planet_table_nircam,           exposure_time=exposure_time, band="INSTRU")
+    planet_table_nirspec_non_syst["SNR"] = get_SNR_from_table(planet_table=planet_table_nirspec_non_syst, exposure_time=exposure_time, band="INSTRU")
+    planet_table_nirspec_syst["SNR"]     = get_SNR_from_table(planet_table=planet_table_nirspec_syst,     exposure_time=exposure_time, band="INSTRU")
+    planet_table_nirspec_syst_pca["SNR"] = get_SNR_from_table(planet_table=planet_table_nirspec_syst_pca, exposure_time=exposure_time, band="INSTRU")
 
     
     # # TODO: only keeping reflected light planets for ELT instruments
@@ -2522,16 +2960,16 @@ def yield_hist_instrus_ptypes(exposure_time=10*60, thermal_model="auto", reflect
     
 
     # Dictionnaries giving the list of planets for mp[type]
-    mp_harmoni          = build_match_dict(planet_table_harmoni,          planet_types=planet_types)
-    mp_andes            = build_match_dict(planet_table_andes,            planet_types=planet_types)
-    mp_eris             = build_match_dict(planet_table_eris,             planet_types=planet_types)
-    mp_mirimrs_non_syst = build_match_dict(planet_table_mirimrs_non_syst, planet_types=planet_types)
-    mp_mirimrs_syst     = build_match_dict(planet_table_mirimrs_syst,     planet_types=planet_types)
-    mp_mirimrs_syst_pca = build_match_dict(planet_table_mirimrs_syst_pca, planet_types=planet_types)
-    mp_nircam           = build_match_dict(planet_table_nircam,           planet_types=planet_types)
-    mp_nirspec_non_syst = build_match_dict(planet_table_nirspec_non_syst, planet_types=planet_types)
-    mp_nirspec_syst     = build_match_dict(planet_table_nirspec_syst,     planet_types=planet_types)
-    mp_nirspec_syst_pca = build_match_dict(planet_table_nirspec_syst_pca, planet_types=planet_types)
+    mp_harmoni          = build_match_dict(planet_table=planet_table_harmoni,          planet_types=planet_types)
+    mp_andes            = build_match_dict(planet_table=planet_table_andes,            planet_types=planet_types)
+    mp_eris             = build_match_dict(planet_table=planet_table_eris,             planet_types=planet_types)
+    mp_mirimrs_non_syst = build_match_dict(planet_table=planet_table_mirimrs_non_syst, planet_types=planet_types)
+    mp_mirimrs_syst     = build_match_dict(planet_table=planet_table_mirimrs_syst,     planet_types=planet_types)
+    mp_mirimrs_syst_pca = build_match_dict(planet_table=planet_table_mirimrs_syst_pca, planet_types=planet_types)
+    mp_nircam           = build_match_dict(planet_table=planet_table_nircam,           planet_types=planet_types)
+    mp_nirspec_non_syst = build_match_dict(planet_table=planet_table_nirspec_non_syst, planet_types=planet_types)
+    mp_nirspec_syst     = build_match_dict(planet_table=planet_table_nirspec_syst,     planet_types=planet_types)
+    mp_nirspec_syst_pca = build_match_dict(planet_table=planet_table_nirspec_syst_pca, planet_types=planet_types)
 
     planet_types_array     = np.array(list(planet_types.keys()))
     yield_harmoni          = np.zeros(len(planet_types_array))
@@ -2649,10 +3087,10 @@ def yield_hist_instrus_ptypes_ELT(exposure_time=10*60, thermal_model="auto", ref
     planet_table_andes["SNR"]        = get_SNR_from_table(planet_table=planet_table_andes,        exposure_time=exposure_time, band="INSTRU")
     planet_table_andes_lyot["SNR"]   = get_SNR_from_table(planet_table=planet_table_andes_lyot,   exposure_time=exposure_time, band="INSTRU")
     
-    mp_harmoni      = build_match_dict(planet_table_harmoni,      planet_types=planet_types)
-    mp_harmoni_prox = build_match_dict(planet_table_harmoni_prox, planet_types=planet_types)
-    mp_andes        = build_match_dict(planet_table_andes,        planet_types=planet_types)
-    mp_andes_lyot   = build_match_dict(planet_table_andes_lyot,   planet_types=planet_types)
+    mp_harmoni      = build_match_dict(planet_table=planet_table_harmoni,      planet_types=planet_types)
+    mp_harmoni_prox = build_match_dict(planet_table=planet_table_harmoni_prox, planet_types=planet_types)
+    mp_andes        = build_match_dict(planet_table=planet_table_andes,        planet_types=planet_types)
+    mp_andes_lyot   = build_match_dict(planet_table=planet_table_andes_lyot,   planet_types=planet_types)
     
     planet_types_array = np.array(list(planet_types.keys()))
     yield_harmoni      = np.zeros(len(planet_types_array))
@@ -2812,7 +3250,7 @@ def yield_corner_instru(instru="HARMONI", exposure_time=6*60, thermal_model="BT-
     planet_table = load_planet_table(f"Archive_Pull_{instru}_{apodizer}_{strehl}{coronagraph_str}_{suffix}_{name_model}.ecsv")
     planet_table = planet_table[ (~get_invalid_mask(planet_table["PlanetMass"])) & (~get_invalid_mask(planet_table["PlanetRadius"])) & (~get_invalid_mask(planet_table["PlanetTeff"])) & (~get_invalid_mask(planet_table["SMA"])) & (~get_invalid_mask(planet_table["Distance"])) & (~get_invalid_mask(planet_table["AngSep"]))]
     planet_table = planet_table[(planet_table["AngSep"]>iwa*u.mas)&(planet_table["AngSep"]<owa*u.mas)]
-    SNR          = get_SNR_from_table(table=planet_table, exposure_time=exposure_time, band=band)
+    SNR          = get_SNR_from_table(planet_table=planet_table, exposure_time=exposure_time, band=band)
     planet_table = planet_table[SNR > SNR_thresh]
     data       = np.zeros((len(planet_table), ndim))
     data[:, 0] = np.log10(np.array(planet_table["PlanetMass"].value))
@@ -2912,7 +3350,7 @@ def yield_corner_instrus(instru1="HARMONI", instru2="ANDES", apodizer1="NO_SP", 
         planet_table = planet_table[ (~get_invalid_mask(planet_table["PlanetMass"])) & (~get_invalid_mask(planet_table["PlanetRadius"])) & (~get_invalid_mask(planet_table["PlanetTeff"])) & (~get_invalid_mask(planet_table["SMA"])) & (~get_invalid_mask(planet_table["Distance"])) & (~get_invalid_mask(planet_table["AngSep"]))]
         planet_table = planet_table[(planet_table["AngSep"]>IWA[ni]*u.mas)&(planet_table["AngSep"]<OWA[ni]*u.mas)]
         #planet_table = planet_table[(planet_table["AngSep"]>IWA[ni]*u.mas)] # TODO : crop upper WA (with owa) ?
-        SNR          = get_SNR_from_table(table=planet_table, exposure_time=exposure_time, band="INSTRU")
+        SNR          = get_SNR_from_table(planet_table=planet_table, exposure_time=exposure_time, band="INSTRU")
         planet_table = planet_table[SNR > SNR_thresh]
         yields[ni]   = len(planet_table)
         data       = np.zeros((len(planet_table), ndim))
@@ -3049,7 +3487,7 @@ def yield_corner_models(model1="tellurics", model2="flat", instru="ANDES", apodi
         planet_table = planet_table[ (~get_invalid_mask(planet_table["PlanetMass"])) & (~get_invalid_mask(planet_table["PlanetRadius"])) & (~get_invalid_mask(planet_table["PlanetTeff"])) & (~get_invalid_mask(planet_table["SMA"])) & (~get_invalid_mask(planet_table["Distance"])) & (~get_invalid_mask(planet_table["AngSep"]))]
         planet_table = planet_table[(planet_table["AngSep"]>iwa*u.mas)&(planet_table["AngSep"]<owa*u.mas)]
         #planet_table = planet_table[(planet_table["AngSep"]>iwa*u.mas)] # TODO : crop upper WA (with owa) ?
-        SNR          = get_SNR_from_table(table=planet_table, exposure_time=exposure_time, band=band)
+        SNR          = get_SNR_from_table(planet_table=planet_table, exposure_time=exposure_time, band=band)
         planet_table = planet_table[SNR > SNR_thresh]
         yields[im]   = len(planet_table)
         data       = np.zeros((len(planet_table), ndim))
@@ -3135,7 +3573,7 @@ def yield_contrast_instru(instru="ANDES", exposure_time=6*60, thermal_model="BT-
     tablename = f"{table}_Pull_{instru}_{apodizer}_{strehl}{coronagraph_str}_{suffix}_{name_model}.ecsv"
 
     planet_table = load_planet_table(tablename)
-    SNR          = get_SNR_from_table(table=planet_table, exposure_time=exposure_time, band=band)
+    SNR          = get_SNR_from_table(planet_table=planet_table, exposure_time=exposure_time, band=band)
     planet_table = planet_table[SNR > SNR_thresh]
     SNR          = SNR[SNR > SNR_thresh]
     

@@ -3,7 +3,7 @@ from .config import c, R0_max, config_data_list, T_earth, lg_earth, vrot_earth, 
 from .get_specs import load_tell_trans, get_config_data, get_transmission, get_PSF_profile, get_R_instru
 from .spectrum import get_counts_from_density, load_vega_spectrum, get_wave_K, get_wave_band, get_wavelength_axis_constant_R, filtered_flux, Spectrum, load_star_spectrum, load_planet_spectrum, load_albedo_spectrum, get_spectrum_contribution_name_model, get_thermal_reflected_spectrum
 from .FastCurves import FastCurves
-from .FastYield import planet_types, load_planet_table, get_SNR_from_table, find_matching_planets, plot_matching_planets
+from .FastYield import planet_types, load_planet_table, get_SNR_from_table, build_match_dict, plot_matching_planets
 from .signal_noise import compute_sigma_base_2_al_spec_fast
 
 # import matplotlib modules
@@ -1105,7 +1105,7 @@ def process_colormap_bands_Tp(i):
 # GAIN_SNR(Bands vs Planet Types)
 #
 
-def colormap_bands_ptypes_SNR(mode="multi", instru="HARMONI", thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl="JQ1", systematics=False, PCA=False, planet_types=planet_types, save=False):
+def colormap_bands_ptypes_SNR(mode="multi", Nmax=None, instru="HARMONI", thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl="JQ1", systematics=False, PCA=False, planet_types=planet_types, save=False):
     
     # Get instru specs
     config_data = get_config_data(instru)
@@ -1130,23 +1130,21 @@ def colormap_bands_ptypes_SNR(mode="multi", instru="HARMONI", thermal_model="aut
             coronagraph_str = "_"+str(coronagraph) if coronagraph is not None else ""
             filename        = f"{table}_Pull_{instru}_{apodizer}_{strehl}{coronagraph_str}_{suffix}_{name_model}"
             planet_table    = load_planet_table(f"{filename}.ecsv")    
-            SNR.append(get_SNR_from_table(table=planet_table, exposure_time=exposure_time, band="INSTRU"))
+            SNR.append(get_SNR_from_table(planet_table=planet_table, exposure_time=exposure_time, band="INSTRU"))
             for band in config_data["gratings"]:
-                SNR_bands[f"{band}"].append(get_SNR_from_table(table=planet_table, exposure_time=exposure_time, band=band))
+                SNR_bands[f"{band}"].append(get_SNR_from_table(planet_table=planet_table, exposure_time=exposure_time, band=band))
     
     # Keeping only the best SNR over the apodizers/coronagraph config
     planet_table["SNR"] = np.nanmax(np.stack(SNR, axis=0), axis=0)
     for band in config_data["gratings"]:
         planet_table[f"SNR_{band}"] = np.nanmax(np.stack(SNR_bands[f"{band}"], axis=0), axis=0)
 
-    # Find planets based on mode
-    planet_table_pd  = planet_table.to_pandas() # convert to pandas to find matching types
-    selected_planets = set()                    # Set to store already assigned planets for mode = "unique"
-    matching_planets = {planet_type: find_matching_planets(criteria, planet_table_pd, mode, selected_planets) for planet_type, criteria in planet_types.items()}
+    # Find planets based on mode: the classification is performed once inside build_match_dict().
+    matching_planets = build_match_dict(planet_table=planet_table, planet_types=planet_types, mode=mode, Nmax=Nmax)
 
     # Table plot
-    plot_matching_planets(matching_planets=matching_planets, exposure_time=exposure_time, mode=mode, planet_types=planet_types)
-
+    plot_matching_planets(matching_planets=matching_planets, exposure_time=exposure_time, mode=mode, planet_types=planet_types, instru=instru)
+    
     # Definig arrays
     planet_types_list = [ptype for ptype, planets in matching_planets.items() if len(planets) > 0]
     planet_types_arr  = np.array(planet_types_list, dtype=object)
@@ -1294,16 +1292,14 @@ def colormap_bands_ptypes_parameters(mode="multi", Nmax=10, instru="HARMONI", th
         suffix = "without_systematics"
     filename            = f"{table}_Pull_{instru}_{apodizer}_{strehl}{coronagraph_str}_{suffix}_{name_model}"
     planet_table        = load_planet_table(f"{filename}.ecsv")    
-    planet_table["SNR"] = get_SNR_from_table(table=planet_table, exposure_time=exposure_time, band="INSTRU")
+    planet_table["SNR"] = get_SNR_from_table(planet_table=planet_table, exposure_time=exposure_time, band="INSTRU")
     
-    # Find planets based on mode
-    planet_table_pd  = planet_table.to_pandas() # convert to pandas to find matching types
-    selected_planets = set()                    # Set to store already assigned planets for mode = "unique"
-    matching_planets = {planet_type: find_matching_planets(criteria, planet_table_pd, mode, selected_planets, Nmax=Nmax) for planet_type, criteria in planet_types.items()}
+    # Find planets based on mode: the classification is performed once inside build_match_dict().
+    matching_planets = build_match_dict(planet_table=planet_table, planet_types=planet_types, mode=mode, Nmax=Nmax)
     
     # Table plot
-    plot_matching_planets(matching_planets=matching_planets, exposure_time=exposure_time, mode=mode, planet_types=planet_types)
-    
+    plot_matching_planets(matching_planets=matching_planets, exposure_time=exposure_time, mode=mode, planet_types=planet_types, instru=instru)
+
     # Definig arrays
     planet_types_list = [ptype for ptype, planets in matching_planets.items() if len(planets) > 0]
     planet_types_arr  = np.array(planet_types_list, dtype=object)
