@@ -1,5 +1,5 @@
 # import FastYield modules
-from .config import sim_data_path, rad2arcsec
+from .config import get_sim_data_path, rad2arcsec
 from .get_specs import _load_stellar_modulation_function, get_config_data, get_transmission
 from .utils import extract_jwst_data, PCA_subtraction, circular_mask, annular_mask, box_convolution, fill_nan_linear
 from .spectrum import get_resolution, filtered_flux, _fft_filter_response, get_spectrum_band
@@ -872,6 +872,7 @@ def get_systematics(config_data, band, tellurics, apodizer, strehl, coronagraph,
         # Saving
         hdr            = fits.Header()
         hdr['pxscale'] = pxscale
+        sim_data_path  = get_sim_data_path()
         if on_sky_data: # writing the data for systematics estimation purposes
             fits.writeto(f"{sim_data_path}/Systematics/{instru}/Ms_onsky_star_center_s3d_{band}.fits",   Ms,        overwrite=True, header=hdr)
             fits.writeto(f"{sim_data_path}/Systematics/{instru}/wave_onsky_star_center_s3d_{band}.fits", wave_data, overwrite=True)
