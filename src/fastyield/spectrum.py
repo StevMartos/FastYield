@@ -656,7 +656,7 @@ def _fft_filter_response(N, R, Rc, filter_type):
     Rc : float or None
         Cut-off resolution of the filter.
         - If 'Rc' is None or 0, no filtering is applied:
-          the high-pass response is unity and the low-pass response is zero.
+          the low-pass response is unity and the high-pass response is zero.
         - If 'Rc > 0', the corresponding filter response is constructed
           according to 'filter_type'.
     filter_type : {'gaussian', 'gaussian_fast', 'gaussian_true', 'step', 'smoothstep'}
@@ -709,8 +709,8 @@ def _fft_filter_response(N, R, Rc, filter_type):
     if R <= 0:
         raise ValueError("R must be > 0.")
     if Rc is None or Rc == 0:
-        H_HF = np.ones(N, dtype=np.complex128)
-        H_LF = np.zeros(N, dtype=np.complex128)
+        H_HF = np.zeros(N, dtype=np.complex128)
+        H_LF = np.ones(N,  dtype=np.complex128)
         return H_HF, H_LF
     if Rc < 0:
         raise ValueError("Rc must be >= 0 when filtering is requested.")
@@ -733,7 +733,7 @@ def _fft_filter_response(N, R, Rc, filter_type):
             kernel /= kernel.sum()
 
             # Pack kernel for circular conv: lags >= 0 at start, lags < 0 at end
-            ker_pad = np.zeros(N, dtype=float)
+            ker_pad            = np.zeros(N, dtype=float)
             ker_pad[:radius+1] = kernel[radius:]   # 0..+radius
             ker_pad[-radius:]  = kernel[:radius]   # -radius..-1
 
@@ -760,6 +760,44 @@ def _fft_filter_response(N, R, Rc, filter_type):
 
 
 
+
+# Gaussian kernel: see Appendix A of Martos et al. (2025)
+_SIGMA_RC_FACTOR = 2 / np.pi * np.sqrt(np.log(2) / 2)
+
+def Rc_to_sigma(R, Rc):
+    """
+    Convert a cut-off resolution Rc into the equivalent Gaussian sigma in pixels.
+    Formula:
+        sigma = 2*R / (pi*Rc) * sqrt(log(2)/2)
+    Special cases:
+        Rc = 0   -> sigma = 0
+        Rc = NaN -> sigma = NaN
+    """
+    R, Rc          = np.broadcast_arrays(np.asarray(R, dtype=float), np.asarray(Rc, dtype=float))
+    sigma          = np.full_like(Rc, np.nan, dtype=float)
+    valid          = np.isfinite(R) & np.isfinite(Rc) & (Rc != 0)
+    sigma[Rc == 0] = 0.0
+    sigma[valid]   = _SIGMA_RC_FACTOR * R[valid] / Rc[valid]
+    return sigma.item() if sigma.ndim == 0 else sigma
+
+def sigma_to_Rc(R, sigma):
+    """
+    Convert a Gaussian sigma in pixels into the equivalent cut-off resolution Rc.
+    Formula:
+        Rc = 2*R / (pi*sigma) * sqrt(log(2)/2)
+    Special cases:
+        sigma = 0   -> Rc = 0
+        sigma = NaN -> Rc = NaN
+    """
+    R, sigma       = np.broadcast_arrays(np.asarray(R, dtype=float), np.asarray(sigma, dtype=float))
+    Rc             = np.full_like(sigma, np.nan, dtype=float)
+    valid          = np.isfinite(R) & np.isfinite(sigma) & (sigma != 0)
+    Rc[sigma == 0] = 0.0
+    Rc[valid]      = _SIGMA_RC_FACTOR * R[valid] / sigma[valid]
+    return Rc.item() if Rc.ndim == 0 else Rc
+
+
+
 def filtered_flux(flux, R, Rc, filter_type="gaussian", show=False):
     """
     Split an input 1D flux into high-pass and low-pass components using a cut-off
@@ -776,10 +814,10 @@ def filtered_flux(flux, R, Rc, filter_type="gaussian", show=False):
         Input flux samples on an evenly spaced wavelength grid (in practice,
         any uniform sampling along the spectral axis).
     R: float or array
-        Effective spectral resolution of the input array (assuming Nyquist sampling).
+        Sampling resolution of the input array (assuming Nyquist sampling).
     Rc: float, array or None
         Cut-off resolution for the filter. If None, no filtering is applied and
-        the low-pass component is identically zero.
+        the high-pass component is identically zero.
     filter_type: {'gaussian', 'gaussian_variable', 'gaussian_fast', 'gaussian_true', 'step', 'smoothstep', 'savitzky_golay'}, optional
         Filtering method:
         - 'gaussian'         : real-space Gaussian blur with sigma derived from Rc (Appendix A, Martos+2024).
@@ -807,31 +845,38 @@ def filtered_flux(flux, R, Rc, filter_type="gaussian", show=False):
         If 'filter_type' is unsupported.
     """
     # No filter applied
-    if Rc is None or (np.isscalar(Rc) and Rc==0):
-        return np.copy(flux), np.zeros_like(flux)
+    if Rc is None or np.all(Rc==0):
+        return  np.zeros_like(flux), np.copy(flux)
     
     valid        = np.isfinite(flux)
     flux_filled  = fill_nan_linear(x=None, y=flux) # NaN gaps are filled with linear interpolation (without extrapolation)
     valid_filled = np.isfinite(flux_filled)        # NaN can remain on edges
     flux_valid   = flux_filled[valid_filled]
-    
+    sigma        = Rc_to_sigma(R=R, Rc=Rc)
+    if "variable" not in filter_type:
+        sigma = float(np.nanmedian(sigma))
+    else:
+        sigma = np.asarray(sigma, dtype=float)
+        if sigma.ndim == 0:
+            sigma_full = np.full_like(flux, float(sigma), dtype=float)
+        else:
+            if sigma.shape != flux.shape:
+                raise ValueError("For filter_type='gaussian_variable', sigma must be scalar or have the same shape as flux.")
+            sigma_full = sigma
+        sigma_filled = fill_nan_linear(x=None, y=sigma_full)
+        sigma_valid  = sigma_filled[valid_filled]
+        
     # Real-space Gaussian sigma that cut at Rc in resolution space: sigma derived from Martos+2025 Appendix A
     if filter_type == "gaussian":
-        sigma         = 2*R / (np.pi * Rc) * np.sqrt(np.log(2) / 2) # see Appendix A of Martos et al. (2025)
-        sigma         = np.nanmedian(sigma)
         flux_valid_LF = gaussian_filter1d(flux_valid, sigma=sigma)
     
     # Same as 'gaussian' but with varying Rc (sigma)
     elif filter_type == "gaussian_variable":
-        sigma         = 2*R / (np.pi * Rc) * np.sqrt(np.log(2) / 2)
-        sigma_valid   = sigma[valid_filled]
         flux_valid_LF = gaussian_filter1d_variable(flux_valid, sigma=sigma_valid)
     
     # Savitzky-Golay filter
     elif filter_type == "savitzky_golay":
         # Map Rc to a window length (odd integer >= 5)
-        sigma = 2*R / (np.pi * Rc) * np.sqrt(np.log(2) / 2)         # see Appendix A of Martos et al. (2025)
-        sigma = np.nanmedian(sigma)
         N     = max(int(round(4*sigma)) | 1, 5)                     #  "| 1" :ensure odd and >=5 (gaussian approximation (sigma = N/4 is an empirical approximation) )
         N     = min(N, len(flux_valid) - (1 - len(flux_valid) % 2)) # keep <= size and odd (set window length based on Rc)
         # polyorder=3 safe default (must be < window_length)
@@ -1464,7 +1509,7 @@ class Spectrum:
             R_input                 = np.full_like(wave_output, R_input, dtype=float)
             R_input[~valid_overlap] = np.nan
         R_sampling_output = get_resolution(wavelength=wave_output, func=np.array)
-        R_effective = np.minimum(R_input, R_sampling_output)
+        R_effective       = np.minimum(R_input, R_sampling_output)
         
         # Creating interpolated Spectrum instance
         spectrum_output = Spectrum(wavelength=wave_output, flux=flux_output, R=R_effective, T=self.T, lg=self.lg, model=self.model, rv=self.rv, vsini=self.vsini, sigma=sigma_output, P=self.P, airmass=self.airmass)
@@ -1481,7 +1526,7 @@ class Spectrum:
     
     #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
         
-    def degrade_resolution(self, wave_output, renorm=False, gaussian_filtering=True, R_output=None, filter_type="gaussian", bin_type="mean", verbose=False, eps=1e-9):
+    def degrade_resolution(self, wave_output, renorm=False, gaussian_filtering=True, R_output=None, filter_type="gaussian", bin_type="mean", verbose=False):
         """
         Degrade the spectrum to a lower spectral resolution and rebin it onto a new
         wavelength grid.
@@ -1579,7 +1624,7 @@ class Spectrum:
             raise ValueError("'wave_output' is not included in 'wave_input'")
             
         # Keeping the smallest range containing wave_output
-        i0           = np.searchsorted(wave_input, wave_output[0], side="right") - 1
+        i0           = np.searchsorted(wave_input, wave_output[0],  side="right") - 1
         i1           = np.searchsorted(wave_input, wave_output[-1], side="left")
         i0           = max(i0, 0)
         i1           = min(i1, len(wave_input) - 1)
@@ -1610,20 +1655,10 @@ class Spectrum:
         sigma_LSF = R_sampling_input / ( np.sqrt(2*np.log(2)) * R_input ) # [input px]
         
         # Finding whether downbinning can be applied
-        valid_sampling = np.isfinite(R_sampling_input) & np.isfinite(R_sampling_output)
-        rel_diff       = (R_sampling_output[valid_sampling] - R_sampling_input[valid_sampling]) / R_sampling_input [valid_sampling]
-        if np.any(rel_diff > eps):
-            plt.figure(dpi=300, figsize=(10, 6))
-            plt.plot(wave_output[valid_sampling], rel_diff, lw=0.8, label="(R_sampling_output - R_sampling_input) / R_sampling_input")
-            plt.axhline(eps, c="black")
-            plt.axvspan(wave_output[valid_sampling][0], wave_output[valid_sampling][-1], color='black', alpha=0.3, lw=0)
-            plt.xlabel("Wavelength [µm]")
-            plt.ylabel("Relative difference")
-            plt.xlim(wave_output[0], wave_output[-1])
-            plt.legend()
-            plt.show()
-            raise ValueError(f"WARNING (self.degrade_resolution): The output sampling resolution ({round(np.nanmedian(R_sampling_output), -2):.0f}) is greater than the input sampling resolution ({round(np.nanmedian(R_sampling_input), -2):.0f}). This function only supports down-binning (otherwise NaN would be injected). Provide a coarser 'wave_output' to properly apply self.degrade_resolution.")
-
+        if np.nanmedian(R_sampling_output) > np.nanmedian(R_sampling_input) and bin_type != "interp":
+            print_warning(f"WARNING (self.degrade_resolution): The output sampling resolution ({np.nanmedian(R_sampling_output):.0f}) is greater than the input sampling resolution ({np.nanmedian(R_sampling_input):.0f}). This function only supports down-binning (otherwise NaN would be injected). The output spectrum will only be linearily interpolate. Provide a coarser 'wave_output' to properly apply self.degrade_resolution.")
+            bin_type = "interp"
+            
         # Warning for non-Nyquist sampled output
         if verbose and np.any(R_output > R_sampling_output):
             print()
@@ -1633,14 +1668,17 @@ class Spectrum:
         # For a discrete mean of q input samples, the additional variance is
         # approximately (q^2 - 1)/12 in input-pixel units. This gives zero
         # broadening when q=1 and tends to q^2/12 for large q.
-        q         = R_sampling_input / R_sampling_output          # = dl_output / dl_input
-        sigma_bin = np.sqrt(np.maximum(q**2 - 1.0, 0.0) / 12.0) # [input px]
+        if bin_type == "interp":
+            sigma_bin = 0
+        else:
+            q         = R_sampling_input / R_sampling_output        # = dl_output / dl_input
+            sigma_bin = np.sqrt(np.maximum(q**2 - 1.0, 0.0) / 12.0) # [input px]
 
         # LSF Gaussian convolution (optional) 
         if gaussian_filtering:
             
             # Gaussian LSF + rebinning: we want the *final* variance to match R_output, so in RMS-variance
-            # sigma_target^2 = sigma_in^2 + sigma_k^2 + sigma_bin^2, with sigma_px = (R_sampling/sqrt(2 ln2))*(1/R) and
+            # sigma_target^2  = sigma_in^2 + sigma_k^2 + sigma_bin^2, with sigma_px = (R_sampling/sqrt(2 ln2))*(1/R) and
             # hence sigma_k^2 = sigma_target^2 - sigma_in^2 - sigma_bin^2, i.e. the first term minus the binning correction.
             sigma_kernel_2 = (R_sampling_input / np.sqrt(2*np.log(2)))**2 * ( 1/R_output**2 - 1/R_input**2 ) - sigma_bin**2
             
@@ -1653,17 +1691,23 @@ class Spectrum:
 
             # Applying the convolution
             if np.any(sigma_kernel > 0):
-                sigma_LSF    = np.sqrt(sigma_LSF**2 + sigma_kernel**2) # [input px]
-                valid_flux   = np.isfinite(flux_input)                 # Fill internal NaNs (linear) and crop to avoid edges inside the convolution window
-                flux_filled  = fill_nan_linear(wave_input, flux_input) # NaN gaps are filled with linear interpolation
-                valid_filled = np.isfinite(flux_filled)                # NaN edges can remain                
+                sigma_LSF    = np.sqrt(sigma_LSF**2 + sigma_kernel**2)
+                valid_flux   = np.isfinite(flux_input)
+                flux_filled  = fill_nan_linear(x=wave_input, y=flux_input)
+                valid_filled = np.isfinite(flux_filled)
                 if filter_type == "gaussian":
-                    flux_input[valid_filled] = gaussian_filter1d(flux_filled[valid_filled], sigma=sigma_kernel)
+                    flux_input[valid_filled] = gaussian_filter1d(flux_filled[valid_filled], sigma=float(sigma_kernel), mode="nearest", truncate=4.0)
                 elif filter_type == "gaussian_variable":
-                    sigma_kernel_input       = np.interp(wave_input[valid_filled], wave_output[valid_overlap], sigma_kernel[valid_overlap], left=np.nan, right=np.nan)
-                    flux_input[valid_filled] = gaussian_filter1d_variable(flux_filled[valid_filled], sigma=sigma_kernel_input)
-                flux_input[~valid_flux]  = np.nan # Retrieving original NaN
-            
+                    valid_kernel = valid_overlap & np.isfinite(sigma_kernel)
+                    if np.count_nonzero(valid_kernel) >= 2:
+                        sigma_kernel_input = np.interp(wave_input[valid_filled], wave_output[valid_kernel], sigma_kernel[valid_kernel], left=np.nan, right=np.nan)
+                        flux_input[valid_filled] = gaussian_filter1d_variable(flux_filled[valid_filled], sigma=sigma_kernel_input)
+                    else:
+                        flux_input[valid_filled] = flux_filled[valid_filled]
+                else:
+                    raise ValueError("degrade_resolution only supports filter_type='gaussian' or 'gaussian_variable' for the LSF convolution.")
+                flux_input[~valid_flux] = np.nan
+                
             # The output spectral resolution is greater than the input spectral resolution 
             elif verbose:
                 print()
@@ -1674,6 +1718,14 @@ class Spectrum:
             flux_output, sigma_output, _ = rebin_spectrum_mean(specHR=flux_input, sigmaHR=sigma_input, weightHR=None, lamHR=wave_input, lamLR=wave_output) # down binned flux
         elif bin_type == "overlap":
             flux_output, sigma_output, _, _, _ = rebin_spectrum_overlap(specHR=flux_input, sigmaHR=sigma_input, weightHR=None, scale_cste_sigmaHR=None, lamHR=wave_input, lamLR=wave_output, edgesLR=None) # down binned flux
+        elif bin_type == "interp":
+            flux_output = np.interp(wave_output, wave_input, flux_input, left=np.nan, right=np.nan)
+            if sigma_input is not None:
+                sigma_output = interpolate_flux_with_error(wave=wave_input, flux=None, sigma=sigma_input, weight=None, wave_new=wave_output)[1]
+            else:
+                sigma_output = None
+                
+        # LSF width
         sigma_LSF = np.sqrt(sigma_LSF**2 + sigma_bin**2)                 # [input px]
         R_LSF     = R_sampling_input / (np.sqrt(2*np.log(2)) * sigma_LSF) # [no unit]
         
@@ -1759,15 +1811,14 @@ class Spectrum:
         Spectrum
             Doppler-shifted spectrum (same sampling as input).
         """
-        if rv==0:
-            return self.copy()
-        else: # λ' = λ * sqrt( (1 + beta) / (1 - beta ) with v in m/s and c in m/s
-            spectrum             = self.copy()
-            beta                 = 1000*rv / c
-            spectrum.wavelength *= np.sqrt( (1 + beta) / (1 - beta) ) # Offset wavelength axis
-            spectrum_rv          = spectrum.interpolate_wavelength(wave_output=self.wavelength, renorm=renorm, fill_value=fill_value)
-            spectrum_rv.rv       = spectrum_rv.rv + rv
-            return spectrum_rv
+        spectrum             = self.copy()
+        beta                 = 1000*rv / c
+        spectrum.wavelength *= np.sqrt( (1 + beta) / (1 - beta) ) # Offset wavelength axis
+        spectrum_rv          = spectrum.interpolate_wavelength(wave_output=self.wavelength, renorm=renorm, fill_value=fill_value)
+        spectrum_rv.rv       = spectrum_rv.rv + rv
+        return spectrum_rv
+    
+    
 
     #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
     

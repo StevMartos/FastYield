@@ -131,8 +131,10 @@ def get_template(instru, wave, R, model, T, lg, rv, vsini, epsilon=0.8, fastbroa
     # 1) Load model
     if model in {"BT-NextGen", "Husser"}:
         template = load_star_spectrum(T_star=T, lg_star=lg, model=model)
-    elif model[:4] == "mol_":
+    elif "mol" in model:
         template = load_mol_spectrum(T_mol=T, P_mol=1.0, model=model)
+        if "flat" in model:
+            template.flux = np.ones_like(template.flux)
     elif "albedo" in model.lower():
         albedo_spectrum = load_albedo_spectrum(T_planet=T, lg_planet=lg, model=model, airmass=airmass)
         albedo_spectrum = albedo_spectrum.interpolate_wavelength(star_spectrum.wavelength, renorm=False) # Interpolating on wave_model (constant dl)
@@ -141,14 +143,15 @@ def get_template(instru, wave, R, model, T, lg, rv, vsini, epsilon=0.8, fastbroa
         template = load_planet_spectrum(T_planet=T, lg_planet=lg, model=model, instru=instru)
     
     # 2) Optional LF-based cropping for molecular grids: to crop empty features regions in molecular templates
-    if model[:4] == "mol_":
-        _, template_LF          = filtered_flux(template.flux, R=get_resolution(wavelength=template.wavelength, func=np.nanmedian), Rc=1_000, filter_type="gaussian")
-        sg                      = sigma_clip(np.ma.masked_invalid(template_LF), sigma=1)
-        template.flux[~sg.mask] = np.nan 
+    # if model[:4] == "mol_":
+    #     _, template_LF          = filtered_flux(template.flux, R=get_resolution(wavelength=template.wavelength, func=np.nanmedian), Rc=1_000, filter_type="gaussian")
+    #     sg                      = sigma_clip(np.ma.masked_invalid(template_LF), sigma=1)
+    #     template.flux[~sg.mask] = np.nan 
     
     # 3) Interpolation grid (regular, Nyquist-like)
     if wave_model is None:
-        R_interp    = min(max(np.nanmax(template.R), 2*np.nanmax(R)), R0_max)
+        R_sampling0 = get_resolution(wavelength=wave, func=np.nanmax)
+        R_interp    = min(max(np.nanmax(template.R), 2*np.nanmax(R)), 2*R_sampling0, R0_max)
         lmin_interp = 0.98*wave[0]
         lmax_interp = 1.02*wave[-1]        
         wave_model  = get_wavelength_axis_constant_dl(lmin=lmin_interp, lmax=lmax_interp, R=R_interp) # Regularly sampled template
@@ -254,7 +257,7 @@ def get_d_sim(instru, d, wave, trans, R, Rc, filter_type, model, T, lg, rv, vsin
     
     # 3) HF/LF split of the planetary spectrum
     if verbose:
-        print(f" get_d_sim: HF/LF split (Rc={Rc}, filter_type={filter_type}...")
+        print(f" get_d_sim: HF/LF split (Rc={Rc}, filter_type={filter_type})...")
     Sp_HF, Sp_LF = filtered_flux(flux=Sp.flux, R=R_sampling, Rc=Rc, filter_type=filter_type)
     d_sim        = trans * Sp_HF
 
@@ -855,6 +858,11 @@ def get_CCF_1D_rv(instru, band, d, d_bkg, wave, trans, R, Rc, filter_type, model
         # Degrade template to target grid
         template = get_spectrum_band(spectrum_instru=template_wo_shift, wave_band=wave, R_output=R, degrade_resolution=degrade_resolution)
         
+        # if "mol" in model:
+        #     template_wo_shift_flat = get_template(instru=instru, wave=wave, R=R, model=model+"_flat", T=T, lg=lg, rv=0, vsini=vsini, epsilon=epsilon, fastbroad=fastbroad, airmass=airmass, star_spectrum=star_spectrum, wave_model=wave_model)
+        #     template_flat          = get_spectrum_band(spectrum_instru=template_wo_shift_flat, wave_band=wave, R_output=R, degrade_resolution=degrade_resolution)
+        #     template.flux         /= template_flat.flux
+            
         # Return if template only contains NaNs (i.e. if the crop of the molecular templates left only NaNs)
         if np.all(np.isnan(template.flux)): # Nothing to correlate
             return rv_arr, CCF, corr, CCF_bkg, corr_auto, logL, sigma_CCF
@@ -934,7 +942,7 @@ def get_CCF_1D_rv(instru, band, d, d_bkg, wave, trans, R, Rc, filter_type, model
     # # Sanity check plots
     # for i in range(Nrv):
     #     args = (i, rv_arr[i])
-    #     _, CCF[i], corr[i], corr_auto[i], logL[i], CCF_bkg[:, i] = process_correlation_rv(args)
+    #     _, CCF[i], corr[i], corr_auto[i], logL[i], _ = process_correlation_rv(args)
     
     # --- END OF THE LOOP (computing sigma_CCF and plot)
     if rv is not None:
@@ -1324,7 +1332,7 @@ def plot_CCF_1D_rv(instru, band, target_name, d, d_bkg, wave, trans, R, Rc, filt
         plt.show()
         
         if verbose: # Print maximum S/N and correlation
-            if sigma_l is not None: # Print error on sigma (if required):
+            if sigma_l is not None and rv is not None: # Print error on sigma (if required):
                 print(f"  sigma_CCF(empirical) / sigma_CCF(analytical) = {round(100*sigma_CCF_emp / sigma_CCF, 1)} %")
             # Print maximum S/N and correlation
             print(f"  CCF: max S/N ({max_SNR:.1f}) and correlation ({np.nanmax(corr[mask_prior]):.4f}) for rv = {rv_arr[mask_prior][np.nanargmax(SNR[mask_prior])]:.3f} km/s")
