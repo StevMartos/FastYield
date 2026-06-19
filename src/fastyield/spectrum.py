@@ -1691,12 +1691,12 @@ class Spectrum:
 
             # Applying the convolution
             if np.any(sigma_kernel > 0):
-                sigma_LSF    = np.sqrt(sigma_LSF**2 + sigma_kernel**2)
-                valid_flux   = np.isfinite(flux_input)
-                flux_filled  = fill_nan_linear(x=wave_input, y=flux_input)
-                valid_filled = np.isfinite(flux_filled)
+                sigma_LSF    = np.sqrt(sigma_LSF**2 + sigma_kernel**2) # [input px]
+                valid_flux   = np.isfinite(flux_input)                 # Fill internal NaNs (linear) and crop to avoid edges inside the convolution window
+                flux_filled  = fill_nan_linear(wave_input, flux_input) # NaN gaps are filled with linear interpolation
+                valid_filled = np.isfinite(flux_filled)                # NaN edges can remain   
                 if filter_type == "gaussian":
-                    flux_input[valid_filled] = gaussian_filter1d(flux_filled[valid_filled], sigma=float(sigma_kernel), mode="nearest", truncate=4.0)
+                    flux_input[valid_filled] = gaussian_filter1d(flux_filled[valid_filled], sigma=sigma_kernel)
                 elif filter_type == "gaussian_variable":
                     valid_kernel = valid_overlap & np.isfinite(sigma_kernel)
                     if np.count_nonzero(valid_kernel) >= 2:

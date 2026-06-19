@@ -551,11 +551,11 @@ def get_CCF_2D_rv(instru, S_res, wave, trans, R, Rc, filter_type, model, T, lg, 
     # 5) Prepare data matrix once
     S2D        = S_res.reshape(NbChannel, Npix)
     valid_data = np.isfinite(S2D)
-    S0         = np.nan_to_num(S2D, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float64, copy=False)
-    M0         = valid_data.astype(np.float64, copy=False)
+    S0         = np.nan_to_num(S2D, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32, copy=False)
+    M0         = valid_data.astype(np.float32, copy=False)
 
     # 6) Build all RV-shifted templates
-    Tmat = np.full((Nrv, NbChannel), np.nan, dtype=np.float64)
+    Tmat = np.full((Nrv, NbChannel), np.nan, dtype=np.float32)
     
     # 7) Loop over RV values (vectorize across all pixels inside)
     for k in range(len(rv_arr)):
@@ -580,18 +580,18 @@ def get_CCF_2D_rv(instru, S_res, wave, trans, R, Rc, filter_type, model, T, lg, 
             continue
         t /= norm  # normalized global template
         
-        Tmat[k, :] = t.astype(np.float64)
+        Tmat[k, :] = t.astype(np.float32)
     
     # 8) Remove invalid RV templates
     valid_rv = np.isfinite(Tmat).any(axis=1)
     if not np.any(valid_rv):
         return None, None
-    T0 = np.nan_to_num(Tmat, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float64, copy=False)
+    T0 = np.nan_to_num(Tmat, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32, copy=False)
 
     # 9) Fast matrix products
     numerator   = T0 @ S0
     denominator = np.sqrt((T0**2) @ M0)
-    CCF2D       = np.full_like(numerator, np.nan, dtype=np.float64)
+    CCF2D       = np.full_like(numerator, np.nan, dtype=np.float32)
     good        = denominator > 0
     CCF2D[good] = numerator[good] / denominator[good]
     CCF         = CCF2D.reshape(Nrv, NbLine, NbColumn)
@@ -1941,25 +1941,25 @@ def get_priors(SNR_CCF, SNR_estimate, wave, d, R, model, T, lg, rv, vsini):
     else:
         N = 20
 
-    T_arr  = np.linspace(max(T_grid[0],   T  - DT),  min(T_grid[-1],  T  + DT),  N + 1, dtype=np.float64)
+    T_arr  = np.linspace(max(T_grid[0],   T  - DT),  min(T_grid[-1],  T  + DT),  N + 1, dtype=np.float32)
     if lg is None:
         lg_arr = lg_grid
     else:
-        lg_arr = np.linspace(max(lg_grid[0],  lg - Dlg), min(lg_grid[-1], lg + Dlg), N + 1, dtype=np.float64)
+        lg_arr = np.linspace(max(lg_grid[0],  lg - Dlg), min(lg_grid[-1], lg + Dlg), N + 1, dtype=np.float32)
     
     if np.nanmedian(R) > 5000: # Enough resolution to retrieve Vsini
-        vsini_arr = np.linspace(max(0, vsini - Dvsini), min(80, vsini + Dvsini), N + 1, dtype=np.float64)
+        vsini_arr = np.linspace(max(0, vsini - Dvsini), min(80, vsini + Dvsini), N + 1, dtype=np.float32)
     else:
-        vsini_arr = np.array([vsini], dtype=np.float64)
+        vsini_arr = np.array([vsini], dtype=np.float32)
 
     if SNR_estimate:
         # refined sampling near rv + large wings
-        left   = np.linspace(-1000,           rv - 0.5 * Drv,  100,                     dtype=np.float64)
-        core   = np.linspace(rv - 0.5 * Drv,  rv + 0.5 * Drv,  max(10, int(Drv / 0.5)), dtype=np.float64)
-        right  = np.linspace(rv + 0.5 * Drv,  1000,            100,                     dtype=np.float64)
+        left   = np.linspace(-1000,           rv - 0.5 * Drv,  100,                     dtype=np.float32)
+        core   = np.linspace(rv - 0.5 * Drv,  rv + 0.5 * Drv,  max(10, int(Drv / 0.5)), dtype=np.float32)
+        right  = np.linspace(rv + 0.5 * Drv,  1000,            100,                     dtype=np.float32)
         rv_arr = np.concatenate([left, core, right])
     else:
-        rv_arr = np.linspace(rv - Drv, rv + Drv, N + 1, dtype=np.float64)
+        rv_arr = np.linspace(rv - Drv, rv + Drv, N + 1, dtype=np.float32)
     
     return T_arr, lg_arr, rv_arr, vsini_arr, Drv
 
@@ -2033,11 +2033,11 @@ def process_parameters_estimation(args):
 
     Nvsini      = len(vsini_arr)
     Nrv         = len(rv_arr)
-    corr_2D     = np.full((Nvsini, Nrv), np.nan, dtype=np.float64)
-    SNR_2D      = np.full((Nvsini, Nrv), np.nan, dtype=np.float64)
-    auto_2D     = np.full((Nvsini, Nrv), np.nan, dtype=np.float64)
-    logL_2D     = np.full((Nvsini, Nrv), np.nan, dtype=np.float64)
-    logL_2D_sim = np.full((Nvsini, Nrv), np.nan, dtype=np.float64)
+    corr_2D     = np.full((Nvsini, Nrv), np.nan, dtype=np.float32)
+    SNR_2D      = np.full((Nvsini, Nrv), np.nan, dtype=np.float32)
+    auto_2D     = np.full((Nvsini, Nrv), np.nan, dtype=np.float32)
+    logL_2D     = np.full((Nvsini, Nrv), np.nan, dtype=np.float32)
+    logL_2D_sim = np.full((Nvsini, Nrv), np.nan, dtype=np.float32)
     
     # Build a base template at (T, lg) with/without pre-broadening/pre-shift
     template    = get_template(instru=instru, wave=wave, R=R, model=model, T=T, lg=lg, rv=0, vsini=0, epsilon=epsilon, fastbroad=fastbroad, airmass=airmass, star_spectrum=star_spectrum, wave_model=wave_model, to_counts=False)
@@ -2275,7 +2275,7 @@ def parameters_retrieval(instru, band, target_name, d, wave, trans, R, Rc, filte
         # --- Pre-computing trans_w_Ss_HF_LF_ratio
         if stellar_component and Rc is not None:
             valid_ratio                         = np.isfinite(trans_w) & np.isfinite(Ss_HF) & np.isfinite(Ss_LF) & (Ss_LF != 0)
-            trans_w_Ss_HF_LF_ratio              = np.full((len(Ss_HF)), np.nan, dtype=np.float64)
+            trans_w_Ss_HF_LF_ratio              = np.full((len(Ss_HF)), np.nan, dtype=np.float32)
             trans_w_Ss_HF_LF_ratio[valid_ratio] = trans_w[valid_ratio] * Ss_HF[valid_ratio] / Ss_LF[valid_ratio]
         else:
             trans_w_Ss_HF_LF_ratio = None
@@ -2289,7 +2289,7 @@ def parameters_retrieval(instru, band, target_name, d, wave, trans, R, Rc, filte
                     
         # --- Pre-computing the PCA matrix components
         if pca is not None:
-            C_pca = np.asarray(pca.components_[:pca.n_components], dtype=np.float64)
+            C_pca = np.asarray(pca.components_[:pca.n_components], dtype=np.float32)
         else:
             C_pca = None
         
@@ -2300,10 +2300,10 @@ def parameters_retrieval(instru, band, target_name, d, wave, trans, R, Rc, filte
         Nlg         = len(lg_arr)
         Nvsini      = len(vsini_arr)
         Nrv         = len(rv_arr)
-        corr_4D     = np.full((NT, Nlg, Nvsini, Nrv), np.nan, dtype=np.float64)
-        SNR_4D      = np.full((NT, Nlg, Nvsini, Nrv), np.nan, dtype=np.float64)
-        logL_4D     = np.full((NT, Nlg, Nvsini, Nrv), np.nan, dtype=np.float64)
-        logL_sim_4D = np.full((NT, Nlg, Nvsini, Nrv), np.nan, dtype=np.float64)
+        corr_4D     = np.full((NT, Nlg, Nvsini, Nrv), np.nan, dtype=np.float32)
+        SNR_4D      = np.full((NT, Nlg, Nvsini, Nrv), np.nan, dtype=np.float32)
+        logL_4D     = np.full((NT, Nlg, Nvsini, Nrv), np.nan, dtype=np.float32)
+        logL_sim_4D = np.full((NT, Nlg, Nvsini, Nrv), np.nan, dtype=np.float32)
         
         if verbose:
             print()
