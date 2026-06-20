@@ -955,26 +955,25 @@ def get_CCF_1D_rv(instru, band, d, d_bkg, wave, trans, R, Rc, filter_type, model
         if show:
             
             fig, axs = plt.subplots(2, 2, figsize=(20, 10), dpi=300, gridspec_kw={"height_ratios": [3, 1]}, sharex="col", constrained_layout=True)
-            if target_name is not None:
-                tn = target_name.replace("_", " ")
             if compare_data:
-                fig.suptitle(f"{instru} {tn} data sets, with R={np.nanmedian(R):.0f} and $R_c$={Rc} \n correlation strength = {round(np.nansum(d * template_shift) / np.sqrt(np.nansum(d**2) * np.nansum(template_shift**2)), 3)}", fontsize=20)
+                fig.suptitle(f"{instru} {target_name.replace('_', ' ')} data sets \n (correlation strength = {round(np.nansum(d * template_shift) / np.sqrt(np.nansum(d**2) * np.nansum(template_shift**2)), 3)})", fontsize=24)
             else:
                 if lg is None:
-                    fig.suptitle(f"{instru} {tn} data and {model} template on {band}-band,\n with $T$={T:.0f}K, rv={rv:.1f}km/s, vsini={vsini:.1f}km/s, R={int(np.nanmedian(R)):.0f} and $R_c$={Rc:.0f} (correlation strength = {np.nansum(d * template_shift) / np.sqrt(np.nansum(d**2) * np.nansum(template_shift**2)):.3f})", fontsize=20)
+                    fig.suptitle(f"{instru} {target_name.replace('_', ' ')} data and {model.replace('mol_', '').replace('_', ' ')} template on {band}-band,\n with $T$={T:.0f}K, rv={rv:.1f}km/s and vsini={vsini:.1f}km/s (correlation strength = {np.nansum(d * template_shift) / np.sqrt(np.nansum(d**2) * np.nansum(template_shift**2)):.3f})", fontsize=24)
                 else:
-                    fig.suptitle(f"{instru} {tn} data and {model} template on {band}-band,\n with $T$={T:.0f}K, lg={lg:.1f}, rv={rv:.1f}km/s, vsini={vsini:.1f}km/s, R={int(np.nanmedian(R)):.0f} and $R_c$={Rc:.0f} (correlation strength = {np.nansum(d * template_shift) / np.sqrt(np.nansum(d**2) * np.nansum(template_shift**2)):.3f})", fontsize=20)
-
+                    fig.suptitle(f"{instru} {target_name.replace('_', ' ')} data and {model.replace('mol_', '').replace('_', ' ')} template on {band}-band,\n with $T$={T:.0f}K, lg={lg:.1f}, rv={rv:.1f}km/s and vsini={vsini:.1f}km/s (correlation strength = {np.nansum(d * template_shift) / np.sqrt(np.nansum(d**2) * np.nansum(template_shift**2)):.3f})", fontsize=24)
+            
             # Plot high-pass filtered data and template
-            axs[0, 0].set_ylabel("High-pass flux", fontsize=14)
+            axs[0, 0].set_ylabel("Post-processed flux [e-/bin]", fontsize=16)
             axs[0, 0].tick_params(axis='both', which='major', labelsize=14)
-            axs[0, 0].plot(wave, d, c='crimson', label=f"{tn} data")
             
             # Plotting template
             if compare_data:
-                axs[0, 0].plot(wave, d_sim, c='steelblue', label=model)
+                axs[0, 0].plot(wave, d,     c='crimson',   label=target_name.replace('_', ' ')               + " data (sequence 1)")
+                axs[0, 0].plot(wave, d_sim, c='steelblue', label=model.replace('mol_', '').replace('_', ' ') + " data (sequence 2)")
             else:
-                axs[0, 0].plot(wave, d_sim, c='steelblue', label=model + " template")
+                axs[0, 0].plot(wave, d,     c='crimson',   label=target_name.replace('_', ' ')               + " data")
+                axs[0, 0].plot(wave, d_sim, c='steelblue', label=model.replace('mol_', '').replace('_', ' ') + " template")
                 
             # Simulating expected white noise
             if sigma_l is not None:
@@ -988,15 +987,16 @@ def get_CCF_1D_rv(instru, band, d, d_bkg, wave, trans, R, Rc, filter_type, model
                         noise = cut_spectral_frequencies(noise, R=R, Rmin=Rmin, Rmax=Rmax, target_name=target_name)
                 d_sim_noise = d_sim + noise
                 if not compare_data:
-                    axs[0, 0].plot(wave, d_sim_noise, c='steelblue', label=model + " template w/ expected noise " + r"($cos\theta_n$ = " + f"{round(np.nansum(d_sim_noise * template_shift) / np.sqrt(np.nansum(d_sim_noise**2)), 3)})", alpha=0.5)
                     res_d_sim_noise, psd_d_sim_noise = get_psd(wave, d_sim_noise, smooth=smooth_PSD)
-                    axs[0, 1].plot(res_d_sim_noise, psd_d_sim_noise, 'steelblue', alpha=0.5, zorder=10)
-                axs[1, 0].plot(wave, noise, c='seagreen', label="expected noise", zorder=3, alpha=0.8)
+                    axs[0, 0].plot(wave,            d_sim_noise,     c='steelblue', label=model.replace('mol_', '').replace('_', ' ') + " template w/ expected noise " + r"($cos\theta_n$ = " + f"{round(np.nansum(d_sim_noise * template_shift) / np.sqrt(np.nansum(d_sim_noise**2)), 3)})", alpha=0.5)
+                    axs[0, 1].plot(res_d_sim_noise, psd_d_sim_noise, c='steelblue', alpha=0.5, zorder=10)
                 res_noise, psd_noise = get_psd(wave, noise, smooth=smooth_PSD)
-                axs[1, 1].plot(res_noise, psd_noise, 'seagreen', zorder=10, alpha=0.8)
-            axs[0, 0].grid(True, which='both', linestyle='--', linewidth=0.5) ; axs[0, 0].minorticks_on()
-            axs[0, 0].legend(fontsize=14, loc="upper left")
-            axs[0, 0].set_ylim(2 * np.nanmin(d), 2 * np.nanmax(d))
+                axs[1, 0].plot(wave,      noise,     c='seagreen', label="Expected noise", zorder=3, alpha=0.8)
+                axs[1, 1].plot(res_noise, psd_noise, c='seagreen', zorder=10, alpha=0.8)
+            axs[0, 0].grid(which="major", linestyle="--", linewidth=0.7, alpha=0.45)
+            axs[0, 0].grid(which="minor", linestyle=":",  linewidth=0.4, alpha=0.25)
+            axs[0, 0].legend(fontsize=14, loc="upper left", frameon=True, edgecolor="gray", facecolor="whitesmoke")
+            #axs[0, 0].set_ylim(-np.nanmax(np.abs(d)), +np.nanmax(np.abs(d)))
             
             #Zoom
             if instru in {"HiRISE", "VIPA"}:
@@ -1005,7 +1005,7 @@ def get_CCF_1D_rv(instru, band, d, d_bkg, wave, trans, R, Rc, filter_type, model
                 else:
                     zoom_xmin, zoom_xmax = 1.686, 1.692
                 axins = inset_axes(axs[0, 0], width="40%", height="40%", loc="lower right", borderpad=2)
-                axins.plot(wave, d,     c='crimson', label=f"{tn} data")
+                axins.plot(wave, d,     c='crimson', label=f"{target_name.replace('_', ' ')} data")
                 axins.plot(wave, d_sim, c='steelblue')
                 axins.set_xlim(zoom_xmin, zoom_xmax)
                 axins.set_ylim(min(np.nanmin(d[(wave >= zoom_xmin) & (wave <= zoom_xmax)]), np.nanmin(d_sim[(wave >= zoom_xmin) & (wave <= zoom_xmax)])), max(np.nanmax(d[(wave >= zoom_xmin) & (wave <= zoom_xmax)]), np.nanmax(d_sim[(wave >= zoom_xmin) & (wave <= zoom_xmax)])))
@@ -1019,34 +1019,37 @@ def get_CCF_1D_rv(instru, band, d, d_bkg, wave, trans, R, Rc, filter_type, model
             res, psd_d_sim = get_psd(wave, d_sim, smooth=smooth_PSD)
             
             # Plot PSDs
-            axs[0, 1].set_ylabel("PSD", fontsize=14)
+            axs[0, 1].set_ylabel("PSD", fontsize=16)
             axs[0, 1].tick_params(axis='both', which='major', labelsize=14)
             axs[0, 1].set_yscale('log')
             axs[0, 1].set_xlim(10, 2*np.nanmedian(R_sampling))
             axs[0, 1].plot(res, psd_d,     c='crimson')
             axs[0, 1].plot(res, psd_d_sim, c='steelblue')
-            axs[0, 1].grid(True, which='both', linestyle='--', linewidth=0.5) ; axs[0, 1].minorticks_on()
+            axs[0, 1].grid(which="major", linestyle="--", linewidth=0.7, alpha=0.45)
+            axs[0, 1].grid(which="minor", linestyle=":",  linewidth=0.4, alpha=0.25)
+            axs[0, 1].minorticks_on()
             if Rc is not None:
                 axs[0, 1].axvline(Rc,                   c='k', ls="--", label=f"$R_c$ = {Rc:.0f}")
-            axs[0, 1].axvline(np.nanmedian(R),          c='k', ls="-",  label=f"$R$ = {np.nanmedian(R):.0f}", alpha=0.5)
+            axs[0, 1].axvline(np.nanmedian(R),          c='k', ls="-",  label=f"$R$  = {np.nanmedian(R):.0f}", alpha=0.5)
             axs[0, 1].axvline(np.nanmedian(R_sampling), c='k', ls="-",  label=f"$R$ (sampling) = {np.nanmedian(R_sampling):.0f}")
-            axs[0, 1].legend(fontsize=14, loc="upper left")
+            axs[0, 1].legend(fontsize=14, loc="upper left", frameon=True, edgecolor="gray", facecolor="whitesmoke")
             
             # Calculate residuals
             residuals = d - d_sim
             
             # Plot residuals
-            axs[1, 0].set_xlabel("Wavelength [µm]", fontsize=16)
-            axs[1, 0].set_ylabel("Residuals",       fontsize=16)
+            axs[1, 0].set_xlabel("Wavelength [µm]",    fontsize=16)
+            axs[1, 0].set_ylabel("Residuals [e-/bin]", fontsize=16)
             axs[1, 0].tick_params(axis='both', which='major', labelsize=14)
             axs[1, 0].set_xlim(np.nanmin(wave[np.isfinite(residuals)]), np.nanmax(wave[np.isfinite(residuals)]))
-            axs[1, 0].set_ylim(-5 * np.nanstd(residuals), 5 * np.nanstd(residuals))
+            axs[1, 0].set_ylim(-5*np.nanstd(residuals), +5*np.nanstd(residuals))
             if compare_data:
                 axs[1, 0].plot(wave, residuals, 'k', label="data1 - data2", alpha=0.8)
             else:
                 axs[1, 0].plot(wave, residuals, 'k', label="data - template", alpha=0.8)
-            axs[1, 0].grid(True, which='both', linestyle='--', linewidth=0.5) ; axs[1, 0].minorticks_on()
-            axs[1, 0].legend(fontsize=14, loc="upper left")
+            axs[1, 0].grid(which="major", linestyle="--", linewidth=0.7, alpha=0.45)
+            axs[1, 0].grid(which="minor", linestyle=":",  linewidth=0.4, alpha=0.25)
+            axs[1, 0].legend(fontsize=14, loc="upper left", frameon=True, edgecolor="gray", facecolor="whitesmoke")
             
             # Calculate PSD of residuals
             res_residuals, psd_residuals = get_psd(wave, residuals, smooth=smooth_PSD)
@@ -1058,12 +1061,13 @@ def get_CCF_1D_rv(instru, band, d, d_bkg, wave, trans, R, Rc, filter_type, model
             axs[1, 1].set_yscale('log')
             axs[1, 1].tick_params(axis='both', which='major', labelsize=14)
             axs[1, 1].plot(res_residuals, psd_residuals, 'k', alpha=0.8)
-            axs[1, 1].grid(True, which='both', linestyle='--', linewidth=0.5) ; axs[1, 1].minorticks_on()
+            axs[1, 1].grid(which="major", linestyle="--", linewidth=0.7, alpha=0.45)
+            axs[1, 1].grid(which="minor", linestyle=":",  linewidth=0.4, alpha=0.25)
             if Rc is not None:
                 axs[1, 1].axvline(Rc,                   c='k', ls="--", label=f"$R_c$ = {Rc:.0f}")
             axs[1, 1].axvline(np.nanmedian(R),          c='k', ls="-",  label=f"$R$ = {np.nanmedian(R):.0f}", alpha=0.5)
             axs[1, 1].axvline(np.nanmedian(R_sampling), c='k', ls="-",  label=f"$R$ (sampling) = {np.nanmedian(R_sampling):.0f}")
-            axs[1, 1].set_ylim(np.nanmin(psd_residuals[res_residuals>10]), np.nanmax(psd_residuals[res_residuals>10]))
+            #axs[1, 1].set_ylim(np.nanmin(psd_residuals[res_residuals>10]), np.nanmax(psd_residuals[res_residuals>10]))
 
             plt.show()
             
@@ -1072,7 +1076,7 @@ def get_CCF_1D_rv(instru, band, d, d_bkg, wave, trans, R, Rc, filter_type, model
                 print(f"  sigma(empirical) / sigma(analytical) = {100*np.nanstd(residuals)/sigma_eff:.1f} %") # print(" psd(noise) / psd(residuals) = ", np.sqrt(np.nansum(psd_residuals)) / np.sqrt(np.nansum(psd_noise)))
             
             # plt.figure(figsize=(12, 6), dpi=300)
-            # plt.plot(wave, d, c='crimson', label=f"{tn} data")
+            # plt.plot(wave, d, c='crimson', label=f"{target_name.replace('_', ' ')} data")
             # if compare_data:
             #     plt.plot(wave, d_sim, c='steelblue', label=model)
             # else:
@@ -1080,9 +1084,9 @@ def get_CCF_1D_rv(instru, band, d, d_bkg, wave, trans, R, Rc, filter_type, model
             # plt.xlabel('Wavelength [nm]', fontsize=14)
             # plt.ylabel("High-pass flux",  fontsize=14)
             # if compare_data:
-            #     plt.title(f"{instru} {tn} data sets, with R={int(R)} and $R_c$={Rc} \n correlation strength = {round(np.nansum(d * template_shift) / np.sqrt(np.nansum(d**2) * np.nansum(template_shift**2)), 3)}", fontsize=14)
+            #     plt.title(f"{instru} {target_name.replace('_', ' ')} data sets, with R={int(R)} and $R_c$={Rc} \n correlation strength = {round(np.nansum(d * template_shift) / np.sqrt(np.nansum(d**2) * np.nansum(template_shift**2)), 3)}", fontsize=14)
             # else:
-            #     plt.title(f"{instru} {tn} data and {model} template on {band}-band,\n with $T$={round(T)}K, lg={round(lg, 1)}, rv={round(rv, 1)}km/s, vsini={round(vsini, 1)}km/s, R={int(np.nanmedian(R)):.0f} and $R_c$={Rc} (correlation strength = {round(np.nansum(d * template_shift) / np.sqrt(np.nansum(d**2) * np.nansum(template_shift**2)), 3)})", fontsize=14)
+            #     plt.title(f"{instru} {target_name.replace('_', ' ')} data and {model} template on {band}-band,\n with $T$={round(T)}K, lg={round(lg, 1)}, rv={round(rv, 1)}km/s, vsini={round(vsini, 1)}km/s, R={int(np.nanmedian(R)):.0f} and $R_c$={Rc} (correlation strength = {round(np.nansum(d * template_shift) / np.sqrt(np.nansum(d**2) * np.nansum(template_shift**2)), 3)})", fontsize=14)
             # plt.grid(which="major", linestyle="--", linewidth=0.7, alpha=0.45)
             # plt.grid(which="minor", linestyle=":",  linewidth=0.4, alpha=0.25)
             # plt.xlim(wave[0], wave[-1])
@@ -1281,7 +1285,7 @@ def plot_CCF_1D_rv(instru, band, target_name, d, d_bkg, wave, trans, R, Rc, filt
         ax1.tick_params(axis="both", which="major", labelsize=12, length=6, width=1.1)
         ax1.tick_params(axis="both", which="minor", length=3.5, width=0.8)
         ax1.set_xlim(rv_arr[0], rv_arr[-1])        
-        title = f'CCF of {target_name.replace("_", " ")} on {band}-band of {instru} with {model} template'
+        title = f"CCF of {target_name.replace('_', ' ')} on {band}-band of {instru} with {model.replace('mol_', '').replace('_', ' ')} template"
         if compare_data:
             title += f"\nwith $R_c$ = {Rc}"
         else:
@@ -1289,7 +1293,7 @@ def plot_CCF_1D_rv(instru, band, target_name, d, d_bkg, wave, trans, R, Rc, filt
                 title += f"\nat $T$ = {T:.0f}K and Vsini = {vsini:.2f} km/s with $R_c$ = {Rc}"
             else:
                 title += f"\nat $T$ = {T:.0f}K, "+r"$\log g$ = "+f"{lg:.2f} and Vsini = {vsini:.2f} km/s with $R_c$ = {Rc}"
-        ax1.set_title(title, fontsize=16, pad=15)        
+        ax1.set_title(title, fontsize=18, pad=15)        
         ax1.set_xlabel("Observed radial velocity [km/s]", fontsize=16, labelpad=10)
         ax1.set_ylabel("CCF [S/N]",                       fontsize=16, labelpad=10)
         ax1.plot([], [], 'gray', label="Noise", alpha=0.5)        
@@ -1824,7 +1828,7 @@ def plot_CCF_vsini(instru, band, target_name, d, d_bkg, wave, trans, R, Rc, filt
         ax1.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
         ax1.minorticks_on()
         ax1.set_xlim(vsini_arr[0], vsini_arr[-1])        
-        title = f'CCF of {target_name.replace("_", " ")} on {band}-band of {instru} with {model} template'
+        title = f'CCF of {target_name.replace('_', ' ')} on {band}-band of {instru} with {model} template'
         if compare_data:
             title += f"\nwith $R_c$ = {Rc}"
         else:
@@ -2358,7 +2362,7 @@ def parameters_retrieval(instru, band, target_name, d, wave, trans, R, Rc, filte
             y_point    = lg_SNR_found
             ylabel     = r"$\log\,g$ [dex (cm/s²)]"
             fig, ax    = plt.subplots(dpi=300, figsize=(10, 6))            
-            ax.set_title(f'S/N of {target_name.replace("_", " ")} with {model} models\n{band}-band spectrum from {instru} at $R_c$ = {Rc}', fontsize=16, pad=20)            
+            ax.set_title(f'S/N of {target_name.replace('_', ' ')} with {model} models\n{band}-band spectrum from {instru} at $R_c$ = {Rc}', fontsize=16, pad=20)            
             ax.set_xlabel(r"$T_\mathrm{eff}$ [K]", fontsize=14)
             ax.set_ylabel(r"$\log\,g$ [dex (cm/s²)]", fontsize=14)            
             pcm  = ax.pcolormesh(T_arr, y_for_plot, SNR_2D, cmap='rainbow', shading='auto', vmin=np.nanmin(SNR_2D), vmax=np.nanmax(SNR_2D))            
@@ -2389,7 +2393,7 @@ def parameters_retrieval(instru, band, target_name, d, wave, trans, R, Rc, filte
             y_point    = lg_corr_found
             ylabel     = r"$\log\,g$ [dex (cm/s²)]"
             fig, ax    = plt.subplots(dpi=300, figsize=(10, 6))            
-            ax.set_title(f'Correlation between {model} spectra and {target_name.replace("_", " ")}\n{band}-band spectrum from {instru} at $R_c$ = {Rc}', fontsize=16, pad=20)            
+            ax.set_title(f'Correlation between {model} spectra and {target_name.replace('_', ' ')}\n{band}-band spectrum from {instru} at $R_c$ = {Rc}', fontsize=16, pad=20)            
             ax.set_xlabel(r"$T_\mathrm{eff}$ [K]", fontsize=14)
             ax.set_ylabel(ylabel, fontsize=14)            
             pcm  = ax.pcolormesh(T_arr, y_for_plot, corr_2D, cmap='coolwarm', shading='auto', vmin=np.nanmin(corr_2D), vmax=np.nanmax(corr_2D))            
@@ -2420,7 +2424,7 @@ def parameters_retrieval(instru, band, target_name, d, wave, trans, R, Rc, filte
                 y_point    = lg_logL_found
                 ylabel     = r"$\log\,g$ [dex (cm/s²)]"
                 fig, ax    = plt.subplots(dpi=300, figsize=(10, 6))            
-                ax.set_title(f'logL ({method_logL}) between {model} spectra and {target_name.replace("_", " ")}\n{band}-band spectrum from {instru} at $R_c$ = {Rc}', fontsize=16, pad=20)            
+                ax.set_title(f'logL ({method_logL}) between {model} spectra and {target_name.replace('_', ' ')}\n{band}-band spectrum from {instru} at $R_c$ = {Rc}', fontsize=16, pad=20)            
                 ax.set_xlabel(r"$T_\mathrm{eff}$ [K]", fontsize=14)
                 ax.set_ylabel(ylabel, fontsize=14)            
                 pcm  = ax.pcolormesh(T_arr, y_for_plot, logL_2D, cmap='coolwarm', shading='auto', vmin=np.nanmin(logL_2D), vmax=np.nanmax(logL_2D))            
@@ -2452,7 +2456,7 @@ def parameters_retrieval(instru, band, target_name, d, wave, trans, R, Rc, filte
                     y_point    = lg_logL_sim_found
                     ylabel     = r"$\log\,g$ [dex (cm/s²)]"
                     fig, ax    = plt.subplots(dpi=300, figsize=(10, 6))            
-                    ax.set_title(f'SIMULATION: logL ({method_logL}) between {model} spectra and {target_name.replace("_", " ")}\n{band}-band spectrum from {instru} at $R_c$ = {Rc}', fontsize=16, pad=20)            
+                    ax.set_title(f'SIMULATION: logL ({method_logL}) between {model} spectra and {target_name.replace('_', ' ')}\n{band}-band spectrum from {instru} at $R_c$ = {Rc}', fontsize=16, pad=20)            
                     ax.set_xlabel(r"$T_\mathrm{eff}$ [K]", fontsize=14)
                     ax.set_ylabel(ylabel, fontsize=14)            
                     pcm  = ax.pcolormesh(T_arr, y_for_plot, logL_sim_2D, cmap='coolwarm', shading='auto', vmin=np.nanmin(logL_sim_2D), vmax=np.nanmax(logL_sim_2D))            
