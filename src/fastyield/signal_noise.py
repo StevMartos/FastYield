@@ -836,12 +836,12 @@ def get_systematics(config_data, band, tellurics, apodizer, strehl, coronagraph,
         T_star_sim_arr = np.array([4000, 6000, 8000]) # available values for the star temperature for MIRSim noiseless data
         T_star_sim     = T_star_sim_arr[np.abs(star_spectrum_instru.T - T_star_sim_arr).argmin()]
         if on_sky_data: # CALIBRATION DATA => High S/N per spectral channel => estimation of modulations: M_data 
-            file = f"data/MIRIMRS/MAST/HD 159222_ch{band[0]}-shortmediumlong_s3d.fits" 
+            file = f"/home/martoss/Documents/PhD/work/MAIN/data/MIRIMRS/MAST/HD 159222_ch{band[0]}-shortmediumlong_s3d.fits" 
         else: # Using MIRISim (end-to-end simulation) data: in order to estimation modulations
-            file = f"data/MIRIMRS/MIRISim/star_center/star_center_T{T_star_sim}K_mag7_s3d_{band}_{correction}.fits"
+            file = f"/home/martoss/Documents/PhD/work/MAIN/data/MIRIMRS/MIRISim/star_center/star_center_T{T_star_sim}K_mag7_s3d_{band}_{correction}.fits"
     
     elif instru == "NIRSpec":
-        file        = f"data/NIRSpec/MAST/HD 163466_nirspec_{band}_s3d.fits"
+        file        = f"/home/martoss/Documents/PhD/work/MAIN/data/NIRSpec/MAST/HD 163466_nirspec_{band}_s3d.fits"
         on_sky_data = True
         T_star_sim  = None
         correction  = None

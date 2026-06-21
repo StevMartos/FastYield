@@ -1,8 +1,8 @@
 # import FastYield modules
-from fastyield.config import set_sim_data_path
+from fastyield.config import set_sim_data_path, instrus
 from fastyield.FastCurves import FastCurves
 from fastyield.FastYield_interface import FastYield_interface
-from fastyield.FastYield import planet_table_classification, planet_table_statistics, yield_plot_instrus_texp, yield_plot_bands_texp, yield_hist_instrus_ptypes, yield_hist_instrus_ptypes_ELT, yield_corner_instru, yield_corner_instrus, yield_corner_models, yield_contrast_instru, yield_contrast_ELT_earthlike, get_archive_table, all_SNR_table, get_planet_table_SNR
+from fastyield.FastYield import planet_table_classification, planet_table_classification_histogram, planet_table_statistics, yield_plot_instrus_texp, yield_plot_bands_texp, yield_hist_instrus_ptypes, yield_hist_instrus_ptypes_ELT, yield_corner_instru, yield_corner_instrus, yield_corner_models, yield_contrast_instru, yield_contrast_ELT_earthlike, get_archive_table, all_SNR_table, get_planet_table_SNR
 from fastyield.colormaps import colormap_bandwidth_resolution_with_constant_Nlambda, colormap_bandwidth_resolution_with_constant_Dlambda, colormap_bandwidth_Tp, colormap_bands_Tp, colormap_bands_ptypes_SNR, colormap_bands_ptypes_parameters, colormap_rv, colormap_vrot, colormap_maxsep_phase_inc
 
 # Required if FASTYIELD_SIM_DATA_PATH is not defined:
@@ -17,7 +17,7 @@ from fastyield.colormaps import colormap_bandwidth_resolution_with_constant_Nlam
 #                       Graphic User Interface (GUI):                          #
 #------------------------------------------------------------------------------#
 
-#FastYield_interface()
+# FastYield_interface()
 
 
 
@@ -26,6 +26,7 @@ from fastyield.colormaps import colormap_bandwidth_resolution_with_constant_Nlam
 #------------------------------------------------------------------------------#
 
 # planet_table_classification()
+# planet_table_classification_histogram()
 # planet_table_statistics()
 
 # yield_plot_instrus_texp(thermal_model="auto", reflected_model="auto", fraction=False)
@@ -55,8 +56,10 @@ from fastyield.colormaps import colormap_bandwidth_resolution_with_constant_Nlam
 #                           Update FastYield:                                  #
 #------------------------------------------------------------------------------#
 
-get_archive_table()                               # ~ 7 mn
+# get_archive_table()                             # ~ 7 mn
 # all_SNR_table(table="Archive", instrus=instrus) # ~ 15 hours
+# all_SNR_table(table="Archive", instrus=["MIRIMRS", "NIRCam", "NIRSpec", "VIPAPYRUS"])
+
 
 # get_planet_table_SNR(instru="HARMONI", table="Archive", thermal_model="auto", reflected_model="auto",  apodizer="NO_SP",   strehl="JQ1", coronagraph=None, systematics=False) # ~ 3mn
 # get_planet_table_SNR(instru="HARMONI", table="Archive", thermal_model="auto", reflected_model="auto",  apodizer="SP_Prox", strehl="JQ1", coronagraph=None, systematics=False) # ~ 3mn
@@ -97,7 +100,7 @@ get_archive_table()                               # ~ 7 mn
 #                  FastCurves (comparison with real data cases):               #
 #------------------------------------------------------------------------------#
 
-# ### CT Cha b / SNR(1MEDIUM) = 11.72 (4.5 s)
+### CT Cha b / SNR(1MEDIUM) = 11.72 (4.5 s)
 # FastCurves(calculation="SNR", instru="MIRIMRS", systematics=True, input_DIT=138.75/60, model_planet="BT-Settl", separation_planet=2.5, T_planet=2600, lg_planet=3.5, planet_name="CT Cha b", mag_star=8.66, mag_planet=14.9, band0='K', T_star=4400, lg_star=3.5, exposure_time=56.426, rv_star=-2.9, rv_planet=15, vsini_star=10, vsini_planet=10, channel=False)
 
 # ### HD 19467 b / SNR(G395H F290LP) = 19.69 (8.5 s)
