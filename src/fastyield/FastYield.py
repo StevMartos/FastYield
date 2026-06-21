@@ -2322,7 +2322,7 @@ def planet_table_classification(planet_table=None):
 
 
 
-def planet_table_classification_histogram(planet_table):
+def planet_table_classification_histogram(planet_table=None):
     """
     Plot the number of planets per planet type with visual circle markers.
 
@@ -2397,14 +2397,9 @@ def planet_table_classification_histogram(planet_table):
         else:
             return "Hot (≥1000 K)"
 
-    def _radius_to_marker_size(radius, rmin, rmax, dmin=6.5, dmax=32.0, gamma=0.54):
+    def _radius_to_marker_size(radius, rmin, rmax, dmin=5, dmax=40, gamma=1.0):
         """
         Convert a characteristic radius into a scatter-marker area.
-
-        The scaling is applied to a visual marker diameter, then converted to
-        an area for scatter(). The exponent gamma enhances the contrast among
-        small planets, making Sub-Earth, Earth-like, and Super-Earth types more
-        distinguishable.
         """
         if not np.isfinite(radius):
             radius = 4.0
@@ -2417,11 +2412,11 @@ def planet_table_classification_histogram(planet_table):
             # Slight boost around terrestrial radii so that R = 1 R_earth
             # remains visible compared to the smallest categories.
             visual_diameter = dmin + (dmax - dmin) * t**gamma
-            if 0.85 <= radius <= 1.20:
-                visual_diameter *= 1.12
+            if radius <= 2:
+                visual_diameter *= 1.2
         return visual_diameter**2
 
-    def _mass_to_linewidth(mass, mmin, mmax, lwmin=1.0, lwmax=3.5):
+    def _mass_to_linewidth(mass, mmin, mmax, lwmin=0.5, lwmax=5.0, gamma=2.0):
         """Convert a characteristic mass into a marker edge width."""
         if not np.isfinite(mass):
             return 2.0
@@ -2430,7 +2425,7 @@ def planet_table_classification_histogram(planet_table):
         mass = np.clip(mass, mmin, mmax)
         t    = (np.log10(mass) - np.log10(mmin)) / (np.log10(mmax) - np.log10(mmin))
         t    = np.clip(t, 0, 1)
-        return lwmin + (lwmax - lwmin) * t
+        return lwmin + (lwmax - lwmin) * t**gamma
 
     def _format_radius_label(r):
         """Format radius labels for the legend."""
@@ -2452,8 +2447,8 @@ def planet_table_classification_histogram(planet_table):
     # ------------------------------------------------------------------
     # Circle colors: simplified temperature categories
     # ------------------------------------------------------------------
-    temp_colors = {"Cold (<500 K)": "#4D9FD3", "Warm (500–1000 K)": "#E49A43", "Hot (≥1000 K)": "#D94B41", "Unidentified": "#BDBDBD"}
-
+    temp_colors = {"Cold (<500 K)": "#5B8DB8", "Warm (500–1000 K)": "#D99C4A", "Hot (≥1000 K)": "#B94A48", "Unidentified": "#BDBDBD"}
+    
     # ------------------------------------------------------------------
     # Retrieve or compute planet types
     # ------------------------------------------------------------------
@@ -2518,7 +2513,7 @@ def planet_table_classification_histogram(planet_table):
     marker_cols  = np.array([temp_colors.get(tc, "#BDBDBD") for tc in temp_cat], dtype=object)
 
     # Unidentified categories: grey and Neptune-like size, to avoid overlap.
-    unidentified_radius = 4.0
+    unidentified_radius      = 4.0
     marker_sizes[is_unknown] = _radius_to_marker_size(unidentified_radius, rmin, rmax)
     marker_lws[is_unknown]   = 2.2
     marker_cols[is_unknown]  = temp_colors["Unidentified"]
@@ -2526,13 +2521,11 @@ def planet_table_classification_histogram(planet_table):
     # ------------------------------------------------------------------
     # Histogram colors
     # ------------------------------------------------------------------
-    cmap = plt.get_cmap("magma")
-    n_identified = len(identified_counts)
-    identified_bar_colors = cmap(np.linspace(0.82, 0.30, max(n_identified, 1)))
-
-    bar_colors = []
-    j = 0
-
+    cmap                  = plt.get_cmap("magma")
+    n_identified          = len(identified_counts)
+    identified_bar_colors = cmap(np.linspace(0.9, 0.1, max(n_identified, 1)))
+    bar_colors            = []
+    j                     = 0
     for i in range(ntypes):
         if is_unknown[i]:
             bar_colors.append("#BDBDBD")
@@ -2541,40 +2534,32 @@ def planet_table_classification_histogram(planet_table):
             j += 1
 
     # ------------------------------------------------------------------
-    # Figure layout
+    # Figure
     # ------------------------------------------------------------------
-    fig_height = max(8.2, 0.50 * ntypes + 1.9)
+    fig_height             = max(8.2, 0.50 * ntypes + 1.9)
     fig, (ax_circ, ax_bar) = plt.subplots(1, 2, figsize=(16.0, fig_height), dpi=300, sharey=True, gridspec_kw={"width_ratios": [2.0, 8.0], "wspace": 0.02})
 
-    # ------------------------------------------------------------------
     # Left panel: planet-type circles
-    # ------------------------------------------------------------------
     ax_circ.scatter(np.full(ntypes, 0.58), y_pos, s=marker_sizes, c=marker_cols, edgecolors="black", linewidths=marker_lws, zorder=3)
-
     ax_circ.set_xlim(0, 1)
     ax_circ.set_xticks([])
     ax_circ.set_yticks(y_pos)
-    ax_circ.set_yticklabels(labels, fontsize=13)
+    ax_circ.set_yticklabels(labels, fontsize=14)
     ax_circ.invert_yaxis()
     ax_circ.tick_params(axis="y", length=0)
-
     for spine in ax_circ.spines.values():
         spine.set_visible(False)
 
-    # ------------------------------------------------------------------
     # Right panel: histogram
-    # ------------------------------------------------------------------
     bars = ax_bar.barh(y_pos, values, color=bar_colors, edgecolor="black", linewidth=0.9, alpha=0.88, zorder=2)
-
     xmax = np.nanmax(values) if len(values) > 0 else 1
-    ax_bar.set_xlim(0, xmax * 1.22)
-    ax_bar.set_xlabel("Number of planets", fontsize=17)
+    ax_bar.set_xlim(0, round(xmax*1.1, -2))
+    ax_bar.set_xlabel("Number of planets", fontsize=18, labelpad=12)
     ax_bar.set_yticks(y_pos)
     ax_bar.tick_params(axis="y", left=False, labelleft=False)
-    ax_bar.grid(axis="x", linestyle="--", linewidth=0.8, alpha=0.28, zorder=1)
+    ax_bar.grid(axis="x", linestyle="--", linewidth=1.0, alpha=0.5, zorder=1)
     ax_bar.set_axisbelow(True)
-    ax_bar.tick_params(axis="x", labelsize=12)
-
+    ax_bar.tick_params(axis="x", labelsize=14)
     ax_bar.spines["top"].set_visible(False)
     ax_bar.spines["right"].set_visible(False)
     ax_bar.spines["left"].set_visible(False)
@@ -2583,93 +2568,66 @@ def planet_table_classification_histogram(planet_table):
     for bar, value in zip(bars, values):
         ax_bar.text(bar.get_width() + 0.014 * xmax, bar.get_y() + bar.get_height() / 2, f"{int(value)}", va="center", ha="left", fontsize=12.5, fontweight="bold", color="#1a1a1a")
 
-    # ------------------------------------------------------------------
     # Global title
-    # ------------------------------------------------------------------
     total_planets = int(np.sum(values))
-
     fig.suptitle(f"Planet population by type ({total_planets} planets)", fontsize=23, fontweight="bold", y=0.95)
 
-    # ------------------------------------------------------------------
     # Inset legend: temperature categories
-    # ------------------------------------------------------------------
-    ax_temp = ax_bar.inset_axes([0.57, 0.58, 0.41, 0.27])
+    ax_temp = ax_bar.inset_axes([0.55, 0.55, 0.41, 0.27])
     ax_temp.set_xlim(0, 1)
     ax_temp.set_ylim(0, 1)
     ax_temp.set_xticks([])
     ax_temp.set_yticks([])
     ax_temp.set_facecolor((1, 1, 1, 0.97))
-
     for spine in ax_temp.spines.values():
         spine.set_color("0.70")
         spine.set_linewidth(1.2)
-
     ax_temp.text(0.50, 0.88, "Temperature bands", ha="center", va="center", fontsize=18, fontweight="bold")
-
     temp_items = [("Cold (<500 K)", temp_colors["Cold (<500 K)"]), ("Warm (500–1000 K)", temp_colors["Warm (500–1000 K)"]), ("Hot (≥1000 K)", temp_colors["Hot (≥1000 K)"])]
-
-    y_items = [0.65, 0.44, 0.23]
-
+    y_items    = [0.65, 0.44, 0.23]
     for (label, color), yy in zip(temp_items, y_items):
-        ax_temp.scatter(0.15, yy, s=230, facecolor=color, edgecolor="black", linewidth=1.3)
-        ax_temp.text(0.29, yy, label, ha="left", va="center", fontsize=15)
+        ax_temp.scatter(0.15, yy, s=800, facecolor=color, edgecolor="black", linewidth=1.3)
+        ax_temp.text(0.29, yy, label, ha="left", va="center", fontsize=18)
 
-    # ------------------------------------------------------------------
     # Inset legend: circle encoding
-    # ------------------------------------------------------------------
-    ax_enc = ax_bar.inset_axes([0.49, 0.10, 0.49, 0.40])
+    ax_enc = ax_bar.inset_axes([0.52, 0.10, 0.45, 0.38])
     ax_enc.set_xlim(0, 1)
     ax_enc.set_ylim(0, 1)
     ax_enc.set_xticks([])
     ax_enc.set_yticks([])
     ax_enc.set_facecolor((1, 1, 1, 0.97))
-
     for spine in ax_enc.spines.values():
         spine.set_color("0.70")
         spine.set_linewidth(1.2)
-
     ax_enc.text(0.50, 0.92, "Circle encoding", ha="center", va="center", fontsize=18, fontweight="bold")
 
-    # -------------------------
     # Radius legend
-    # -------------------------
-    ax_enc.text(0.08, 0.78, "Size → radius", ha="left", va="center", fontsize=15, color="dimgray", fontweight="bold")
-
-    radius_examples = np.array([0.8, 1.0, 1.5, 4.0, 8.0])
+    y0_rad = 0.75
+    ax_enc.text(0.5, y0_rad, "Size → radius", ha="center", va="center", fontsize=18, color="dimgray", fontweight="bold")
+    radius_examples = np.array([1.0, 2.0, 4.0, 8.0])
     radius_examples = radius_examples[(radius_examples >= rmin * 0.8) & (radius_examples <= rmax * 1.1)]
-
     if len(radius_examples) == 0:
         radius_examples = np.array([rmin, 0.5 * (rmin + rmax), rmax])
-
     x_rad = np.linspace(0.12, 0.88, len(radius_examples))
-    y_rad = 0.59
-
+    y_rad = y0_rad-0.1
     for r, xx in zip(radius_examples, x_rad):
         ax_enc.scatter(xx, y_rad, s=_radius_to_marker_size(r, rmin, rmax), facecolor="white", edgecolor="black", linewidth=1.3)
-        ax_enc.text(xx, 0.39, _format_radius_label(r), ha="center", va="center", fontsize=13.5)
-
-    # -------------------------
+        ax_enc.text(xx, y_rad-0.1, _format_radius_label(r), ha="center", va="center", fontsize=14)
+    
     # Mass legend
-    # -------------------------
-    ax_enc.text(0.08, 0.24, "Edge width → mass", ha="left", va="center", fontsize=15, color="dimgray", fontweight="bold")
-
-    mass_examples = np.array([1.0, 20.0, 600.0])
+    y0_mass = 0.35
+    ax_enc.text(0.5, y0_mass, "Edge width → mass", ha="center", va="center", fontsize=18, color="dimgray", fontweight="bold")
+    mass_examples = np.array([1.0, 10.0, 100.0, 600.0])
     mass_examples = mass_examples[(mass_examples >= mmin * 0.8) & (mass_examples <= mmax * 1.2)]
-
     if len(mass_examples) == 0:
         mass_examples = np.array([mmin, np.sqrt(mmin * mmax), mmax])
-
-    x_marker = 0.14
-    x_label  = 0.27
-    y_mass   = np.linspace(0.16, 0.04, len(mass_examples))
-
-    for m, yy in zip(mass_examples[::-1], y_mass):
-        ax_enc.scatter(x_marker, yy, s=360, facecolor="white", edgecolor="black", linewidth=_mass_to_linewidth(m, mmin, mmax))
-        ax_enc.text(x_label, yy, _format_mass_label(m), ha="left", va="center", fontsize=13.5)
-
-    # ------------------------------------------------------------------
+    x_mass = np.linspace(0.14, 0.86, len(mass_examples))
+    y_mass = y0_mass-0.1
+    for m, xx in zip(mass_examples, x_mass):
+        ax_enc.scatter(xx, y_mass, s=800, facecolor="white", edgecolor="black", linewidth=_mass_to_linewidth(m, mmin, mmax))
+        ax_enc.text(xx, y_mass-0.1, _format_mass_label(m), ha="center", va="center", fontsize=14)
+        
     # Final layout
-    # ------------------------------------------------------------------
     fig.subplots_adjust(left=0.27, right=0.97, top=0.93, bottom=0.06, wspace=0.02)
     plt.show()
 
