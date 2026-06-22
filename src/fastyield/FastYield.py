@@ -1983,7 +1983,7 @@ def process_SNR(idx):
     # Computing the SNR for the planet
     mag_s = mags[f"StarINSTRUmag({instru})"]
     mag_p = mags[f"PlanetINSTRUmag({instru})({spectrum_contributions})"]
-    name_band, SNR_planet, signal_planet, sigma_fund_planet, sigma_syst_planet, DIT_band = FastCurves(instru=instru, band_only=None, calculation="SNR", mag_star=mag_s, band0=band0, exposure_time=exposure_time, mag_planet=mag_p, separation_planet=planet["AngSep"].value/1000, return_FastYield=True, show_plot=False, verbose=False, planet_name=None, planet_spectrum=planet_spectrum, star_spectrum=star_spectrum, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, Rc=Rc, filter_type=filter_type, background=background, systematics=systematics, PCA=PCA, N_PCA=N_PCA)
+    name_band, SNR_planet, signal_planet, sigma_fund_planet, sigma_syst_planet, DIT_band = FastCurves(instru=instru, band_only=None, calculation="SNR", mag_star=mag_s, band0=band0, exposure_time=exposure_time, mag_planet=mag_p, separation_planet=planet["AngSep"].value/1000, return_FastYield=True, show_plot=False, verbose=False, planet_name=planet["PlanetName"], planet_spectrum=planet_spectrum, star_spectrum=star_spectrum, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, Rc=Rc, filter_type=filter_type, background=background, systematics=systematics, PCA=PCA, N_PCA=N_PCA)
     
     return idx, mags, name_band, signal_planet, sigma_fund_planet, sigma_syst_planet, DIT_band
 
@@ -2169,9 +2169,10 @@ def all_SNR_table(table="Archive", instrus=instrus): # takes ~ 13 hours
                                 continue
                             else:
                                 get_planet_table_SNR(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, systematics=False)
-                                if instru in instrus_with_systematics:
-                                    get_planet_table_SNR(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, systematics=True)
-                                    get_planet_table_SNR(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, systematics=True, PCA=True, N_PCA=20)
+                                # if instru in instrus_with_systematics:
+                                #     get_planet_table_SNR(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, systematics=True)
+                                #     get_planet_table_SNR(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, systematics=True, PCA=True, N_PCA=20)
+    
     print('\n Calculating all SNR took {0:.3f} s'.format(time.time()-time0))
 
 

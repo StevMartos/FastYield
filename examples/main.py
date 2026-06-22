@@ -17,7 +17,7 @@ from fastyield.colormaps import colormap_bandwidth_resolution_with_constant_Nlam
 #                       Graphic User Interface (GUI):                          #
 #------------------------------------------------------------------------------#
 
-# FastYield_interface()
+FastYield_interface()
 
 
 
@@ -40,9 +40,9 @@ from fastyield.colormaps import colormap_bandwidth_resolution_with_constant_Nlam
 # yield_hist_instrus_ptypes_ELT(exposure_time=6*60, thermal_model="BT-Settl", reflected_model="tellurics", planet_types=planet_types_reduced, fraction=False, instrus=["HARMONI", "HARMONI+SP_Prox"])
 
 # yield_corner_instru(instru="HARMONI", exposure_time=600, thermal_model="BT-Settl", reflected_model="tellurics", apodizer="NO_SP", strehl="JQ1", coronagraph=None, band="INSTRU", systematics=False, PCA=False)
-# yield_corner_instrus(instru1="HARMONI", instru2="ANDES", apodizer1="SP_Prox", apodizer2="NO_SP", strehl1="JQ1", strehl2="MED", coronagraph1=None, coronagraph2=None, exposure_time=6*60, thermal_model="BT-Settl", reflected_model="tellurics", systematics=False, PCA=False)
-# yield_corner_instrus(instru1="HARMONI", instru2="HARMONI", apodizer1="SP_Prox", apodizer2="NO_SP", strehl1="JQ1", strehl2="JQ1", coronagraph1=None, coronagraph2=None, exposure_time=6*60, thermal_model="BT-Settl", reflected_model="tellurics", systematics=False, PCA=False)
-# yield_corner_instrus(instru1="ANDES", instru2="ANDES", apodizer1="NO_SP", apodizer2="NO_SP", strehl1="MED", strehl2="MED", coronagraph1=None, coronagraph2="LYOT", exposure_time=6*60, thermal_model="BT-Settl", reflected_model="tellurics", systematics=False, PCA=False)
+# yield_corner_instrus(instru1="HARMONI", instru2="ANDES",   apodizer1="SP_Prox", apodizer2="NO_SP", strehl1="JQ1", strehl2="MED", coronagraph1=None, coronagraph2=None,   exposure_time=6*60, thermal_model="BT-Settl", reflected_model="tellurics", systematics=False, PCA=False)
+# yield_corner_instrus(instru1="HARMONI", instru2="HARMONI", apodizer1="SP_Prox", apodizer2="NO_SP", strehl1="JQ1", strehl2="JQ1", coronagraph1=None, coronagraph2=None,   exposure_time=6*60, thermal_model="BT-Settl", reflected_model="tellurics", systematics=False, PCA=False)
+# yield_corner_instrus(instru1="ANDES",   instru2="ANDES",   apodizer1="NO_SP",   apodizer2="NO_SP", strehl1="MED", strehl2="MED", coronagraph1=None, coronagraph2="LYOT", exposure_time=6*60, thermal_model="BT-Settl", reflected_model="tellurics", systematics=False, PCA=False)
 # yield_corner_models(model1="tellurics", model2="PICASO", instru="ANDES", apodizer="NO_SP", strehl="MED", exposure_time=6*60, band="INSTRU")
 
 # yield_contrast_instru(instru="ANDES", exposure_time=6*60, thermal_model="BT-Settl", reflected_model="PICASO", apodizer="NO_SP", strehl="MED", band="INSTRU", coronagraph="LYOT")
@@ -100,7 +100,7 @@ from fastyield.colormaps import colormap_bandwidth_resolution_with_constant_Nlam
 #                  FastCurves (comparison with real data cases):               #
 #------------------------------------------------------------------------------#
 
-### CT Cha b / SNR(1MEDIUM) = 11.72 (4.5 s)
+# ### CT Cha b / SNR(1MEDIUM) = 11.72 (3.5 s)
 # FastCurves(calculation="SNR", instru="MIRIMRS", systematics=True, input_DIT=138.75/60, model_planet="BT-Settl", separation_planet=2.5, T_planet=2600, lg_planet=3.5, planet_name="CT Cha b", mag_star=8.66, mag_planet=14.9, band0='K', T_star=4400, lg_star=3.5, exposure_time=56.426, rv_star=-2.9, rv_planet=15, vsini_star=10, vsini_planet=10, channel=False)
 
 # ### HD 19467 b / SNR(G395H F290LP) = 19.69 (8.5 s)
