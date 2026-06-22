@@ -378,7 +378,8 @@ config_data_HiRISE = {
                       'name':                       "HiRISE",                                # Instrument name
                       'telescope_name':             "VLT",                                   # Telescope name
                       'type':                       "fiber_injection_HRS",                   # Instrument type
-                      'gratings':                  {"H": GratingInfo(1.43, 1.78, 140_000)},  # Spectral range [µm], resolving power
+                      'gratings':                  {"H_CRIRES": GratingInfo(1.43, 1.78, 140_000), # Spectral range [µm], resolving power
+                                                    "H_VIPA":   GratingInfo(1.43, 1.78, 60_000)}, # Spectral range [µm], resolving power
                       'lambda_range':              {"lambda_min": 1.43, "lambda_max": 1.78}, # Minimum and maximum instrumental wavelength range [µm]
                       'size_core':                 1,                                        # Size in pixels of the FWHM                      (here: 1 fiber on the target)
                       'pixel_detector_projection': 2 * 2.04,                                 # Effective number of pixels per spectral channel (here: 2 × Npx_x × Npx_y)

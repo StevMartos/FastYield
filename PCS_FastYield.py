@@ -1100,6 +1100,7 @@ def main():
     D          = 38.54     # [m]
     S          = 980.      # [m2]
     N_mirror   = 5         # Number of mirror at the ELT (in order to compute the telescope transmission)
+    trans_dust = 0.90  # effect of dust, from common ICD, section 4.11, p37 (Document Number: ESO-253082)
 
     # --- Detector mode ---
     # "constant_H4RG"
@@ -1357,6 +1358,7 @@ def main():
                 # axis used
                 l0=l0, WFE=WFE, IWA=IWA, trans_instru=trans_instru,
                 )
+
     if instru_type == "IFU":
         meta.update(dict(Rc=Rc, filter_type=filter_type, R=R, Nl=Nl,))
     elif instru_type == "imager":
@@ -1580,7 +1582,6 @@ def main():
         data_elt_ref = np.genfromtxt(instru_dir / "ELT_reflectivity.csv", delimiter=",", names=True, dtype=float, encoding=None)
         wave_ref     = data_elt_ref["wave"]  # [µm]
         elt_ref      = data_elt_ref["M1-M5"] # ELT mirror train reflectivity, from common ICD, section 4.11, p37 (Document Number: ESO-253082)
-        trans_dust   = 0.90  # effect of dust, from common ICD, section 4.11, p37 (Document Number: ESO-253082)
         trans_tel    = trans_dust * elt_ref
         trans_tel    = Spectrum(wavelength=wave_ref, flux=trans_tel).interpolate_wavelength(wave_output=wave_instru, renorm=False, fill_value=(trans_tel[0], trans_tel[-1]))
 
