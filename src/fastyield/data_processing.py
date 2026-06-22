@@ -916,7 +916,7 @@ def get_CCF_1D_rv(instru, band, d, d_bkg, wave, trans, R, Rc, filter_type, model
         dlambda = 10 * wave/R
         #dlambda = wave * 1000*np.nanmax(np.abs((rv_arr))) / c
         dwave   = np.gradient(wave)
-        dpx_rv  = int(np.ceil(np.nanmax(np.abs(dlambda / dwave))))
+        dpx_rv  = int(np.ceil(np.nanmedian(np.abs(dlambda / dwave))))
         if verbose:
             print(f"\nRV padding for logL computation: dpx_rv = {dpx_rv} bins")
         if 2*dpx_rv >= len(wave):
@@ -1009,7 +1009,10 @@ def get_CCF_1D_rv(instru, band, d, d_bkg, wave, trans, R, Rc, filter_type, model
                 if "CH4" in target_name:
                     zoom_xmin, zoom_xmax = 1.665, 1.668
                 else:
-                    zoom_xmin, zoom_xmax = 1.686, 1.692
+                    if instru == "HiRISE":
+                        zoom_xmin, zoom_xmax = 1.716, 1.726
+                    else:
+                        zoom_xmin, zoom_xmax = 1.686, 1.692
                 axins = inset_axes(axs[0, 0], width="40%", height="40%", loc="lower right", borderpad=2)
                 axins.plot(wave, d,     c='crimson', label=f"{target_name.replace('_', ' ')} data")
                 axins.plot(wave, d_sim, c='steelblue')
