@@ -2984,7 +2984,6 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
         arr[mask] = np.nan
         return arr
     
-    
     # Hard-coded values
     noffsets = 1
     nrefs    = 3
@@ -2992,9 +2991,55 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
     if degrade_resolution and R_target > R0:
         raise KeyError(f"The input resolution R_target ({R_target}) can not be greater than the instrumental resolution ({R0}).")
     
-    
     # Opening data
     filename = f"data/HiRISE/{target_name}.fits"
+    
+    def _hdr_get(hdr, *keys, default=None):
+        """Return the first available FITS header value among several possible keys."""
+        for key in keys:
+            if key in hdr:
+                return hdr[key]
+        return default
+    
+    def _hdr_half_range(hdr, key_start, key_end):
+        """Return half the start/end variation if both header keywords exist."""
+        if key_start in hdr and key_end in hdr:
+            return np.abs(hdr[key_start] - hdr[key_end]) / 2
+        return None
+    
+    def _hdr_product(hdr, key1, key2):
+        """Return the product of two header values if both exist."""
+        if key1 in hdr and key2 in hdr:
+            return hdr[key1] * hdr[key2]
+        return None
+    
+    def _cols(data):
+        """Return a case-insensitive dictionary {lowercase_column_name: true_column_name}."""
+        return {name.lower(): name for name in data.names}
+    
+    def _get_col(data, *names, default=None, required=True, dtype=float):
+        """Return a FITS table column using several possible names."""
+        cols = _cols(data)
+        for name in names:
+            if name.lower() in cols:
+                return np.asarray(data[cols[name.lower()]], dtype=dtype)
+        if required:
+            raise KeyError(f"None of the columns {names} found. Available columns are: {data.names}")
+        return default
+    
+    def _has_hdu(hdul, extname):
+        """Case-insensitive test for an extension name."""
+        extname = extname.upper()
+        return any(hdu.name.upper() == extname for hdu in hdul)
+    
+    def _get_hdu_data(hdul, extname):
+        """Return HDU data using a case-insensitive extension name."""
+        extname = extname.upper()
+        for hdu in hdul:
+            if hdu.name.upper() == extname:
+                return hdu.data
+        raise KeyError(f"Extension '{extname}' not found. Available extensions are: {[hdu.name for hdu in hdul]}")
+    
     with fits.open(filename) as hdul:
         
         # Header
@@ -3002,71 +3047,140 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
         
         # Observation metadata
         tn                = target_name.split('_20')[0].replace('_', ' ')
-        date_obs_comp     = mjd_to_date(hdr['HIERARCH COMP MJD MEAN'])
-        date_obs_star     = mjd_to_date(hdr['HIERARCH STAR MJD MEAN'])
-        T_star            = hdr["HIERARCH STAR TEFF"] 
-        lg_star           = hdr["HIERARCH STAR LOGG"]
-        rv_comp_corr      = hdr["HIERARCH COMP HELCORR MEAN"]
-        rv_comp_corr_err  = np.abs(hdr["HIERARCH COMP HELCORR START"] - hdr["HIERARCH COMP HELCORR END"]) / 2
-        rv_star_helio     = hdr["HIERARCH STAR RV"]
-        rv_star_helio_err = hdr["HIERARCH STAR RV ERR"]
-        rv_star_corr      = hdr["HIERARCH STAR HELCORR MEAN"]
-        rv_star_corr_err  = np.abs(hdr["HIERARCH STAR HELCORR START"] - hdr["HIERARCH STAR HELCORR END"]) / 2
-        rv_star_obs       = rv_star_helio - rv_star_corr
-        rv_star_obs_err   = np.sqrt(rv_star_helio_err**2 + rv_star_corr_err**2)
-        vsini_star        = hdr["HIERARCH STAR VSINI"]
-        vsini_star_err    = hdr["HIERARCH STAR VSINI ERR"]
-        t_exp_comp        = hdr["HIERARCH COMP DIT"] * hdr["HIERARCH COMP NEXP"]
-        t_exp_star        = hdr["HIERARCH STAR DIT"] * hdr["HIERARCH STAR NEXP"]
+        mjd_comp          = _hdr_get(hdr, "HIERARCH COMP MJD MEAN", "HIERARCH COMP MJD-OBS MEAN")
+        mjd_star          = _hdr_get(hdr, "HIERARCH STAR MJD MEAN", "HIERARCH STAR MJD-OBS MEAN")
+        date_obs_comp     = mjd_to_date(mjd_comp) if mjd_comp is not None else None
+        date_obs_star     = mjd_to_date(mjd_star) if mjd_star is not None else None
+        T_star            = _hdr_get(hdr, "HIERARCH STAR TEFF")
+        lg_star           = _hdr_get(hdr, "HIERARCH STAR LOGG")
+        rv_comp_corr      = _hdr_get(hdr, "HIERARCH COMP HELCORR MEAN")
+        rv_comp_corr_err  = _hdr_half_range(hdr, "HIERARCH COMP HELCORR START", "HIERARCH COMP HELCORR END")
+        rv_star_helio     = _hdr_get(hdr, "HIERARCH STAR RV")
+        rv_star_helio_err = _hdr_get(hdr, "HIERARCH STAR RV ERR")
+        rv_star_corr      = _hdr_get(hdr, "HIERARCH STAR HELCORR MEAN")
+        rv_star_corr_err  = _hdr_half_range(hdr, "HIERARCH STAR HELCORR START", "HIERARCH STAR HELCORR END")
+        rv_star_obs       = rv_star_helio - rv_star_corr if rv_star_helio is not None and rv_star_corr is not None else None
+        rv_star_obs_err   = np.sqrt(rv_star_helio_err**2 + rv_star_corr_err**2) if rv_star_helio_err is not None and rv_star_corr_err is not None else None
+        vsini_star        = _hdr_get(hdr, "HIERARCH STAR VSINI")
+        vsini_star_err    = _hdr_get(hdr, "HIERARCH STAR VSINI ERR")
+        t_exp_comp        = _hdr_product(hdr, "HIERARCH COMP DIT", "HIERARCH COMP NEXP")
+        t_exp_star        = _hdr_product(hdr, "HIERARCH STAR DIT", "HIERARCH STAR NEXP")
         
-        # Wavelength table
-        wave0 = np.asarray(hdul[1].data["pipeline"],     dtype=float) * 1e-3 # [nm] => [µm], raw CRIRES wavelength solution
-        wave0 = np.asarray(hdul[1].data["recalibrated"], dtype=float) * 1e-3 # [nm] => [µm], recalibrated, observer frame
+        # Detect file format
+        new_format = _has_hdu(hdul, "WAVE") and _has_hdu(hdul, "RESPONSE,OFFSET0")
+        old_format = _has_hdu(hdul, "OFFSET0")
+        
+        if not new_format and not old_format:
+            raise KeyError(f"Unknown HiRISE FITS format for {filename}. Available extensions are: {[hdu.name for hdu in hdul]}")
         
         # Spectral tables
         bkg_flux0 = []
+        
         for ioff in range(noffsets):
             
-            # Response data
-            data_response = hdul[hdul.index_of(f'RESPONSE,OFFSET{ioff}')].data
-            trans0        = np.asarray(data_response["response"],       dtype=float) # no unit
-            trans_model0  = np.asarray(data_response["response_model"], dtype=float) # no unit
+            if new_format:
+                
+                # Wavelength table
+                wave_table = _get_hdu_data(hdul, "WAVE")
+                if "recalibrated" in _cols(wave_table):
+                    wave0 = _get_col(wave_table, "pipeline", required=False) * 1e-3     # [nm] => [µm], raw CRIRES wavelength solution
+                    wave0 = _get_col(wave_table, "recalibrated") * 1e-3                 # [nm] => [µm], recalibrated, observer frame
+                elif "wave_recal" in _cols(wave_table):
+                    wave0 = _get_col(wave_table, "wave_recal") * 1e-3                   # [nm] => [µm], recalibrated, observer frame
+                elif "wave" in _cols(wave_table):
+                    wave0 = _get_col(wave_table, "wave") * 1e-3                         # [nm] => [µm], wavelength solution
+                elif "pipeline" in _cols(wave_table):
+                    wave0 = _get_col(wave_table, "pipeline") * 1e-3                     # [nm] => [µm], raw CRIRES wavelength solution
+                else:
+                    raise KeyError(f"No valid wavelength column found in {filename}. Available columns are: {wave_table.names}")
+                
+                # Response data
+                data_response = _get_hdu_data(hdul, f"RESPONSE,OFFSET{ioff}")
+                trans0        = _get_col(data_response, "response")                     # no unit
+                trans_model0  = _get_col(data_response, "response_model", default=np.copy(trans0), required=False) # no unit
+                
+                # Star data
+                data_star       = _get_hdu_data(hdul, f"STAR,OFFSET{ioff},SCI")
+                star_flux0      = _get_col(data_star, "signal")                         # [e-]
+                star_weight0    = _get_col(data_star, "weight", default=np.ones_like(star_flux0), required=False) # no unit
+                star_sigma_tot0 = _get_col(data_star, "noise")                          # [e-]
+                star_sigma_bkg0 = _get_col(data_star, "noise_background", default=np.copy(star_sigma_tot0), required=False) # [e-]
+                
+                # Reference fibers from star sequence
+                if reference_fibers:
+                    for iref in range(nrefs):
+                        data_star_ref = _get_hdu_data(hdul, f"STAR,OFFSET{ioff},REF{iref}")
+                        bkg_flux0.append(_get_col(data_star_ref, "signal"))             # [e-]
+                
+                # Companion data
+                data_planet       = _get_hdu_data(hdul, f"COMP,OFFSET{ioff},SCI")
+                planet_flux0      = _get_col(data_planet, "signal")                     # [e-]
+                planet_weight0    = _get_col(data_planet, "weight", default=np.ones_like(planet_flux0), required=False) # no unit
+                planet_sigma_tot0 = _get_col(data_planet, "noise")                      # [e-]
+                planet_sigma_bkg0 = _get_col(data_planet, "noise_background", default=np.copy(planet_sigma_tot0), required=False) # [e-]
+                
+                # Reference fibers from companion sequence
+                if reference_fibers:
+                    for iref in range(nrefs):
+                        data_planet_ref = _get_hdu_data(hdul, f"COMP,OFFSET{ioff},REF{iref}")
+                        bkg_flux0.append(_get_col(data_planet_ref, "signal"))           # [e-]
             
-            # Star data
-            data_star       = hdul[hdul.index_of(f'STAR,OFFSET{ioff},SCI')].data
-            star_flux0      = np.asarray(data_star["signal"],           dtype=float) # [e-]
-            star_weight0    = np.asarray(data_star["weight"],           dtype=float) # no unit
-            star_sigma_tot0 = np.asarray(data_star["noise"],            dtype=float) # [e-]
-            star_sigma_bkg0 = np.asarray(data_star["noise_background"], dtype=float) # [e-]
-            
-            # Reference fibers from star sequence
-            if reference_fibers:
-                for iref in range(nrefs):
-                    data_star_ref = hdul[hdul.index_of(f'STAR,OFFSET{ioff},REF{iref}')].data
-                    bkg_flux0.append(np.asarray(data_star_ref["signal"], dtype=float)) # [e-]
-            
-            # Companion data
-            data_planet       = hdul[hdul.index_of(f'COMP,OFFSET{ioff},SCI')].data
-            planet_flux0      = np.asarray(data_planet["signal"],           dtype=float) # [e-]
-            planet_weight0    = np.asarray(data_planet["weight"],           dtype=float) # no unit
-            planet_sigma_tot0 = np.asarray(data_planet["noise"],            dtype=float) # [e-]
-            planet_sigma_bkg0 = np.asarray(data_planet["noise_background"], dtype=float) # [e-]
-            
-            # Reference fibers from companion sequence
-            if reference_fibers:
-                for iref in range(nrefs):
-                    data_planet_ref = hdul[hdul.index_of(f'COMP,OFFSET{ioff},REF{iref}')].data
-                    bkg_flux0.append(np.asarray(data_planet_ref["signal"], dtype=float)) # [e-]
-    
-    
+            else:
+                
+                # Old compact offset table
+                data_offset = _get_hdu_data(hdul, f"OFFSET{ioff}")
+                
+                # Wavelength table
+                if "wave_recal" in _cols(data_offset):
+                    wave0 = _get_col(data_offset, "wave_recal") * 1e-3                  # [nm] => [µm], recalibrated, observer frame
+                elif "recalibrated" in _cols(data_offset):
+                    wave0 = _get_col(data_offset, "recalibrated") * 1e-3                # [nm] => [µm], recalibrated, observer frame
+                elif "wave" in _cols(data_offset):
+                    wave0 = _get_col(data_offset, "wave") * 1e-3                       # [nm] => [µm], wavelength solution
+                elif "wave_original" in _cols(data_offset):
+                    wave0 = _get_col(data_offset, "wave_original") * 1e-3              # [nm] => [µm], original wavelength solution
+                else:
+                    raise KeyError(f"No valid wavelength column found in {filename}. Available columns are: {data_offset.names}")
+                
+                # Response data
+                trans0       = _get_col(data_offset, "response")                       # no unit
+                trans_model0 = _get_col(data_offset, "response_model", default=np.copy(trans0), required=False) # no unit
+                
+                # Star data
+                star_flux0      = _get_col(data_offset, "star_signal")                 # [e-]
+                star_weight0    = _get_col(data_offset, "star_weight", default=np.ones_like(star_flux0), required=False) # no unit
+                star_sigma_tot0 = _get_col(data_offset, "star_noise")                  # [e-]
+                star_sigma_bkg0 = _get_col(data_offset, "star_noise_background", "star_background_noise", default=np.copy(star_sigma_tot0), required=False) # [e-]
+                
+                # Companion data
+                planet_flux0      = _get_col(data_offset, "companion_signal", "comp_signal") # [e-]
+                planet_weight0    = _get_col(data_offset, "companion_weight", "comp_weight", default=np.ones_like(planet_flux0), required=False) # no unit
+                planet_sigma_tot0 = _get_col(data_offset, "companion_noise", "comp_noise") # [e-]
+                planet_sigma_bkg0 = _get_col(data_offset, "companion_noise_background", "companion_background_noise", "comp_noise_background", default=np.copy(planet_sigma_tot0), required=False) # [e-]
+                
+                # Reference fibers
+                if reference_fibers and _has_hdu(hdul, f"OFFSET{ioff}_REF"):
+                    data_ref = _get_hdu_data(hdul, f"OFFSET{ioff}_REF")
+                    
+                    for iref in range(nrefs):
+                        colname = f"star_ref{iref}_signal"
+                        if colname.lower() in _cols(data_ref):
+                            bkg_flux0.append(_get_col(data_ref, colname))              # [e-]
+                    
+                    for iref in range(nrefs):
+                        colname = f"companion_ref{iref}_signal"
+                        if colname.lower() in _cols(data_ref):
+                            bkg_flux0.append(_get_col(data_ref, colname))              # [e-]
+        
     # Optional stellar RV correction between the star and companion observations
-    if shift_star_corr:
+    if shift_star_corr and date_obs_comp is not None and date_obs_star is not None and rv_comp_corr is not None and rv_star_corr is not None:
         if date_obs_comp > date_obs_star:
             delta_corr = rv_star_corr - rv_comp_corr
         else:
             delta_corr = rv_comp_corr - rv_star_corr
         star_flux0 = Spectrum(wave0, star_flux0/trans0).doppler_shift(delta_corr, renorm=False).flux * trans0
-    
+    else:
+        delta_corr = 0
     
     # Wavelength axis properties
     if crop_tell_orders:
@@ -3075,12 +3189,12 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
     else:
         lmin = wave0[0]
         lmax = wave0[-1]
-    R_sampling0  = get_resolution(wavelength=wave0, func=np.array) # Raw sampling resolution
-    dl0 = np.nanmedian((lmin + lmax) / (2 * R_sampling0))
+    R_sampling0 = get_resolution(wavelength=wave0, func=np.array) # Raw sampling resolution
     
     
     # Flagging the order limits, for order-by-order filtering
     if order_by_order:
+        dl0         = np.nanmedian((lmin + lmax) / (2 * R_sampling0))
         transitions = np.where(np.diff(wave0) > 1000 * dl0)[0] + 1 # Indexes where the order changes
         lmin_orders = wave0[transitions - 1]
         lmax_orders = wave0[transitions]
@@ -3164,10 +3278,10 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
         trans_model0_HF = filtered_flux(trans_model0,  R=R_sampling0, Rc=Rc, filter_type=filter_type)[0]
         star_flux0_HF   = filtered_flux(star_flux0,    R=R_sampling0, Rc=Rc, filter_type=filter_type)[0]
         planet_flux0_HF = filtered_flux(planet_flux0,  R=R_sampling0, Rc=Rc, filter_type=filter_type)[0]
-        nan_values0    |= sigma_clip(np.ma.masked_invalid(trans0_HF),       sigma=2*sigma_outliers).mask
-        nan_values0    |= sigma_clip(np.ma.masked_invalid(trans_model0_HF), sigma=2*sigma_outliers).mask
-        nan_values0    |= sigma_clip(np.ma.masked_invalid(star_flux0_HF),   sigma=2*sigma_outliers).mask
-        nan_values0    |= sigma_clip(np.ma.masked_invalid(planet_flux0_HF), sigma=2*sigma_outliers).mask
+        nan_values0    |= sigma_clip(np.ma.masked_invalid(trans0_HF),       sigma=sigma_outliers).mask
+        nan_values0    |= sigma_clip(np.ma.masked_invalid(trans_model0_HF), sigma=sigma_outliers).mask
+        nan_values0    |= sigma_clip(np.ma.masked_invalid(star_flux0_HF),   sigma=sigma_outliers).mask
+        nan_values0    |= sigma_clip(np.ma.masked_invalid(planet_flux0_HF), sigma=sigma_outliers).mask
         if verbose:
             print(f"{nan_values0.sum() - NbNaN0} first-pass outliers found...")
         star_flux0        = _mask(star_flux0,        nan_values0)
@@ -3183,7 +3297,7 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
         if reference_fibers:
             for i in range(len(bkg_flux0)):
                 bkg_flux0_HF = filtered_flux(bkg_flux0[i], R=R_sampling0, Rc=Rc, filter_type=filter_type)[0]
-                bkg_mask     = sigma_clip(np.ma.masked_invalid(bkg_flux0_HF), sigma=2*sigma_outliers).mask
+                bkg_mask     = sigma_clip(np.ma.masked_invalid(bkg_flux0_HF), sigma=sigma_outliers).mask
                 bkg_flux0[i] = _mask(bkg_flux0[i], bkg_mask)
         valid0 = ~nan_values0
     
@@ -3195,11 +3309,12 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
         if wave_input is not None and not degrade_resolution:
             wave = wave_input
         else:
-            wave = get_wavelength_axis_constant_dl(lmin=lmin, lmax=lmax, R=R0) # constant and regular wavelength array
+            dl   = np.nanmin(wave0 / (2*R0)) # [µm/bin] Nyquist sampling of a spectrum with max resolving power R_model: 2 samples per resolution element at lmin_model
+            wave = np.arange(lmin, lmax, dl) # [µm] Model wavelength axis (with constant dl step)
         
         # Converting to densities, for interpolations to make sense
-        dwave  = np.gradient(wave)  # [µm/px]
-        dwave0 = np.gradient(wave0) # [µm/px]
+        dwave             = np.gradient(wave)  # [µm/px]
+        dwave0            = np.gradient(wave0) # [µm/px]
         star_flux0        = star_flux0        / dwave0 # [e-/µm]
         star_sigma_tot0   = star_sigma_tot0   / dwave0 # [e-/µm]
         star_sigma_bkg0   = star_sigma_bkg0   / dwave0 # [e-/µm]
@@ -3262,23 +3377,23 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
         valid0 &= np.isfinite(trans0)
         
         # Degrading star data
-        star_spectrumLR = Spectrum(wave0[valid0], star_flux0[valid0], R=R0, sigma=star_sigma_tot0[valid0]).degrade_resolution(wave, renorm=False, R_output=R_target)
+        star_spectrumLR = Spectrum(wave0, star_flux0, R=R0, sigma=star_sigma_tot0).degrade_resolution(wave, renorm=False, R_output=R_target)
         star_flux       = star_spectrumLR.flux
         star_sigma_tot  = star_spectrumLR.sigma
-        star_sigma_bkg  = Spectrum(wave0[valid0], star_flux0[valid0],   R=R0, sigma=star_sigma_bkg0[valid0]).degrade_resolution(wave,     renorm=False, R_output=R_target).sigma
-        star_weight     = Spectrum(wave0[valid0], star_weight0[valid0], R=R0, sigma=star_sigma_bkg0[valid0]).interpolate_wavelength(wave, renorm=False).flux
+        star_sigma_bkg  = Spectrum(wave0, star_flux0,   R=R0, sigma=star_sigma_bkg0).degrade_resolution(wave,     renorm=False, R_output=R_target).sigma
+        star_weight     = Spectrum(wave0, star_weight0, R=R0, sigma=star_sigma_bkg0).interpolate_wavelength(wave, renorm=False).flux
         
         # Degrading companion data
-        planet_spectrumLR = Spectrum(wave0[valid0], planet_flux0[valid0], R=R0, sigma=planet_sigma_tot0[valid0]).degrade_resolution(wave, renorm=False, R_output=R_target)
+        planet_spectrumLR = Spectrum(wave0, planet_flux0, R=R0, sigma=planet_sigma_tot0).degrade_resolution(wave, renorm=False, R_output=R_target)
         planet_flux       = planet_spectrumLR.flux
         planet_sigma_tot  = planet_spectrumLR.sigma
         R                 = planet_spectrumLR.R
-        planet_sigma_bkg  = Spectrum(wave0[valid0], planet_flux0[valid0],   R=R0, sigma=planet_sigma_bkg0[valid0]).degrade_resolution(wave,     renorm=False, R_output=R_target).sigma
-        planet_weight     = Spectrum(wave0[valid0], planet_weight0[valid0], R=R0, sigma=planet_sigma_bkg0[valid0]).interpolate_wavelength(wave, renorm=False).flux
+        planet_sigma_bkg  = Spectrum(wave0, planet_flux0,   R=R0, sigma=planet_sigma_bkg0).degrade_resolution(wave,     renorm=False, R_output=R_target).sigma
+        planet_weight     = Spectrum(wave0, planet_weight0, R=R0, sigma=planet_sigma_bkg0).interpolate_wavelength(wave, renorm=False).flux
         
         # Degrading transmission data
-        trans       = Spectrum(wave0[valid0], trans0[valid0],       R=R0).degrade_resolution(wave, renorm=False, R_output=R_target).flux
-        trans_model = Spectrum(wave0[valid0], trans_model0[valid0], R=R0).degrade_resolution(wave, renorm=False, R_output=R_target).flux
+        trans       = Spectrum(wave0, trans0,       R=R0).degrade_resolution(wave, renorm=False, R_output=R_target).flux
+        trans_model = Spectrum(wave0, trans_model0, R=R0).degrade_resolution(wave, renorm=False, R_output=R_target).flux
         
         # Interpolating the initial missing-values mask
         nan_values  = interp1d(wave0, nan_values0, bounds_error=False, fill_value=np.nan)(wave) != 0
@@ -3329,9 +3444,9 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
                 mask_order = (wave > lmax_orders[i - 1]) & (wave < lmin_orders[i])
             
             if np.any(mask_order):
-                star_flux_HF[mask_order],   star_flux_LF[mask_order]   = filtered_flux(star_flux[mask_order],          R=R, Rc=Rc, filter_type=filter_type)
-                planet_flux_HF[mask_order], planet_flux_LF[mask_order] = filtered_flux(planet_flux[mask_order],        R=R, Rc=Rc, filter_type=filter_type)
-                sf_HF[mask_order],          sf_LF[mask_order]          = filtered_flux(star_flux[mask_order]/trans[mask_order], R=R, Rc=Rc, filter_type=filter_type)
+                star_flux_HF[mask_order],   star_flux_LF[mask_order]   = filtered_flux(star_flux[mask_order],                   R=R_sampling, Rc=Rc, filter_type=filter_type)
+                planet_flux_HF[mask_order], planet_flux_LF[mask_order] = filtered_flux(planet_flux[mask_order],                 R=R_sampling, Rc=Rc, filter_type=filter_type)
+                sf_HF[mask_order],          sf_LF[mask_order]          = filtered_flux(star_flux[mask_order]/trans[mask_order], R=R_sampling, Rc=Rc, filter_type=filter_type)
     
     else:
         
@@ -3393,22 +3508,35 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
     # Star high-pass filtered data
     d_star = trans * sf_HF # considered as noise / background flux
     
-    
     # (final) OUTLIERS FILTERING (if wanted)
     if outliers:
-        NbNaN       = nan_values.sum()
-        nan_values |= sigma_clip(np.ma.masked_invalid(d_star),           sigma=sigma_outliers).mask
-        nan_values |= sigma_clip(np.ma.masked_invalid(star_sigma_tot),   sigma=sigma_outliers).mask
-        nan_values |= sigma_clip(np.ma.masked_invalid(star_sigma_bkg),   sigma=sigma_outliers).mask
-        nan_values |= sigma_clip(np.ma.masked_invalid(d_planet),         sigma=sigma_outliers).mask
-        nan_values |= sigma_clip(np.ma.masked_invalid(planet_sigma_tot), sigma=sigma_outliers).mask
-        nan_values |= sigma_clip(np.ma.masked_invalid(planet_sigma_bkg), sigma=sigma_outliers).mask
-        if reference_fibers:
-            for i in range(len(d_bkg)):
-                nan_values |= sigma_clip(np.ma.masked_invalid(d_bkg[i]), sigma=sigma_outliers).mask
+        NbNaN          = nan_values.sum()
+        trans_HF       = filtered_flux(trans,        R=R_sampling, Rc=Rc, filter_type=filter_type)[0]
+        trans_model_HF = filtered_flux(trans_model,  R=R_sampling, Rc=Rc, filter_type=filter_type)[0]
+        star_flux_HF   = filtered_flux(star_flux,    R=R_sampling, Rc=Rc, filter_type=filter_type)[0]
+        planet_flux_HF = filtered_flux(planet_flux,  R=R_sampling, Rc=Rc, filter_type=filter_type)[0]
+        nan_values    |= sigma_clip(np.ma.masked_invalid(trans_HF),       sigma=sigma_outliers).mask
+        nan_values    |= sigma_clip(np.ma.masked_invalid(trans_model_HF), sigma=sigma_outliers).mask
+        nan_values    |= sigma_clip(np.ma.masked_invalid(star_flux_HF),   sigma=sigma_outliers).mask
+        nan_values    |= sigma_clip(np.ma.masked_invalid(planet_flux_HF), sigma=sigma_outliers).mask
         if verbose:
             print(f"{nan_values.sum() - NbNaN} final-pass outliers found...")
-    
+        star_flux        = _mask(star_flux,        nan_values)
+        star_sigma_tot   = _mask(star_sigma_tot,   nan_values)
+        star_sigma_bkg   = _mask(star_sigma_bkg,   nan_values)
+        star_weight      = _mask(star_weight,      nan_values)
+        planet_flux      = _mask(planet_flux,      nan_values)
+        planet_sigma_tot = _mask(planet_sigma_tot, nan_values)
+        planet_sigma_bkg = _mask(planet_sigma_bkg, nan_values)
+        planet_weight    = _mask(planet_weight,    nan_values)
+        trans            = _mask(trans,            nan_values)
+        trans_model      = _mask(trans_model,      nan_values)
+        if reference_fibers:
+            for i in range(len(bkg_flux)):
+                bkg_flux_HF = filtered_flux(bkg_flux[i], R=R_sampling, Rc=Rc, filter_type=filter_type)[0]
+                bkg_mask     = sigma_clip(np.ma.masked_invalid(bkg_flux_HF), sigma=sigma_outliers).mask
+                bkg_flux[i] = _mask(bkg_flux[i], bkg_mask)
+        valid = ~nan_values
     
     # Removing the flagged NaN values
     if mask_nan_values:
@@ -3453,9 +3581,9 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
         axes[0].legend(fontsize=10, loc="best", frameon=True)
         axes[0].grid(True, linestyle="--", linewidth=0.5, alpha=0.7)
         axes[1].set_title("Star's Signal", fontsize=14, fontweight="bold")
-        axes[1].plot(wave, star_flux, "r-", linewidth=2, label="LF+HF (Total Flux)")
-        axes[1].plot(wave, star_flux_LF, "g-", linewidth=2, label="LF (Low-Frequency)")
-        axes[1].plot(wave, star_flux_HF, "b-", linewidth=2, label="HF (High-Frequency)")
+        axes[1].plot(wave, star_flux,    c="crimson",   ls="-", linewidth=2, label="LF+HF (Total Flux)")
+        axes[1].plot(wave, star_flux_LF, c="seagreen",  ls="-", linewidth=2, label="LF (Low-Frequency)")
+        axes[1].plot(wave, star_flux_HF, c="steelblue", ls="-", linewidth=2, label="HF (High-Frequency)")
         axes[1].plot(wave, filtered_flux(star_flux_HF, R=R, Rc=Rc, filter_type=filter_type)[1], "k:", linewidth=2, label="[HF]_LF (Filtered HF)")
         axes[1].set_xlim(np.nanmin(wave[np.isfinite(d_planet)]), np.nanmax(wave[np.isfinite(d_planet)]))
         axes[1].set_xlabel("Wavelength [µm]", fontsize=12)
@@ -3522,6 +3650,7 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
     
     
     return wave, star_flux, d_star, planet_flux, d_planet, trans, trans_model, R, planet_sigma, planet_weight, T_star, lg_star, rv_star_obs, vsini_star, hdr, d_bkg
+
 
 
 ############################## PSF interpolation+extrapolation over separation, lambda, IWA and WFE ################################
