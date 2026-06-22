@@ -1,7 +1,7 @@
 # import FastYield modules
 from .config import instrus, bands, rad2arcsec, R0_max
 from .get_specs import _get_transmission, get_PSF_profile, get_config_data, get_wa, get_band_lims, get_R_instru, get_logit_coronagraphic_profile_interp, get_R_corr_interp, get_bkg_flux_band
-from .utils import airy_profile, get_r_core
+from .utils import airy_profile, get_r_core, power_law_extrapolation
 from .spectrum import filtered_flux, get_mag, get_resolution, get_spectrum_instru, get_spectrum_band, load_star_spectrum, load_planet_spectrum, load_vega_spectrum, get_counts_from_density
 from .signal_noise import get_DIT_RON, get_delta_cos_theta_syst, get_alpha_cos_theta_syst, get_beta, get_fn_MM, get_systematics, compute_sigma_base_2_al_spat_numba, compute_sigma_base_2_al_spec_numba, compute_sigma_base_2_speck_numba, compress_h_for_sigma_base_2, compute_sigma_base_2_al_spec_fast
 from .data_processing import get_d_sim, parameters_retrieval, plot_CCF_1D_rv
@@ -381,7 +381,6 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
                         # Interpolation + extrapolation (if needed) on the current separation axis
                         sigma_syst_prime = np.exp(interp1d(separation_syst, np.log(np.sqrt(sigma_syst_prime_2)), bounds_error=False, fill_value="extrapolate")(separation))
                         if separation[-1] > separation_syst[-1]: # Systematic profile extrapolation
-                            from .utils import power_law_extrapolation    
                             slope                       = hdr_PSF["slope"]
                             mask_tail                   = separation >= separation_syst[-1]
                             sigma_syst_prime[mask_tail] = power_law_extrapolation(x=separation[mask_tail], x0=separation_syst[-1], y0=np.sqrt(sigma_syst_prime_2)[-1], slope=slope)

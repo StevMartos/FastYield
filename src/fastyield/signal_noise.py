@@ -3,7 +3,7 @@ from .config import get_sim_data_path, rad2arcsec
 from .get_specs import _load_stellar_modulation_function, get_config_data, get_transmission
 from .utils import extract_jwst_data, PCA_subtraction, circular_mask, annular_mask, box_convolution, fill_nan_linear
 from .spectrum import get_resolution, filtered_flux, _fft_filter_response, get_spectrum_band
-from .data_processing import get_S_res, get_CCF_2D_rv, get_d_sim
+from .data_processing import get_S_res, get_CCF_2D_rv, get_d_sim, get_Ss_HF_LF
 
 # import astropy modules
 from astropy.io import fits
@@ -818,12 +818,13 @@ def get_systematics(config_data, band, tellurics, apodizer, strehl, coronagraph,
     pca : object or None
         The fitted PCA object (None if PCA not used or not computed).
     """
-    PCA_verbose       = None
-    pca               = None
-    PCA_calc          = False  # we’ll decide below if PCA = True
-    instru            = config_data["name"]
-    FOV               = config_data["FOV"]      # [arcsec]
-    sep_unit          = config_data["sep_unit"] # 'mas' or 'arcsec'
+    PCA_verbose   = None
+    pca           = None
+    PCA_calc      = False  # we’ll decide below if PCA = True
+    instru        = config_data["name"]
+    FOV           = config_data["FOV"]      # [arcsec]
+    sep_unit      = config_data["sep_unit"] # 'mas' or 'arcsec'
+    sim_data_path = get_sim_data_path()
     if sep_unit == "mas":
         FOV *= 1e3 # [mas]
     
@@ -872,7 +873,6 @@ def get_systematics(config_data, band, tellurics, apodizer, strehl, coronagraph,
         # Saving
         hdr            = fits.Header()
         hdr['pxscale'] = pxscale
-        sim_data_path  = get_sim_data_path()
         if on_sky_data: # writing the data for systematics estimation purposes
             fits.writeto(f"{sim_data_path}/Systematics/{instru}/Ms_onsky_star_center_s3d_{band}.fits",   Ms,        overwrite=True, header=hdr)
             fits.writeto(f"{sim_data_path}/Systematics/{instru}/wave_onsky_star_center_s3d_{band}.fits", wave_data, overwrite=True)
@@ -882,7 +882,7 @@ def get_systematics(config_data, band, tellurics, apodizer, strehl, coronagraph,
     
     NbChannel, NbLine, NbColumn = Ms.shape
     y_center, x_center          = NbLine//2, NbColumn//2
-    R_nyquist                   = get_resolution(wavelength=wave_data, func=np.nanmedian)
+    R_sampling                  = get_resolution(wavelength=wave_data, func=np.nanmedian)
     
     # Get transmission on the cube wavelength data grid in [e-/ph]
     trans = get_transmission(instru=instru, wave_band=wave_data, band=band, tellurics=tellurics, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, fill_value=np.nan)
@@ -927,8 +927,8 @@ def get_systematics(config_data, band, tellurics, apodizer, strehl, coronagraph,
         PCA_verbose = f" PCA, with {N_PCA} principal components subtracted, is included in the FastCurves estimations as a technique for systematic noise removal"
                 
         Sp           = get_spectrum_band(spectrum_instru=planet_spectrum_instru, wave_band=wave_data, R_output=R_band).flux # [ph/bin/mn] (total ph over the FoV)
-        Sp_HF, Sp_LF = filtered_flux(Sp, R=R_nyquist, Rc=Rc, filter_type=filter_type) # [ph/bin/mn] (total ph over the FoV)
-        Ss_HF, Ss_LF = filtered_flux(Ss, R=R_nyquist, Rc=Rc, filter_type=filter_type) # [ph/bin/mn] (total ph over the FoV)
+        Sp_HF, Sp_LF = filtered_flux(Sp, R=R_sampling, Rc=Rc, filter_type=filter_type) # [ph/bin/mn] (total ph over the FoV)
+        Ss_HF, Ss_LF = filtered_flux(Ss, R=R_sampling, Rc=Rc, filter_type=filter_type) # [ph/bin/mn] (total ph over the FoV)
         
         # Planet fake injection (if the sep and the mag are known and the planet is inside the FoV) in order to estimate components that would be estimated on real data and thus estimating the systematic noise and signal reduction 
         if (mag_planet is not None) and (separation_planet is not None) and (separation_planet < FOV / 2):
@@ -946,8 +946,14 @@ def get_systematics(config_data, band, tellurics, apodizer, strehl, coronagraph,
             trans_Ss                = np.nansum(S, (1, 2)) # [e-/bin/mn] (total e- over the FoV)
             trans_Ss[trans_Ss == 0] = np.nan               # [e-/bin/mn] (total e- over the FoV)
             
+            # Stellar residual component (if needed)
+            if stellar_component and Rc is not None:
+                Ss_HF, Ss_LF = get_Ss_HF_LF(trans_Ss=trans_Ss, trans=trans, wave=wave_data, R_sampling=R_sampling, Rc=Rc, filter_type=filter_type)
+            else:
+                Ss_HF = Ss_LF = None
+            
             # Stellar filtering + PCA in [e-/bin/px/mn]
-            S_res, _       = get_S_res(wave=wave_data, S=S, Rc=Rc, filter_type=filter_type, trans_Ss=trans_Ss, outliers=on_sky_data, sigma_outliers=sigma_outliers, renorm_S_res=False, only_high_pass=False, debug=False) # stellar subtracted data with the fake planet injected
+            S_res, _       = get_S_res(wave=wave_data, S=S, Rc=Rc, filter_type=filter_type, trans_Ss=trans_Ss, outliers=on_sky_data, sigma_outliers=sigma_outliers, renorm_S_res=False, only_high_pass=False, R_sampling=R_sampling, debug=False) # stellar subtracted data with the fake planet injected
             S_res_pca, pca = PCA_subtraction(S_res=S_res, N_PCA=N_PCA, y0=y0, x0=x0, size_core=size_core, PCA_annular=False, scree_plot=False, PCA_mask=PCA_mask, PCA_plots=False, wave=wave_data, R=R_band) # apply PCA to it
             
             # Masking the planet (if beyond FWHM)
@@ -965,10 +971,10 @@ def get_systematics(config_data, band, tellurics, apodizer, strehl, coronagraph,
             S_res_wo_planet_pca = box_convolution(data=S_res_wo_planet_pca, size_core=size_core)
 
             # CCF computations [e-/FWHM/mn]
-            CCF,               _ = get_CCF_2D_rv(instru=instru, S_res=S_res,               wave=wave_data, trans=trans, R=R_band, Rc=Rc, filter_type=filter_type, model=None, T=None, lg=None, rv_arr=0, vsini=None, epsilon=None, fastbroad=None, airmass=None, star_spectrum=None, wave_model=None, template_wo_shift=planet_spectrum_instru, degrade_resolution=True, stellar_component=stellar_component, trans_Ss=trans_Ss, pca=None)
-            CCF_wo_planet,     _ = get_CCF_2D_rv(instru=instru, S_res=S_res_wo_planet,     wave=wave_data, trans=trans, R=R_band, Rc=Rc, filter_type=filter_type, model=None, T=None, lg=None, rv_arr=0, vsini=None, epsilon=None, fastbroad=None, airmass=None, star_spectrum=None, wave_model=None, template_wo_shift=planet_spectrum_instru, degrade_resolution=True, stellar_component=stellar_component, trans_Ss=trans_Ss, pca=None)
-            CCF_pca,           _ = get_CCF_2D_rv(instru=instru, S_res=S_res_pca,           wave=wave_data, trans=trans, R=R_band, Rc=Rc, filter_type=filter_type, model=None, T=None, lg=None, rv_arr=0, vsini=None, epsilon=None, fastbroad=None, airmass=None, star_spectrum=None, wave_model=None, template_wo_shift=planet_spectrum_instru, degrade_resolution=True, stellar_component=stellar_component, trans_Ss=trans_Ss, pca=pca)
-            CCF_wo_planet_pca, _ = get_CCF_2D_rv(instru=instru, S_res=S_res_wo_planet_pca, wave=wave_data, trans=trans, R=R_band, Rc=Rc, filter_type=filter_type, model=None, T=None, lg=None, rv_arr=0, vsini=None, epsilon=None, fastbroad=None, airmass=None, star_spectrum=None, wave_model=None, template_wo_shift=planet_spectrum_instru, degrade_resolution=True, stellar_component=stellar_component, trans_Ss=trans_Ss, pca=pca)
+            CCF,               _ = get_CCF_2D_rv(instru=instru, S_res=S_res,               wave=wave_data, trans=trans, R=R_band, Rc=Rc, filter_type=filter_type, model=None, T=None, lg=None, rv_arr=0, vsini=None, epsilon=None, fastbroad=None, airmass=None, star_spectrum=None, wave_model=None, template_wo_shift=planet_spectrum_instru, degrade_resolution=True, stellar_component=stellar_component, trans_Ss=trans_Ss, Ss_HF=Ss_HF, Ss_LF=Ss_LF, pca=None)
+            CCF_wo_planet,     _ = get_CCF_2D_rv(instru=instru, S_res=S_res_wo_planet,     wave=wave_data, trans=trans, R=R_band, Rc=Rc, filter_type=filter_type, model=None, T=None, lg=None, rv_arr=0, vsini=None, epsilon=None, fastbroad=None, airmass=None, star_spectrum=None, wave_model=None, template_wo_shift=planet_spectrum_instru, degrade_resolution=True, stellar_component=stellar_component, trans_Ss=trans_Ss, Ss_HF=Ss_HF, Ss_LF=Ss_LF, pca=None)
+            CCF_pca,           _ = get_CCF_2D_rv(instru=instru, S_res=S_res_pca,           wave=wave_data, trans=trans, R=R_band, Rc=Rc, filter_type=filter_type, model=None, T=None, lg=None, rv_arr=0, vsini=None, epsilon=None, fastbroad=None, airmass=None, star_spectrum=None, wave_model=None, template_wo_shift=planet_spectrum_instru, degrade_resolution=True, stellar_component=stellar_component, trans_Ss=trans_Ss, Ss_HF=Ss_HF, Ss_LF=Ss_LF, pca=pca)
+            CCF_wo_planet_pca, _ = get_CCF_2D_rv(instru=instru, S_res=S_res_wo_planet_pca, wave=wave_data, trans=trans, R=R_band, Rc=Rc, filter_type=filter_type, model=None, T=None, lg=None, rv_arr=0, vsini=None, epsilon=None, fastbroad=None, airmass=None, star_spectrum=None, wave_model=None, template_wo_shift=planet_spectrum_instru, degrade_resolution=True, stellar_component=stellar_component, trans_Ss=trans_Ss, Ss_HF=Ss_HF, Ss_LF=Ss_LF, pca=pca)
             
             # Signal loss du to PCA (empirical at the injected location)
             r_planet        = int(round(np.sqrt((y0-y_center)**2 + (x0-x_center)**2)))
@@ -983,9 +989,15 @@ def get_systematics(config_data, band, tellurics, apodizer, strehl, coronagraph,
             # Estimating the star flux from the data cube in [e-/bin/mn] (total e- over the FoV)
             trans_Ss                = np.nansum(S_wo_planet, (1, 2)) # [e-/bin/mn] (total e- over the FoV)
             trans_Ss[trans_Ss == 0] = np.nan                         # [e-/bin/mn] (total e- over the FoV)
-                
+            
+            # Stellar residual component (if needed)
+            if stellar_component and Rc is not None:
+                Ss_HF, Ss_LF = get_Ss_HF_LF(trans_Ss=trans_Ss, trans=trans, wave=wave_data, R_sampling=R_sampling, Rc=Rc, filter_type=filter_type)
+            else:
+                Ss_HF = Ss_LF = None
+            
             # Stellar filtering
-            S_res_wo_planet, _ = get_S_res(wave=wave_data, S=S_wo_planet, Rc=Rc, filter_type=filter_type, trans_Ss=trans_Ss, outliers=on_sky_data, sigma_outliers=sigma_outliers, renorm_S_res=False, only_high_pass=False, debug=False)
+            S_res_wo_planet, _ = get_S_res(wave=wave_data, S=S_wo_planet, Rc=Rc, filter_type=filter_type, trans_Ss=trans_Ss, outliers=on_sky_data, sigma_outliers=sigma_outliers, renorm_S_res=False, only_high_pass=False, R_sampling=R_sampling, debug=False)
             
             # No planet
             y0 = None
@@ -998,14 +1010,14 @@ def get_systematics(config_data, band, tellurics, apodizer, strehl, coronagraph,
             S_res_wo_planet_pca = box_convolution(data=S_res_wo_planet_pca, size_core=size_core)
 
             # CCF computations in [e-/FWHM/mn]
-            CCF_wo_planet_pca, _ = get_CCF_2D_rv(instru=instru, S_res=S_res_wo_planet_pca, wave=wave_data, trans=trans, R=R_band, Rc=Rc, filter_type=filter_type, model=None, T=None, lg=None, rv_arr=0, vsini=None, epsilon=None, fastbroad=None, airmass=None, star_spectrum=None, wave_model=None, template_wo_shift=planet_spectrum_instru, degrade_resolution=True, stellar_component=stellar_component, trans_Ss=trans_Ss, pca=pca)
+            CCF_wo_planet_pca, _ = get_CCF_2D_rv(instru=instru, S_res=S_res_wo_planet_pca, wave=wave_data, trans=trans, R=R_band, Rc=Rc, filter_type=filter_type, model=None, T=None, lg=None, rv_arr=0, vsini=None, epsilon=None, fastbroad=None, airmass=None, star_spectrum=None, wave_model=None, template_wo_shift=planet_spectrum_instru, degrade_resolution=True, stellar_component=stellar_component, trans_Ss=trans_Ss, Ss_HF=Ss_HF, Ss_LF=Ss_LF, pca=pca)
             
             # No signal loss due to PCA
             M_pca = 1
         
         # Analytical PCA signal-loss proxy: another way to estimate the signal loss due to the PCA: substract the PCA components to the planetary spectrum
-        d          = get_d_sim(instru=instru, d=None, wave=wave_data, trans=trans, R=R_band, Rc=Rc, filter_type=filter_type, model=None, T=None, lg=None, rv=None, vsini=None, epsilon=None, fastbroad=None, airmass=None, star_spectrum=None, wave_model=None, template=planet_spectrum_instru, degrade_resolution=True, stellar_component=stellar_component, trans_Ss=trans_Ss, pca=None, cut_fringes=False, Rmin=None, Rmax=None, target_name=None, renorm_d_sim=False, sigma_l=None, Mp=None, verbose=False)
-        d_pca      = get_d_sim(instru=instru, d=None, wave=wave_data, trans=trans, R=R_band, Rc=Rc, filter_type=filter_type, model=None, T=None, lg=None, rv=None, vsini=None, epsilon=None, fastbroad=None, airmass=None, star_spectrum=None, wave_model=None, template=planet_spectrum_instru, degrade_resolution=True, stellar_component=stellar_component, trans_Ss=trans_Ss, pca=pca,  cut_fringes=False, Rmin=None, Rmax=None, target_name=None, renorm_d_sim=False, sigma_l=None, Mp=None, verbose=False)
+        d          = get_d_sim(instru=instru, d=None, wave=wave_data, trans=trans, R=R_band, Rc=Rc, filter_type=filter_type, model=None, T=None, lg=None, rv=None, vsini=None, epsilon=None, fastbroad=None, airmass=None, star_spectrum=None, wave_model=None, template=planet_spectrum_instru, degrade_resolution=True, stellar_component=stellar_component, trans_Ss=trans_Ss, Ss_HF=Ss_HF, Ss_LF=Ss_LF, pca=None, cut_fringes=False, Rmin=None, Rmax=None, target_name=None, renorm_d_sim=False, sigma_l=None, Mp=None, verbose=False)
+        d_pca      = get_d_sim(instru=instru, d=None, wave=wave_data, trans=trans, R=R_band, Rc=Rc, filter_type=filter_type, model=None, T=None, lg=None, rv=None, vsini=None, epsilon=None, fastbroad=None, airmass=None, star_spectrum=None, wave_model=None, template=planet_spectrum_instru, degrade_resolution=True, stellar_component=stellar_component, trans_Ss=trans_Ss, Ss_HF=Ss_HF, Ss_LF=Ss_LF, pca=pca,  cut_fringes=False, Rmin=None, Rmax=None, target_name=None, renorm_d_sim=False, sigma_l=None, Mp=None, verbose=False)
         t          = d     / np.sqrt(np.nansum(d**2))
         t_pca      = d_pca / np.sqrt(np.nansum(d_pca**2))
         signal     = np.nansum(d     * t)
@@ -1026,7 +1038,7 @@ def get_systematics(config_data, band, tellurics, apodizer, strehl, coronagraph,
         trans_Ss[trans_Ss == 0] = np.nan                         # [e-/bin/mn] (total e- over the FoV)
             
         # Stellar filtering
-        S_res_wo_planet, _ = get_S_res(wave=wave_data, S=S_wo_planet, Rc=Rc, filter_type=filter_type, trans_Ss=trans_Ss, outliers=on_sky_data, sigma_outliers=sigma_outliers, renorm_S_res=False, only_high_pass=False, debug=False)
+        S_res_wo_planet, _ = get_S_res(wave=wave_data, S=S_wo_planet, Rc=Rc, filter_type=filter_type, trans_Ss=trans_Ss, outliers=on_sky_data, sigma_outliers=sigma_outliers, renorm_S_res=False, only_high_pass=False, R_sampling=R_sampling, debug=False)
         
         # No signal loss
         if PCA:

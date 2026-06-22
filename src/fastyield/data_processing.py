@@ -34,6 +34,10 @@ warnings.filterwarnings("ignore", message="Header block contains null bytes*")
 
 
 
+dtype = np.float32
+
+
+
 # -------------------------------------------------------------------------
 # Data spectra modelisations
 # -------------------------------------------------------------------------
@@ -171,7 +175,7 @@ def get_template(instru, wave, R, model, T, lg, rv, vsini, epsilon=0.8, fastbroa
 
 
 
-def get_d_sim(instru, d, wave, trans, R, Rc, filter_type, model, T, lg, rv, vsini, epsilon=0.8, fastbroad=True, airmass=2.0, star_spectrum=None, wave_model=None, template=None, degrade_resolution=True, stellar_component=True, trans_Ss=None, pca=None, cut_fringes=False, Rmin=None, Rmax=None, target_name=None, renorm_d_sim=True, sigma_l=None, Mp=None, verbose=True):
+def get_d_sim(instru, d, wave, trans, R, Rc, filter_type, model, T, lg, rv, vsini, epsilon=0.8, fastbroad=True, airmass=2.0, star_spectrum=None, wave_model=None, template=None, degrade_resolution=True, stellar_component=True, trans_Ss=None, Ss_HF=None, Ss_LF=None, pca=None, cut_fringes=False, Rmin=None, Rmax=None, target_name=None, renorm_d_sim=True, sigma_l=None, Mp=None, verbose=True):
     """"
     Build a *simulated* high-pass signal vector 'd_sim' matched to the data.
 
@@ -265,8 +269,9 @@ def get_d_sim(instru, d, wave, trans, R, Rc, filter_type, model, T, lg, rv, vsin
     if stellar_component and Rc is not None:
         if verbose:
             print(" get_d_sim: Adding the residual stellar component...")
-        Ss_HF, Ss_LF = get_Ss_HF_LF(trans_Ss=trans_Ss, trans=trans, wave=wave, R_sampling=R_sampling, Rc=Rc, filter_type=filter_type)
-        d_sim       += - trans * Ss_HF * Sp_LF / Ss_LF
+        if Ss_HF is None or Ss_LF is None:
+            Ss_HF, Ss_LF = get_Ss_HF_LF(trans_Ss=trans_Ss, trans=trans, wave=wave, R_sampling=R_sampling, Rc=Rc, filter_type=filter_type)
+        d_sim += - trans * Ss_HF * Sp_LF / Ss_LF
     
     # 5) Optional notch (fringe) filtering
     if cut_fringes:
@@ -325,7 +330,7 @@ def get_d_sim(instru, d, wave, trans, R, Rc, filter_type, model, T, lg, rv, vsin
 # Stellar filtering method
 # -------------------------------------------------------------------------
 
-def get_S_res(wave, S, Rc, filter_type, trans_Ss=None, outliers=False, sigma_outliers=5, renorm_S_res=False, only_high_pass=False, debug=False):
+def get_S_res(wave, S, Rc, filter_type, trans_Ss=None, outliers=False, sigma_outliers=5, renorm_S_res=False, only_high_pass=False, R_sampling=None, debug=False):
     """
     Stellar filtering for molecular mapping (Appendix B of Martos et al., 2025).
 
@@ -366,7 +371,8 @@ def get_S_res(wave, S, Rc, filter_type, trans_Ss=None, outliers=False, sigma_out
         Estimated stellar modulation per spaxel (LF / reference).
     """
     
-    R_sampling                   = get_resolution(wavelength=wave, func=np.nanmedian)
+    if R_sampling is None:
+        R_sampling              = get_resolution(wavelength=wave, func=np.nanmedian)
     S                           = np.copy(S)
     NbChannel, NbLine, NbColumn = S.shape
     
@@ -444,8 +450,8 @@ def get_S_res(wave, S, Rc, filter_type, trans_Ss=None, outliers=False, sigma_out
     # Reshape back to cube and turn exact zeros to NaN
     S_res             = S_res.reshape((NbChannel, NbLine, NbColumn))
     M                 = M.reshape((NbChannel, NbLine, NbColumn))
-    S_res[S_res == 0] = np.nan
-    M[M == 0]         = np.nan
+    # S_res[S_res == 0] = np.nan
+    # M[M == 0]         = np.nan
     
     # Optional per-spaxel L2 normalization of residual spectra
     if renorm_S_res:
@@ -551,11 +557,11 @@ def get_CCF_2D_rv(instru, S_res, wave, trans, R, Rc, filter_type, model, T, lg, 
     # 5) Prepare data matrix once
     S2D        = S_res.reshape(NbChannel, Npix)
     valid_data = np.isfinite(S2D)
-    S0         = np.nan_to_num(S2D, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float64, copy=False)
-    M0         = valid_data.astype(np.float64, copy=False)
+    S0         = np.nan_to_num(S2D, nan=0.0, posinf=0.0, neginf=0.0).astype(dtype, copy=False)
+    M0         = valid_data.astype(dtype, copy=False)
 
     # 6) Build all RV-shifted templates
-    Tmat = np.full((Nrv, NbChannel), np.nan, dtype=np.float64)
+    Tmat = np.full((Nrv, NbChannel), np.nan, dtype=dtype)
     
     # 7) Loop over RV values (vectorize across all pixels inside)
     for k in range(len(rv_arr)):
@@ -580,18 +586,18 @@ def get_CCF_2D_rv(instru, S_res, wave, trans, R, Rc, filter_type, model, T, lg, 
             continue
         t /= norm  # normalized global template
         
-        Tmat[k, :] = t.astype(np.float64)
+        Tmat[k, :] = t.astype(dtype)
     
     # 8) Remove invalid RV templates
     valid_rv = np.isfinite(Tmat).any(axis=1)
     if not np.any(valid_rv):
         return None, None
-    T0 = np.nan_to_num(Tmat, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float64, copy=False)
+    T0 = np.nan_to_num(Tmat, nan=0.0, posinf=0.0, neginf=0.0).astype(dtype, copy=False)
 
     # 9) Fast matrix products
     numerator   = T0 @ S0
     denominator = np.sqrt((T0**2) @ M0)
-    CCF2D       = np.full_like(numerator, np.nan, dtype=np.float64)
+    CCF2D       = np.full_like(numerator, np.nan, dtype=dtype)
     good        = denominator > 0
     CCF2D[good] = numerator[good] / denominator[good]
     CCF         = CCF2D.reshape(Nrv, NbLine, NbColumn)
@@ -956,7 +962,7 @@ def get_CCF_1D_rv(instru, band, d, d_bkg, wave, trans, R, Rc, filter_type, model
             
             fig, axs = plt.subplots(2, 2, figsize=(20, 10), dpi=300, gridspec_kw={"height_ratios": [3, 1]}, sharex="col", constrained_layout=True)
             if compare_data:
-                fig.suptitle(f"{instru} {target_name.replace('_', ' ')} data sets \n (correlation strength = {round(np.nansum(d * template_shift) / np.sqrt(np.nansum(d**2) * np.nansum(template_shift**2)), 3)})", fontsize=24)
+                fig.suptitle(f"{instru} {target_name.replace('_', ' ')} data sets on {band}-band \n (correlation strength = {round(np.nansum(d * template_shift) / np.sqrt(np.nansum(d**2) * np.nansum(template_shift**2)), 3)})", fontsize=24)
             else:
                 if lg is None:
                     fig.suptitle(f"{instru} {target_name.replace('_', ' ')} data and {model.replace('mol_', '').replace('_', ' ')} template on {band}-band,\n with $T$={T:.0f}K, rv={rv:.1f}km/s and vsini={vsini:.1f}km/s (correlation strength = {np.nansum(d * template_shift) / np.sqrt(np.nansum(d**2) * np.nansum(template_shift**2)):.3f})", fontsize=24)
@@ -1947,25 +1953,25 @@ def get_priors(SNR_CCF, SNR_estimate, wave, d, R, model, T, lg, rv, vsini):
     else:
         N = 20
 
-    T_arr  = np.linspace(max(T_grid[0],   T  - DT),  min(T_grid[-1],  T  + DT),  N + 1, dtype=np.float64)
+    T_arr  = np.linspace(max(T_grid[0],   T  - DT),  min(T_grid[-1],  T  + DT),  N + 1, dtype=dtype)
     if lg is None:
         lg_arr = lg_grid
     else:
-        lg_arr = np.linspace(max(lg_grid[0],  lg - Dlg), min(lg_grid[-1], lg + Dlg), N + 1, dtype=np.float64)
+        lg_arr = np.linspace(max(lg_grid[0],  lg - Dlg), min(lg_grid[-1], lg + Dlg), N + 1, dtype=dtype)
     
     if np.nanmedian(R) > 5000: # Enough resolution to retrieve Vsini
-        vsini_arr = np.linspace(max(0, vsini - Dvsini), min(80, vsini + Dvsini), N + 1, dtype=np.float64)
+        vsini_arr = np.linspace(max(0, vsini - Dvsini), min(80, vsini + Dvsini), N + 1, dtype=dtype)
     else:
-        vsini_arr = np.array([vsini], dtype=np.float64)
+        vsini_arr = np.array([vsini], dtype=dtype)
 
     if SNR_estimate:
         # refined sampling near rv + large wings
-        left   = np.linspace(-1000,           rv - 0.5 * Drv,  100,                     dtype=np.float64)
-        core   = np.linspace(rv - 0.5 * Drv,  rv + 0.5 * Drv,  max(10, int(Drv / 0.5)), dtype=np.float64)
-        right  = np.linspace(rv + 0.5 * Drv,  1000,            100,                     dtype=np.float64)
+        left   = np.linspace(-1000,           rv - 0.5 * Drv,  100,                     dtype=dtype)
+        core   = np.linspace(rv - 0.5 * Drv,  rv + 0.5 * Drv,  max(10, int(Drv / 0.5)), dtype=dtype)
+        right  = np.linspace(rv + 0.5 * Drv,  1000,            100,                     dtype=dtype)
         rv_arr = np.concatenate([left, core, right])
     else:
-        rv_arr = np.linspace(rv - Drv, rv + Drv, N + 1, dtype=np.float64)
+        rv_arr = np.linspace(rv - Drv, rv + Drv, N + 1, dtype=dtype)
     
     return T_arr, lg_arr, rv_arr, vsini_arr, Drv
 
@@ -2039,11 +2045,11 @@ def process_parameters_estimation(args):
 
     Nvsini      = len(vsini_arr)
     Nrv         = len(rv_arr)
-    corr_2D     = np.full((Nvsini, Nrv), np.nan, dtype=np.float64)
-    SNR_2D      = np.full((Nvsini, Nrv), np.nan, dtype=np.float64)
-    auto_2D     = np.full((Nvsini, Nrv), np.nan, dtype=np.float64)
-    logL_2D     = np.full((Nvsini, Nrv), np.nan, dtype=np.float64)
-    logL_2D_sim = np.full((Nvsini, Nrv), np.nan, dtype=np.float64)
+    corr_2D     = np.full((Nvsini, Nrv), np.nan, dtype=dtype)
+    SNR_2D      = np.full((Nvsini, Nrv), np.nan, dtype=dtype)
+    auto_2D     = np.full((Nvsini, Nrv), np.nan, dtype=dtype)
+    logL_2D     = np.full((Nvsini, Nrv), np.nan, dtype=dtype)
+    logL_2D_sim = np.full((Nvsini, Nrv), np.nan, dtype=dtype)
     
     # Build a base template at (T, lg) with/without pre-broadening/pre-shift
     template    = get_template(instru=instru, wave=wave, R=R, model=model, T=T, lg=lg, rv=0, vsini=0, epsilon=epsilon, fastbroad=fastbroad, airmass=airmass, star_spectrum=star_spectrum, wave_model=wave_model, to_counts=False)
@@ -2281,7 +2287,7 @@ def parameters_retrieval(instru, band, target_name, d, wave, trans, R, Rc, filte
         # --- Pre-computing trans_w_Ss_HF_LF_ratio
         if stellar_component and Rc is not None:
             valid_ratio                         = np.isfinite(trans_w) & np.isfinite(Ss_HF) & np.isfinite(Ss_LF) & (Ss_LF != 0)
-            trans_w_Ss_HF_LF_ratio              = np.full((len(Ss_HF)), np.nan, dtype=np.float64)
+            trans_w_Ss_HF_LF_ratio              = np.full((len(Ss_HF)), np.nan, dtype=dtype)
             trans_w_Ss_HF_LF_ratio[valid_ratio] = trans_w[valid_ratio] * Ss_HF[valid_ratio] / Ss_LF[valid_ratio]
         else:
             trans_w_Ss_HF_LF_ratio = None
@@ -2295,7 +2301,7 @@ def parameters_retrieval(instru, band, target_name, d, wave, trans, R, Rc, filte
                     
         # --- Pre-computing the PCA matrix components
         if pca is not None:
-            C_pca = np.asarray(pca.components_[:pca.n_components], dtype=np.float64)
+            C_pca = np.asarray(pca.components_[:pca.n_components], dtype=dtype)
         else:
             C_pca = None
         
@@ -2306,10 +2312,10 @@ def parameters_retrieval(instru, band, target_name, d, wave, trans, R, Rc, filte
         Nlg         = len(lg_arr)
         Nvsini      = len(vsini_arr)
         Nrv         = len(rv_arr)
-        corr_4D     = np.full((NT, Nlg, Nvsini, Nrv), np.nan, dtype=np.float64)
-        SNR_4D      = np.full((NT, Nlg, Nvsini, Nrv), np.nan, dtype=np.float64)
-        logL_4D     = np.full((NT, Nlg, Nvsini, Nrv), np.nan, dtype=np.float64)
-        logL_sim_4D = np.full((NT, Nlg, Nvsini, Nrv), np.nan, dtype=np.float64)
+        corr_4D     = np.full((NT, Nlg, Nvsini, Nrv), np.nan, dtype=dtype)
+        SNR_4D      = np.full((NT, Nlg, Nvsini, Nrv), np.nan, dtype=dtype)
+        logL_4D     = np.full((NT, Nlg, Nvsini, Nrv), np.nan, dtype=dtype)
+        logL_sim_4D = np.full((NT, Nlg, Nvsini, Nrv), np.nan, dtype=dtype)
         
         if verbose:
             print()
