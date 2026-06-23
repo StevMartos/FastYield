@@ -8,7 +8,7 @@ os.environ["NUMBA_NUM_THREADS"]    = "1"
 # import FastYield modules
 from fastyield.config import rad2arcsec, h, c, R0_min, R0_max, lmin_bands, lmax_bands, get_sim_data_path
 from fastyield.utils import plot_trans_tell_tel, plot_bkg_skycalc
-from fastyield.get_specs import _load_tell_trans, get_detector_specs
+from fastyield.get_specs import load_tell_trans, get_detector_specs
 from fastyield.FastYield import load_planet_table, get_mask_planet_type
 from fastyield.FastYield_helpers import print_simulation_summary, make_suffix, write_meta, memmap_nbytes, format_nbytes, create_memmap_with_log
 from fastyield.spectrum import get_wavelength_axis_constant_R, Spectrum, load_vega_spectrum, get_thermal_reflected_spectrum, filtered_flux, get_wave_K, get_counts_from_density
@@ -1575,13 +1575,13 @@ def main():
         lmax_model = min(wave_model[-1], wave_instru[-1]) # [µm] effective lmax
 
         # Tellurics transmission spectrum (from SkyCalc)
-        wave_tell, trans_tell = _load_tell_trans(airmass=1.0)
+        wave_tell, trans_tell = load_tell_trans(airmass=1.0)
         trans_tell            = Spectrum(wavelength=wave_tell, flux=trans_tell).interpolate_wavelength(wave_output=wave_instru, renorm=False, fill_value=(trans_tell[0], trans_tell[-1]))
 
         # Telescope transmission spectrum
         data_elt_ref = np.genfromtxt(instru_dir / "ELT_reflectivity.csv", delimiter=",", names=True, dtype=float, encoding=None)
-        wave_ref     = data_elt_ref["wave"]  # [µm]
-        elt_ref      = data_elt_ref["M1-M5"] # ELT mirror train reflectivity, from common ICD, section 4.11, p37 (Document Number: ESO-253082)
+        wave_ref     = data_elt_ref["wave"] # [µm]
+        elt_ref      = data_elt_ref["M1M5"] # ELT mirror train reflectivity, from common ICD, section 4.11, p37 (Document Number: ESO-253082)
         trans_tel    = trans_dust * elt_ref
         trans_tel    = Spectrum(wavelength=wave_ref, flux=trans_tel).interpolate_wavelength(wave_output=wave_instru, renorm=False, fill_value=(trans_tel[0], trans_tel[-1]))
 
