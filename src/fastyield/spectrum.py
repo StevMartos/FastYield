@@ -798,10 +798,61 @@ def sigma_to_Rc(R, sigma):
 
 
 
+def _gaussian_filter_axis0(flux_filled, valid_filled, sigma):
+    """
+    Apply gaussian_filter1d independently along axis=0.
+
+    This function preserves the old 1D behavior of filtered_flux:
+    each spectrum is filtered only over its finite filled support, without
+    mixing different spaxels/columns when the input is 2D or 3D.
+    """
+    flux_filled  = np.asarray(flux_filled, dtype=float)
+    valid_filled = np.asarray(valid_filled, dtype=bool)
+
+    # 1D case: exactly the historical behavior
+    if flux_filled.ndim == 1:
+        flux_LF = np.full_like(flux_filled, np.nan, dtype=float)
+        if np.any(valid_filled):
+            flux_LF[valid_filled] = gaussian_filter1d(flux_filled[valid_filled], sigma=sigma)
+        return flux_LF
+
+    # Multidimensional case: flatten all non-spectral dimensions
+    shape      = flux_filled.shape
+    nlam       = shape[0]
+    flux_2d    = flux_filled.reshape(nlam, -1)
+    valid_2d   = valid_filled.reshape(nlam, -1)
+    flux_LF_2d = np.full_like(flux_2d, np.nan, dtype=float)
+    has_valid  = np.any(valid_2d, axis=0)
+    if not np.any(has_valid):
+        return flux_LF_2d.reshape(shape)
+
+    # First and last finite filled wavelength index for each spectrum
+    starts = np.argmax(valid_2d, axis=0)
+    ends   = nlam - np.argmax(valid_2d[::-1, :], axis=0)
+
+    # Group columns with the same valid support to avoid one call per spaxel
+    keys = np.unique(np.column_stack([starts[has_valid], ends[has_valid]]), axis=0)
+    for i0, i1 in keys:
+        cols = np.where(has_valid & (starts == i0) & (ends == i1))[0]
+        if cols.size == 0:
+            continue
+        block                   = flux_2d[i0:i1, :][:, cols]
+        flux_LF_2d[i0:i1, cols] = gaussian_filter1d(block, sigma=sigma, axis=0)
+
+    return flux_LF_2d.reshape(shape)
+
+
+
 def filtered_flux(flux, R, Rc, filter_type="gaussian", show=False):
     """
-    Split an input 1D flux into high-pass and low-pass components using a cut-off
+    Split an input flux into high-pass and low-pass components using a cut-off
     spectral resolution 'Rc'.
+
+    The filtering is applied along the spectral axis, assumed to be axis=0.
+    The function supports:
+      - 1D arrays for all filter types;
+      - multidimensional arrays for filter_type='gaussian', provided that the
+        spectral axis is axis=0.
 
     The mapping between FFT frequency 'f' and "resolution" follows:
         resolution ~ 2 * R * f
@@ -810,49 +861,38 @@ def filtered_flux(flux, R, Rc, filter_type="gaussian", show=False):
 
     Parameters
     ----------
-    flux: ndarray, shape (N,)
-        Input flux samples on an evenly spaced wavelength grid (in practice,
-        any uniform sampling along the spectral axis).
-    R: float or array
-        Sampling resolution of the input array (assuming Nyquist sampling).
-    Rc: float, array or None
-        Cut-off resolution for the filter. If None, no filtering is applied and
-        the high-pass component is identically zero.
-    filter_type: {'gaussian', 'gaussian_variable', 'gaussian_fast', 'gaussian_true', 'step', 'smoothstep', 'savitzky_golay'}, optional
-        Filtering method:
-        - 'gaussian'         : real-space Gaussian blur with sigma derived from Rc (Appendix A, Martos+2024).
-        - 'gaussian_variable': Like 'gaussian' but with variable sigma (Appendix A, Martos+2024).
-        - 'gaussian_fast'    : Like 'gaussian' but without using gaussian_filter1d(): Faster but less accurate.
-        - 'gaussian_true'    : Analytic Gaussian convolution, as mathematically defined.
-        - 'step'             : ideal top-hat in Fourier space (sharp cutoff at Rc).
-        - 'smoothstep'       : smooth window in Fourier space around Rc.
-        - 'savitzky_golay'   : polynomial smoothing with window matched to Rc.
-    show: bool, optional
-        If True, plot original, low-pass, and high-pass components.
+    flux : ndarray
+        Input flux samples. The spectral axis must be axis=0.
+    R : float or array
+        Sampling resolution of the input array, assuming Nyquist sampling.
+    Rc : float, array or None
+        Cut-off resolution for the filter. If None or 0, no filtering is applied
+        and the high-pass component is identically zero.
+    filter_type : {'gaussian', 'gaussian_variable', 'gaussian_fast', 'gaussian_true', 'step', 'smoothstep', 'savitzky_golay'}, optional
+        Filtering method.
+    show : bool, optional
+        If True, plot original, low-pass, and high-pass components. Only supported
+        for 1D inputs.
 
     Returns
     -------
-    flux_HF: ndarray, shape (N,)
-        High-pass component (original - low-pass).
-    flux_LF: ndarray, shape (N,)
+    flux_HF : ndarray
+        High-pass component, equal to original - low-pass.
+    flux_LF : ndarray
         Low-pass component.
-
-    Raises
-    ------
-    ValueError
-        If inputs are inconsistent (non-finite flux, non-positive R, or invalid Rc).
-    KeyError
-        If 'filter_type' is unsupported.
     """
+
+    flux = np.asarray(flux, dtype=float)
+
     # No filter applied
-    if Rc is None or np.all(Rc==0):
-        return  np.zeros_like(flux), np.copy(flux)
-    
+    if Rc is None or np.all(Rc == 0):
+        return np.zeros_like(flux), np.copy(flux)
+
     valid        = np.isfinite(flux)
-    flux_filled  = fill_nan_linear(x=None, y=flux) # NaN gaps are filled with linear interpolation (without extrapolation)
-    valid_filled = np.isfinite(flux_filled)        # NaN can remain on edges
-    flux_valid   = flux_filled[valid_filled]
+    flux_filled  = fill_nan_linear(x=None, y=flux, axis=0) # NaN gaps are filled with linear interpolation along the spectral axis
+    valid_filled = np.isfinite(flux_filled)                # NaN can remain on edges
     sigma        = Rc_to_sigma(R=R, Rc=Rc)
+
     if "variable" not in filter_type:
         sigma = float(np.nanmedian(sigma))
     else:
@@ -863,45 +903,60 @@ def filtered_flux(flux, R, Rc, filter_type="gaussian", show=False):
             if sigma.shape != flux.shape:
                 raise ValueError("For filter_type='gaussian_variable', sigma must be scalar or have the same shape as flux.")
             sigma_full = sigma
-        sigma_filled = fill_nan_linear(x=None, y=sigma_full)
-        sigma_valid  = sigma_filled[valid_filled]
-        
-    # Real-space Gaussian sigma that cut at Rc in resolution space: sigma derived from Martos+2025 Appendix A
+        sigma_filled = fill_nan_linear(x=None, y=sigma_full, axis=0)
+
+    # ---------------------------------------------------------------------
+    # Multidimensional-safe Gaussian filtering
+    # ---------------------------------------------------------------------
     if filter_type == "gaussian":
-        flux_valid_LF = gaussian_filter1d(flux_valid, sigma=sigma)
-    
-    # Same as 'gaussian' but with varying Rc (sigma)
-    elif filter_type == "gaussian_variable":
-        flux_valid_LF = gaussian_filter1d_variable(flux_valid, sigma=sigma_valid)
-    
-    # Savitzky-Golay filter
-    elif filter_type == "savitzky_golay":
-        # Map Rc to a window length (odd integer >= 5)
-        N     = max(int(round(4*sigma)) | 1, 5)                     #  "| 1" :ensure odd and >=5 (gaussian approximation (sigma = N/4 is an empirical approximation) )
-        N     = min(N, len(flux_valid) - (1 - len(flux_valid) % 2)) # keep <= size and odd (set window length based on Rc)
-        # polyorder=3 safe default (must be < window_length)
-        poly          = min(3, N - 2)
-        flux_valid_LF = savgol_filter(flux_valid, window_length=N, polyorder=poly)
-    
-    # Cached frequency responses
-    elif filter_type in {"gaussian_fast", "gaussian_true", "step", "smoothstep"}:
-        if np.ndim(R) != 0 or np.ndim(Rc) != 0:
-            raise ValueError(f"filter_type='{filter_type}' requires scalar R and scalar Rc.")
-        fft           = np.fft.fft(np.asarray(flux_valid, dtype=np.complex128))
-        _, H_LF       = _fft_filter_response(N=len(flux_valid), R=R, Rc=Rc, filter_type=filter_type)
-        flux_valid_LF = np.real(np.fft.ifft(fft * H_LF))
+        flux_LF = _gaussian_filter_axis0(flux_filled=flux_filled, valid_filled=valid_filled, sigma=sigma)
 
+    # ---------------------------------------------------------------------
+    # Other filters: keep the historical 1D behavior only
+    # ---------------------------------------------------------------------
     else:
-        raise KeyError("Invalid 'filter_type'. Use one of: 'gaussian', 'gaussian_fast', 'gaussian_true', 'step', 'smoothstep', 'savitzky_golay'." )
+        if flux.ndim != 1:
+            raise ValueError(f"filter_type='{filter_type}' is only implemented for 1D inputs. Use filter_type='gaussian' for vectorized 2D/3D filtering along axis=0.")
 
-    # Reinsert into an array with original NaNs preserved
-    flux_LF               = np.zeros_like(flux) + np.nan
-    flux_LF[valid_filled] = flux_valid_LF
-    flux_LF[~valid]       = np.nan                     # Retrieving original NaN 
-    flux_HF               = flux - flux_LF
+        flux_valid = flux_filled[valid_filled]
+
+        # Same as 'gaussian' but with varying Rc (sigma)
+        if filter_type == "gaussian_variable":
+            sigma_valid   = sigma_filled[valid_filled]
+            flux_valid_LF = gaussian_filter1d_variable(flux_valid, sigma=sigma_valid)
+
+        # Savitzky-Golay filter
+        elif filter_type == "savitzky_golay":
+            # Map Rc to a window length (odd integer >= 5)
+            N             = max(int(round(4*sigma)) | 1, 5)                     # "| 1": ensure odd and >=5
+            N             = min(N, len(flux_valid) - (1 - len(flux_valid) % 2)) # keep <= size and odd
+            poly          = min(3, N - 2)
+            flux_valid_LF = savgol_filter(flux_valid, window_length=N, polyorder=poly)
+
+        # Cached frequency responses
+        elif filter_type in {"gaussian_fast", "gaussian_true", "step", "smoothstep"}:
+            if np.ndim(R) != 0 or np.ndim(Rc) != 0:
+                raise ValueError(f"filter_type='{filter_type}' requires scalar R and scalar Rc.")
+            fft           = np.fft.fft(np.asarray(flux_valid, dtype=np.complex128))
+            _, H_LF       = _fft_filter_response(N=len(flux_valid), R=R, Rc=Rc, filter_type=filter_type)
+            flux_valid_LF = np.real(np.fft.ifft(fft * H_LF))
+
+        else:
+            raise KeyError("Invalid 'filter_type'. Use one of: 'gaussian', 'gaussian_variable', 'gaussian_fast', 'gaussian_true', 'step', 'smoothstep', 'savitzky_golay'.")
+
+        # Reinsert into an array with the original shape
+        flux_LF               = np.zeros_like(flux) + np.nan
+        flux_LF[valid_filled] = flux_valid_LF
+
+    # Reinsert original NaNs
+    flux_LF         = np.asarray(flux_LF, dtype=float)
+    flux_LF[~valid] = np.nan
+    flux_HF         = flux - flux_LF
 
     if show:
-        plt.figure(figsize=(10, 6), dpi=300)
+        if flux.ndim != 1:
+            raise ValueError("show=True is only supported for 1D inputs.")
+        plt.figure(figsize=(12, 7), dpi=300)
         plt.plot(flux,    'crimson',   label="Original")
         plt.plot(flux_LF, 'seagreen',  label="Low-Pass")
         plt.plot(flux_HF, 'royalblue', label="High-Pass")
@@ -911,9 +966,9 @@ def filtered_flux(flux, R, Rc, filter_type="gaussian", show=False):
         plt.legend(fontsize=14, loc="upper right", frameon=True, edgecolor="gray", facecolor="whitesmoke")
         plt.grid(True, which='both', linestyle='--', linewidth=0.5)
         plt.minorticks_on()
-        plt.tight_layout()        
+        plt.tight_layout()
         plt.show()
-        
+
     return flux_HF, flux_LF
 
 
@@ -1738,7 +1793,7 @@ class Spectrum:
         spectrum_output = Spectrum(wavelength=wave_output, flux=flux_output, R=R_effective, T=self.T, lg=self.lg, model=self.model, rv=self.rv, vsini=self.vsini, sigma=sigma_output, P=self.P, airmass=self.airmass)
         
         # # Resolutions sanity check plot
-        # plt.figure(dpi=300, figsize=(10, 6))
+        # plt.figure(dpi=300, figsize=(12, 7))
         # plt.plot(wave_output, R_sampling_input,  lw=5, label="R_sampling_input")
         # plt.plot(wave_output, R_sampling_output, lw=5, label="R_sampling_output")
         # plt.plot(wave_output, R_input,  lw=2, label="R_input")
@@ -1858,7 +1913,7 @@ class Spectrum:
 
     #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-    def plot(self, ax=None, figsize=(10, 6), dpi=300,
+    def plot(self, ax=None, figsize=(12, 7), dpi=300,
          title=None, label=None,
          xlabel=r"Wavelength [$\mu$m]", ylabel="Flux",
          color="C0", lw=1.2, alpha=0.9,
@@ -3428,7 +3483,7 @@ def get_thermal_reflected_spectrum(planet, thermal_model="auto", reflected_model
         fig.suptitle(f"{planet['PlanetName']} ({planet['PlanetType']}) modelisation", fontsize=20, fontweight='bold', y=1.0)
         plt.show()
         
-        fig, ax = plt.subplots(figsize=(10, 6), dpi=300)        
+        fig, ax = plt.subplots(figsize=(12, 7), dpi=300)        
         ax.set_xlabel("Wavelength [µm]", fontsize=16, labelpad=10)
         ax.set_ylabel("Flux (contrast unit)", fontsize=16, labelpad=10)
         ax.set_title(f"Final {planet['PlanetName']} modelized spectrum", fontsize=18, pad=15, fontweight="bold")        
