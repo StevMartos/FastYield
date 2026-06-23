@@ -372,80 +372,102 @@ def get_S_res(wave, S, Rc, filter_type, trans_Ss=None, outliers=False, sigma_out
     """
     
     if R_sampling is None:
-        R_sampling              = get_resolution(wavelength=wave, func=np.nanmedian)
-    S                           = np.copy(S)
+        R_sampling = get_resolution(wavelength=wave, func=np.nanmedian)
+    
     NbChannel, NbLine, NbColumn = S.shape
     
     # Stellar reference spectrum
     if trans_Ss is None:
         trans_Ss = np.nansum(S, (1, 2)) # estimated stellar spectrum
     else:
-        trans_Ss = trans_Ss
+        trans_Ss = np.asarray(trans_Ss, dtype=float)
+    trans_Ss                = np.asarray(trans_Ss, dtype=float)
+    trans_Ss[trans_Ss == 0] = np.nan
     
     # Flatten spatial dimensions to vectorize most operations
     S     = np.reshape(S, (NbChannel, NbLine*NbColumn))
     S_res = np.zeros_like(S) + np.nan
     M     = np.zeros_like(S) + np.nan
     
-    # Work spaxel by spaxel (fast enough; per-column 1D filter)
-    for i in range(S.shape[1]):
+    # Fast vectorized path for the most common case
+    if filter_type == "gaussian" and not debug:
+                        
+        # Estimated modulations, assuming that trans_Ss is the real observed stellar spectrum
+        if only_high_pass:
+            S_HF, S_LF = filtered_flux(flux=S, R=R_sampling, Rc=Rc, filter_type=filter_type)
+            M          = S_LF / trans_Ss[:, None]
+            S_res      = S_HF 
+        else:
+            S_norm_HF, M = filtered_flux(flux=S / trans_Ss[:, None], R=R_sampling, Rc=Rc, filter_type=filter_type)
+            S_res        = trans_Ss[:, None] * S_norm_HF
         
-        S_i = S[:, i]
-        
-        if not all(~np.isfinite(S_i)):
+        # Optional outlier clipping (on residual)
+        if outliers:
+            sg    = sigma_clip(np.ma.masked_invalid(S_res), sigma=sigma_outliers, axis=0)
+            S_res = np.asarray(np.ma.masked_array(S_res, mask=sg.mask).filled(np.nan))
+    
+    # Fallback: original implementation for non-Gaussian filters or unsupported vectorized cases
+    else:
+        # Work spaxel by spaxel (per-column 1D filter)
+        for i in range(S.shape[1]):
             
-            # Estimated modulations, assuming that trans_Ss is the real observed stellar spectrum
-            if only_high_pass:
-                M[:, i] = filtered_flux(flux=S_i, R=R_sampling, Rc=Rc, filter_type=filter_type)[1] / trans_Ss
-            else:
-                M[:, i] = filtered_flux(flux=S_i / trans_Ss, R=R_sampling, Rc=Rc, filter_type=filter_type)[1]
+            S_i = S[:, i]
             
-            # Filtered cube
-            S_res[:, i] = S_i - trans_Ss * M[:, i]
-            
-            # Optional outlier clipping (on residual)
-            if outliers and np.any(np.isfinite(S_res[:, i])):
-                sg          = sigma_clip(np.ma.masked_invalid(S_res[:, i]), sigma=sigma_outliers)
-                S_res[:, i] = np.array(np.ma.masked_array(sg, mask=sg.mask).filled(np.nan))
+            if np.any(np.isfinite(S_i)):
                 
-            # Sanity check of the filtering method
-            if debug:
-                d          = S_i.copy()
-                d_HF, d_LF = filtered_flux(flux=d, R=R_sampling, Rc=Rc, filter_type=filter_type)
-                d_res      = S_res[:, i].copy()
-                d     /= np.sqrt(np.nansum(d**2))
-                d_LF  /= np.sqrt(np.nansum(d_LF**2))
-                d_HF  /= np.sqrt(np.nansum(d_HF**2))
-                d_res /= np.sqrt(np.nansum(d_res**2))
-                res, psd         = get_psd(wave=None, flux=d,     R=R_sampling, smooth=0)
-                res_LF, psd_LF   = get_psd(wave=None, flux=d_LF,  R=R_sampling, smooth=0)
-                res_HF, psd_HF   = get_psd(wave=None, flux=d_HF,  R=R_sampling, smooth=0)
-                res_res, psd_res = get_psd(wave=None, flux=d_res, R=R_sampling, smooth=0)
-                fig, ax = plt.subplots(1, 2, figsize=(10, 4), layout="constrained", gridspec_kw={'wspace': 0.05, 'hspace': 0}, dpi=300)
-                ax[0].plot(d, color='steelblue', lw=1, label="Raw (LF+HF)", alpha=0.5)
-                ax[0].plot(d_LF, color='crimson', lw=1, label="LF", alpha=0.5)
-                ax[0].plot(d_HF, color='seagreen', lw=1, label="HF", alpha=0.5)
-                ax[0].plot(d_res, color='black', lw=1, label="Post-MM filtering", alpha=0.5)
-                ax[0].minorticks_on()
-                ax[0].set_xlim(0, len(d))
-                ax[0].set_xlabel("Wavelength axis", fontsize=12, labelpad=10)
-                ax[0].set_ylabel("Modulation (normalized)", fontsize=12, labelpad=10)
-                ax[0].tick_params(axis='both', labelsize=10)
-                ax[0].grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.4)                
-                ax[1].plot(res, psd, color='steelblue', lw=1, label="Raw (LF+HF)", alpha=0.5)
-                ax[1].plot(res_LF, psd_LF, color='crimson', lw=1, label="LF", alpha=0.5)
-                ax[1].plot(res_HF, psd_HF, color='seagreen', lw=1, label="HF", alpha=0.5)
-                ax[1].plot(res_res, psd_res, color='black', lw=1, label="Post-MM filtering", alpha=0.5)
-                ax[1].set_xlim(res[res>0].min(), res[res>0].max())
-                ax[1].set_xscale('log')
-                ax[1].set_yscale('log')
-                ax[1].set_xlabel("Resolution frequency R", fontsize=12, labelpad=10)
-                ax[1].set_ylabel("Power Spectral Density (PSD)", fontsize=12, labelpad=10)
-                ax[1].tick_params(axis='both', labelsize=10)
-                ax[1].grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.4)                
-                ax[1].legend(fontsize=10, loc="lower left", frameon=True, edgecolor="gray", facecolor="whitesmoke")
-                plt.suptitle("Signal decomposition and PSD analysis", fontsize=14, y=1.05)
-                plt.show()
+                # Estimated modulations, assuming that trans_Ss is the real observed stellar spectrum
+                if only_high_pass:                    
+                    S_HF_i, S_LF_i = filtered_flux(flux=S_i, R=R_sampling, Rc=Rc, filter_type=filter_type)
+                    M[:, i]        = S_LF_i / trans_Ss
+                    S_res[:, i]    = S_HF_i 
+                    
+                else:                    
+                    S_norm_HF_i, M[:, i] = filtered_flux(flux=S_i / trans_Ss, R=R_sampling, Rc=Rc, filter_type=filter_type)
+                    S_res[:, i]          = trans_Ss * S_norm_HF_i
+
+                # Optional outlier clipping (on residual)
+                if outliers and np.any(np.isfinite(S_res[:, i])):
+                    sg          = sigma_clip(np.ma.masked_invalid(S_res[:, i]), sigma=sigma_outliers)
+                    S_res[:, i] = np.array(np.ma.masked_array(sg, mask=sg.mask).filled(np.nan))
+                    
+                # Sanity check of the filtering method
+                if debug:
+                    d          = S_i.copy()
+                    d_HF, d_LF = filtered_flux(flux=d, R=R_sampling, Rc=Rc, filter_type=filter_type)
+                    d_res      = S_res[:, i].copy()
+                    d          = _safe_norm(d)
+                    d_LF       = _safe_norm(d_LF)
+                    d_HF       = _safe_norm(d_HF)
+                    d_res      = _safe_norm(d_res)
+                    res, psd         = get_psd(wave=None, flux=d,     R=R_sampling, smooth=0)
+                    res_LF, psd_LF   = get_psd(wave=None, flux=d_LF,  R=R_sampling, smooth=0)
+                    res_HF, psd_HF   = get_psd(wave=None, flux=d_HF,  R=R_sampling, smooth=0)
+                    res_res, psd_res = get_psd(wave=None, flux=d_res, R=R_sampling, smooth=0)
+                    fig, ax = plt.subplots(1, 2, figsize=(10, 4), layout="constrained", gridspec_kw={'wspace': 0.05, 'hspace': 0}, dpi=300)
+                    ax[0].plot(d, color='steelblue', lw=1, label="Raw (LF+HF)", alpha=0.5)
+                    ax[0].plot(d_LF, color='crimson', lw=1, label="LF", alpha=0.5)
+                    ax[0].plot(d_HF, color='seagreen', lw=1, label="HF", alpha=0.5)
+                    ax[0].plot(d_res, color='black', lw=1, label="Post-MM filtering", alpha=0.5)
+                    ax[0].minorticks_on()
+                    ax[0].set_xlim(0, len(d))
+                    ax[0].set_xlabel("Wavelength axis", fontsize=12, labelpad=10)
+                    ax[0].set_ylabel("Modulation (normalized)", fontsize=12, labelpad=10)
+                    ax[0].tick_params(axis='both', labelsize=10)
+                    ax[0].grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.4)                
+                    ax[1].plot(res, psd, color='steelblue', lw=1, label="Raw (LF+HF)", alpha=0.5)
+                    ax[1].plot(res_LF, psd_LF, color='crimson', lw=1, label="LF", alpha=0.5)
+                    ax[1].plot(res_HF, psd_HF, color='seagreen', lw=1, label="HF", alpha=0.5)
+                    ax[1].plot(res_res, psd_res, color='black', lw=1, label="Post-MM filtering", alpha=0.5)
+                    ax[1].set_xlim(res[res>0].min(), res[res>0].max())
+                    ax[1].set_xscale('log')
+                    ax[1].set_yscale('log')
+                    ax[1].set_xlabel("Resolution frequency R", fontsize=12, labelpad=10)
+                    ax[1].set_ylabel("Power Spectral Density (PSD)", fontsize=12, labelpad=10)
+                    ax[1].tick_params(axis='both', labelsize=10)
+                    ax[1].grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.4)                
+                    ax[1].legend(fontsize=10, loc="lower left", frameon=True, edgecolor="gray", facecolor="whitesmoke")
+                    plt.suptitle("Signal decomposition and PSD analysis", fontsize=14, y=1.05)
+                    plt.show()
     
     # Reshape back to cube and turn exact zeros to NaN
     S_res             = S_res.reshape((NbChannel, NbLine, NbColumn))
@@ -470,143 +492,197 @@ def get_S_res(wave, S, Rc, filter_type, trans_Ss=None, outliers=False, sigma_out
 # 2D CCF maps computations (for different RV)
 # -------------------------------------------------------------------------
 
-def get_CCF_2D_rv(instru, S_res, wave, trans, R, Rc, filter_type, model, T, lg, rv_arr, vsini, epsilon=0.8, fastbroad=True, airmass=2.0, star_spectrum=None, wave_model=None, template_wo_shift=None, degrade_resolution=True, stellar_component=True, trans_Ss=None, Ss_HF=None, Ss_LF=None, R_sampling=None, pca=None):
+def compute_CCF_2D(S_res, t, dtype=dtype):
     """
-    Cross-correlate the residual cube against Doppler-shifted templates (vectorized over pixels).
+    Fast 2D CCF map from one or several already prepared 1D templates.
 
     Parameters
     ----------
-    instru : str
-        Instrument name (passed to template_wo_shift generator if needed).
     S_res : ndarray, shape (NbChannel, NbLine, NbColumn)
-        Residual cube after stellar filtering (NaNs allowed).
-    trans_Ss : (NbChannel,) array_like
-        Stellar flux in electrons/min (or consistent units).
-    T : float
-        Temperature (K).
-    lg : float
-        log g [dex(cm/s^2)].
-    model : str
-        Model name (used by 'get_template').
-    wave : (NbChannel,) array_like
-        Wavelength grid (µm).
-    trans : (NbChannel,) array_like
-        Total system transmission.
-    R : float
-        Instrument resolving power.
-    Rc : float or None
-        Cut-off resolving power for HF/LF split in filtering.
-    filter_type : str
-        Filter family for HF/LF.
-    rv_arr : float or array_like or None
-        Radial-velocity grid (km/s). If None, defaults to [-50..50] km/s, step 0.5 (201 pts).
-    vsini : float, optional
-        Rotational broadening for the template_wo_shift (km/s).
-    pca : fitted PCA or None, optional
-        If provided, project and subtract PCA components from the template_wo_shift (to match data processing).
-    degrade_resolution : bool, optional
-        If True, degrade template_wo_shift to instrumental resolution R before matching.
-    stellar_component : bool, optional
-        If True and Rc is not None, include the stellar self-subtraction component in the template_wo_shift.
-    epsilon : float, optional
-        Template-generation parameter for 'get_template'.
-    fastbroad : bool, optional
-        Whether to use the fast broadening.
-    template_wo_shift : Spectrum or None, optional
-        Precomputed template_wo_shift. If None, it is generated.
+        Residual cube after stellar filtering.
+    t : ndarray, shape (NbChannel,) or (Ntemplate, NbChannel)
+        Prepared and normalized template(s) on the same wavelength grid as S_res.
+    dtype : dtype, optional
+        Floating-point precision used for the matrix products.
 
     Returns
     -------
     CCF : ndarray
-        If rv_arr is scalar: shape (NbLine, NbColumn)
-        If rv_arr has multiple values: shape (Nrv, NbLine, NbColumn)
-    rv_grid : None or ndarray
-        None if rv_arr scalar, else the rv_arr grid used (km/s).
+        If t is 1D: shape (NbLine, NbColumn).
+        If t is 2D: shape (Ntemplate, NbLine, NbColumn).
     """
+    
     NbChannel, NbLine, NbColumn = S_res.shape
     Npix                        = NbLine * NbColumn
+    
+    # Data matrix
+    S2D = S_res.reshape(NbChannel, Npix)
+    M0  = np.isfinite(S2D).astype(dtype, copy=False)
+    S0  = np.nan_to_num(S2D, nan=0.0, posinf=0.0, neginf=0.0).astype(dtype, copy=False)
+    
+    # Template matrix
+    scalar_template = np.ndim(t) == 1
+    T               = np.atleast_2d(np.asarray(t, dtype=float))
+    
+    if T.shape[1] != NbChannel:
+        raise ValueError(f"'t' must have shape (NbChannel,) or (Ntemplate, NbChannel). Got {T.shape}, expected second dimension {NbChannel}.")
+    
+    T0 = np.nan_to_num(T, nan=0.0, posinf=0.0, neginf=0.0).astype(dtype, copy=False)
+    
+    # Fast CCF matrix products.
+    # Template NaNs are already set to zero in T0, so they do not contribute.
+    numerator   = T0 @ S0
+    denominator = np.sqrt((T0**2) @ M0)
+    
+    CCF2D       = np.full(numerator.shape, np.nan, dtype=dtype)
+    good        = denominator > 0
+    CCF2D[good] = numerator[good] / denominator[good]
+    
+    CCF = CCF2D.reshape(T.shape[0], NbLine, NbColumn)
+    
+    return CCF[0] if scalar_template else CCF
 
+
+
+def get_CCF_2D_rv(instru, S_res, wave, trans, R, Rc, filter_type, model, T, lg, rv_arr, vsini, epsilon=0.8, fastbroad=True, airmass=2.0, star_spectrum=None, wave_model=None, template_wo_shift=None, degrade_resolution=True, stellar_component=True, trans_Ss=None, Ss_HF=None, Ss_LF=None, R_sampling=None, pca=None):
+    """
+    Cross-correlate the residual cube against Doppler-shifted templates.
+
+    Parameters
+    ----------
+    instru : str
+        Instrument name, passed to the template generator if needed.
+    S_res : ndarray, shape (NbChannel, NbLine, NbColumn)
+        Residual cube after stellar filtering.
+    wave : ndarray, shape (NbChannel,)
+        Wavelength grid [µm].
+    trans : ndarray, shape (NbChannel,)
+        Total system transmission.
+    R : float
+        Instrument resolving power.
+    Rc : float or None
+        Cut-off resolving power for the HF/LF split.
+    filter_type : str
+        Filter family used for the HF/LF split.
+    model : str
+        Template model name.
+    T : float
+        Template effective temperature [K].
+    lg : float
+        Template surface gravity [dex].
+    rv_arr : float or array_like
+        Radial velocity grid [km/s]. If scalar, a 2D CCF map is returned.
+    vsini : float
+        Template rotational broadening [km/s].
+    epsilon : float, optional
+        Limb-darkening coefficient for rotational broadening.
+    fastbroad : bool, optional
+        If True, use fast rotational broadening.
+    airmass : float, optional
+        Airmass used for albedo or molecular templates when relevant.
+    star_spectrum : Spectrum or None, optional
+        Stellar spectrum used by albedo templates.
+    wave_model : ndarray or None, optional
+        Optional working wavelength grid for template generation.
+    template_wo_shift : Spectrum or None, optional
+        Precomputed template before RV shifting.
+    degrade_resolution : bool, optional
+        If True, degrade the template to instrumental resolution.
+    stellar_component : bool, optional
+        If True, include the MM stellar self-subtraction component.
+    trans_Ss : ndarray or None
+        Stellar flux on the same wavelength grid as 'wave'.
+    Ss_HF, Ss_LF : ndarray or None
+        Precomputed high- and low-frequency stellar components.
+    R_sampling : float or ndarray or None
+        Sampling resolving power. If None, it is computed from 'wave'.
+    pca : fitted PCA object or None
+        If provided, project out PCA components from the template.
+
+    Returns
+    -------
+    CCF : ndarray
+        If rv_arr is scalar: shape (NbLine, NbColumn).
+        If rv_arr has multiple values: shape (Nrv, NbLine, NbColumn).
+    rv_grid_or_template : ndarray or None
+        If rv_arr is scalar: normalized template used for the CCF.
+        If rv_arr has multiple values: RV grid used for the CCF.
+    """
+    
+    NbChannel, NbLine, NbColumn = S_res.shape
+    
     if R_sampling is None:
         R_sampling = get_resolution(wavelength=wave, func=np.array)
-
-    # 1) Template generation (if not provided) / alignment on wavelength grid
+    
+    # 1) Template generation, if not provided
     if template_wo_shift is None:
         template_wo_shift = get_template(instru=instru, wave=wave, R=R, model=model, T=T, lg=lg, rv=0, vsini=vsini, epsilon=epsilon, fastbroad=fastbroad, airmass=airmass, star_spectrum=star_spectrum, wave_model=wave_model)
     
-    # Degrade template_wo_shift to target grid
+    # 2) Match instrumental sampling/resolution
     Sp = get_spectrum_band(spectrum_instru=template_wo_shift, wave_band=wave, R_output=R, degrade_resolution=degrade_resolution, verbose=False)
     
-    # Return if Sp only contains NaNs (e.g. if the crop of the molecular templates left only NaNs)
+    # Return if Sp only contains NaNs, e.g. if the crop of molecular templates left only NaNs
     if np.all(~np.isfinite(Sp.flux)):
         return None, None
-
-    # 2) Build HF/LF parts of the Sp
+    
+    # 3) Build HF/LF parts of the template
     Sp_HF                  = Sp.copy()
     Sp_LF                  = Sp.copy()
     Sp_HF.flux, Sp_LF.flux = filtered_flux(flux=Sp.flux, R=R_sampling, Rc=Rc, filter_type=filter_type)
     
-    # 3) Stellar HF/LF if needed
+    # 4) Stellar HF/LF if needed
     if stellar_component and Rc is not None and (Ss_HF is None or Ss_LF is None):
         Ss_HF, Ss_LF = get_Ss_HF_LF(trans_Ss=trans_Ss, trans=trans, wave=wave, R_sampling=R_sampling, Rc=Rc, filter_type=filter_type)
-
-    # 4) RV grid handling
+    
+    # 5) RV grid handling
     scalar_rv = np.ndim(rv_arr) == 0
     rv_arr    = np.atleast_1d(np.asarray(rv_arr, dtype=float))
     Nrv       = len(rv_arr)
-
-    # 5) Prepare data matrix once
-    S2D        = S_res.reshape(NbChannel, Npix)
-    valid_data = np.isfinite(S2D)
-    S0         = np.nan_to_num(S2D, nan=0.0, posinf=0.0, neginf=0.0).astype(dtype, copy=False)
-    M0         = valid_data.astype(dtype, copy=False)
-
+    
     # 6) Build all RV-shifted templates
     Tmat = np.full((Nrv, NbChannel), np.nan, dtype=dtype)
     
-    # 7) Loop over RV values (vectorize across all pixels inside)
-    for k in range(len(rv_arr)):
+    for k, rv in enumerate(rv_arr):
         
-        # Doppler shift Sp
-        Sp_HF_shift = Sp_HF.doppler_shift(rv_arr[k], renorm=False).flux
+        # Doppler-shift the planetary HF component
+        Sp_HF_shift = Sp_HF.doppler_shift(rv, renorm=False).flux
         
-        # Build final Sp including stellar component if requested
-        t = trans * Sp_HF_shift 
-        if stellar_component and Rc is not None: # Adding the stellar component (if required)
-            Sp_LF_shift = Sp_LF.doppler_shift(rv_arr[k], renorm=False).flux    
-            t          += - trans * Ss_HF * Sp_LF_shift / Ss_LF # it should be almost the same thing with or without the residual star flux
+        # Final template projected in the same domain as the residual cube
+        t = trans * Sp_HF_shift
         
-        # PCA projection and subtraction on the template (components are assumed on the *same* wavelength grid)
+        # Add stellar self-subtraction component if required
+        if stellar_component and Rc is not None:
+            Sp_LF_shift = Sp_LF.doppler_shift(rv, renorm=False).flux
+            t          += - trans * Ss_HF * Sp_LF_shift / Ss_LF
+        
+        # Subtract PCA components from the template, if required
         if pca is not None:
             t = get_pca_subtracted_data(data=t, pca=pca)
-
-        # Normalize global template once (will be re-masked per pixel)
+        
+        # Normalize global template once. The per-pixel effective norm is then
+        # handled inside compute_CCF_2D through the finite-data mask.
         norm = np.sqrt(np.nansum(t**2))
         if not (np.isfinite(norm) and norm > 0):
-            # Degenerate template at this RV => skip
             continue
-        t /= norm  # normalized global template
         
-        Tmat[k, :] = t.astype(dtype)
+        Tmat[k, :] = (t / norm).astype(dtype)
     
-    # 8) Remove invalid RV templates
+    # 7) Remove invalid RV templates
     valid_rv = np.isfinite(Tmat).any(axis=1)
     if not np.any(valid_rv):
         return None, None
-    T0 = np.nan_to_num(Tmat, nan=0.0, posinf=0.0, neginf=0.0).astype(dtype, copy=False)
-
-    # 9) Fast matrix products
-    numerator   = T0 @ S0
-    denominator = np.sqrt((T0**2) @ M0)
-    CCF2D       = np.full_like(numerator, np.nan, dtype=dtype)
-    good        = denominator > 0
-    CCF2D[good] = numerator[good] / denominator[good]
-    CCF         = CCF2D.reshape(Nrv, NbLine, NbColumn)
     
-    # If rv_arr was scalar, return 2D and the (normalized) template used for that RV
+    Tmat_valid = Tmat[valid_rv]
+    rv_valid   = rv_arr[valid_rv]
+    
+    # 8) Compute CCF maps using the shared optimized routine
+    CCF = compute_CCF_2D(S_res=S_res, t=Tmat_valid, dtype=dtype)
+    
+    # If rv_arr was scalar, return a 2D map and the normalized template used
     if scalar_rv:
-        return CCF[0], t
+        return CCF[0], Tmat_valid[0]
     else:
-        return CCF, rv_arr
+        return CCF, rv_valid
 
 
 

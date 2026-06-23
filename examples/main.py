@@ -1,5 +1,5 @@
 # import FastYield modules
-from fastyield.config import set_sim_data_path, instrus
+from fastyield.config import set_sim_data_path, instrus, planet_types, planet_types_reduced
 from fastyield.FastCurves import FastCurves
 from fastyield.FastYield_interface import FastYield_interface
 from fastyield.FastYield import planet_table_classification, planet_table_classification_histogram, planet_table_statistics, yield_plot_instrus_texp, yield_plot_bands_texp, yield_hist_instrus_ptypes, yield_hist_instrus_ptypes_ELT, yield_corner_instru, yield_corner_instrus, yield_corner_models, yield_contrast_instru, yield_contrast_ELT_earthlike, get_archive_table, all_SNR_table, get_planet_table_SNR
@@ -17,7 +17,7 @@ from fastyield.colormaps import colormap_bandwidth_resolution_with_constant_Nlam
 #                       Graphic User Interface (GUI):                          #
 #------------------------------------------------------------------------------#
 
-#FastYield_interface()
+# FastYield_interface()
 
 
 
@@ -29,26 +29,36 @@ from fastyield.colormaps import colormap_bandwidth_resolution_with_constant_Nlam
 # planet_table_classification_histogram()
 # planet_table_statistics()
 
+
+# TODO : filtrer les sep < IWA ??? (une idée serait de se dire que de toute facon on sera propablement limité par les systématiques même la unresolved spectroscopy est possible)
+
 # yield_plot_instrus_texp(thermal_model="auto", reflected_model="auto", fraction=False)
 # yield_plot_bands_texp(table="Archive", instru="HARMONI", thermal_model="auto", reflected_model="auto", systematics=False, PCA=False, fraction=False)
 
 # yield_hist_instrus_ptypes(exposure_time=10*60,     thermal_model="auto", reflected_model="auto", planet_types=planet_types_reduced, fraction=False)
 # yield_hist_instrus_ptypes_ELT(exposure_time=10*60, thermal_model="auto", reflected_model="auto", planet_types=planet_types,         fraction=False, instrus=["HARMONI", "HARMONI+SP_Prox", "ANDES", "ANDES+LYOT"])
+# yield_hist_instrus_ptypes_ELT(exposure_time=10*60, thermal_model="auto", reflected_model="auto", planet_types=planet_types_reduced, fraction=False, instrus=["HARMONI", "HARMONI+SP_Prox"])
+
+# yield_corner_instru(instru="HARMONI", exposure_time=10*60, thermal_model="auto", reflected_model="auto", apodizer="NO_SP", strehl="JQ1", coronagraph=None, band="INSTRU", systematics=False, PCA=False)
+# yield_corner_instrus(instru1="HARMONI", instru2="ANDES",   band1="INSTRU", band2="INSTRU", apodizer1="SP_Prox", apodizer2="NO_SP", strehl1="JQ1", strehl2="MED", coronagraph1=None, coronagraph2=None,   exposure_time=10*60, thermal_model="auto", reflected_model="auto", systematics=False, PCA=False)
+# yield_corner_instrus(instru1="HARMONI", instru2="HARMONI", band1="INSTRU", band2="INSTRU", apodizer1="SP_Prox", apodizer2="NO_SP", strehl1="JQ1", strehl2="JQ1", coronagraph1=None, coronagraph2=None,   exposure_time=10*60, thermal_model="auto", reflected_model="auto", systematics=False, PCA=False)
+# yield_corner_instrus(instru1="ANDES",   instru2="ANDES",   band1="INSTRU", band2="INSTRU", apodizer1="NO_SP",   apodizer2="NO_SP", strehl1="MED", strehl2="MED", coronagraph1=None, coronagraph2="LYOT", exposure_time=10*60, thermal_model="auto", reflected_model="auto", systematics=False, PCA=False)
+
+# yield_contrast_instru(instru="ANDES", exposure_time=10*60, thermal_model="auto", reflected_model="auto", apodizer="NO_SP", strehl="MED", band="INSTRU", coronagraph="LYOT")
+# yield_contrast_ELT_earthlike(thermal_model="auto", reflected_model="auto", spectrum_contributions="thermal+reflected", force_table_calc=False, exposure_time=10*60, Rc=100, sep_max=100, s0=50, ds=10*50, alpha_sig=0.3)
 
 
 
-# yield_hist_instrus_ptypes_ELT(exposure_time=6*60, thermal_model="BT-Settl", reflected_model="tellurics", planet_types=planet_types_reduced, fraction=False, instrus=["HARMONI", "HARMONI+SP_Prox"])
 
-# yield_corner_instru(instru="HARMONI", exposure_time=600, thermal_model="BT-Settl", reflected_model="tellurics", apodizer="NO_SP", strehl="JQ1", coronagraph=None, band="INSTRU", systematics=False, PCA=False)
-# yield_corner_instrus(instru1="HARMONI", instru2="ANDES",   apodizer1="SP_Prox", apodizer2="NO_SP", strehl1="JQ1", strehl2="MED", coronagraph1=None, coronagraph2=None,   exposure_time=6*60, thermal_model="BT-Settl", reflected_model="tellurics", systematics=False, PCA=False)
-# yield_corner_instrus(instru1="HARMONI", instru2="HARMONI", apodizer1="SP_Prox", apodizer2="NO_SP", strehl1="JQ1", strehl2="JQ1", coronagraph1=None, coronagraph2=None,   exposure_time=6*60, thermal_model="BT-Settl", reflected_model="tellurics", systematics=False, PCA=False)
-# yield_corner_instrus(instru1="ANDES",   instru2="ANDES",   apodizer1="NO_SP",   apodizer2="NO_SP", strehl1="MED", strehl2="MED", coronagraph1=None, coronagraph2="LYOT", exposure_time=6*60, thermal_model="BT-Settl", reflected_model="tellurics", systematics=False, PCA=False)
-# yield_corner_models(model1="tellurics", model2="PICASO", instru="ANDES", apodizer="NO_SP", strehl="MED", exposure_time=6*60, band="INSTRU")
+# yield_corner_models(model1="tellurics", model2="PICASO", spectrum_contributions="reflected", instru="ANDES", apodizer="NO_SP", strehl="MED", exposure_time=10*60, band="INSTRU")
 
-# yield_contrast_instru(instru="ANDES", exposure_time=6*60, thermal_model="BT-Settl", reflected_model="PICASO", apodizer="NO_SP", strehl="MED", band="INSTRU", coronagraph="LYOT")
-# yield_contrast_ELT_earthlike(thermal_model="BT-Settl", reflected_model="tellurics", force_table_calc=False, exposure_time=6*60, Rc=100, sep_max=100, s0=50, ds=10*50, alpha_sig=0.3)
 
-# yield_contrast_ELT_earthlike(thermal_model="BT-Settl", reflected_model="tellurics", spectrum_contributions="thermal+reflected", force_table_calc=True, exposure_time=10*60, Rc=100, sep_max=100, s0=50, ds=10*50, alpha_sig=0.3)
+
+
+# Manuscript:
+# yield_plot_bands_texp(table="Archive", instru="HiRISE", thermal_model="auto", reflected_model="auto", systematics=False, PCA=False, fraction=False)
+# yield_corner_instrus(instru1="HiRISE", instru2="HiRISE", band1="H_CRIRES", band2="H_VIPA", apodizer1="NO_SP", apodizer2="NO_SP", strehl1="MED", strehl2="MED", coronagraph1=None, coronagraph2=None, exposure_time=1*60, thermal_model="auto", reflected_model="auto", systematics=False, PCA=False)
+
 
 
 
@@ -61,11 +71,12 @@ from fastyield.colormaps import colormap_bandwidth_resolution_with_constant_Nlam
 # all_SNR_table(table="Archive", instrus=["MIRIMRS", "NIRCam", "NIRSpec", "VIPAPYRUS"])
 
 
-# get_planet_table_SNR(instru="HARMONI", table="Archive", thermal_model="auto", reflected_model="auto",  apodizer="NO_SP",   strehl="JQ1", coronagraph=None, systematics=False) # ~ 3mn
-# get_planet_table_SNR(instru="HARMONI", table="Archive", thermal_model="auto", reflected_model="auto",  apodizer="SP_Prox", strehl="JQ1", coronagraph=None, systematics=False) # ~ 3mn
 
-# get_planet_table_SNR(instru="ANDES", table="Archive", thermal_model="auto", reflected_model="auto",    apodizer="NO_SP", strehl="MED", coronagraph=None,   systematics=False) # ~ 30 mn
-# get_planet_table_SNR(instru="ANDES", table="Archive", thermal_model="auto", reflected_model="auto",    apodizer="NO_SP", strehl="MED", coronagraph="LYOT", systematics=False) # ~ 30 mn
+# get_planet_table_SNR(instru="HARMONI", table="Archive", thermal_model="auto", reflected_model="auto",  apodizer="NO_SP",   strehl="JQ1", coronagraph=None, systematics=False) # ~ 2mn
+# get_planet_table_SNR(instru="HARMONI", table="Archive", thermal_model="auto", reflected_model="auto",  apodizer="SP_Prox", strehl="JQ1", coronagraph=None, systematics=False) # ~ 2mn
+
+# get_planet_table_SNR(instru="ANDES", table="Archive", thermal_model="auto", reflected_model="auto",    apodizer="NO_SP", strehl="MED", coronagraph=None,   systematics=False) # ~ 20 mn
+# get_planet_table_SNR(instru="ANDES", table="Archive", thermal_model="auto", reflected_model="auto",    apodizer="NO_SP", strehl="MED", coronagraph="LYOT", systematics=False) # ~ 20 mn
 
 
 
@@ -100,10 +111,10 @@ from fastyield.colormaps import colormap_bandwidth_resolution_with_constant_Nlam
 #                  FastCurves (comparison with real data cases):               #
 #------------------------------------------------------------------------------#
 
-# ### CT Cha b / SNR(1MEDIUM) = 11.72 (3.5 s)
+# ### CT Cha b / SNR(1MEDIUM) = 11.72 (3.0 s)
 # FastCurves(calculation="SNR", instru="MIRIMRS", systematics=True, input_DIT=138.75/60, model_planet="BT-Settl", separation_planet=2.5, T_planet=2600, lg_planet=3.5, planet_name="CT Cha b", mag_star=8.66, mag_planet=14.9, band0='K', T_star=4400, lg_star=3.5, exposure_time=56.426, rv_star=-2.9, rv_planet=15, vsini_star=10, vsini_planet=10, channel=False)
 
-# ### HD 19467 b / SNR(G395H F290LP) = 19.69 (8.5 s)
+# ### HD 19467 b / SNR(G395H F290LP) = 19.69 (6.0 s)
 # FastCurves(calculation="SNR", instru="NIRSpec", systematics=True, separation_planet=1.5, input_DIT=218.8/60, model_planet="BT-Settl", T_planet=950, lg_planet=5.0, planet_name='HD 19467 b', mag_star=5.4, band0='K', mag_planet=17.97, T_star=5680, lg_star=4.0, exposure_time=65.65)
 
 # ### HIP 65426 b / SNR(F356W) = 779.17

@@ -95,41 +95,81 @@ def tau_to_transmission(tau):
 
 
 
-def fill_nan_linear(x, y):
+def fill_nan_linear(x, y, axis=0):
     """
-    Fill NaN or infinite values in an array 'y' by linear interpolation.
+    Fill NaN or infinite values in an array 'y' by linear interpolation along
+    a chosen axis.
 
     Parameters
     ----------
-    x : (N,) array_like
-        Monotonic coordinate array corresponding to 'y'.
-    y : (N,) array_like
+    x : (N,) array_like or None
+        Monotonic coordinate array corresponding to 'y' along 'axis'.
+        If None, pixel indices are used.
+
+    y : array_like
         Input values, possibly containing NaN or ±inf.
+
+    axis : int, optional
+        Axis along which the interpolation is performed. Default is 0.
 
     Returns
     -------
-    y_filled : (N,) ndarray
+    y_filled : ndarray
         Copy of 'y' where invalid entries are replaced by linear interpolation
-        between the nearest valid neighbors. If NaNs occur at the edges,
-        no extrapolation is made.
+        along 'axis'. If NaNs occur at the edges, no extrapolation is made.
 
     Notes
     -----
     - This function preserves the shape of 'y'.
+    - For multidimensional arrays, each 1D vector along 'axis' is interpolated
+      independently.
     - If all values in 'y' are NaN, a ValueError is raised.
+    - If a given 1D vector has fewer than two valid values, it is left unchanged
+      except for non-finite values, which remain NaN.
     """
-    mask_valid = np.isfinite(y)
-    
-    if not np.any(mask_valid):
+
+    y = np.asarray(y, dtype=float)
+
+    if not np.any(np.isfinite(y)):
         raise ValueError("'y' contains no valid (finite) values to interpolate.")
-    
-    elif not np.any(~mask_valid): # Only valid (finite) values
+
+    if np.all(np.isfinite(y)):
         return y
 
+    axis = int(axis) % y.ndim
+
+    # Move interpolation axis to the first dimension
+    y_axis0      = np.moveaxis(y, axis, 0)
+    shape_axis0  = y_axis0.shape
+    n_axis       = shape_axis0[0]
+    y_2d         = y_axis0.reshape(n_axis, -1)
+    y_filled_2d  = np.full_like(y_2d, np.nan, dtype=float)
+
+    # Coordinate axis
+    if x is None:
+        x = np.arange(n_axis, dtype=float)
     else:
-        if x is None:
-            x = np.arange(len(y), dtype=float)
-        return interp1d(x[mask_valid], y[mask_valid], kind="linear", bounds_error=False, fill_value=np.nan)(x)
+        x = np.asarray(x, dtype=float)
+        if x.ndim != 1 or len(x) != n_axis:
+            raise ValueError(f"'x' must be 1D with length equal to y.shape[axis] = {n_axis}.")
+
+    valid_x = np.isfinite(x)
+
+    # Interpolate each 1D vector independently
+    for j in range(y_2d.shape[1]):
+        yj = y_2d[:, j]
+        valid = valid_x & np.isfinite(yj)
+
+        if np.count_nonzero(valid) >= 2:
+            y_filled_2d[:, j] = np.interp(x, x[valid], yj[valid], left=np.nan, right=np.nan)
+        else:
+            y_filled_2d[:, j] = yj
+
+    # Restore original shape and axis order
+    y_filled_axis0 = y_filled_2d.reshape(shape_axis0)
+    y_filled       = np.moveaxis(y_filled_axis0, 0, axis)
+
+    return y_filled
 
 
 
@@ -1989,18 +2029,18 @@ def extract_jwst_data(instru, target_name, band, crop_band=True, outliers=False,
     area        = config_data['telescope']['area'] # collective area m2
 
     # Opening file
-    if file is None :
+    if file is None:
         # MIRI/MRS
         if instru=="MIRIMRS" : 
             # Simulations data
             if "sim" in target_name.lower():
-                file = f"data/MIRIMRS/MIRISim/{target_name}_{band}_s3d.fits"
+                file = f"/home/martoss/Documents/PhD/work/MAIN/data/MIRIMRS/MIRISim/{target_name}_{band}_s3d.fits"
             # On-sky data
             else :
-                file = f"data/MIRIMRS/MAST/{target_name}_ch{band[0]}-shortmediumlong_s3d.fits"
+                file = f"/home/martoss/Documents/PhD/work/MAIN/data/MIRIMRS/MAST/{target_name}_ch{band[0]}-shortmediumlong_s3d.fits"
         # NIRSpec/IFU
         elif instru=="NIRSpec":
-            file = f"data/NIRSpec/MAST/{target_name}_nirspec_{band}_s3d.fits"
+            file = f"/home/martoss/Documents/PhD/work/MAIN/data/NIRSpec/MAST/{target_name}_nirspec_{band}_s3d.fits"
         # Unknown instrument
         else:
             raise KeyError(f"Unknown instrument {instru}")

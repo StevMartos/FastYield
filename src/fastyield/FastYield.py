@@ -2665,7 +2665,7 @@ def planet_table_statistics(planet_table=None):
         smooth         = smooth_corner,
         smooth1d       = smooth_corner,
         color          = "gray",
-        contour_kwargs = {"colors": ["black"], "alpha": 0.85, "linewidth": 1.3},
+        contour_kwargs = {"colors": ["black"], "alpha": 0.85, "linewidths": 1.3},
         hist_kwargs    = {"color": "black", "alpha": 0.85, "linewidth": 1.3},
         label_kwargs   = {"fontsize": 16})
     #figure.suptitle(f"Archive table statistics (with {len(planet_table)} known exoplanets)", fontsize=18, y=1.05, fontweight="bold")
@@ -2682,8 +2682,10 @@ def yield_plot_instrus_texp(thermal_model="auto", reflected_model="auto", fracti
         
     spectrum_contributions, name_model = get_spectrum_contribution_name_model(thermal_model, reflected_model)
     
-    planet_table_harmoni          = load_planet_table(f"Archive_Pull_HARMONI_SP_Prox_JQ1_without_systematics_{name_model}.ecsv")
-    planet_table_andes            = load_planet_table(f"Archive_Pull_ANDES_NO_SP_MED_LYOT_without_systematics_{name_model}.ecsv")
+    planet_table_harmoni          = load_planet_table(f"Archive_Pull_HARMONI_NO_SP_JQ1_without_systematics_{name_model}.ecsv")
+    planet_table_harmoni_sp       = load_planet_table(f"Archive_Pull_HARMONI_SP_Prox_JQ1_without_systematics_{name_model}.ecsv")
+    planet_table_andes            = load_planet_table(f"Archive_Pull_ANDES_NO_SP_MED_without_systematics_{name_model}.ecsv")
+    planet_table_andes_coro       = load_planet_table(f"Archive_Pull_ANDES_NO_SP_MED_LYOT_without_systematics_{name_model}.ecsv")
     planet_table_eris             = load_planet_table(f"Archive_Pull_ERIS_NO_SP_JQ0_without_systematics_{name_model}.ecsv")
     planet_table_hirise           = load_planet_table(f"Archive_Pull_HiRISE_NO_SP_MED_without_systematics_{name_model}.ecsv")
     planet_table_mirimrs_non_syst = load_planet_table(f"Archive_Pull_MIRIMRS_NO_SP_NO_JQ_without_systematics_{thermal_model}+None.ecsv")
@@ -2722,7 +2724,9 @@ def yield_plot_instrus_texp(thermal_model="auto", reflected_model="auto", fracti
     
     for i in range(len(exposure_time)):
         SNR_harmoni          = get_SNR_from_table(planet_table=planet_table_harmoni,          exposure_time=exposure_time[i], band="INSTRU")
+        SNR_harmoni_sp       = get_SNR_from_table(planet_table=planet_table_harmoni_sp,       exposure_time=exposure_time[i], band="INSTRU")
         SNR_andes            = get_SNR_from_table(planet_table=planet_table_andes,            exposure_time=exposure_time[i], band="INSTRU")
+        SNR_andes_coro       = get_SNR_from_table(planet_table=planet_table_andes_coro,       exposure_time=exposure_time[i], band="INSTRU")
         SNR_eris             = get_SNR_from_table(planet_table=planet_table_eris,             exposure_time=exposure_time[i], band="INSTRU")
         SNR_hirise           = get_SNR_from_table(planet_table=planet_table_hirise,           exposure_time=exposure_time[i], band="INSTRU")
         SNR_mirimrs_non_syst = get_SNR_from_table(planet_table=planet_table_mirimrs_non_syst, exposure_time=exposure_time[i], band="INSTRU")
@@ -2733,24 +2737,24 @@ def yield_plot_instrus_texp(thermal_model="auto", reflected_model="auto", fracti
         SNR_nirspec_syst     = get_SNR_from_table(planet_table=planet_table_nirspec_syst,     exposure_time=exposure_time[i], band="INSTRU")
         SNR_nirspec_syst_pca = get_SNR_from_table(planet_table=planet_table_nirspec_syst_pca, exposure_time=exposure_time[i], band="INSTRU")
 
-        yield_harmoni[i]          = ratio * len(planet_table_harmoni[SNR_harmoni > SNR_thresh])                   / norm_harmoni
-        yield_andes[i]            = ratio * len(planet_table_andes[SNR_andes > SNR_thresh])                       / norm_andes
-        yield_eris[i]             = ratio * len(planet_table_eris[SNR_eris > SNR_thresh])                         / norm_eris
-        yield_hirise[i]           = ratio * len(planet_table_hirise[SNR_hirise > SNR_thresh])                     / norm_hirise
-        yield_mirimrs_non_syst[i] = ratio * len(planet_table_mirimrs_non_syst[SNR_mirimrs_non_syst > SNR_thresh]) / norm_mirimrs
-        yield_mirimrs_syst[i]     = ratio * len(planet_table_mirimrs_syst[SNR_mirimrs_syst > SNR_thresh])         / norm_mirimrs
-        yield_mirimrs_syst_pca[i] = ratio * len(planet_table_mirimrs_syst_pca[SNR_mirimrs_syst_pca > SNR_thresh]) / norm_mirimrs
-        yield_nircam[i]           = ratio * len(planet_table_nircam[SNR_nircam > SNR_thresh])                     / norm_nircam
-        yield_nirspec_non_syst[i] = ratio * len(planet_table_nirspec_non_syst[SNR_nirspec_non_syst > SNR_thresh]) / norm_nirspec
-        yield_nirspec_syst[i]     = ratio * len(planet_table_nirspec_syst[SNR_nirspec_syst > SNR_thresh])         / norm_nirspec
-        yield_nirspec_syst_pca[i] = ratio * len(planet_table_nirspec_syst_pca[SNR_nirspec_syst_pca > SNR_thresh]) / norm_nirspec
+        yield_harmoni[i]          = ratio * len(planet_table_harmoni[(SNR_harmoni > SNR_thresh)|(SNR_harmoni_sp > SNR_thresh)]) / norm_harmoni
+        yield_andes[i]            = ratio * len(planet_table_andes[(SNR_andes > SNR_thresh)|(SNR_andes_coro > SNR_thresh)])     / norm_andes
+        yield_eris[i]             = ratio * len(planet_table_eris[SNR_eris > SNR_thresh])                                       / norm_eris
+        yield_hirise[i]           = ratio * len(planet_table_hirise[SNR_hirise > SNR_thresh])                                   / norm_hirise
+        yield_mirimrs_non_syst[i] = ratio * len(planet_table_mirimrs_non_syst[SNR_mirimrs_non_syst > SNR_thresh])               / norm_mirimrs
+        yield_mirimrs_syst[i]     = ratio * len(planet_table_mirimrs_syst[SNR_mirimrs_syst > SNR_thresh])                       / norm_mirimrs
+        yield_mirimrs_syst_pca[i] = ratio * len(planet_table_mirimrs_syst_pca[SNR_mirimrs_syst_pca > SNR_thresh])               / norm_mirimrs
+        yield_nircam[i]           = ratio * len(planet_table_nircam[SNR_nircam > SNR_thresh])                                   / norm_nircam
+        yield_nirspec_non_syst[i] = ratio * len(planet_table_nirspec_non_syst[SNR_nirspec_non_syst > SNR_thresh])               / norm_nirspec
+        yield_nirspec_syst[i]     = ratio * len(planet_table_nirspec_syst[SNR_nirspec_syst > SNR_thresh])                       / norm_nirspec
+        yield_nirspec_syst_pca[i] = ratio * len(planet_table_nirspec_syst_pca[SNR_nirspec_syst_pca > SNR_thresh])               / norm_nirspec
 
     lw = 2
     plt.figure(dpi=300, figsize=(14, 8))
     plt.plot(exposure_time, yield_harmoni,          lw=lw, c=colors_instru["HARMONI"], label="ELT/HARMONI")
     plt.plot(exposure_time, yield_andes,            lw=lw, c=colors_instru["ANDES"],   label="ELT/ANDES")
     plt.plot(exposure_time, yield_eris,             lw=lw, c=colors_instru["ERIS"],    label="VLT/ERIS")
-    plt.plot(exposure_time, yield_hirise,           lw=lw, c=colors_instru["HiRISE"],  label="VLT/HiRISE")    
+    #plt.plot(exposure_time, yield_hirise,           lw=lw, c=colors_instru["HiRISE"],  label="VLT/HiRISE")    
     plt.plot(exposure_time, yield_mirimrs_non_syst, lw=lw, c=colors_instru["MIRIMRS"], label="JWST/MIRI/MRS")
     plt.plot(exposure_time, yield_mirimrs_syst,     lw=lw, c=colors_instru["MIRIMRS"], ls='--')
     plt.plot(exposure_time, yield_mirimrs_syst_pca, lw=lw, c=colors_instru["MIRIMRS"], ls=':')
@@ -2853,9 +2857,9 @@ def yield_plot_bands_texp(table="Archive", instru="HARMONI", thermal_model="auto
         plt.yscale('log')
     plt.xlim(exposure_time[0], exposure_time[-1])
     if config_data["base"] == "space":
-        plt.title(f"{instru} re-detections statistics with {int(np.max(NbPlanet))} known planets above\n (with {name_model} model in {spectrum_contributions} light)", fontsize=18, weight='bold')
+        plt.title(f"{instru} re-detections statistics with {int(np.max(NbPlanet))} known planets above", fontsize=18, weight='bold')
     else:
-        plt.title(f"{instru} re-detections statistics with {int(np.max(NbPlanet))} known planets above for {strehl} strehl\n (with {name_model} model in {spectrum_contributions} light)", fontsize=18, weight='bold')
+        plt.title(f"{instru} re-detections statistics with {int(np.max(NbPlanet))} known planets above for {strehl} strehl", fontsize=18, weight='bold')
     plt.tick_params(axis='both', labelsize=14)
     plt.legend(fontsize=16, loc="upper left", frameon=True, fancybox=True, edgecolor="gray", facecolor="whitesmoke", title="Bands", title_fontsize=18)    
     if len(modes) > 1: 
@@ -2882,9 +2886,9 @@ def yield_hist_instrus_ptypes(exposure_time=10*60, thermal_model="auto", reflect
     spectrum_contributions, name_model = get_spectrum_contribution_name_model(thermal_model, reflected_model)
 
     planet_table_harmoni          = load_planet_table(f"Archive_Pull_HARMONI_NO_SP_JQ1_without_systematics_{name_model}.ecsv")
-    planet_table_harmoni_sp_prox  = load_planet_table(f"Archive_Pull_HARMONI_SP_Prox_JQ1_without_systematics_{name_model}.ecsv")
+    planet_table_harmoni_sp       = load_planet_table(f"Archive_Pull_HARMONI_SP_Prox_JQ1_without_systematics_{name_model}.ecsv")
     planet_table_andes            = load_planet_table(f"Archive_Pull_ANDES_NO_SP_MED_without_systematics_{name_model}.ecsv")
-    planet_table_andes_lyot       = load_planet_table(f"Archive_Pull_ANDES_NO_SP_MED_LYOT_without_systematics_{name_model}.ecsv")
+    planet_table_andes_coro       = load_planet_table(f"Archive_Pull_ANDES_NO_SP_MED_LYOT_without_systematics_{name_model}.ecsv")
     planet_table_eris             = load_planet_table(f"Archive_Pull_ERIS_NO_SP_JQ0_without_systematics_{name_model}.ecsv")
     planet_table_mirimrs_non_syst = load_planet_table(f"Archive_Pull_MIRIMRS_NO_SP_NO_JQ_without_systematics_{thermal_model}+None.ecsv")
     planet_table_mirimrs_syst     = load_planet_table(f"Archive_Pull_MIRIMRS_NO_SP_NO_JQ_with_systematics_{thermal_model}+None.ecsv")
@@ -2895,8 +2899,8 @@ def yield_hist_instrus_ptypes(exposure_time=10*60, thermal_model="auto", reflect
     #planet_table_nirspec_syst_pca = load_planet_table(f"Archive_Pull_NIRSpec_NO_SP_NO_JQ_with_systematics+PCA_{thermal_model}+None.ecsv")
     planet_table_nirspec_syst_pca = load_planet_table(f"Archive_Pull_NIRSpec_NO_SP_NO_JQ_with_systematics_{thermal_model}+None.ecsv")
     
-    planet_table_harmoni["SNR"]          = np.fmax(get_SNR_from_table(planet_table=planet_table_harmoni,  exposure_time=exposure_time, band="INSTRU"), get_SNR_from_table(planet_table=planet_table_harmoni_sp_prox, exposure_time=exposure_time, band="INSTRU"))
-    planet_table_andes["SNR" ]           = np.fmax(get_SNR_from_table(planet_table=planet_table_andes,    exposure_time=exposure_time, band="INSTRU"), get_SNR_from_table(planet_table=planet_table_andes_lyot,      exposure_time=exposure_time, band="INSTRU"))
+    planet_table_harmoni["SNR"]          = np.fmax(get_SNR_from_table(planet_table=planet_table_harmoni,  exposure_time=exposure_time, band="INSTRU"), get_SNR_from_table(planet_table=planet_table_harmoni_sp, exposure_time=exposure_time, band="INSTRU"))
+    planet_table_andes["SNR" ]           = np.fmax(get_SNR_from_table(planet_table=planet_table_andes,    exposure_time=exposure_time, band="INSTRU"), get_SNR_from_table(planet_table=planet_table_andes_coro, exposure_time=exposure_time, band="INSTRU"))
     planet_table_eris["SNR"]             = get_SNR_from_table(planet_table=planet_table_eris,             exposure_time=exposure_time, band="INSTRU")
     planet_table_mirimrs_non_syst["SNR"] = get_SNR_from_table(planet_table=planet_table_mirimrs_non_syst, exposure_time=exposure_time, band="INSTRU")
     planet_table_mirimrs_syst["SNR"]     = get_SNR_from_table(planet_table=planet_table_mirimrs_syst,     exposure_time=exposure_time, band="INSTRU")
@@ -3159,10 +3163,9 @@ def yield_hist_instrus_ptypes_ELT(exposure_time=10*60, thermal_model="auto", ref
 def yield_corner_instru(instru="HARMONI", exposure_time=6*60, thermal_model="BT-Settl", reflected_model="PICASO", apodizer="NO_SP", strehl="JQ1", coronagraph=None, band="INSTRU", systematics=False, PCA=False):
     smooth_corner = 1
     ndim          = 6 # Mp, Rp, Tp, a, d, sep
-    config_data = get_config_data(instru)
     
     # WORKING ANGLE
-    iwa, owa = get_wa(config_data=config_data, sep_unit="mas")    
+    iwa, owa = get_wa(instru=instru, sep_unit="mas")    
 
     # MODELS NAME
     spectrum_contributions, name_model = get_spectrum_contribution_name_model(thermal_model, reflected_model)
@@ -3196,7 +3199,7 @@ def yield_corner_instru(instru="HARMONI", exposure_time=6*60, thermal_model="BT-
         smooth        = smooth_corner,
         smooth1d      = smooth_corner,
         color          = "gray",
-        contour_kwargs = {"colors": ["black"], "alpha": 0.85, "linewidth": 1.3},
+        contour_kwargs = {"colors": ["black"], "alpha": 0.85, "linewidths": 1.3},
         hist_kwargs    = {"color": "black", "alpha": 0.85, "linewidth": 1.3},
         label_kwargs  = {"fontsize": 16})
     
@@ -3230,7 +3233,7 @@ def yield_corner_instru(instru="HARMONI", exposure_time=6*60, thermal_model="BT-
         plot_contours  = True,
         fill_contours  = True,
         color          ='crimson',
-        contour_kwargs = {"colors": ["crimson"], "alpha": 0.85, "linewidth": 1.3},
+        contour_kwargs = {"colors": ["crimson"], "alpha": 0.85, "linewidths": 1.3},
         hist_kwargs    = {"color": "crimson", "alpha": 0.85, "linewidth": 1.3},
         smooth         = smooth_corner,
         smooth1d       = smooth_corner)
@@ -3241,8 +3244,9 @@ def yield_corner_instru(instru="HARMONI", exposure_time=6*60, thermal_model="BT-
     
 
 
-def yield_corner_instrus(instru1="HARMONI", instru2="ANDES", apodizer1="NO_SP", apodizer2="NO_SP", strehl1="JQ1", strehl2="MED", coronagraph1=None, coronagraph2=None, exposure_time=6*60, thermal_model="BT-Settl", reflected_model="PICASO", systematics=False, PCA=False):
+def yield_corner_instrus(instru1="HARMONI", instru2="ANDES", band1="INSTRU", band2="INSTRU", apodizer1="NO_SP", apodizer2="NO_SP", strehl1="JQ1", strehl2="MED", coronagraph1=None, coronagraph2=None, exposure_time=6*60, thermal_model="auto", reflected_model="auto", systematics=False, PCA=False):
     instrus       = [instru1,      instru2]
+    bands         = [band1,        band2]
     apodizers     = [apodizer1,    apodizer2]
     strehls       = [strehl1,      strehl2]
     coronagraphs  = [coronagraph1, coronagraph2]
@@ -3257,7 +3261,7 @@ def yield_corner_instrus(instru1="HARMONI", instru2="ANDES", apodizer1="NO_SP", 
     IWA = np.zeros((len(instrus)))
     OWA = np.zeros((len(instrus)))
     for ni, instru in enumerate(instrus):
-        IWA[ni], OWA[ni] = get_wa(config_data=get_config_data(instru), sep_unit="mas")    
+        IWA[ni], OWA[ni] = get_wa(instru=instru, sep_unit="mas")    
     iwa = np.nanmin(IWA)
     owa = np.nanmax(OWA)
     
@@ -3267,8 +3271,7 @@ def yield_corner_instrus(instru1="HARMONI", instru2="ANDES", apodizer1="NO_SP", 
     # RAW TABLE
     planet_table_raw = load_planet_table("Archive_Pull_For_FastYield.ecsv")
     planet_table_raw = planet_table_raw[ (~get_invalid_mask(planet_table_raw["PlanetMass"])) & (~get_invalid_mask(planet_table_raw["PlanetRadius"])) & (~get_invalid_mask(planet_table_raw["PlanetTeff"])) & (~get_invalid_mask(planet_table_raw["SMA"])) & (~get_invalid_mask(planet_table_raw["Distance"])) & (~get_invalid_mask(planet_table_raw["AngSep"]))]
-    planet_table_raw = planet_table_raw[(planet_table_raw["AngSep"]>iwa*u.mas)&(planet_table_raw["AngSep"]<owa*u.mas)]
-    #planet_table_raw = planet_table_raw[(planet_table_raw["AngSep"]>iwa*u.mas)] # TODO : crop upper WA (with owa) ?
+    planet_table_raw = planet_table_raw[(planet_table_raw["AngSep"]>iwa*u.mas)]
     data_raw       = np.zeros((len(planet_table_raw), ndim))
     data_raw[:, 0] = np.log10(np.array(planet_table_raw["PlanetMass"].value))
     data_raw[:, 1] = np.log10(np.array(planet_table_raw["PlanetRadius"].value))
@@ -3291,13 +3294,14 @@ def yield_corner_instrus(instru1="HARMONI", instru2="ANDES", apodizer1="NO_SP", 
         smooth         = smooth_corner,
         smooth1d       = smooth_corner,
         color          = "gray",
-        contour_kwargs = {"colors": ["black"], "alpha": 0.85, "linewidth": 1.3},
+        contour_kwargs = {"colors": ["black"], "alpha": 0.85, "linewidths": 1.3},
         hist_kwargs    = {"color": "black", "alpha": 0.85, "linewidth": 1.3},
         label_kwargs   = {"fontsize": 16})
     
     # DETECTIONS TABLES
     yields = np.zeros((len(instrus)))
     for ni, instru in enumerate(instrus):
+        band            = bands[ni]
         apodizer        = apodizers[ni]
         strehl          = strehls[ni]
         coronagraph_str = "_"+str(coronagraphs[ni]) if coronagraphs[ni] is not None else ""
@@ -3307,9 +3311,8 @@ def yield_corner_instrus(instru1="HARMONI", instru2="ANDES", apodizer1="NO_SP", 
             suffix = "without_systematics"
         planet_table = load_planet_table(f"Archive_Pull_{instru}_{apodizer}_{strehl}{coronagraph_str}_{suffix}_{name_model}.ecsv")
         planet_table = planet_table[ (~get_invalid_mask(planet_table["PlanetMass"])) & (~get_invalid_mask(planet_table["PlanetRadius"])) & (~get_invalid_mask(planet_table["PlanetTeff"])) & (~get_invalid_mask(planet_table["SMA"])) & (~get_invalid_mask(planet_table["Distance"])) & (~get_invalid_mask(planet_table["AngSep"]))]
-        planet_table = planet_table[(planet_table["AngSep"]>IWA[ni]*u.mas)&(planet_table["AngSep"]<OWA[ni]*u.mas)]
-        #planet_table = planet_table[(planet_table["AngSep"]>IWA[ni]*u.mas)] # TODO : crop upper WA (with owa) ?
-        SNR          = get_SNR_from_table(planet_table=planet_table, exposure_time=exposure_time, band="INSTRU")
+        planet_table = planet_table[(planet_table["AngSep"]>IWA[ni]*u.mas)]
+        SNR          = get_SNR_from_table(planet_table=planet_table, exposure_time=exposure_time, band=band)
         planet_table = planet_table[SNR > SNR_thresh]
         yields[ni]   = len(planet_table)
         data       = np.zeros((len(planet_table), ndim))
@@ -3331,7 +3334,7 @@ def yield_corner_instrus(instru1="HARMONI", instru2="ANDES", apodizer1="NO_SP", 
             plot_contours  = True,
             fill_contours  = True,
             color          = colors_instru[ni],
-            contour_kwargs = {"colors": [colors_instru[ni]], "alpha": 0.85, "linewidth": 1.3},
+            contour_kwargs = {"colors": [colors_instru[ni]], "alpha": 0.85, "linewidths": 1.3},
             hist_kwargs    = {"color": colors_instru[ni], "alpha": 0.85, "linewidth": 1.3},
             smooth         = smooth_corner,
             smooth1d       = smooth_corner)
@@ -3383,7 +3386,7 @@ def yield_corner_instrus(instru1="HARMONI", instru2="ANDES", apodizer1="NO_SP", 
 
 
 
-def yield_corner_models(model1="tellurics", model2="flat", instru="ANDES", apodizer="NO_SP", strehl="MED", exposure_time=6*60, band="INSTRU"):
+def yield_corner_models(model1="tellurics", model2="flat", spectrum_contributions="reflected", instru="ANDES", apodizer="NO_SP", strehl="MED", exposure_time=6*60, band="INSTRU"):
     models        = [model1, model2]
     color_models  = ["crimson", "royalblue"]
     smooth_corner = 1
@@ -3391,19 +3394,10 @@ def yield_corner_models(model1="tellurics", model2="flat", instru="ANDES", apodi
     alpha_earth   = 0.5
     color_earth   = "g"
     earth_values  = np.array([np.log10(1), np.log10(1), 300, np.log10(1), None, None])
-    config_data   = get_config_data(instru)
     
     # WORKING ANGLE
-    iwa, owa = get_wa(config_data=config_data, sep_unit="mas")    
-
-    # MODELS NAME
-    if model1 in thermal_models and model2 in thermal_models:
-        spectrum_contributions = "thermal"
-    elif model1 in reflected_models and model2 in reflected_models:
-        spectrum_contributions = "reflected"
-    else:
-        raise KeyError("WRONG MODEL1 OR MODEL2")
-
+    iwa, owa = get_wa(instru=instru, sep_unit="mas")    
+    
     # RAW TABLE
     planet_table_raw = load_planet_table("Archive_Pull_For_FastYield.ecsv")
     planet_table_raw = planet_table_raw[ (~get_invalid_mask(planet_table_raw["PlanetMass"])) & (~get_invalid_mask(planet_table_raw["PlanetRadius"])) & (~get_invalid_mask(planet_table_raw["PlanetTeff"])) & (~get_invalid_mask(planet_table_raw["SMA"])) & (~get_invalid_mask(planet_table_raw["Distance"])) & (~get_invalid_mask(planet_table_raw["AngSep"]))]
@@ -3431,7 +3425,7 @@ def yield_corner_models(model1="tellurics", model2="flat", instru="ANDES", apodi
         smooth         = smooth_corner,
         smooth1d       = smooth_corner,
         color          = "gray",
-        contour_kwargs = {"colors": ["black"], "alpha": 0.85, "linewidth": 1.3},
+        contour_kwargs = {"colors": ["black"], "alpha": 0.85, "linewidths": 1.3},
         hist_kwargs    = {"color": "black", "alpha": 0.85, "linewidth": 1.3},
         label_kwargs   = {"fontsize": 16})
     
@@ -3468,7 +3462,7 @@ def yield_corner_models(model1="tellurics", model2="flat", instru="ANDES", apodi
             plot_contours  = True,
             fill_contours  = True,
             color          = color_models[im],
-            contour_kwargs = {"colors": [color_models[im]], "alpha": 0.85, "linewidth": 1.3},
+            contour_kwargs = {"colors": [color_models[im]], "alpha": 0.85, "linewidths": 1.3},
             hist_kwargs    = {"color": color_models[im], "alpha": 0.85, "linewidth": 1.3},
             smooth         = smooth_corner,
             smooth1d       = smooth_corner)
@@ -3511,7 +3505,7 @@ def yield_contrast_instru(instru="ANDES", exposure_time=6*60, thermal_model="BT-
     config_data = get_config_data(instru)
 
     # WORKING ANGLE
-    iwa, owa = get_wa(config_data=config_data)    
+    iwa, owa = get_wa(instru=instru)    
 
     # Specs of the instru
     lmin = config_data["lambda_range"]["lambda_min"]
