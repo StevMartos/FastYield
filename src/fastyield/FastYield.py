@@ -1,5 +1,5 @@
 # import FastYield modules
-from .config import T_sun, R0_max, LMIN, LMAX, bands, instrus, instrus_with_systematics, colors_instru, simulated_path, archive_path, thermal_models, reflected_models, ignore_reflected_thresh_um, SNR_thresh, planet_types, planet_types_reduced, m_u, kB, G, vesc_earth, sim_data_path
+from .config import T_sun, R0_max, LMIN, LMAX, bands, instrus, colors_instru, simulated_path, archive_path, ignore_reflected_thresh_um, SNR_thresh, planet_types, planet_types_reduced, m_u, kB, G, vesc_earth, sim_data_path
 from .get_specs import get_config_data, get_band_lims, get_wa, get_R_instru
 from .utils import faded
 from .spectrum import load_vega_spectrum, get_mag, get_spectrum_contribution_name_model, get_thermal_reflected_spectrum, get_counts_from_density, get_wave_K, get_wave_model

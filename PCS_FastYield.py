@@ -703,7 +703,8 @@ def process_SNR(idx):
     if instru_type == "IFU":
         sigma_syst_base_2 = sigma_syst_base_2[..., None] # [e-/FWHM/DIT]**2 (at sigma_m = 1)
     elif instru_type == "imager":
-        sigma_syst_base_2 = sigma_halo_2**2              # [e-/FWHM/DIT]**2 (at sigma_m = 1)
+        halo_counts_planets = sigma_halo_2                      # [e-/FWHM/DIT]
+        sigma_syst_base_2   = halo_counts_planets[..., None]**2 # [e-/FWHM/DIT]**2 (at sigma_m = 1)
     else:
         raise ValueError("instru_type must be 'IFU' or 'imager'.")
 
@@ -1131,7 +1132,7 @@ def main():
     strehl             = "Q2"                                  # Sky atmospheric condition (1st quartile, 2nd, etc.)
     SNR_thr            = 5                                     # Detection threshold
     exposure_time      = 10*60                                 # Total exposure time per planet [mn]
-    force_new_calc     = False                                 # Forcing new simulations calculations
+    force_new_calc     = True                                 # Forcing new simulations calculations
     thermal_model      = "auto"                                # Model for the thermal spectrum of the planet ("auto", "BT-Settl", "Exo-REM", "SONORA", "PICASO", "Saumon", etc.)
     reflected_model    = "auto"                                # Model for the albedo of the planet ("auto", "tellurics", "flat", "PICASO")
     instru_type        = "IFU"                              # Type of instrument ("IFU" or "imager")
@@ -1458,7 +1459,7 @@ def main():
         separation = separation0.astype(dtype, copy=False)
         N_mag_star = len(mag_star)
         N_sep      = len(separation)
-
+        
         # Temporary PSF memmaps
         PSF_profile_5D     = create_memmap_with_log(PSF_profile_5D_tmp_path,     shape=(N_l0, N_WFE, N_IWA, N_mag_star, N_sep), dtype=dtype, mode="w+")
         fraction_core_5D   = create_memmap_with_log(fraction_core_5D_tmp_path,   shape=(N_l0, N_WFE, N_IWA, N_mag_star, N_sep), dtype=dtype, mode="w+")
@@ -1575,7 +1576,7 @@ def main():
         lmax_model = min(wave_model[-1], wave_instru[-1]) # [µm] effective lmax
 
         # Tellurics transmission spectrum (from SkyCalc)
-        wave_tell, trans_tell = load_tell_trans(airmass=1.0)
+        wave_tell, trans_tell = load_tell_trans(airmass=1.2) # 1.2 to be coherent with the used background skytable
         trans_tell            = Spectrum(wavelength=wave_tell, flux=trans_tell).interpolate_wavelength(wave_output=wave_instru, renorm=False, fill_value=(trans_tell[0], trans_tell[-1]))
 
         # Telescope transmission spectrum
