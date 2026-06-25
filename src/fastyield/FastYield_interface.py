@@ -20,9 +20,8 @@ import numpy as np
 
 # import other modules
 from functools import lru_cache
-
-# import other modules
-import sys
+from pathlib import Path
+from PIL import Image, ImageTk
 import tkinter as tk
 from tkinter import ttk, DoubleVar, StringVar, Label, Button, Entry, CENTER
 from matplotlib.colors import Normalize
@@ -32,15 +31,41 @@ from timezonefinder import TimezoneFinder
 from datetime import datetime
 import pytz
 
-main_color      = "#FF7F11" # dark orange
-secondary_color = "#1C1C1E" # black
+
+main_color      = "#6F8FAF"  # steel blue
+secondary_color = "#111827"  # dark slate
+panel_color     = "#E2E6EA"  # cool light grey
+entry_color     = "#F5F7FA"  # cool off-white
+sedgecolors     = secondary_color
+logo_path       = Path(__file__).resolve().parent / "FastYield_logo.png"
+logo_height     = 72
+
+
 
 # Scatter parameters
 s0          = 100
 ds          = 3*s0
-sedgecolors = "#1C1C1E" # black
 slinewidths = 0.6
 salpha      = 0.95
+
+
+
+def load_logo_image(path, height=80, bg_threshold=40):
+    logo = Image.open(path).convert("RGBA")
+    arr  = np.array(logo)
+    mask = np.any(arr[..., :3] > bg_threshold, axis=-1)
+    if np.any(mask):
+        y, x        = np.where(mask)
+        logo        = logo.crop((x.min(), y.min(), x.max() + 1, y.max() + 1))
+        arr         = np.array(logo)
+        mask        = np.any(arr[..., :3] > bg_threshold, axis=-1)
+        arr[..., 3] = np.where(mask, arr[..., 3], 0).astype(np.uint8)
+        logo        = Image.fromarray(arr)
+    width = int(logo.width * height / logo.height)
+    logo  = logo.resize((width, height), Image.LANCZOS)
+    return ImageTk.PhotoImage(logo)
+
+
 
 class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_integration_ihm.wp
 
@@ -60,7 +85,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         self.spectrum_contributions = "thermal+reflected"
         self.band                   = "INSTRU"
         self.only_visible_targets   = False
-        self.systematics             = False
+        self.systematics            = False
         self.PCA                    = False
         self.planet_table           = None
         self.calculation            = None
@@ -83,33 +108,49 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
             # Configurer la fenêtre pour qu'elle utilise toute la taille de l'écran
             self.geometry(f"{screen_width}x{screen_height}+0+0")
         self.configure(bg=secondary_color)   
+
+        style = ttk.Style(self)
+        try:
+            style.theme_use("clam")
+        except tk.TclError:
+            pass
+        style.configure("TCombobox", fieldbackground=entry_color, background=panel_color, foreground=secondary_color, arrowcolor=secondary_color)
+        style.map("TCombobox", fieldbackground=[("readonly", entry_color)], selectbackground=[("readonly", entry_color)], selectforeground=[("readonly", secondary_color)])
+        style.configure("TEntry", fieldbackground=entry_color, foreground=secondary_color)
         
-        Label(self, text="FastYield", font='Magneto 30 bold', bg=secondary_color, fg=main_color).pack()
+        # try:
+        #     self.logo_photo = load_logo_image(logo_path, height=logo_height)
+        #     Label(self, image=self.logo_photo, bg=secondary_color).pack(pady=(4, 6))
+        # except Exception:
+        #     Label(self, text="FastYield", font='Magneto 30 bold', bg=secondary_color, fg=main_color).pack()
+        
+        self.logo_photo = load_logo_image(logo_path, height=logo_height)
+        Label(self, image=self.logo_photo, bg=secondary_color).pack(pady=(4, 6))
         
         # CHOIX DE LA TABLE
-        self.button_table    = tk.Frame(self) ; self.button_table.pack(side=tk.TOP, fill=tk.X)
+        self.button_table    = tk.Frame(self, bg=secondary_color) ; self.button_table.pack(side=tk.TOP, fill=tk.X)
         self.__btn_archive   = tk.Button(self.button_table, text="ARCHIVE TABLE", command=self.btn_archive_clicked, bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_archive.grid(row=0, column=0, sticky="nsew") ; self.button_table.grid_columnconfigure(0, weight=1)
         self.__btn_simulated = tk.Button(self.button_table, text="SIMULATED TABLE", command=self.btn_simulated_clicked, bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_simulated.grid(row=0, column=1, sticky="nsew") ; self.button_table.grid_columnconfigure(1, weight=1)
 
         # CHOIX DE L'INSTRUMENT 
-        self.button_instru   = tk.Frame(self) ; self.button_instru.pack(side=tk.TOP, fill=tk.X)
-        self.__btn_harmoni   = tk.Button(self.button_instru, text="ELT/HARMONI", command=self.btn_harmoni_clicked, bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_harmoni.grid(row=0, column=0, sticky="nsew") ; self.button_instru.grid_columnconfigure(0, weight=1)
-        self.__btn_andes     = tk.Button(self.button_instru, text="ELT/ANDES", command=self.btn_andes_clicked, bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_andes.grid(row=0, column=1, sticky="nsew") ; self.button_instru.grid_columnconfigure(1, weight=1)
-        self.__btn_eris      = tk.Button(self.button_instru, text="VLT/ERIS", command=self.btn_eris_clicked, bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_eris.grid(row=0, column=2, sticky="nsew") ; self.button_instru.grid_columnconfigure(2, weight=1)
-        self.__btn_hirise    = tk.Button(self.button_instru, text="VLT/HiRISE", command=self.btn_hirise_clicked, bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_hirise.grid(row=0, column=3, sticky="nsew") ; self.button_instru.grid_columnconfigure(3, weight=1)
-        self.__btn_mirimrs   = tk.Button(self.button_instru, text="JWST/MIRI/MRS", command=self.btn_mirimrs_clicked, bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_mirimrs.grid(row=0, column=4, sticky="nsew") ; self.button_instru.grid_columnconfigure(4, weight=1)
-        self.__btn_nirspec   = tk.Button(self.button_instru, text="JWST/NIRSpec/IFU", command=self.btn_nirspec_clicked, bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_nirspec.grid(row=0, column=5, sticky="nsew") ; self.button_instru.grid_columnconfigure(5, weight=1)
-        self.__btn_nircam    = tk.Button(self.button_instru, text="JWST/NIRCam", command=self.btn_nircam_clicked, bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_nircam.grid(row=0, column=6, sticky="nsew") ; self.button_instru.grid_columnconfigure(6, weight=1)
-        self.__btn_vipapyrus = tk.Button(self.button_instru, text="OHP/VIPAPYRUS", command=self.btn_vipapyrus_clicked, bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_vipapyrus.grid(row=0, column=7, sticky="nsew") ; self.button_instru.grid_columnconfigure(7, weight=1)
+        self.button_instru   = tk.Frame(self, bg=secondary_color) ; self.button_instru.pack(side=tk.TOP, fill=tk.X)
+        self.__btn_harmoni   = tk.Button(self.button_instru, text="ELT/HARMONI",      command=self.btn_harmoni_clicked,   bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_harmoni.grid(row=0,   column=0, sticky="nsew") ; self.button_instru.grid_columnconfigure(0, weight=1)
+        self.__btn_andes     = tk.Button(self.button_instru, text="ELT/ANDES",        command=self.btn_andes_clicked,     bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_andes.grid(row=0,     column=1, sticky="nsew") ; self.button_instru.grid_columnconfigure(1, weight=1)
+        self.__btn_eris      = tk.Button(self.button_instru, text="VLT/ERIS",         command=self.btn_eris_clicked,      bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_eris.grid(row=0,      column=2, sticky="nsew") ; self.button_instru.grid_columnconfigure(2, weight=1)
+        self.__btn_hirise    = tk.Button(self.button_instru, text="VLT/HiRISE",       command=self.btn_hirise_clicked,    bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_hirise.grid(row=0,    column=3, sticky="nsew") ; self.button_instru.grid_columnconfigure(3, weight=1)
+        self.__btn_mirimrs   = tk.Button(self.button_instru, text="JWST/MIRI/MRS",    command=self.btn_mirimrs_clicked,   bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_mirimrs.grid(row=0,   column=4, sticky="nsew") ; self.button_instru.grid_columnconfigure(4, weight=1)
+        self.__btn_nirspec   = tk.Button(self.button_instru, text="JWST/NIRSpec/IFU", command=self.btn_nirspec_clicked,   bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_nirspec.grid(row=0,   column=5, sticky="nsew") ; self.button_instru.grid_columnconfigure(5, weight=1)
+        self.__btn_nircam    = tk.Button(self.button_instru, text="JWST/NIRCam",      command=self.btn_nircam_clicked,    bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_nircam.grid(row=0,    column=6, sticky="nsew") ; self.button_instru.grid_columnconfigure(6, weight=1)
+        self.__btn_vipapyrus = tk.Button(self.button_instru, text="OHP/VIPAPYRUS",    command=self.btn_vipapyrus_clicked, bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_vipapyrus.grid(row=0, column=7, sticky="nsew") ; self.button_instru.grid_columnconfigure(7, weight=1)
 
         # CHOIX DES UNITES + texp  + name
-        self.button_units_texp_name = tk.Frame(self) ; self.button_units_texp_name.pack(side=tk.TOP, fill=tk.X)
+        self.button_units_texp_name = tk.Frame(self, bg=secondary_color) ; self.button_units_texp_name.pack(side=tk.TOP, fill=tk.X)
         self.__btn_physic           = tk.Button(self.button_units_texp_name, text="Physical units", command=self.btn_physical_clicked, bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_physic.grid(row=0, column=0, sticky="nsew") ; self.button_units_texp_name.grid_columnconfigure(0, weight=1)
         self.__btn_contrast         = tk.Button(self.button_units_texp_name, text="Observational units", command=self.btn_observational_clicked, bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_contrast.grid(row=0, column=3, sticky="nsew") ; self.button_units_texp_name.grid_columnconfigure(3, weight=1)
-        self.button_texp     = tk.LabelFrame(self.button_units_texp_name) ; self.button_texp.grid(row=0, column=1, sticky="nsew") ; self.button_texp.grid_columnconfigure(1, weight=1)
-        self.__btn_exp       = Label(self.button_texp, text = "Exposure time (in mn):", fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_exp.grid(column=0, row=0)
+        self.button_texp     = tk.LabelFrame(self.button_units_texp_name, bg=panel_color) ; self.button_texp.grid(row=0, column=1, sticky="nsew") ; self.button_texp.grid_columnconfigure(1, weight=1)
+        self.__btn_exp       = Label(self.button_texp, text = "Exposure time (in mn):", bg=panel_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_exp.grid(column=0, row=0)
         self.__btn_exp       = Button(self.button_texp, text = "Enter", width=10, height=1, command=self.draw_table_plot, bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_exp.grid(column=2, row=0) 
-        self.__btn_exp_entry = Entry(self.button_texp, width=10, textvariable=self.exposure_time, justify=CENTER, font=('Arial', 12, 'bold')) ; self.__btn_exp_entry.grid(column=1, row=0)
+        self.__btn_exp_entry = Entry(self.button_texp, width=10, textvariable=self.exposure_time, justify=CENTER, bg=entry_color, fg=secondary_color, insertbackground=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_exp_entry.grid(column=1, row=0)
         self.__btn_exp_entry.bind("<Return>", lambda _: self.draw_table_plot())
         
         # On instancie le Canvas MPL.
@@ -135,8 +176,8 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         self.planet_table = load_planet_table_cached("Archive_Pull_For_FastYield.ecsv")
         
         # Entrée du nom de la planète
-        self.button_name      = tk.LabelFrame(self.button_units_texp_name) ; self.button_name.grid(row=0, column=2, sticky="nsew") ; self.button_name.grid_columnconfigure(2, weight=1)
-        self.__btn_name       = Label(self.button_name, text = "Planet name:", fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_name.grid(column=0, row=0)
+        self.button_name      = tk.LabelFrame(self.button_units_texp_name, bg=panel_color) ; self.button_name.grid(row=0, column=2, sticky="nsew") ; self.button_name.grid_columnconfigure(2, weight=1)
+        self.__btn_name       = Label(self.button_name, text = "Planet name:", bg=panel_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_name.grid(column=0, row=0)
         self.__btn_name       = Button(self.button_name, text = "Enter", width=10, height=1, command=self.enter_planet_name, bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_name.grid(column=2, row=0) 
         self.__btn_name_entry = AutocompleteEntry(self.button_name, width=20, font=('Arial', 12, 'bold'), completevalues=list(self.planet_table["PlanetName"]), textvariable=self.planet_name, justify=CENTER) ; self.__btn_name_entry.grid(column=1, row=0)
         self.__btn_name_entry.bind("<Return>", lambda _: self.enter_planet_name())
@@ -216,7 +257,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         self.btn_instru_clicked()
     
     def create_button_systematics(self):
-        self.button_systematics = tk.Frame(self) ; self.button_systematics.pack(side=tk.TOP, fill=tk.X)
+        self.button_systematics = tk.Frame(self, bg=secondary_color) ; self.button_systematics.pack(side=tk.TOP, fill=tk.X)
         self.__btn = tk.Button(self.button_systematics, text="Without systematics", command=self.btn_no_systematics_clicked, bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn.grid(row=0, column=0, sticky="nsew") ; self.button_systematics.grid_columnconfigure(0, weight=1)
         self.__btn = tk.Button(self.button_systematics, text="With systematics", command=self.btn_systematics_clicked, bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn.grid(row=0, column=1, sticky="nsew") ; self.button_systematics.grid_columnconfigure(1, weight=1)
         self.__btn = tk.Button(self.button_systematics, text="With systematics + PCA", command=self.btn_systematics_PCA_clicked, bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn.grid(row=0, column=2, sticky="nsew") ; self.button_systematics.grid_columnconfigure(2, weight=1)
@@ -234,12 +275,12 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         self.draw_table_plot()
         
     def create_button_band(self):
-        self.button_band = tk.Frame(self) ; self.button_band.pack(side=tk.TOP, fill=tk.X)
+        self.button_band = tk.Frame(self, bg=secondary_color) ; self.button_band.pack(side=tk.TOP, fill=tk.X)
         list_bands = ["INSTRU"]
         for name_band in self.config_data['gratings']:
             list_bands.append(name_band)
-        self.button_bands = tk.LabelFrame(self.button_band) ; self.button_bands.grid(row=0, column=0, sticky="nsew") ; self.button_band.grid_columnconfigure(0, weight=1)
-        self.__txt_bands  = Label(self.button_bands, text = "Bandwidth: ", fg=secondary_color, font=('Arial', 14, 'bold')) ; self.__txt_bands.grid(column=0, row=0) ; self.button_bands.grid_columnconfigure(0, weight=1)
+        self.button_bands = tk.LabelFrame(self.button_band, bg=panel_color) ; self.button_bands.grid(row=0, column=0, sticky="nsew") ; self.button_band.grid_columnconfigure(0, weight=1)
+        self.__txt_bands  = Label(self.button_bands, text = "Bandwidth: ", bg=panel_color, fg=secondary_color, font=('Arial', 14, 'bold')) ; self.__txt_bands.grid(column=0, row=0) ; self.button_bands.grid_columnconfigure(0, weight=1)
         self.__list_bands = ttk.Combobox(self.button_bands, state='readonly', font=('Arial', 14, 'bold'), justify='center') ; self.__list_bands.grid(column=1, row=0) ; self.button_bands.grid_columnconfigure(1, weight=1)
         popdown = self.__list_bands.tk.eval('ttk::combobox::PopdownWindow %s' % self.__list_bands)
         self.__list_bands.tk.call('%s.f.l' % popdown, 'configure', '-font', self.__list_bands['font'])
@@ -248,8 +289,8 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         self.__list_bands.bind("<<ComboboxSelected>>", lambda _: self.band_clicked())
         list_apodizers = [apodizer for apodizer in self.config_data["apodizers"]]
         list_apodizers = ["None" if elem == "NO_SP" else elem for elem in list_apodizers]
-        self.button_apodizers = tk.LabelFrame(self.button_band) ; self.button_apodizers.grid(row=0, column=1, sticky="nsew") ; self.button_band.grid_columnconfigure(1, weight=1)
-        self.__txt_apodizers  = Label(self.button_apodizers, text = "Apodizer: ", fg=secondary_color, font=('Arial', 14, 'bold')) ; self.__txt_apodizers.grid(column=0, row=0) ; self.button_apodizers.grid_columnconfigure(0, weight=1)
+        self.button_apodizers = tk.LabelFrame(self.button_band, bg=panel_color) ; self.button_apodizers.grid(row=0, column=1, sticky="nsew") ; self.button_band.grid_columnconfigure(1, weight=1)
+        self.__txt_apodizers  = Label(self.button_apodizers, text = "Apodizer: ", bg=panel_color, fg=secondary_color, font=('Arial', 14, 'bold')) ; self.__txt_apodizers.grid(column=0, row=0) ; self.button_apodizers.grid_columnconfigure(0, weight=1)
         self.__list_apodizers = ttk.Combobox(self.button_apodizers, state='readonly', font=('Arial', 14, 'bold'), justify='center') ; self.__list_apodizers.grid(column=1, row=0) ; self.button_apodizers.grid_columnconfigure(1, weight=1)
         popdown = self.__list_apodizers.tk.eval('ttk::combobox::PopdownWindow %s' % self.__list_apodizers)
         self.__list_apodizers.tk.call('%s.f.l' % popdown, 'configure', '-font', self.__list_apodizers['font'])
@@ -258,8 +299,8 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         self.__list_apodizers.bind("<<ComboboxSelected>>", lambda _: self.apodizer_clicked())
         list_strehls_raw = [strehl for strehl in self.config_data["strehls"]]
         list_strehls     = ["None" if elem == "NO_JQ" else elem for elem in list_strehls_raw]
-        self.button_strehls = tk.LabelFrame(self.button_band) ; self.button_strehls.grid(row=0, column=2, sticky="nsew") ; self.button_band.grid_columnconfigure(2, weight=1)
-        self.__txt_strehls  = Label(self.button_strehls, text = "Strehl: ", fg=secondary_color, font=('Arial', 14, 'bold')) ; self.__txt_strehls.grid(column=0, row=0) ; self.button_strehls.grid_columnconfigure(0, weight=1)
+        self.button_strehls = tk.LabelFrame(self.button_band, bg=panel_color) ; self.button_strehls.grid(row=0, column=2, sticky="nsew") ; self.button_band.grid_columnconfigure(2, weight=1)
+        self.__txt_strehls  = Label(self.button_strehls, text = "Strehl: ", bg=panel_color, fg=secondary_color, font=('Arial', 14, 'bold')) ; self.__txt_strehls.grid(column=0, row=0) ; self.button_strehls.grid_columnconfigure(0, weight=1)
         self.__list_strehls = ttk.Combobox(self.button_strehls, state='readonly', font=('Arial', 14, 'bold'), justify='center') ; self.__list_strehls.grid(column=1, row=0) ; self.button_strehls.grid_columnconfigure(1, weight=1)
         popdown = self.__list_strehls.tk.eval('ttk::combobox::PopdownWindow %s' % self.__list_strehls)
         self.__list_strehls.tk.call('%s.f.l' % popdown, 'configure', '-font', self.__list_strehls['font'])
@@ -268,8 +309,8 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         self.__list_strehls.bind("<<ComboboxSelected>>", lambda _: self.strehl_clicked())
         list_coronagraphs_raw = [coronagraph for coronagraph in self.config_data["coronagraphs"]]
         list_coronagraphs     = ["None" if elem == None else elem for elem in list_coronagraphs_raw]
-        self.button_coronagraphs = tk.LabelFrame(self.button_band) ; self.button_coronagraphs.grid(row=0, column=2, sticky="nsew") ; self.button_band.grid_columnconfigure(2, weight=1)
-        self.__txt_coronagraphs  = Label(self.button_coronagraphs, text = "coronagraph: ", fg=secondary_color, font=('Arial', 14, 'bold')) ; self.__txt_coronagraphs.grid(column=0, row=0) ; self.button_coronagraphs.grid_columnconfigure(0, weight=1)
+        self.button_coronagraphs = tk.LabelFrame(self.button_band, bg=panel_color) ; self.button_coronagraphs.grid(row=0, column=2, sticky="nsew") ; self.button_band.grid_columnconfigure(2, weight=1)
+        self.__txt_coronagraphs  = Label(self.button_coronagraphs, text = "coronagraph: ", bg=panel_color, fg=secondary_color, font=('Arial', 14, 'bold')) ; self.__txt_coronagraphs.grid(column=0, row=0) ; self.button_coronagraphs.grid_columnconfigure(0, weight=1)
         self.__list_coronagraphs = ttk.Combobox(self.button_coronagraphs, state='readonly', font=('Arial', 14, 'bold'), justify='center') ; self.__list_coronagraphs.grid(column=1, row=0) ; self.button_coronagraphs.grid_columnconfigure(1, weight=1)
         popdown = self.__list_coronagraphs.tk.eval('ttk::combobox::PopdownWindow %s' % self.__list_coronagraphs)
         self.__list_coronagraphs.tk.call('%s.f.l' % popdown, 'configure', '-font', self.__list_coronagraphs['font'])
@@ -293,16 +334,16 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         
     
     def create_button_calculation(self):
-        self.button_calculation             = tk.Frame(self) ; self.button_calculation.pack(side=tk.TOP, fill=tk.X)
+        self.button_calculation             = tk.Frame(self, bg=secondary_color) ; self.button_calculation.pack(side=tk.TOP, fill=tk.X)
         self.SNR_calculation_button         = Button(self.button_calculation, text="S/N curves", command=lambda *args:self.SNR_calculation(), bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.SNR_calculation_button.grid(row=0, column=0, sticky="nsew")  ; self.button_calculation.grid_columnconfigure(0, weight=1)
         self.contrast_calculation_button    = Button(self.button_calculation, text="Contrast curves", command=lambda *args:self.contrast_calculation(), bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.contrast_calculation_button.grid(row=0, column=1, sticky="nsew")  ; self.button_calculation.grid_columnconfigure(1, weight=1)
         self.corner_plot_calculation_button = Button(self.button_calculation, text="Corner plot", command=lambda *args:self.corner_plot_calculation(), bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.corner_plot_calculation_button.grid(row=0, column=2, sticky="nsew")  ; self.button_calculation.grid_columnconfigure(2, weight=1)
 
 
     def create_button_model(self):
-        self.button_model         = tk.Frame(self) ; self.button_model.pack(side=tk.TOP, fill=tk.X)
-        self.button_thermal_model = tk.LabelFrame(self.button_model) ; self.button_thermal_model.grid(row=0, column=0, sticky="nsew") ; self.button_model.grid_columnconfigure(0, weight=1)
-        self.__txt_thermal_model  = Label(self.button_thermal_model, text = "Thermal contribution: ", fg=secondary_color, font=('Arial', 14, 'bold')) ; self.__txt_thermal_model.grid(column=0, row=0) ; self.button_thermal_model.grid_columnconfigure(0, weight=1)
+        self.button_model         = tk.Frame(self, bg=secondary_color) ; self.button_model.pack(side=tk.TOP, fill=tk.X)
+        self.button_thermal_model = tk.LabelFrame(self.button_model, bg=panel_color) ; self.button_thermal_model.grid(row=0, column=0, sticky="nsew") ; self.button_model.grid_columnconfigure(0, weight=1)
+        self.__txt_thermal_model  = Label(self.button_thermal_model, text = "Thermal contribution: ", bg=panel_color, fg=secondary_color, font=('Arial', 14, 'bold')) ; self.__txt_thermal_model.grid(column=0, row=0) ; self.button_thermal_model.grid_columnconfigure(0, weight=1)
         self.__list_thermal_model = ttk.Combobox(self.button_thermal_model, state='readonly', font=('Arial', 14, 'bold'), justify='center') ; self.__list_thermal_model.grid(column=1, row=0) ; self.button_thermal_model.grid_columnconfigure(1, weight=1)
         popdown = self.__list_thermal_model.tk.eval('ttk::combobox::PopdownWindow %s' % self.__list_thermal_model)
         self.__list_thermal_model.tk.call('%s.f.l' % popdown, 'configure', '-font', self.__list_thermal_model['font'])
@@ -312,8 +353,8 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
             self.__list_thermal_model['values'] = ("Off", "On")
         self.__list_thermal_model.current(1) #index de l'élément sélectionné
         self.__list_thermal_model.bind("<<ComboboxSelected>>", lambda _: self.contribution_clicked())
-        self.button_reflected_model = tk.LabelFrame(self.button_model) ; self.button_reflected_model.grid(row=0, column=1, sticky="nsew") ; self.button_model.grid_columnconfigure(1, weight=1)
-        self.__txt_reflected_model  = Label(self.button_reflected_model, text = "Reflected contribution: ", fg=secondary_color, font=('Arial', 14, 'bold')) ; self.__txt_reflected_model.grid(column=0, row=0) ; self.button_reflected_model.grid_columnconfigure(0, weight=1)
+        self.button_reflected_model = tk.LabelFrame(self.button_model, bg=panel_color) ; self.button_reflected_model.grid(row=0, column=1, sticky="nsew") ; self.button_model.grid_columnconfigure(1, weight=1)
+        self.__txt_reflected_model  = Label(self.button_reflected_model, text = "Reflected contribution: ", bg=panel_color, fg=secondary_color, font=('Arial', 14, 'bold')) ; self.__txt_reflected_model.grid(column=0, row=0) ; self.button_reflected_model.grid_columnconfigure(0, weight=1)
         self.__list_reflected_model = ttk.Combobox(self.button_reflected_model, state='readonly', font=('Arial', 14, 'bold'), justify='center') ; self.__list_reflected_model.grid(column=1, row=0) ; self.button_reflected_model.grid_columnconfigure(1, weight=1)
         popdown = self.__list_reflected_model.tk.eval('ttk::combobox::PopdownWindow %s' % self.__list_reflected_model)
         self.__list_reflected_model.tk.call('%s.f.l' % popdown, 'configure', '-font', self.__list_reflected_model['font'])
@@ -332,18 +373,18 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         
     def create_button_visisble_targets(self):
         # CHOIX DES UNITES + texp
-        self.button_visible_targets = tk.Frame(self) ; self.button_visible_targets.pack(side=tk.TOP, fill=tk.X)
+        self.button_visible_targets = tk.Frame(self, bg=secondary_color) ; self.button_visible_targets.pack(side=tk.TOP, fill=tk.X)
         self.__btn_all_targets      = tk.Button(self.button_visible_targets, text="All targets", command=self.btn_all_targets_clicked, bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_all_targets.grid(row=0, column=0, sticky="nsew") ; self.button_visible_targets.grid_columnconfigure(0, weight=1)
         self.__btn_visible_targets  = tk.Button(self.button_visible_targets, text="Only visible targets from the observation site", command=self.btn_visible_targets_clicked, bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_visible_targets.grid(row=0, column=1, sticky="nsew") ; self.button_visible_targets.grid_columnconfigure(1, weight=1)
-        self.button_elevation_min      = tk.LabelFrame(self.button_visible_targets) ; self.button_elevation_min.grid(row=0, column=2, sticky="nsew") ; self.button_elevation_min.grid_columnconfigure(2, weight=1)
-        self.__txt_elevation_min       = Label(self.button_elevation_min, text = "Min elevation (in °): ", fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__txt_elevation_min.grid(column=0, row=0)
+        self.button_elevation_min      = tk.LabelFrame(self.button_visible_targets, bg=panel_color) ; self.button_elevation_min.grid(row=0, column=2, sticky="nsew") ; self.button_elevation_min.grid_columnconfigure(2, weight=1)
+        self.__txt_elevation_min       = Label(self.button_elevation_min, text = "Min elevation (in °): ", bg=panel_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__txt_elevation_min.grid(column=0, row=0)
         self.__btn_elevation_min       = Button(self.button_elevation_min, text = "Enter", width=10, height=1, command=self.btn_visible_targets_clicked, bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_elevation_min.grid(column=2, row=0) 
-        self.__btn_entry_elevation_min = Entry(self.button_elevation_min, width=10, textvariable=self.min_elevation, justify=CENTER, font=('Arial', 12, 'bold')) ; self.__btn_entry_elevation_min.grid(column=1, row=0) 
+        self.__btn_entry_elevation_min = Entry(self.button_elevation_min, width=10, textvariable=self.min_elevation, justify=CENTER, bg=entry_color, fg=secondary_color, insertbackground=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_entry_elevation_min.grid(column=1, row=0) 
         self.__btn_entry_elevation_min.bind("<Return>", lambda _: self.btn_visible_targets_clicked())
-        self.button_visibility_curve      = tk.LabelFrame(self.button_visible_targets) ; self.button_visibility_curve.grid(row=0, column=3, sticky="nsew") ; self.button_visibility_curve.grid_columnconfigure(3, weight=1)
-        self.__txt_visibility_curve       = Label(self.button_visibility_curve, text = "Visibility on (dd/mm/yyyy): ", fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__txt_visibility_curve.grid(column=0, row=0)
+        self.button_visibility_curve      = tk.LabelFrame(self.button_visible_targets, bg=panel_color) ; self.button_visibility_curve.grid(row=0, column=3, sticky="nsew") ; self.button_visibility_curve.grid_columnconfigure(3, weight=1)
+        self.__txt_visibility_curve       = Label(self.button_visibility_curve, text = "Visibility on (dd/mm/yyyy): ", bg=panel_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__txt_visibility_curve.grid(column=0, row=0)
         self.__btn_visibility             = Button(self.button_visibility_curve, text = "Enter", width=10, height=1, command=self.btn_visibility, bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_visibility.grid(column=3, row=0) 
-        self.__btn_entry_visibility_curve = Entry(self.button_visibility_curve, width=10, textvariable=self.date_obs, justify=CENTER, font=('Arial', 12, 'bold')) ; self.__btn_entry_visibility_curve.grid(column=1, row=0) 
+        self.__btn_entry_visibility_curve = Entry(self.button_visibility_curve, width=10, textvariable=self.date_obs, justify=CENTER, bg=entry_color, fg=secondary_color, insertbackground=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_entry_visibility_curve.grid(column=1, row=0) 
         self.__btn_entry_visibility_curve.bind("<Return>", lambda _: self.btn_visibility())
 
     def btn_all_targets_clicked(self):
@@ -577,9 +618,9 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         column_headers1 = data1.pop(0)
         row_headers1    = [row.pop(0) for row in data1]
         cell_text1      = [row for row in data1]
-        row_colors1 = plt.cm.Oranges(np.full(len(row_headers1),    0.4))
-        col_colors1 = plt.cm.Oranges(np.full(len(column_headers1), 0.4))
-        table1      = self.__plt2.table(cellText=cell_text1, rowLabels=row_headers1, rowColours=row_colors1, rowLoc='center', colColours=col_colors1, colLabels=column_headers1, loc='center', bbox = [0.12, 0., 0.89, 0.4])
+        row_colors1     = [main_color] * len(row_headers1)
+        col_colors1     = [main_color] * len(column_headers1)
+        table1          = self.__plt2.table(cellText=cell_text1, rowLabels=row_headers1, rowColours=row_colors1, rowLoc='center', colColours=col_colors1, colLabels=column_headers1, loc='center', bbox=[0.12, 0., 0.89, 0.4])
         table1.set_fontsize(16) 
         cells1 = table1.properties()["celld"]
         for (i, j), cell in cells1.items():
@@ -596,9 +637,9 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
                     [ 'Inclination', f"{round(self.planet['Inc'].value)} °"], 
                     [ 'Distance', f"{round(self.planet['Distance'].value, 1)} {self.planet['Distance'].unit}"]]
         row_headers2 = [row.pop(0) for row in data2]
-        cell_text2 = [row for row in data2]
-        row_colors2 = plt.cm.Oranges(np.full(len(row_headers2), 0.4))
-        table2 = self.__plt2.table(cellText=cell_text2, rowLabels=row_headers2, rowColours=row_colors2, rowLoc='center', loc='center', bbox = [0.49, 0.47, 0.52, 0.45])
+        cell_text2   = [row for row in data2]
+        row_colors2  = [main_color] * len(row_headers2)
+        table2       = self.__plt2.table(cellText=cell_text2, rowLabels=row_headers2, rowColours=row_colors2, rowLoc='center', loc='center', bbox=[0.49, 0.47, 0.52, 0.45])
         table2.set_fontsize(16) 
         cells2 = table2.properties()["celld"]
         for (i, j), cell in cells2.items():
@@ -700,24 +741,3 @@ def load_planet_table_cached(filename: str):
 def FastYield_interface():
     app = MyWindow()
     app.mainloop()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
