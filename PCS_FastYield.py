@@ -1461,7 +1461,7 @@ def main():
         separation = separation0.astype(dtype, copy=False)
         N_mag_star = len(mag_star)
         N_sep      = len(separation)
-        
+
         # Temporary PSF memmaps
         PSF_profile_5D     = create_memmap_with_log(PSF_profile_5D_tmp_path,     shape=(N_l0, N_WFE, N_IWA, N_mag_star, N_sep), dtype=dtype, mode="w+")
         fraction_core_5D   = create_memmap_with_log(fraction_core_5D_tmp_path,   shape=(N_l0, N_WFE, N_IWA, N_mag_star, N_sep), dtype=dtype, mode="w+")
@@ -1917,7 +1917,8 @@ def main():
     fig.savefig(sim_dir / f"ELT_{instru}_{instru_type}_{post_processing}_corner_plot_{table_type}_{light_regime}_Pdet.png", bbox_inches="tight", dpi=dpi)
     plt.show()
 
-    #%% test plot
+    #%%
+    # DETECTED POPULATION PLOT
     AngSep = planet_table['AngSep']
     Imag   = planet_table['PlanetImag(thermal+reflected)']
     Imag_star = planet_table['StarImag']
@@ -1931,7 +1932,7 @@ def main():
     # For IFU (8D):    (R, l0, Nl, trans_instru, sigma_m, FoV)
     # For Imager (7D): (   l0, Dl, trans_instru, sigma_m, FoV)
 
-    print(100*'-')
+    print('-------------------------------------------------------------')
     print('Detected planet population for:')
     if instru_type == 'IFU':
         imax_R, imax_l0, imax_Nl, imax_trans_instru, imax_sigma_m, imax_FoV = np.unravel_index(np.argmax(Pdet), Pdet.shape)
@@ -1953,6 +1954,7 @@ def main():
         print(f'D_lambda     : {Dl[imax_Dl]}')
         print(f'trans_instru : {trans_instru[imax_trans_instru]}')
         print(f'sigma_m      : {sigma_m[imax_sigma_m]}')
+    print('-------------------------------------------------------------')
 
     fig = plt.figure('Detected planet population', figsize=(11, 9))
     fig.clf()
@@ -1971,9 +1973,8 @@ def main():
     ax = fig.add_subplot(gs[1])
     cbar = plt.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap), cax=ax)
     cbar.set_label("Star Teff [K]")
-    plt.savefig('detected_planet_population.png')
+    # plt.savefig('detected_planet_population.png')
     plt.show()
-    #%%
 
     # %%
     # 1D MARGINALIZED DETECTION PROBABILITY GAIN PER PARAM, TYPE AND REGIME
