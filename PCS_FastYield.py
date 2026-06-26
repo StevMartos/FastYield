@@ -60,6 +60,54 @@ dpi = 72
 # -------------------------------------------------------------
 
 # --- General helpers ---
+def interp_flat_last_axis(x, y, x0, dtype=None):
+    """
+    Fast linear interpolation along the last axis, with flat extrapolation.
+    This is optimized for quantities sampled as (..., Nx), for example
+    PSF_profile_5D[..., separation].
+    """
+    x0  = np.clip(x0, x[0], x[-1])
+    i1  = int(np.searchsorted(x, x0, side="right"))
+    i1  = int(np.clip(i1, 1, x.size - 1))
+    i0  = i1 - 1
+    w   = (x0 - x[i0]) / (x[i1] - x[i0])
+    out = (1.0 - w) * y[..., i0] + w * y[..., i1]
+    return out.astype(dtype, copy=False) if dtype is not None else out
+
+def interp_mag_l0_flat_4d(mag_grid, y_4d, mag_l0, dtype=None):
+    """
+    Fast linear interpolation along the stellar-magnitude axis for PCS PSF data.
+
+    Parameters
+    ----------
+    mag_grid : ndarray, shape (Nmag,)
+        Stellar magnitude grid.
+    y_4d : ndarray, shape (N_l0, N_WFE, N_IWA, Nmag)
+        Quantity sampled on the stellar-magnitude grid.
+    mag_l0 : ndarray, shape (N_l0,)
+        Stellar magnitude evaluated independently at each l0.
+    dtype : dtype or None
+        Optional output dtype.
+
+    Returns
+    -------
+    out : ndarray, shape (N_l0, N_WFE, N_IWA)
+        Interpolated quantity.
+    """
+    finite = np.isfinite(mag_l0)
+    x0     = np.clip(np.where(finite, mag_l0, mag_grid[0]), mag_grid[0], mag_grid[-1])
+    i1     = np.searchsorted(mag_grid, x0, side="right")
+    i1     = np.clip(i1, 1, mag_grid.size - 1)
+    i0     = i1 - 1
+    w      = (x0 - mag_grid[i0]) / (mag_grid[i1] - mag_grid[i0])
+    j      = np.arange(y_4d.shape[0])
+    v0     = y_4d[j, :, :, i0]
+    v1     = y_4d[j, :, :, i1]
+    out    = (1.0 - w[:, None, None]) * v0 + w[:, None, None] * v1
+    if np.any(~finite):
+        out[~finite] = np.nan
+    return out.astype(dtype, copy=False) if dtype is not None else out
+
 def normalize_template_or_none(template):
     """
     Normalize a matched-filter template.
@@ -216,8 +264,6 @@ def process_IFU(idx):
     planet                = planet_table[idx]
     separation_planet     = float(planet["AngSep"].value)           # [mas]
     separation_planet_rad = separation_planet / (rad2arcsec * 1000) # [rad]
-    idx_planet_sep        = np.abs(separation - separation_planet).argmin()
-
 
     # --- Computing the planet and star models for this planet row in [J/s/m²/µm] ---
     planet_spectrum, _, _, star_spectrum = get_thermal_reflected_spectrum(planet=planet, thermal_model=thermal_model, reflected_model=reflected_model, instru=None, wave_model=wave_model, wave_K=wave_K, counts_vega_K=counts_vega_K, show=False, in_planet_mag=True, interpolated_spectrum=True)
@@ -227,21 +273,25 @@ def process_IFU(idx):
 
 
     # --- Computing mag_star_1D for each l0 ---
-    star_flux_1D    = star_spectrum.interpolate_wavelength(l0, renorm=False).flux     # (l0) [J/s/m2/µm]
-    mag_star_1D     = -2.5 * np.log10(star_flux_1D / vega_flux_1D)                    # (l0) [no unit]
-    idx_mag_star_1D = np.abs(mag_star[:, None] - mag_star_1D[None, :]).argmin(axis=0) # (l0)
-
-
-    # --- PSF data at mag_star_1D ---
-    i0                 = np.arange(N_l0)
-    PSF_profile_4D     = PSF_profile_5D[i0, :, :, idx_mag_star_1D, :]   # (l0, WFE, IWA, sep) [star flux fraction/px]
-    fraction_core_4D   = fraction_core_5D[i0, :, :, idx_mag_star_1D, :] # (l0, WFE, IWA, sep) [planet flux fraction/FWHM]
-    PSF_profile_max_3D = PSF_profile_max_4D[i0, :, :, idx_mag_star_1D]  # (l0, WFE, IWA)      [max star flux fraction/px]
-
-
-    # --- PSF data at the planet's separation ---
-    PSF_profile_sep_3D   = PSF_profile_4D[:, :, :, idx_planet_sep]   # (l0, WFE, IWA) [star flux fraction/px]
-    fraction_core_sep_3D = fraction_core_4D[:, :, :, idx_planet_sep] # (l0, WFE, IWA) [planet flux fraction/FWHM]
+    star_flux_1D = star_spectrum.interpolate_wavelength(l0, renorm=False).flux  # (l0) [J/s/m2/µm]
+    mag_star_1D  = -2.5 * np.log10(star_flux_1D / vega_flux_1D)                 # (l0) [no unit]
+    
+    
+    # --- PSF data linearly interpolated at the planet's separation and stellar magnitude ---
+    # PSF_profile_5D     : (l0, WFE, IWA, mag_star, sep)
+    # fraction_core_5D   : (l0, WFE, IWA, mag_star, sep)
+    # PSF_profile_max_4D : (l0, WFE, IWA, mag_star)
+    #
+    # For speed, we first interpolate along separation, because separation_planet is
+    # a scalar for this planet. This avoids creating full (l0, WFE, IWA, sep) arrays.
+    PSF_profile_mag_4D   = interp_flat_last_axis(separation, PSF_profile_5D,   separation_planet, dtype=dtype) # (l0, WFE, IWA, mag_star)
+    fraction_core_mag_4D = interp_flat_last_axis(separation, fraction_core_5D, separation_planet, dtype=dtype) # (l0, WFE, IWA, mag_star)
+    
+    # Then interpolate along stellar magnitude. mag_star_1D depends on l0, so this
+    # specialized helper interpolates each l0 slice at its own magnitude.
+    PSF_profile_sep_3D   = interp_mag_l0_flat_4d(mag_star, PSF_profile_mag_4D,   mag_star_1D, dtype=dtype) # (l0, WFE, IWA) [star flux fraction/px]
+    fraction_core_sep_3D = interp_mag_l0_flat_4d(mag_star, fraction_core_mag_4D, mag_star_1D, dtype=dtype) # (l0, WFE, IWA) [planet flux fraction/FWHM]
+    PSF_profile_max_3D   = interp_mag_l0_flat_4d(mag_star, PSF_profile_max_4D,   mag_star_1D, dtype=dtype) # (l0, WFE, IWA) [max star flux fraction/px]
 
 
     # --- Converting in [ph/mn/µm] ---
@@ -508,7 +558,6 @@ def process_IM(idx):
     vega_flux_1D       = _IM_CTX["vega_flux_1D"]
     mag_star           = _IM_CTX["mag_star"]
     scale_spectrum     = _IM_CTX["scale_spectrum"]
-    N_l0               = _IM_CTX["N_l0"]
     trans_instru       = _IM_CTX["trans_instru"]
     trans_tell_tel     = _IM_CTX["trans_tell_tel"]
     background_flux_2D = _IM_CTX["background_flux_2D"]
@@ -523,8 +572,8 @@ def process_IM(idx):
 
 
     # --- Planet row ---
-    planet         = planet_table[idx]
-    idx_planet_sep = np.abs(separation - float(planet["AngSep"].value)).argmin()
+    planet            = planet_table[idx]
+    separation_planet = float(planet["AngSep"].value) # [mas]
 
 
     # --- Computing the planet and star models for this planet row in [J/s/m²/µm] ---
@@ -535,22 +584,26 @@ def process_IM(idx):
 
 
     # --- Computing mag_star_1D for each l0 ---
-    star_flux_1D    = star_spectrum.interpolate_wavelength(l0, renorm=False).flux     # (l0) [J/s/m2/µm]
-    mag_star_1D     = -2.5 * np.log10(star_flux_1D / vega_flux_1D)                    # (l0) [no unit]
-    idx_mag_star_1D = np.abs(mag_star[:, None] - mag_star_1D[None, :]).argmin(axis=0) # (l0)
+    star_flux_1D = star_spectrum.interpolate_wavelength(l0, renorm=False).flux  # (l0) [J/s/m2/µm]
+    mag_star_1D  = -2.5 * np.log10(star_flux_1D / vega_flux_1D)                 # (l0) [no unit]
 
 
-    # --- PSF data at mag_star_1D ---
-    i0                 = np.arange(N_l0)
-    PSF_profile_4D     = PSF_profile_5D[i0, :, :, idx_mag_star_1D, :]   # (l0, WFE, IWA, sep) [star flux fraction/px]
-    fraction_core_4D   = fraction_core_5D[i0, :, :, idx_mag_star_1D, :] # (l0, WFE, IWA, sep) [planet flux fraction/FWHM]
-    PSF_profile_max_3D = PSF_profile_max_4D[i0, :, :, idx_mag_star_1D]  # (l0, WFE, IWA)      [max star flux fraction/px]
+    # --- PSF data linearly interpolated at the planet's separation and stellar magnitude ---
+    # PSF_profile_5D     : (l0, WFE, IWA, mag_star, sep)
+    # fraction_core_5D   : (l0, WFE, IWA, mag_star, sep)
+    # PSF_profile_max_4D : (l0, WFE, IWA, mag_star)
+    #
+    # For speed, we first interpolate along separation, because separation_planet is
+    # a scalar for this planet. This avoids creating full (l0, WFE, IWA, sep) arrays.
+    PSF_profile_mag_4D   = interp_flat_last_axis(separation, PSF_profile_5D,   separation_planet, dtype=dtype) # (l0, WFE, IWA, mag_star)
+    fraction_core_mag_4D = interp_flat_last_axis(separation, fraction_core_5D, separation_planet, dtype=dtype) # (l0, WFE, IWA, mag_star)
 
-
-    # --- PSF data at the planet's separation ---
-    PSF_profile_sep_3D   = PSF_profile_4D[:, :, :, idx_planet_sep]   # (l0, WFE, IWA) [star flux fraction/px]
-    fraction_core_sep_3D = fraction_core_4D[:, :, :, idx_planet_sep] # (l0, WFE, IWA) [planet flux fraction/FWHM]
-
+    # Then interpolate along stellar magnitude. mag_star_1D depends on l0, so this
+    # specialized helper interpolates each l0 slice at its own magnitude.
+    PSF_profile_sep_3D   = interp_mag_l0_flat_4d(mag_star, PSF_profile_mag_4D,   mag_star_1D, dtype=dtype) # (l0, WFE, IWA) [star flux fraction/px]
+    fraction_core_sep_3D = interp_mag_l0_flat_4d(mag_star, fraction_core_mag_4D, mag_star_1D, dtype=dtype) # (l0, WFE, IWA) [planet flux fraction/FWHM]
+    PSF_profile_max_3D   = interp_mag_l0_flat_4d(mag_star, PSF_profile_max_4D,   mag_star_1D, dtype=dtype) # (l0, WFE, IWA) [max star flux fraction/px]
+    
 
     # --- Converting in [ph/mn/bin] ---
     star   = star_spectrum.flux   * scale_spectrum # [J/s/m²/µm] => [ph/mn/bin]
@@ -706,7 +759,7 @@ def process_SNR(idx):
         sigma_syst_base_2 = sigma_syst_base_2[..., None] # [e-/FWHM/DIT]**2 (at sigma_m = 1)
     elif instru_type == "imager":
         halo_counts_planets = sigma_halo_2                      # [e-/FWHM/DIT]
-        sigma_syst_base_2   = halo_counts_planets[..., None]**2 # [e-/FWHM/DIT]**2 (at sigma_m = 1)
+        sigma_syst_base_2   = halo_counts_planets**2 # [e-/FWHM/DIT]**2 (at sigma_m = 1)
     else:
         raise ValueError("instru_type must be 'IFU' or 'imager'.")
 
@@ -1134,11 +1187,11 @@ def main():
     strehl             = "Q2"                                  # Sky atmospheric condition (1st quartile, 2nd, etc.)
     SNR_thr            = 5                                     # Detection threshold
     exposure_time      = 10*60                                 # Total exposure time per planet [mn]
-    force_new_calc     = True                                 # Forcing new simulations calculations
+    force_new_calc     = True                                  # Forcing new simulations calculations
     thermal_model      = "auto"                                # Model for the thermal spectrum of the planet ("auto", "BT-Settl", "Exo-REM", "SONORA", "PICASO", "Saumon", etc.)
     reflected_model    = "auto"                                # Model for the albedo of the planet ("auto", "tellurics", "flat", "PICASO")
-    instru_type        = "IFU"                              # Type of instrument ("IFU" or "imager")
-    post_processing    = "MM"                                  # Post-processing method ("MM" or "DI")
+    instru_type        = "imager"                              # Type of instrument ("IFU" or "imager")
+    post_processing    = "DI"                                  # Post-processing method ("MM" or "DI")
     size_core          = 2                                     # [px/FWHM] Number of pixel per spatial FWHM along 1 direction (size_core >= 2 => Nyquist spatial sampling)
     A_FWHM             = size_core**2                          # Number of pixel per FWHM box area
     Rc                 = 1_000                                 # MM cut-off resolution (Rc~100 is enough to reach ~1e-8 with speckles only, Rc~1000 would allows to go further (more conservative))
@@ -1239,8 +1292,8 @@ def main():
         l0_min           = 0.6            # [µm]
         l0_max           = 2.5            # [µm]
         # Bandwidth width
-        Dl_min           = 0.03           # [µm]
-        Dl_max           = 0.3            # [µm]
+        Dl_min           = 0.01           # [µm]
+        Dl_max           = 0.2            # [µm]
         # Post-AO wavefront error
         WFE_min          = 10             # [nm]
         WFE_max          = 200            # [nm]
@@ -1249,13 +1302,13 @@ def main():
         IWA_max          = 100            # [mas]
         # Instrumental transmission (without telescope transmission)
         trans_instru_min = 0.01           # [e-/ph]
-        trans_instru_max = 0.30           # [e-/ph]
+        trans_instru_max = 0.20           # [e-/ph]
         # Effective residual halo modulation level:
         # For Imager: sigma_m is the effective fractional modulation of the final integrated stellar halo integrated over the full exposure time, the FWHM and the considered band.
         # The total systematic variance over the full exposure is then:
         # sigma_syst_tot^2 = sigma_m^2 * halo_2*N_DIT^2
-        sigma_m_min      = 1e-3       # [dimensionless]
-        sigma_m_max      = 1e-1       # [dimensionless]
+        sigma_m_min      = 1e-4       # [dimensionless]
+        sigma_m_max      = 1e-2       # [dimensionless]
         # Field of View
         FoV_min          = 10         # [mas]
         FoV_max          = 2*sep_max  # [mas]
@@ -1578,8 +1631,9 @@ def main():
         lmax_model = min(wave_model[-1], wave_instru[-1]) # [µm] effective lmax
 
         # Tellurics transmission spectrum (from SkyCalc)
-        wave_tell, trans_tell = load_tell_trans(airmass=1.2) # 1.2 to be coherent with the used background skytable
-        trans_tell            = Spectrum(wavelength=wave_tell, flux=trans_tell).interpolate_wavelength(wave_output=wave_instru, renorm=False, fill_value=(trans_tell[0], trans_tell[-1]))
+        wave_tell, trans_tell = load_tell_trans(airmass=1.0) # at airmass = 1.0
+        airmass               = 1.2                          # 1.2 to be coherent with the used background skytable
+        trans_tell            = Spectrum(wavelength=wave_tell, flux=trans_tell**airmass).interpolate_wavelength(wave_output=wave_instru, renorm=False, fill_value=(trans_tell[0], trans_tell[-1]))
 
         # Telescope transmission spectrum
         data_elt_ref = np.genfromtxt(instru_dir / "ELT_reflectivity.csv", delimiter=",", names=True, dtype=float, encoding=None)
@@ -2299,7 +2353,7 @@ def main():
     cbar = fig.colorbar(sm, ax=axes.ravel().tolist(), location="right", fraction=0.025, pad=0.05, ticks=np.arange(NbBand))
     cbar.ax.set_yticklabels(band_labels)
     cbar.set_label(r"Selected spectral band / fixed central wavelength $\lambda_0$", fontsize=fontsize + 2, rotation=270, labelpad=35)
-    cbar.ax.tick_params(labelsize=fontsize - 4)
+    cbar.ax.tick_params(labelsize=fontsize)
 
     # Title
     if gain:
