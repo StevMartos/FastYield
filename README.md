@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="FastYield%20logo.png">
-    <img alt="FastYield Logo" src="FastYield%20logo.png">
+    <source media="(prefers-color-scheme: dark)" srcset="src/fastyield/FastYield_logo.png">
+    <img alt="FastYield Logo" src="src/fastyield/FastYield_logo.png">
   </picture>
 </p>
 
@@ -22,8 +22,9 @@ For more details, see:
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="FastYield%20example.png">
-    <img alt="FastYield Example" src="FastYield%20example.png">
+    <source media="(prefers-color-scheme: dark)" srcset="FastYield_
+example.png">
+    <img alt="FastYield Example" src="FastYield_example.png">
   </picture>
 </p>
 

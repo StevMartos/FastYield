@@ -371,6 +371,12 @@ def get_S_res(wave, S, Rc, filter_type, trans_Ss=None, outliers=False, sigma_out
         Estimated stellar modulation per spaxel (LF / reference).
     """
     
+    def _safe_norm(d):
+        norm = np.sqrt(np.nansum(d**2))
+        if np.isfinite(norm) and norm > 0:
+            return d / norm
+        return d * np.nan
+    
     if R_sampling is None:
         R_sampling = get_resolution(wavelength=wave, func=np.nanmedian)
     
