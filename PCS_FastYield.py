@@ -25,6 +25,8 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import LogLocator, NullFormatter, AutoMinorLocator
 from matplotlib.lines import Line2D
 import matplotlib as mpl
+import matplotlib.colors as colors
+import matplotlib.gridspec as gridspec
 
 # import scipy modules
 from scipy.interpolate import RegularGridInterpolator
@@ -1914,7 +1916,63 @@ def main():
     fig.savefig(sim_dir / f"ELT_{instru}_{instru_type}_{post_processing}_corner_plot_{table_type}_{light_regime}_Pdet.png", bbox_inches="tight", dpi=dpi)
     plt.show()
 
+    #%% test plot
+    AngSep = planet_table['AngSep']
+    Imag   = planet_table['PlanetImag(thermal+reflected)']
+    Imag_star = planet_table['StarImag']
+    Teff_star = planet_table['StarTeff']
 
+    # SNR_planets
+    # For IFU (8D):    (planets, R, l0, Nl, WFE, IWA, trans_instru, sigma_m)
+    # For Imager (7D): (planets,    l0, Dl, WFE, IWA, trans_instru, sigma_m)
+
+    # Pdet
+    # For IFU (8D):    (R, l0, Nl, trans_instru, sigma_m, FoV)
+    # For Imager (7D): (   l0, Dl, trans_instru, sigma_m, FoV)
+
+    print(100*'-')
+    print('Detected planet population for:')
+    if instru_type == 'IFU':
+        imax_R, imax_l0, imax_Nl, imax_trans_instru, imax_sigma_m, imax_FoV = np.unravel_index(np.argmax(Pdet), Pdet.shape)
+        imax_WFE = 0
+        imax_IWA = 0
+        SNR = SNR_planets[:, imax_R, imax_l0, imax_Nl, imax_WFE, imax_IWA, imax_trans_instru, imax_sigma_m]
+        print(f'R            : {R[imax_R]}')
+        print(f'lambda_0     : {l0[imax_l0]}')
+        print(f'N_lambda     : {Nl[imax_Nl]}')
+        print(f'trans_instru : {trans_instru[imax_trans_instru]}')
+        print(f'sigma_m      : {sigma_m[imax_sigma_m]}')
+    else:
+        imax_l0, imax_Dl, imax_trans_instru, imax_sigma_m, imax_FoV = np.unravel_index(np.argmax(Pdet), Pdet.shape)
+        imax_WFE = 0
+        imax_IWA = 0
+        SNR = SNR_planets[:, imax_l0, imax_Dl, imax_WFE, imax_IWA, imax_trans_instru, imax_sigma_m]
+        print(f'R            : {R[imax_R]}')
+        print(f'lambda_0     : {l0[imax_l0]}')
+        print(f'D_lambda     : {Dl[imax_Dl]}')
+        print(f'trans_instru : {trans_instru[imax_trans_instru]}')
+        print(f'sigma_m      : {sigma_m[imax_sigma_m]}')
+
+    fig = plt.figure('Detected planet population', figsize=(11, 9))
+    fig.clf()
+    gs = gridspec.GridSpec(1, 2, width_ratios=[1, 0.05], wspace=0.05, left=0.11, right=0.88, top=0.95, bottom=0.1)
+    ax = fig.add_subplot(gs[0])
+
+    cmap = mpl.cm.afmhot
+    norm = colors.Normalize(vmin=2000, vmax=10_000, clip=True)
+    ax.scatter(AngSep, 10**(-(Imag-Imag_star)/2.5), marker='o', ec='none', c=cmap(norm(Teff_star)), s=Imag*10, alpha=np.ones(len(SNR)) - (SNR < 5) * 0.9)
+    ax.set_xlabel("Angular separation [mas]")
+    ax.set_xscale('log')
+    ax.set_xlim(5, 3000)
+    ax.set_ylabel("I-band contrast")
+    ax.set_yscale('log')
+    ax.set_ylim(1e-11, 1e-6)
+    ax = fig.add_subplot(gs[1])
+    cbar = plt.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap), cax=ax)
+    cbar.set_label("Star Teff [K]")
+    plt.savefig('detected_planet_population.png')
+    plt.show()
+    #%%
 
     # %%
     # 1D MARGINALIZED DETECTION PROBABILITY GAIN PER PARAM, TYPE AND REGIME
