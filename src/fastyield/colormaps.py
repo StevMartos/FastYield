@@ -693,7 +693,11 @@ def colormap_bandwidth_Tp(instru, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_s
     
     # Global context worker
     global _CM_CTX
-    _CM_CTX = dict(instru=instru, T_arr=T_arr, lg_planet=lg_planet, vsini_planet=vsini_planet, delta_rv=delta_rv, model=model, spectrum_contributions=spectrum_contributions, R=R, Nl=Nl, lmin_model=lmin_model, lmax_model=lmax_model, wave_model=wave_model, wave_instru=wave_instru, star_spectrum=star_spectrum, star=star, trans_tell=trans_tell, l0_arr=l0_arr, Rc=Rc, filter_type=filter_type, stellar_halo_photon_noise_limited=stellar_halo_photon_noise_limited)
+    _CM_CTX = dict(instru=instru, T_arr=T_arr, lg_planet=lg_planet, vsini_planet=vsini_planet, delta_rv=delta_rv, model=model, spectrum_contributions=spectrum_contributions, airmass=airmass, R=R, Nl=Nl, lmin_model=lmin_model, lmax_model=lmax_model, wave_model=wave_model, wave_instru=wave_instru, star_spectrum=star_spectrum, star=star, trans_tell=trans_tell, l0_arr=l0_arr, Rc=Rc, filter_type=filter_type, stellar_halo_photon_noise_limited=stellar_halo_photon_noise_limited)
+    
+    # for i in range(num):
+    #     process_colormap_bandwidth_Tp(i)
+        
     
     # Parallel calculations
     print()
@@ -1326,7 +1330,7 @@ def colormap_bands_ptypes_parameters(mode="multi", Nmax=10, instru="HARMONI", th
         planet = planet_table[idx]
         itype  = type_to_index[ptype]
         
-        planet_spectrum, planet_thermal, planet_reflected, star_spectrum = get_thermal_reflected_spectrum(planet=planet, thermal_model=thermal_model, reflected_model=reflected_model, instru=instru, wave_model=wave_model, wave_K=wave_K, counts_vega_K=counts_vega_K, show=False, in_im_mag=True)        
+        planet_spectrum, planet_thermal, planet_reflected, star_spectrum = get_thermal_reflected_spectrum(planet=planet, thermal_model=thermal_model, reflected_model=reflected_model, instru=instru, wave_model=wave_model, wave_K=wave_K, counts_vega_K=counts_vega_K, show=False, in_planet_mag=True)        
         planet_spectrum.model        = planet_thermal.model # TODO: generalize to reflected models to (with mag(ref) < mag(th))
         mag_p                        = float(planet[f"PlanetINSTRUmag({instru})({spectrum_contributions})"])
         mag_s                        = float(planet[f"StarINSTRUmag({instru})"])
