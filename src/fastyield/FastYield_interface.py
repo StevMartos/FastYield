@@ -118,15 +118,12 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         style.map("TCombobox", fieldbackground=[("readonly", entry_color)], selectbackground=[("readonly", entry_color)], selectforeground=[("readonly", secondary_color)])
         style.configure("TEntry", fieldbackground=entry_color, foreground=secondary_color)
         
-        # try:
-        #     self.logo_photo = load_logo_image(logo_path, height=logo_height)
-        #     Label(self, image=self.logo_photo, bg=secondary_color).pack(pady=(4, 6))
-        # except Exception:
-        #     Label(self, text="FastYield", font='Magneto 30 bold', bg=secondary_color, fg=main_color).pack()
-        
-        self.logo_photo = load_logo_image(logo_path, height=logo_height)
-        Label(self, image=self.logo_photo, bg=secondary_color).pack(pady=(4, 6))
-        
+        try:
+            self.logo_photo = load_logo_image(logo_path, height=logo_height)
+            Label(self, image=self.logo_photo, bg=secondary_color).pack(pady=(4, 6))
+        except Exception:
+            Label(self, text="FastYield", font='Magneto 30 bold', bg=secondary_color, fg=main_color).pack()
+
         # CHOIX DE LA TABLE
         self.button_table    = tk.Frame(self, bg=secondary_color) ; self.button_table.pack(side=tk.TOP, fill=tk.X)
         self.__btn_archive   = tk.Button(self.button_table, text="ARCHIVE TABLE", command=self.btn_archive_clicked, bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_archive.grid(row=0, column=0, sticky="nsew") ; self.button_table.grid_columnconfigure(0, weight=1)
