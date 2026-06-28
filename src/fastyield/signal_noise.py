@@ -1529,13 +1529,80 @@ def compute_sigma_base_2_speck_numba(h, wave, separation_rad, D, n_sigma_cut=4.0
         sigma_base_2 = (sum_i h_i)^2,
 
     instead of explicitly building the near-fully-correlated kernel.
+
+    The implementation contains a scalar optimized path for n_sep = 1, which is
+    the dominant use case in PCS/ELT FastYield when the systematic term is
+    evaluated at the planet separation only. For n_sep > 1, the computation keeps
+    the parallel loop over separations.
     """
     nlam, nsep = h.shape
     out        = np.empty(nsep)
 
-    coeff = 1.029 / (2 * np.sqrt(np.log(2))) / (1e6 * D)
+    coeff = 1.029 / (2.0 * np.sqrt(np.log(2.0))) / (1e6 * D)
     Dwave = wave[nlam - 1] - wave[0]
 
+    # ------------------------------------------------------------------
+    # Scalar fast path: one separation only.
+    # This avoids the overhead of prange and keeps the innermost expression
+    # minimal. Since
+    #
+    #   L_i   = coeff * wave_i^2 / rho
+    #   L_j   = coeff * wave_j^2 / rho
+    #   L_ij  = sqrt(L_i L_j) = coeff * wave_i * wave_j / rho
+    #
+    # we can compute x = Delta_lambda / L_ij directly, without computing
+    # Li, Lj, or sqrt(Li*Lj) inside the double loop.
+    # ------------------------------------------------------------------
+    if nsep == 1:
+        rho = separation_rad[0]
+        if rho < eps:
+            rho = eps
+
+        Lmin = coeff * wave[0] * wave[0] / rho
+
+        if Lmin > 10.0 * Dwave:
+            s = 0.0
+            for i in range(nlam):
+                hi = h[i, 0]
+                if np.isfinite(hi) and hi != 0.0:
+                    s += hi
+            out[0] = s * s
+            return out
+
+        sb2 = 0.0
+
+        for i in range(nlam):
+            hi = h[i, 0]
+            if not np.isfinite(hi) or hi == 0.0:
+                continue
+
+            wi = wave[i]
+
+            # Diagonal term: C_ii = 1.
+            sb2 += hi * hi
+
+            for j in range(i + 1, nlam):
+                hj = h[j, 0]
+                if not np.isfinite(hj) or hj == 0.0:
+                    continue
+
+                wj = wave[j]
+                dw = wj - wi
+                x  = dw * rho / (coeff * wi * wj)
+
+                # Because wave is increasing, x is increasing with j.
+                if x > n_sigma_cut:
+                    break
+
+                cij  = np.exp(-0.5 * x * x)
+                sb2 += 2.0 * hi * hj * cij
+
+        out[0] = sb2
+        return out
+
+    # ------------------------------------------------------------------
+    # General path: several separations, parallelized over separation.
+    # ------------------------------------------------------------------
     for k in prange(nsep):
         rho = separation_rad[k]
         if rho < eps:
@@ -1546,7 +1613,7 @@ def compute_sigma_base_2_speck_numba(h, wave, separation_rad, D, n_sigma_cut=4.0
         Lmin = coeff * wave[0] * wave[0] / rho
 
         # Fully correlated limit across the whole spectral band.
-        if Lmin > 10*Dwave:
+        if Lmin > 10.0 * Dwave:
             s = 0.0
             for i in range(nlam):
                 hi = h[i, k]
@@ -1562,7 +1629,7 @@ def compute_sigma_base_2_speck_numba(h, wave, separation_rad, D, n_sigma_cut=4.0
             if not np.isfinite(hi) or hi == 0.0:
                 continue
 
-            Li = coeff * wave[i] * wave[i] / rho
+            wi = wave[i]
 
             # Diagonal term: C_ii = 1.
             sb2 += hi * hi
@@ -1572,10 +1639,9 @@ def compute_sigma_base_2_speck_numba(h, wave, separation_rad, D, n_sigma_cut=4.0
                 if not np.isfinite(hj) or hj == 0.0:
                     continue
 
-                Lj  = coeff * wave[j] * wave[j] / rho
-                Lij = np.sqrt(Li * Lj)
-                dw  = wave[j] - wave[i]
-                x   = dw / Lij
+                wj = wave[j]
+                dw = wj - wi
+                x  = dw * rho / (coeff * wi * wj)
 
                 # Because wave is increasing, x is increasing with j.
                 if x > n_sigma_cut:
@@ -1638,13 +1704,85 @@ def compute_sigma_base_2_al_spat_numba(h, wave, separation_rad, pxscale_rad, n_s
         sigma_base_2 = (sum_i h_i)^2
 
     is used directly.
+
+    The implementation contains a scalar optimized path for n_sep = 1, which is
+    the dominant use case in PCS/ELT FastYield when the systematic term is
+    evaluated at the planet separation only. For n_sep > 1, the computation keeps
+    the parallel loop over separations.
     """
     nlam, nsep = h.shape
-    out = np.empty(nsep)
+    out        = np.empty(nsep)
 
-    coeff = pxscale_rad / (2*np.sqrt(np.log(2)))
+    coeff = pxscale_rad / (2.0 * np.sqrt(np.log(2.0)))
     Dwave = wave[nlam - 1] - wave[0]
 
+    # Precompute sqrt(wave) once. For spatial aliasing,
+    #
+    #   L_i  = coeff * wave_i / rho
+    #   L_j  = coeff * wave_j / rho
+    #   L_ij = sqrt(L_i L_j)
+    #        = coeff * sqrt(wave_i wave_j) / rho.
+    #
+    # This avoids computing sqrt(Li*Lj) inside the double loop.
+    sqrt_wave = np.empty(nlam)
+    for i in range(nlam):
+        sqrt_wave[i] = np.sqrt(wave[i])
+
+    # ------------------------------------------------------------------
+    # Scalar fast path: one separation only.
+    # ------------------------------------------------------------------
+    if nsep == 1:
+        rho = separation_rad[0]
+        if rho < eps:
+            rho = eps
+
+        # Since wave is assumed increasing, the smallest correlation length is
+        # reached at the smallest wavelength.
+        Lmin = coeff * wave[0] / rho
+
+        # Fully correlated limit across the whole spectral band.
+        if Lmin > 10.0 * Dwave:
+            s = 0.0
+            for i in range(nlam):
+                hi = h[i, 0]
+                if np.isfinite(hi) and hi != 0.0:
+                    s += hi
+            out[0] = s * s
+            return out
+
+        sb2 = 0.0
+
+        for i in range(nlam):
+            hi = h[i, 0]
+            if not np.isfinite(hi) or hi == 0.0:
+                continue
+
+            wi_sqrt = sqrt_wave[i]
+            wi      = wave[i]
+
+            # Diagonal term: C_ii = 1.
+            sb2 += hi * hi
+
+            for j in range(i + 1, nlam):
+                hj = h[j, 0]
+                if not np.isfinite(hj) or hj == 0.0:
+                    continue
+
+                dw = wave[j] - wi
+                x  = dw * rho / (coeff * wi_sqrt * sqrt_wave[j])
+
+                if x > n_sigma_cut:
+                    break
+
+                cij  = np.exp(-0.5 * x * x)
+                sb2 += 2.0 * hi * hj * cij
+
+        out[0] = sb2
+        return out
+
+    # ------------------------------------------------------------------
+    # General path: several separations, parallelized over separation.
+    # ------------------------------------------------------------------
     for k in prange(nsep):
         rho = separation_rad[k]
         if rho < eps:
@@ -1655,7 +1793,7 @@ def compute_sigma_base_2_al_spat_numba(h, wave, separation_rad, pxscale_rad, n_s
         Lmin = coeff * wave[0] / rho
 
         # Fully correlated limit across the whole spectral band.
-        if Lmin > 10*Dwave:
+        if Lmin > 10.0 * Dwave:
             s = 0.0
             for i in range(nlam):
                 hi = h[i, k]
@@ -1671,8 +1809,10 @@ def compute_sigma_base_2_al_spat_numba(h, wave, separation_rad, pxscale_rad, n_s
             if not np.isfinite(hi) or hi == 0.0:
                 continue
 
-            Li = coeff * wave[i] / rho
+            wi_sqrt = sqrt_wave[i]
+            wi      = wave[i]
 
+            # Diagonal term: C_ii = 1.
             sb2 += hi * hi
 
             for j in range(i + 1, nlam):
@@ -1680,20 +1820,19 @@ def compute_sigma_base_2_al_spat_numba(h, wave, separation_rad, pxscale_rad, n_s
                 if not np.isfinite(hj) or hj == 0.0:
                     continue
 
-                Lj = coeff * wave[j] / rho
-                Lij = np.sqrt(Li * Lj)
-                dw = wave[j] - wave[i]
-                x = dw / Lij
+                dw = wave[j] - wi
+                x  = dw * rho / (coeff * wi_sqrt * sqrt_wave[j])
 
                 if x > n_sigma_cut:
                     break
 
-                cij = np.exp(-0.5 * x * x)
+                cij  = np.exp(-0.5 * x * x)
                 sb2 += 2.0 * hi * hj * cij
 
         out[k] = sb2
 
     return out
+
 
 
 
@@ -1721,14 +1860,48 @@ def compute_sigma_base_2_al_spec_fast(h):
 
     These values are consistent with a narrow Gaussian spectral-aliasing kernel
     whose local correlation length is set by the native wavelength sampling.
+
+    The implementation contains a scalar optimized path for n_sep = 1. This is
+    the dominant use case in PCS/ELT FastYield, where the spectral-aliasing term
+    is evaluated only at the planet separation. For n_sep > 1, the calculation
+    remains vectorized over separations.
     """
-    sigma_base_2 = np.sum(h * h, axis=0)
+    h = np.asarray(h)
+
+    if h.ndim == 1:
+        h0 = h
+        sigma_base_2 = np.dot(h0, h0)
+
+        if h0.shape[0] >= 2:
+            sigma_base_2 += 0.5 * np.dot(h0[:-1], h0[1:])
+
+        if h0.shape[0] >= 3:
+            sigma_base_2 += (2.0 / 256.0) * np.dot(h0[:-2], h0[2:])
+
+        return np.array([sigma_base_2])
+
+    if h.ndim != 2:
+        raise ValueError("h must be a 1D or 2D array.")
+
+    if h.shape[1] == 1:
+        h0 = h[:, 0]
+        sigma_base_2 = np.dot(h0, h0)
+
+        if h0.shape[0] >= 2:
+            sigma_base_2 += 0.5 * np.dot(h0[:-1], h0[1:])
+
+        if h0.shape[0] >= 3:
+            sigma_base_2 += (2.0 / 256.0) * np.dot(h0[:-2], h0[2:])
+
+        return np.array([sigma_base_2])
+
+    sigma_base_2 = np.einsum("ij,ij->j", h, h, optimize=True)
 
     if h.shape[0] >= 2:
-        sigma_base_2 += (1  / 2)  * np.sum(h[:-1] * h[1:], axis=0)
+        sigma_base_2 += 0.5 * np.einsum("ij,ij->j", h[:-1], h[1:], optimize=True)
 
     if h.shape[0] >= 3:
-        sigma_base_2 += (2 / 256) * np.sum(h[:-2] * h[2:], axis=0)
+        sigma_base_2 += (2.0 / 256.0) * np.einsum("ij,ij->j", h[:-2], h[2:], optimize=True)
 
     return sigma_base_2
 

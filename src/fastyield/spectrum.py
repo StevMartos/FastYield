@@ -2395,8 +2395,18 @@ def get_planet_type_from_model(model):
 
 
 
+
+def _cache_float(x):
+    if x is None:
+        return None
+    if isinstance(x, str):
+        return x
+    return float(x)
+
+
+
 @lru_cache(maxsize=128)
-def load_spectrum(T=None, lg=None, P=None, mol_broadening=None, model=None, instru=None):
+def _load_spectrum(T=None, lg=None, P=None, mol_broadening=None, model=None, instru=None):
     """
     Load a spectrum from disk for a given model and parameters.
 
@@ -2511,7 +2521,15 @@ def load_spectrum(T=None, lg=None, P=None, mol_broadening=None, model=None, inst
             raise KeyError(f"{T}K or P={P} atm are not valid parameters of the {model} grid: {e}")
         else:
             raise KeyError(f"{T}K or logg={lg} are not valid parameters of the {model} grid: {e}")
-    
+
+
+
+def load_spectrum(T=None, lg=None, P=None, mol_broadening=None, model=None, instru=None):
+    """
+    Public safe loader: returns a copy of the cached raw Spectrum.
+    """
+    return _load_spectrum(T=_cache_float(T), lg=_cache_float(lg), P=_cache_float(P), mol_broadening=mol_broadening, model=model, instru=instru).copy()
+
 
 
 def interpolate_T_lg_spectrum(T_valid=None, lg_valid=None, P_valid=None, T=None, lg=None, P=None, model=None, instru=None, T_grid=None, lg_grid=None, P_grid=None, mol_broadening="air"):
@@ -2661,7 +2679,7 @@ def interpolate_T_lg_spectrum(T_valid=None, lg_valid=None, P_valid=None, T=None,
     # We assume that all models are initially Nyquist sammpled
     R        = get_resolution(wavelength=wave, func=np.array)
     spectrum = Spectrum(wavelength=wave, flux=flux, R=R, T=T, lg=lg, model=model, rv=0, vsini=0, P=P)
-    return spectrum.copy() # [J/s/m2/µm] or [no unit] for albedos and molecular templates
+    return spectrum # [J/s/m2/µm] or [no unit] for albedos and molecular templates
 
 
 
@@ -2873,7 +2891,7 @@ def load_star_spectrum(T_star, lg_star, model="BT-NextGen", interpolated_spectru
     T_grid, _  = get_model_grid(model=model)
     T_grid_min = np.nanmin(T_grid)
     if T_star < T_grid_min:
-        return load_planet_spectrum(T_planet=T_star, lg_planet=lg_star, model="BT-Settl", interpolated_spectrum=interpolated_spectrum).copy()
+        return load_planet_spectrum(T_planet=T_star, lg_planet=lg_star, model="BT-Settl", interpolated_spectrum=interpolated_spectrum)
     
     # Closest valid values parameters in the model grid
     T_valid, lg_valid = get_T_lg_valid(T=T_star, lg=lg_star, model=model, instru=None, T_grid=None, lg_grid=None)
@@ -3183,7 +3201,7 @@ def get_auto_model(planet):
 
 
 
-def get_thermal_reflected_spectrum(planet, thermal_model="auto", reflected_model="auto", instru=None, wave_model=None, wave_K=None, counts_vega_K=None, show=True, in_planet_mag=True, in_star_mag=True, interpolated_spectrum=True):
+def get_thermal_reflected_spectrum(planet, thermal_model="auto", reflected_model="auto", instru=None, wave_model=None, wave_K=None, counts_vega_K=None, show=True, in_planet_mag=True, in_star_mag=True, interpolated_spectrum=True, apply_kinematics=True):
     """
     Build the planet's *thermal* and *reflected* spectra (plus the host-star spectrum)
     over an instrument-like wavelength grid, optionally visualize the components,
@@ -3296,9 +3314,12 @@ def get_thermal_reflected_spectrum(planet, thermal_model="auto", reflected_model
     star_spectrum_raw = load_star_spectrum(T_star=T_star, lg_star=lg_star)                 # Loading raw spectrum                                     [J/s/m2/µm]
     star_spectrum_K   = star_spectrum_raw.interpolate_wavelength(wave_K,     renorm=False) # Interpolating on K-band                                  [J/s/m2/µm]
     star_spectrum     = star_spectrum_raw.interpolate_wavelength(wave_model, renorm=False) # Interpolating on wave_model                              [J/s/m2/µm]
-    star_spectrum_ref = star_spectrum.broad(vrot_star)                                     # Broadening the spectrum as seen from the planet (sini=1) [J/s/m2/µm]
-    star_spectrum     = star_spectrum.broad(vsini_star)                                    # Broadening the spectrum as seen from Earth               [J/s/m2/µm]
-    
+    if apply_kinematics:
+        star_spectrum_ref = star_spectrum.broad(vrot_star)  # Broadening the spectrum as seen from the planet
+        star_spectrum     = star_spectrum.broad(vsini_star) # Broadening the spectrum as seen from Earth
+    else:
+        star_spectrum_ref = star_spectrum.copy()
+        
     # Vega-based scaling in K: (in the rest frame)
     if in_star_mag or not np.isfinite(R_star):
         scale_star_K            = get_scale_to_mag(wave=wave_K, density_obs=star_spectrum_K.flux, density_vega=None, counts_vega=counts_vega_K, mag=mag_star_K)
@@ -3357,20 +3378,22 @@ def get_thermal_reflected_spectrum(planet, thermal_model="auto", reflected_model
         
     # Rotational broadening of planet spectra as seen from Earth
     vsini_planet = planet["PlanetVsini"].value # [km/s]
-    if thermal_model != "None":
-        planet_thermal = planet_thermal.broad(vsini_planet)     # [J/s/m2/µm]
-    if reflected_model != "None":
-        planet_reflected = planet_reflected.broad(vsini_planet) # [J/s/m2/µm]
-    
+    if apply_kinematics:
+        if thermal_model != "None":
+            planet_thermal = planet_thermal.broad(vsini_planet)     # [J/s/m2/µm]
+        if reflected_model != "None":
+            planet_reflected = planet_reflected.broad(vsini_planet) # [J/s/m2/µm]
+        
     # Doppler shifts
-    rv_star       = planet["StarRadialVelocity"].value   # [km/s]
-    rv_planet     = planet["PlanetRadialVelocity"].value # [km/s]
-    star_spectrum = star_spectrum.doppler_shift(rv_star) # [J/s/m2/µm]
-    if thermal_model != "None":
-        planet_thermal = planet_thermal.doppler_shift(rv_planet)     # [J/s/m2/µm]
-    if reflected_model != "None":
-        planet_reflected = planet_reflected.doppler_shift(rv_planet) # [J/s/m2/µm]
-    
+    rv_star   = planet["StarRadialVelocity"].value   # [km/s]
+    rv_planet = planet["PlanetRadialVelocity"].value # [km/s]
+    if apply_kinematics:
+        star_spectrum = star_spectrum.doppler_shift(rv_star) # [J/s/m2/µm]
+        if thermal_model != "None":
+            planet_thermal = planet_thermal.doppler_shift(rv_planet)     # [J/s/m2/µm]
+        if reflected_model != "None":
+            planet_reflected = planet_reflected.doppler_shift(rv_planet) # [J/s/m2/µm]
+        
     # Total planet spectrum (thermal + reflected)
     planet_spectrum_K = Spectrum(wavelength=wave_K,     flux=planet_thermal_K.flux + planet_reflected_K.flux, R=R0_min,                                                    T=T_planet, lg=lg_planet, model=thermal_model+"+"+reflected_model, rv=rv_planet, vsini=vsini_planet)
     planet_spectrum   = Spectrum(wavelength=wave_model, flux=planet_thermal.flux   + planet_reflected.flux,   R=np.maximum.reduce([planet_thermal.R, planet_reflected.R]), T=T_planet, lg=lg_planet, model=thermal_model+"+"+reflected_model, rv=rv_planet, vsini=vsini_planet)
