@@ -41,8 +41,8 @@ Dynamic: license-file
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="FastYield%20logo.png">
-    <img alt="FastYield Logo" src="FastYield%20logo.png">
+    <source media="(prefers-color-scheme: dark)" srcset="src/fastyield/FastYield_logo.png">
+    <img alt="FastYield Logo" src="src/fastyield/FastYield_logo.png">
   </picture>
 </p>
 
@@ -63,8 +63,9 @@ For more details, see:
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="FastYield%20example.png">
-    <img alt="FastYield Example" src="FastYield%20example.png">
+    <source media="(prefers-color-scheme: dark)" srcset="FastYield_
+example.png">
+    <img alt="FastYield Example" src="FastYield_example.png">
   </picture>
 </p>
 
@@ -177,7 +178,7 @@ This directory contains the instrumental data, simulation data, and spectral lib
 
 The `sim_data/` directory can be downloaded here:
 
-[Download the sim_data directory](https://filesender.renater.fr/?s=download&token=3b2d34b8-666a-4f8a-a55f-b9d79a2544b9)
+[Download the sim_data directory](https://filesender.renater.fr/?s=download&token=ba9b7218-adf5-45a7-90e1-07be64e18c28)
 
 After downloading and extracting the archive, you should have a directory named:
 

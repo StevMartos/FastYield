@@ -1448,7 +1448,17 @@ def compress_h_for_sigma_base_2(wave, h, post_processing, D, pxscale, separation
     covariance evaluation while keeping a sufficiently fine sampling of the
     narrowest expected speckle covariance scale.
     """
-    
+    wave       = np.asarray(wave)
+    h          = np.asarray(h)
+    valid_wave = np.isfinite(wave)
+    if not np.all(valid_wave):
+        wave = wave[valid_wave]
+        h    = h[valid_wave]
+    if not np.all(np.isfinite(h)):
+        h = np.nan_to_num(h, nan=0.0, posinf=0.0, neginf=0.0)
+    if wave.size < 2:
+        return wave, h, 1
+
     if max_merge is None:
         max_merge = len(wave) // oversample
     
@@ -1474,7 +1484,7 @@ def compress_h_for_sigma_base_2(wave, h, post_processing, D, pxscale, separation
 
     # Sum of weights, not mean, to conserve the integrated contribution.
     h_c = np.add.reduceat(h, idx0, axis=0)
-
+    
     return wave_c, h_c, n_merge
 
 
@@ -1535,6 +1545,15 @@ def compute_sigma_base_2_speck_numba(h, wave, separation_rad, D, n_sigma_cut=4.0
     evaluated at the planet separation only. For n_sep > 1, the computation keeps
     the parallel loop over separations.
     """
+    wave       = np.asarray(wave)
+    h          = np.asarray(h)
+    valid_wave = np.isfinite(wave)
+    if not np.all(valid_wave):
+        wave = wave[valid_wave]
+        h    = h[valid_wave]
+    if not np.all(np.isfinite(h)):
+        h = np.nan_to_num(h, nan=0.0, posinf=0.0, neginf=0.0)
+    
     nlam, nsep = h.shape
     out        = np.empty(nsep)
 
@@ -1710,6 +1729,15 @@ def compute_sigma_base_2_al_spat_numba(h, wave, separation_rad, pxscale_rad, n_s
     evaluated at the planet separation only. For n_sep > 1, the computation keeps
     the parallel loop over separations.
     """
+    wave       = np.asarray(wave)
+    h          = np.asarray(h)
+    valid_wave = np.isfinite(wave)
+    if not np.all(valid_wave):
+        wave = wave[valid_wave]
+        h    = h[valid_wave]
+    if not np.all(np.isfinite(h)):
+        h = np.nan_to_num(h, nan=0.0, posinf=0.0, neginf=0.0)
+    
     nlam, nsep = h.shape
     out        = np.empty(nsep)
 
@@ -1835,7 +1863,6 @@ def compute_sigma_base_2_al_spat_numba(h, wave, separation_rad, pxscale_rad, n_s
 
 
 
-
 def compute_sigma_base_2_al_spec_fast(h):
     """
     Approximate the spectral-aliasing quadratic form.
@@ -1860,48 +1887,25 @@ def compute_sigma_base_2_al_spec_fast(h):
 
     These values are consistent with a narrow Gaussian spectral-aliasing kernel
     whose local correlation length is set by the native wavelength sampling.
-
-    The implementation contains a scalar optimized path for n_sep = 1. This is
-    the dominant use case in PCS/ELT FastYield, where the spectral-aliasing term
-    is evaluated only at the planet separation. For n_sep > 1, the calculation
-    remains vectorized over separations.
     """
     h = np.asarray(h)
-
     if h.ndim == 1:
-        h0 = h
-        sigma_base_2 = np.dot(h0, h0)
-
-        if h0.shape[0] >= 2:
-            sigma_base_2 += 0.5 * np.dot(h0[:-1], h0[1:])
-
-        if h0.shape[0] >= 3:
-            sigma_base_2 += (2.0 / 256.0) * np.dot(h0[:-2], h0[2:])
-
-        return np.array([sigma_base_2])
-
+        h = h[:, None]
     if h.ndim != 2:
         raise ValueError("h must be a 1D or 2D array.")
+    if not np.all(np.isfinite(h)):
+        h = np.nan_to_num(h, nan=0.0, posinf=0.0, neginf=0.0)
 
-    if h.shape[1] == 1:
-        h0 = h[:, 0]
-        sigma_base_2 = np.dot(h0, h0)
-
-        if h0.shape[0] >= 2:
-            sigma_base_2 += 0.5 * np.dot(h0[:-1], h0[1:])
-
-        if h0.shape[0] >= 3:
-            sigma_base_2 += (2.0 / 256.0) * np.dot(h0[:-2], h0[2:])
-
-        return np.array([sigma_base_2])
-
-    sigma_base_2 = np.einsum("ij,ij->j", h, h, optimize=True)
+    sigma_base_2 = np.sum(h * h, axis=0)
 
     if h.shape[0] >= 2:
-        sigma_base_2 += 0.5 * np.einsum("ij,ij->j", h[:-1], h[1:], optimize=True)
+        sigma_base_2 += (1 / 2) * np.sum(h[:-1] * h[1:], axis=0)
 
     if h.shape[0] >= 3:
-        sigma_base_2 += (2.0 / 256.0) * np.einsum("ij,ij->j", h[:-2], h[2:], optimize=True)
+        sigma_base_2 += (2 / 256) * np.sum(h[:-2] * h[2:], axis=0)
+
+    sigma_base_2 = np.nan_to_num(sigma_base_2, nan=0.0, posinf=0.0, neginf=0.0)
+    sigma_base_2 = np.maximum(sigma_base_2, 0.0)
 
     return sigma_base_2
 
@@ -1952,6 +1956,15 @@ def compute_sigma_base_2_al_spec_numba(h, wave, n_sigma_cut=4.0):
 
     is used directly.
     """
+    
+    h = np.asarray(h)
+    if h.ndim == 1:
+        h = h[:, None]
+    if h.ndim != 2:
+        raise ValueError("h must be a 1D or 2D array.")
+    if not np.all(np.isfinite(h)):
+        h = np.nan_to_num(h, nan=0.0, posinf=0.0, neginf=0.0)
+    
     nlam, nsep = h.shape
     out        = np.empty(nsep)
 

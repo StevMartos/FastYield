@@ -1127,22 +1127,17 @@ def reduce_Pdet(Pdet, dims_to_keep, params, params_ranges, params_priors, params
         # --- fix to one value: linear interpolation ---
         if pmin == pmax:
             Pdet_red = interp_along_axis(Pdet_red, axis=axis, x0=pmin, axis_id=idim)
-
             if verbose:
                 print(f"  - Fixing        {name:<20} at {pmin:<8g} with linear interpolation")
 
         # --- marginalize on [pmin, pmax] with proper truncated cell weights ---
         else:
-            idx, w = get_axis_weights_in_range(axis=axis, pmin=pmin, pmax=pmax, prior=prior)
-
-            Pdet_red = np.take(Pdet_red, idx, axis=idim)
-
-            shape_w = [1] * Pdet_red.ndim
+            idx, w        = get_axis_weights_in_range(axis=axis, pmin=pmin, pmax=pmax, prior=prior)
+            Pdet_red      = np.take(Pdet_red, idx, axis=idim)
+            shape_w       = [1] * Pdet_red.ndim
             shape_w[idim] = len(w)
-            w = w.reshape(shape_w)
-
-            Pdet_red = np.sum(Pdet_red * w, axis=idim) / np.sum(w)
-
+            w             = w.reshape(shape_w)
+            Pdet_red      = np.sum(Pdet_red * w, axis=idim) / np.sum(w)
             if verbose:
                 print(f"  - Marginalizing {name:<20} in [{pmin:<8g}, {pmax:<8g}] ({len(idx)} cells) with {prior} prior")
 
@@ -1201,11 +1196,11 @@ def main():
     strehl             = "Q2"                                  # Sky atmospheric condition (1st quartile, 2nd, etc.)
     SNR_thr            = 5                                     # Detection threshold
     exposure_time      = 10*60                                 # Total exposure time per planet [mn]
-    force_new_calc     = False                                  # Forcing new simulations calculations
+    force_new_calc     = False                                 # Forcing new simulations calculations
     thermal_model      = "auto"                                # Model for the thermal spectrum of the planet ("auto", "BT-Settl", "Exo-REM", "SONORA", "PICASO", "Saumon", etc.)
     reflected_model    = "auto"                                # Model for the albedo of the planet ("auto", "tellurics", "flat", "PICASO")
-    instru_type        = "imager"                              # Type of instrument ("IFU" or "imager")
-    post_processing    = "DI"                                  # Post-processing method ("MM" or "DI")
+    instru_type        = "IFU"                                 # Type of instrument ("IFU" or "imager")
+    post_processing    = "MM"                                  # Post-processing method ("MM" or "DI")
     size_core          = 2                                     # [px/FWHM] Number of pixel per spatial FWHM along 1 direction (size_core >= 2 => Nyquist spatial sampling)
     A_FWHM             = size_core**2                          # Number of pixel per FWHM box area
     Rc                 = 1_000                                 # MM cut-off resolution (Rc~100 is enough to reach ~1e-8 with speckles only, Rc~1000 would allows to go further (more conservative))
@@ -1914,6 +1909,8 @@ def main():
         pdet_1D           = reduce_Pdet(Pdet=Pdet, dims_to_keep=[idim], params=params, params_ranges=params_ranges, params_priors=params_priors, params_names=params_names)
         params_imax[idim] = pdet_1D.argmax()
         params_max[idim]  = params[idim][pdet_1D.argmax()]
+        
+        
 
     # %%
     # 2D CORNER PLOT
@@ -1981,9 +1978,11 @@ def main():
     title += f"\n\n assuming an {instru_type} with a Lyot coronagraph"
     title += f"\n \n and {post_processing.replace('DI', 'differential imaging').replace('MM', 'molecular mapping')} as post-processing method"
     title += f"\n\n for {N_PT} {table_type.replace('Archive', 'known').replace('Simulated', 'simulated')} planets in {light_regime} light"
-    fig.suptitle(title, fontsize=18, weight="bold", x=0.63, y=0.85)
+    fig.suptitle(title, fontsize=14, weight="bold", x=0.63, y=0.85)
     fig.savefig(sim_dir / f"ELT_{instru}_{instru_type}_{post_processing}_corner_plot_{table_type}_{light_regime}_Pdet.png", bbox_inches="tight", dpi=dpi)
     plt.show()
+
+
 
     #%%
     # DETECTED POPULATION PLOT
@@ -2023,8 +2022,10 @@ def main():
     ax = fig.add_subplot(gs[1])
     cbar = plt.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap), cax=ax)
     cbar.set_label("Star Teff [K]")
-    fig.savefig(sim_dir / f"ELT_{instru}_{instru_type}_{post_processing}_corner_plot_{table_type}_{light_regime}_detected_population.png", bbox_inches="tight", dpi=dpi)
+    # plt.savefig('detected_planet_population.png')
     plt.show()
+
+
 
     # %%
     # 1D MARGINALIZED DETECTION PROBABILITY GAIN PER PARAM, TYPE AND REGIME
@@ -2195,7 +2196,6 @@ def main():
     fig.tight_layout(h_pad=3.0, w_pad=3.0)
     fig.savefig(sim_dir / f"ELT_{instru}_{instru_type}_{post_processing}_detection_{table_type}_{light_regime}_Pdet.png", bbox_inches="tight", dpi=dpi)
     plt.show()
-
 
 
 
