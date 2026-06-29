@@ -275,8 +275,8 @@ def process_IFU(idx):
     # --- Computing mag_star_1D for each l0 ---
     star_flux_1D = star_spectrum.interpolate_wavelength(l0, renorm=False).flux  # (l0) [J/s/m2/µm]
     mag_star_1D  = -2.5 * np.log10(star_flux_1D / vega_flux_1D)                 # (l0) [no unit]
-    
-    
+
+
     # --- PSF data linearly interpolated at the planet's separation and stellar magnitude ---
     # PSF_profile_5D     : (l0, WFE, IWA, mag_star, sep)
     # fraction_core_5D   : (l0, WFE, IWA, mag_star, sep)
@@ -286,7 +286,7 @@ def process_IFU(idx):
     # a scalar for this planet. This avoids creating full (l0, WFE, IWA, sep) arrays.
     PSF_profile_mag_4D   = interp_flat_last_axis(separation, PSF_profile_5D,   separation_planet, dtype=dtype) # (l0, WFE, IWA, mag_star)
     fraction_core_mag_4D = interp_flat_last_axis(separation, fraction_core_5D, separation_planet, dtype=dtype) # (l0, WFE, IWA, mag_star)
-    
+
     # Then interpolate along stellar magnitude. mag_star_1D depends on l0, so this
     # specialized helper interpolates each l0 slice at its own magnitude.
     PSF_profile_sep_3D   = interp_mag_l0_flat_4d(mag_star, PSF_profile_mag_4D,   mag_star_1D, dtype=dtype) # (l0, WFE, IWA) [star flux fraction/px]
@@ -603,7 +603,7 @@ def process_IM(idx):
     PSF_profile_sep_3D   = interp_mag_l0_flat_4d(mag_star, PSF_profile_mag_4D,   mag_star_1D, dtype=dtype) # (l0, WFE, IWA) [star flux fraction/px]
     fraction_core_sep_3D = interp_mag_l0_flat_4d(mag_star, fraction_core_mag_4D, mag_star_1D, dtype=dtype) # (l0, WFE, IWA) [planet flux fraction/FWHM]
     PSF_profile_max_3D   = interp_mag_l0_flat_4d(mag_star, PSF_profile_max_4D,   mag_star_1D, dtype=dtype) # (l0, WFE, IWA) [max star flux fraction/px]
-    
+
 
     # --- Converting in [ph/mn/bin] ---
     star   = star_spectrum.flux   * scale_spectrum # [J/s/m²/µm] => [ph/mn/bin]
@@ -1187,11 +1187,11 @@ def main():
     strehl             = "Q2"                                  # Sky atmospheric condition (1st quartile, 2nd, etc.)
     SNR_thr            = 5                                     # Detection threshold
     exposure_time      = 10*60                                 # Total exposure time per planet [mn]
-    force_new_calc     = True                                  # Forcing new simulations calculations
+    force_new_calc     = False                                  # Forcing new simulations calculations
     thermal_model      = "auto"                                # Model for the thermal spectrum of the planet ("auto", "BT-Settl", "Exo-REM", "SONORA", "PICASO", "Saumon", etc.)
     reflected_model    = "auto"                                # Model for the albedo of the planet ("auto", "tellurics", "flat", "PICASO")
-    instru_type        = "imager"                              # Type of instrument ("IFU" or "imager")
-    post_processing    = "DI"                                  # Post-processing method ("MM" or "DI")
+    instru_type        = "IFU"                              # Type of instrument ("IFU" or "imager")
+    post_processing    = "MM"                                  # Post-processing method ("MM" or "DI")
     size_core          = 2                                     # [px/FWHM] Number of pixel per spatial FWHM along 1 direction (size_core >= 2 => Nyquist spatial sampling)
     A_FWHM             = size_core**2                          # Number of pixel per FWHM box area
     Rc                 = 1_000                                 # MM cut-off resolution (Rc~100 is enough to reach ~1e-8 with speckles only, Rc~1000 would allows to go further (more conservative))
@@ -1978,41 +1978,22 @@ def main():
     Imag_star = planet_table['StarImag']
     Teff_star = planet_table['StarTeff']
 
-    # SNR_planets
-    # For IFU (8D):    (planets, R, l0, Nl, WFE, IWA, trans_instru, sigma_m)
-    # For Imager (7D): (planets,    l0, Dl, WFE, IWA, trans_instru, sigma_m)
-
-    # Pdet
-    # For IFU (8D):    (R, l0, Nl, trans_instru, sigma_m, FoV)
-    # For Imager (7D): (   l0, Dl, trans_instru, sigma_m, FoV)
-
     print('-------------------------------------------------------------')
     print('Detected planet population for:')
-    if instru_type == 'IFU':
-        imax_R, imax_l0, imax_Nl, imax_trans_instru, imax_sigma_m, imax_FoV = np.unravel_index(np.argmax(Pdet), Pdet.shape)
-        imax_WFE = 0
-        imax_IWA = 0
-        SNR = SNR_planets[:, imax_R, imax_l0, imax_Nl, imax_WFE, imax_IWA, imax_trans_instru, imax_sigma_m]
-        print(f'R            : {R[imax_R]}')
-        print(f'lambda_0     : {l0[imax_l0]}')
-        print(f'N_lambda     : {Nl[imax_Nl]}')
-        print(f'trans_instru : {trans_instru[imax_trans_instru]}')
-        print(f'sigma_m      : {sigma_m[imax_sigma_m]}')
-    else:
-        imax_l0, imax_Dl, imax_trans_instru, imax_sigma_m, imax_FoV = np.unravel_index(np.argmax(Pdet), Pdet.shape)
-        imax_WFE = 0
-        imax_IWA = 0
-        SNR = SNR_planets[:, imax_l0, imax_Dl, imax_WFE, imax_IWA, imax_trans_instru, imax_sigma_m]
-        print(f'R            : {R[imax_R]}')
-        print(f'lambda_0     : {l0[imax_l0]}')
-        print(f'D_lambda     : {Dl[imax_Dl]}')
-        print(f'trans_instru : {trans_instru[imax_trans_instru]}')
-        print(f'sigma_m      : {sigma_m[imax_sigma_m]}')
+    for idim in range(Ndim):
+        print(f'{params_names[idim]:20}:      {params_max[idim]} [{params_imax[idim]}]')
     print('-------------------------------------------------------------')
 
+    # SNR of planets
+    imax_FoV = params_imax[-1]          # index of the FoV providing highest Pdet
+    params_imax_tmp = params_imax[:-1]  # remove FoV from parameters
+    SNR = (SNR_planets.squeeze())[(slice(None), ) + tuple(params_imax_tmp)]   # extract SNR
+    SNR[p0_FoV > imax_FoV] = 0          # filter over FoV
+
+    # plot
     fig = plt.figure('Detected planet population', figsize=(11, 9))
     fig.clf()
-    gs = gridspec.GridSpec(1, 2, width_ratios=[1, 0.05], wspace=0.05, left=0.11, right=0.88, top=0.95, bottom=0.1)
+    gs = gridspec.GridSpec(1, 2, width_ratios=[1, 0.05], wspace=0.05, left=0.11, right=0.88, top=0.92, bottom=0.1)
     ax = fig.add_subplot(gs[0])
 
     cmap = mpl.cm.afmhot
@@ -2024,6 +2005,7 @@ def main():
     ax.set_ylabel("I-band contrast")
     ax.set_yscale('log')
     ax.set_ylim(1e-11, 1e-6)
+    ax.set_title(f"ELT/{instru} detected population - {instru_type} with {post_processing}", fontsize=18, weight="bold")
     ax = fig.add_subplot(gs[1])
     cbar = plt.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap), cax=ax)
     cbar.set_label("Star Teff [K]")
