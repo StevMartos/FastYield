@@ -1894,12 +1894,12 @@ def main():
     Ndim = len(params)
 
     # Param values at max pdet_1D
-    params_max = np.zeros((Ndim))
+    params_max  = np.zeros((Ndim))
+    params_imax = np.zeros((Ndim), dtype=int)
     for idim in range(Ndim):
-        pdet_1D          = reduce_Pdet(Pdet=Pdet, dims_to_keep=[idim], params=params, params_ranges=params_ranges, params_priors=params_priors, params_names=params_names)
-        params_max[idim] = params[idim][pdet_1D.argmax()]
-
-
+        pdet_1D           = reduce_Pdet(Pdet=Pdet, dims_to_keep=[idim], params=params, params_ranges=params_ranges, params_priors=params_priors, params_names=params_names)
+        params_imax[idim] = pdet_1D.argmax()
+        params_max[idim]  = params[idim][pdet_1D.argmax()]
 
     # %%
     # 2D CORNER PLOT
