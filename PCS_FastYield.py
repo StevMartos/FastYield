@@ -1204,8 +1204,8 @@ def main():
     force_new_calc     = False                                  # Forcing new simulations calculations
     thermal_model      = "auto"                                # Model for the thermal spectrum of the planet ("auto", "BT-Settl", "Exo-REM", "SONORA", "PICASO", "Saumon", etc.)
     reflected_model    = "auto"                                # Model for the albedo of the planet ("auto", "tellurics", "flat", "PICASO")
-    instru_type        = "IFU"                              # Type of instrument ("IFU" or "imager")
-    post_processing    = "MM"                                  # Post-processing method ("MM" or "DI")
+    instru_type        = "imager"                              # Type of instrument ("IFU" or "imager")
+    post_processing    = "DI"                                  # Post-processing method ("MM" or "DI")
     size_core          = 2                                     # [px/FWHM] Number of pixel per spatial FWHM along 1 direction (size_core >= 2 => Nyquist spatial sampling)
     A_FWHM             = size_core**2                          # Number of pixel per FWHM box area
     Rc                 = 1_000                                 # MM cut-off resolution (Rc~100 is enough to reach ~1e-8 with speckles only, Rc~1000 would allows to go further (more conservative))
@@ -2023,7 +2023,7 @@ def main():
     ax = fig.add_subplot(gs[1])
     cbar = plt.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap), cax=ax)
     cbar.set_label("Star Teff [K]")
-    # plt.savefig('detected_planet_population.png')
+    fig.savefig(sim_dir / f"ELT_{instru}_{instru_type}_{post_processing}_corner_plot_{table_type}_{light_regime}_detected_population.png", bbox_inches="tight", dpi=dpi)
     plt.show()
 
     # %%
