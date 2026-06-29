@@ -44,7 +44,7 @@ import gc
 nproc     = max(cpu_count()//2, 1)
 chunksize = 8
 
-dpi = 72
+
 
 # TODO :
 # Required if FASTYIELD_SIM_DATA_PATH is not defined:
@@ -1909,121 +1909,6 @@ def main():
         pdet_1D           = reduce_Pdet(Pdet=Pdet, dims_to_keep=[idim], params=params, params_ranges=params_ranges, params_priors=params_priors, params_names=params_names)
         params_imax[idim] = pdet_1D.argmax()
         params_max[idim]  = params[idim][pdet_1D.argmax()]
-        
-        
-
-    # %%
-    # 2D CORNER PLOT
-    xmin       = np.array([np.nanmin(param) for param in params])
-    xmax       = np.array([np.nanmax(param) for param in params])
-    levels     = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
-    cmap       = plt.get_cmap("plasma_r")
-    fig, axes  = plt.subplots(Ndim, Ndim, figsize=(2 * Ndim, 2 * Ndim), dpi=dpi)
-    axes       = np.atleast_2d(axes)
-    plt.subplots_adjust(wspace=0.1, hspace=0.1)
-    for idim in range(Ndim):
-        for jdim in range(Ndim):
-            ax = axes[idim, jdim]
-            if jdim > idim:
-                ax.axis("off")
-                continue
-
-            elif idim == jdim:
-                pdet_1D = reduce_Pdet(Pdet=Pdet, dims_to_keep=[idim], params=params, params_ranges=params_ranges, params_priors=params_priors, params_names=params_names, verbose=False)
-                ax.step(params[idim], pdet_1D, color="k", where="mid")
-                ax.axvline(params_max[idim], color="k", linestyle="--")
-                ax.set_yticks([])
-                ax.set_xlabel(params_names_l[idim], fontsize=10)
-                if params_isint[idim]:
-                    ax.set_title(f"{params_names_l[idim]} = {round(params_max[idim], -2):.0f}", fontsize=10)
-                elif params_islog[idim]:
-                    ax.set_title(f"{params_names_l[idim]} = {params_max[idim]:.1e}", fontsize=10)
-                else:
-                    ax.set_title(f"{params_names_l[idim]} = {params_max[idim]:.2f}", fontsize=10)
-                ax.set_xlim(xmin[idim], xmax[idim])
-                if params_islog[idim]:
-                    ax.set_xscale("log")
-
-            elif jdim < idim:
-                pdet_2D = reduce_Pdet(Pdet=Pdet, dims_to_keep=[jdim, idim], params=params, params_ranges=params_ranges, params_priors=params_priors, params_names=params_names, verbose=False)
-                pmax = np.nanmax(pdet_2D)
-                if (not np.isfinite(pmax)) or (pmax <= 0):
-                    ax.text(0.5, 0.5, "no detections", ha="center", va="center", transform=ax.transAxes)
-                else:
-                    pdet_2D = pdet_2D.T / pmax
-                    ax.contourf(params[jdim], params[idim], pdet_2D, levels=levels, cmap=cmap, alpha=0.8)
-                    cs  = ax.contour(params[jdim], params[idim], pdet_2D, levels=levels, colors="black")
-                    fmt = {lvl: f"{lvl:.0%}" for lvl in levels}
-                    ax.clabel(cs, inline=True, fontsize=10, fmt=fmt)
-                ax.axvline(params_max[jdim], color="k", linestyle="--")
-                ax.axhline(params_max[idim], color="k", linestyle="--")
-                ax.plot(params_max[jdim], params_max[idim], "X", color="black")
-                if jdim == 0:
-                    ax.set_ylabel(params_names_l[idim], fontsize=10)
-                if idim == Ndim - 1:
-                    ax.set_xlabel(params_names_l[jdim], fontsize=10)
-                ax.set_xlim(xmin[jdim], xmax[jdim])
-                ax.set_ylim(xmin[idim], xmax[idim])
-                if params_islog[jdim]:
-                    ax.set_xscale("log")
-                if params_islog[idim]:
-                    ax.set_yscale("log")
-
-            if idim < Ndim - 1:
-                ax.set_xticklabels([])
-            if jdim > 0:
-                ax.set_yticklabels([])
-
-    title  = f"ELT/{instru} detection probability corner plot"
-    title += f"\n\n assuming an {instru_type} with a Lyot coronagraph"
-    title += f"\n \n and {post_processing.replace('DI', 'differential imaging').replace('MM', 'molecular mapping')} as post-processing method"
-    title += f"\n\n for {N_PT} {table_type.replace('Archive', 'known').replace('Simulated', 'simulated')} planets in {light_regime} light"
-    fig.suptitle(title, fontsize=14, weight="bold", x=0.63, y=0.85)
-    fig.savefig(sim_dir / f"ELT_{instru}_{instru_type}_{post_processing}_corner_plot_{table_type}_{light_regime}_Pdet.png", bbox_inches="tight", dpi=dpi)
-    plt.show()
-
-
-
-    #%%
-    # DETECTED POPULATION PLOT
-    AngSep = planet_table['AngSep']
-    Imag   = planet_table['PlanetImag(thermal+reflected)']
-    Imag_star = planet_table['StarImag']
-    Teff_star = planet_table['StarTeff']
-
-    print('-------------------------------------------------------------')
-    print('Detected planet population for:')
-    for idim in range(Ndim):
-        print(f'{params_names[idim]:20}:      {params_max[idim]} [{params_imax[idim]}]')
-    print('-------------------------------------------------------------')
-
-    # SNR of planets
-    imax_FoV = params_imax[-1]          # index of the FoV providing highest Pdet
-    params_imax_tmp = params_imax[:-1]  # remove FoV from parameters
-    SNR = (SNR_planets.squeeze())[(slice(None), ) + tuple(params_imax_tmp)]   # extract SNR
-    SNR[p0_FoV > imax_FoV] = 0          # filter over FoV
-
-    # plot
-    fig = plt.figure('Detected planet population', figsize=(11, 9))
-    fig.clf()
-    gs = gridspec.GridSpec(1, 2, width_ratios=[1, 0.05], wspace=0.05, left=0.11, right=0.88, top=0.92, bottom=0.1)
-    ax = fig.add_subplot(gs[0])
-
-    cmap = mpl.cm.afmhot
-    norm = colors.Normalize(vmin=2000, vmax=10_000, clip=True)
-    ax.scatter(AngSep, 10**(-(Imag-Imag_star)/2.5), marker='o', ec='none', c=cmap(norm(Teff_star)), s=Imag*10, alpha=np.ones(len(SNR)) - (SNR < 5) * 0.9)
-    ax.set_xlabel("Angular separation [mas]")
-    ax.set_xscale('log')
-    ax.set_xlim(5, 3000)
-    ax.set_ylabel("I-band contrast")
-    ax.set_yscale('log')
-    ax.set_ylim(1e-11, 1e-6)
-    ax.set_title(f"ELT/{instru} detected population - {instru_type} with {post_processing}", fontsize=18, weight="bold")
-    ax = fig.add_subplot(gs[1])
-    cbar = plt.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap), cax=ax)
-    cbar.set_label("Star Teff [K]")
-    # plt.savefig('detected_planet_population.png')
-    plt.show()
 
 
 
@@ -2099,14 +1984,91 @@ def main():
         print(f"\nDetected Earth-like planets in reflected-light in {exposure_time/60:.1f}hr: {len(planet_table_detected_earth_reflected)} / {len(planet_table_earth_reflected)}")
         print(list(planet_table_detected_earth_reflected["PlanetName"]))
 
+
+
+    # %%
     # Plot general parameters
-    fontsize = 20
-    ms       = 15
-    lw       = 2
-    alpha    = 0.9
-    gain     = False
+    dpi      = 72    # Dots Per Inch
+    fontsize = 20    # Standard fontsize
+    ms       = 15    # Marker size
+    ss       = 400   # Scatter size
+    lw       = 2     # Linewidth
+    alpha    = 0.9   # Ppacity
+    gain     = False # True for probability gain (normalized yield), False for absolute yields
     ncols    = min(2, Ndim)
     nrows    = int(np.ceil(Ndim / ncols))
+
+
+
+    # %%
+    # 2D CORNER PLOT
+    xmin       = np.array([np.nanmin(param) for param in params])
+    xmax       = np.array([np.nanmax(param) for param in params])
+    levels     = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+    cmap       = plt.get_cmap("plasma_r")
+    fig, axes  = plt.subplots(Ndim, Ndim, figsize=(2 * Ndim, 2 * Ndim), dpi=dpi)
+    axes       = np.atleast_2d(axes)
+    plt.subplots_adjust(wspace=0.1, hspace=0.1)
+    for idim in range(Ndim):
+        for jdim in range(Ndim):
+            ax = axes[idim, jdim]
+            if jdim > idim:
+                ax.axis("off")
+                continue
+
+            elif idim == jdim:
+                pdet_1D = reduce_Pdet(Pdet=Pdet, dims_to_keep=[idim], params=params, params_ranges=params_ranges, params_priors=params_priors, params_names=params_names, verbose=False)
+                ax.step(params[idim], pdet_1D, color="k", where="mid")
+                ax.axvline(params_max[idim], color="k", linestyle="--")
+                ax.set_yticks([])
+                ax.set_xlabel(params_names_l[idim], fontsize=10)
+                if params_isint[idim]:
+                    ax.set_title(f"{params_names_l[idim]} = {round(params_max[idim], -2):.0f}", fontsize=10)
+                elif params_islog[idim]:
+                    ax.set_title(f"{params_names_l[idim]} = {params_max[idim]:.1e}", fontsize=10)
+                else:
+                    ax.set_title(f"{params_names_l[idim]} = {params_max[idim]:.2f}", fontsize=10)
+                ax.set_xlim(xmin[idim], xmax[idim])
+                if params_islog[idim]:
+                    ax.set_xscale("log")
+    
+            elif jdim < idim:
+                pdet_2D = reduce_Pdet(Pdet=Pdet, dims_to_keep=[jdim, idim], params=params, params_ranges=params_ranges, params_priors=params_priors, params_names=params_names, verbose=False)
+                pmax = np.nanmax(pdet_2D)
+                if (not np.isfinite(pmax)) or (pmax <= 0):
+                    ax.text(0.5, 0.5, "no detections", ha="center", va="center", transform=ax.transAxes)
+                else:
+                    pdet_2D = pdet_2D.T / pmax
+                    ax.contourf(params[jdim], params[idim], pdet_2D, levels=levels, cmap=cmap, alpha=0.8)
+                    cs  = ax.contour(params[jdim], params[idim], pdet_2D, levels=levels, colors="black")
+                    fmt = {lvl: f"{lvl:.0%}" for lvl in levels}
+                    ax.clabel(cs, inline=True, fontsize=10, fmt=fmt)
+                ax.axvline(params_max[jdim], color="k", linestyle="--")
+                ax.axhline(params_max[idim], color="k", linestyle="--")
+                ax.plot(params_max[jdim], params_max[idim], "X", color="black")
+                if jdim == 0:
+                    ax.set_ylabel(params_names_l[idim], fontsize=10)
+                if idim == Ndim - 1:
+                    ax.set_xlabel(params_names_l[jdim], fontsize=10)
+                ax.set_xlim(xmin[jdim], xmax[jdim])
+                ax.set_ylim(xmin[idim], xmax[idim])
+                if params_islog[jdim]:
+                    ax.set_xscale("log")
+                if params_islog[idim]:
+                    ax.set_yscale("log")
+
+            if idim < Ndim - 1:
+                ax.set_xticklabels([])
+            if jdim > 0:
+                ax.set_yticklabels([])
+
+    title  = f"ELT/{instru} detection probability corner plot"
+    title += f"\n\n assuming an {instru_type} with a Lyot coronagraph"
+    title += f"\n \n and {post_processing.replace('DI', 'differential imaging').replace('MM', 'molecular mapping')} as post-processing method"
+    title += f"\n\n for {N_PT} {table_type.replace('Archive', 'known').replace('Simulated', 'simulated')} planets in {light_regime} light"
+    fig.suptitle(title, fontsize=14, weight="bold", x=0.63, y=0.85)
+    fig.savefig(sim_dir / f"ELT_{instru}_{instru_type}_{post_processing}_corner_plot_{table_type}_{light_regime}_Pdet.png", bbox_inches="tight", dpi=dpi)
+    plt.show()
 
 
 
@@ -2370,6 +2332,145 @@ def main():
     fig.savefig(sim_dir / f"ELT_{instru}_{instru_type}_{post_processing}_detection_band_{table_type}_{light_regime}_Pdet.png", bbox_inches="tight", dpi=dpi)
     plt.show()
 
+
+
+    #%%
+    # DETECTED POPULATION PLOT
+    
+    # Band used for the contrast shown on the y-axis
+    band_plot = "I"
+    
+    # Data to plot
+    AngSep    = np.asarray(planet_table["AngSep"], dtype=float)
+    Pmag      = np.asarray(planet_table[f"Planet{band_plot}mag(thermal+reflected)"], dtype=float)
+    Smag      = np.asarray(planet_table[f"Star{band_plot}mag"], dtype=float)
+    Teff_star = np.asarray(planet_table["StarTeff"], dtype=float)
+    contrast  = 10**(-(Pmag - Smag) / 2.5)
+    
+    print("-------------------------------------------------------------")
+    print("Detected planet population for:")
+    for idim in range(Ndim):
+        print(f"{params_names[idim]:20}:      {params_max[idim]} [{params_imax[idim]}]")
+    print("-------------------------------------------------------------")
+    
+    # SNR of planets at the best/reported parameter set
+    imax_FoV               = params_imax[-1]                                                                      # index of the FoV providing highest Pdet
+    params_imax_tmp        = params_imax[:-1]                                                                     # remove FoV from parameters
+    SNR                    = np.asarray((SNR_planets.squeeze())[(slice(None),) + tuple(params_imax_tmp)]).copy() # extract SNR
+    SNR[p0_FoV > imax_FoV] = 0                                                                                    # filter over FoV
+    
+    detected     = np.isfinite(SNR) & (SNR >= SNR_thr)
+    not_detected = np.isfinite(SNR) & (SNR <  SNR_thr)
+    valid_all    = np.isfinite(AngSep) & np.isfinite(contrast) & np.isfinite(Teff_star)
+    
+    # Figure
+    fig = plt.figure("Detected planet population", dpi=dpi, figsize=(15, 13))
+    fig.clf()
+    ax = fig.add_subplot(111)
+    
+    # Colormap: keep current one
+    cmap = mpl.cm.afmhot
+    norm = colors.Normalize(vmin=2000, vmax=10_000, clip=True)
+    
+    # Background: non-detected planets, with correct marker by planet type
+    for ptype in ptypes:
+        mask_ptype = get_mask_planet_type(planet_table=planet_table, planet_type=ptype)
+        mask       = valid_all & not_detected & mask_ptype
+        if not np.any(mask):
+            continue
+        ax.scatter(AngSep[mask], contrast[mask], c=Teff_star[mask], cmap=cmap, norm=norm, marker=marker_ptypes[ptype], s=ss, edgecolors="none", alpha=1-alpha, zorder=1)
+    
+    # Foreground: detected planets, with correct marker by planet type
+    for ptype in ptypes:
+        mask_ptype = get_mask_planet_type(planet_table=planet_table, planet_type=ptype)
+        mask       = valid_all & detected & mask_ptype
+        if not np.any(mask):
+            continue
+        ax.scatter(AngSep[mask], contrast[mask], c=Teff_star[mask], cmap=cmap, norm=norm, marker=marker_ptypes[ptype], s=ss, edgecolors="k", linewidths=0.7, alpha=alpha, zorder=3)
+    
+    # Axes
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xlim(5, sep_max)
+    ax.set_ylim(1e-11, 1e-6)
+    ax.set_xlabel("Angular separation [mas]",   fontsize=fontsize, labelpad=10)
+    ax.set_ylabel(f"{band_plot}-band contrast", fontsize=fontsize, labelpad=10)
+    ax.grid(True, which="major", ls="-", lw=0.7, alpha=0.22)
+    ax.grid(True, which="minor", ls="-", lw=0.4, alpha=0.10)
+    ax.tick_params(axis="both", which="major", labelsize=fontsize-2, length=6, width=1.0)
+    ax.tick_params(axis="both", which="minor", labelsize=fontsize-2, length=3, width=0.8)
+    
+    # Planet-type legend
+    handles_ptype = [Line2D([], [], ls="", marker=marker_ptypes[ptype], ms=ms, markerfacecolor="white", markeredgecolor="k", markeredgewidth=1.5, color="k", label=label_ptypes[ptype]) for ptype in ptypes]
+    leg_ptype     = ax.legend(handles=handles_ptype, fontsize=fontsize, loc="lower left", frameon=True, edgecolor="gray", facecolor="white")
+    ax.add_artist(leg_ptype)
+    
+    # Detection-status legend
+    handles_detected = [
+        Line2D([], [], ls="", marker="o", ms=ms, markerfacecolor="0.65", markeredgecolor="none", markeredgewidth=0.0, alpha=max(1-alpha, 0.25), color="0.65", label="Non-detected"),
+        Line2D([], [], ls="", marker="o", ms=ms, markerfacecolor="0.65", markeredgecolor="k", markeredgewidth=1.5, alpha=alpha, color="0.65", label="Detected"),
+    ]
+    leg_detected = ax.legend(handles=handles_detected, fontsize=fontsize, loc="lower center", frameon=True, edgecolor="gray", facecolor="white")
+
+    # Colorbar
+    sm   = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+    sm.set_array([])
+    cbar = fig.colorbar(sm, ax=ax, fraction=0.046, pad=0.025)
+    cbar.set_label(r"Star $T_\mathrm{eff}$ [K]", fontsize=fontsize, rotation=270, labelpad=25)
+    cbar.ax.tick_params(labelsize=fontsize-2)
+    cbar.ax.minorticks_on()
+
+    # Title
+    Ndet_plot = int(np.sum(detected))
+    title     = f"ELT/{instru} detected population - {instru_type} with {post_processing}"
+    title    += f"\nfor {Ndet_plot} detected planets among {N_PT} {table_type.replace('Archive', 'known').replace('Simulated', 'simulated')} planets"
+    fig.suptitle(title, fontsize=fontsize+2, weight="bold", y=0.96)
+    # fig.savefig(sim_dir / f"ELT_{instru}_{instru_type}_{post_processing}_detected_population_{table_type}_{light_regime}_{band_plot}band.png", bbox_inches="tight", dpi=dpi)
+    plt.show()
+    
+    
+    
+    # %%
+    # DETECTED POPULATION PLOT
+    AngSep    = planet_table['AngSep']
+    Imag      = planet_table['PlanetImag(thermal+reflected)']
+    Imag_star = planet_table['StarImag']
+    Teff_star = planet_table['StarTeff']
+
+    print('-------------------------------------------------------------')
+    print('Detected planet population for:')
+    for idim in range(Ndim):
+        print(f'{params_names[idim]:20}:      {params_max[idim]} [{params_imax[idim]}]')
+    print('-------------------------------------------------------------')
+
+    # SNR of planets
+    imax_FoV               = params_imax[-1]                                                   # index of the FoV providing highest Pdet
+    params_imax_tmp        = params_imax[:-1]                                                  # remove FoV from parameters
+    SNR                    = (SNR_planets.squeeze())[(slice(None), ) + tuple(params_imax_tmp)] # extract SNR
+    SNR[p0_FoV > imax_FoV] = 0                                                                 # filter over FoV
+
+    # plot
+    fig = plt.figure('Detected planet population', figsize=(11, 9))
+    fig.clf()
+    gs = gridspec.GridSpec(1, 2, width_ratios=[1, 0.05], wspace=0.05, left=0.11, right=0.88, top=0.92, bottom=0.1)
+    ax = fig.add_subplot(gs[0])
+
+    cmap = mpl.cm.afmhot
+    norm = colors.Normalize(vmin=2000, vmax=10_000, clip=True)
+    ax.scatter(AngSep, 10**(-(Imag-Imag_star)/2.5), marker='o', ec='none', c=cmap(norm(Teff_star)), s=Imag*10, alpha=np.ones(len(SNR)) - (SNR < 5) * 0.9)
+    ax.set_xlabel("Angular separation [mas]")
+    ax.set_xscale('log')
+    ax.set_xlim(5, 3000)
+    ax.set_ylabel("I-band contrast")
+    ax.set_yscale('log')
+    ax.set_ylim(1e-11, 1e-6)
+    ax.set_title(f"ELT/{instru} detected population - {instru_type} with {post_processing}", fontsize=18, weight="bold")
+    ax = fig.add_subplot(gs[1])
+    cbar = plt.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap), cax=ax)
+    cbar.set_label("Star Teff [K]")
+    # plt.savefig('detected_planet_population.png')
+    plt.show()
+    
 
 
     # %%
