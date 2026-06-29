@@ -41,7 +41,7 @@ import sys
 import gc
 
 # Parameters for multiprocessing
-nproc     = max(cpu_count() - 1, 1)
+nproc     = max(cpu_count()//2, 1)
 chunksize = 8
 
 dpi = 72
@@ -133,15 +133,21 @@ def window_sums_1d(values, idx_lo, idx_hi):
     values : ndarray, shape (Nwave,)
         1D array to integrate.
     idx_lo, idx_hi : ndarray
-        Integer arrays with the same shape, defining integration windows.
+        Integer arrays with the same shape, defining integration windows (l0, Nl) for IFU or (l0, Dl) for imager.
 
     Returns
     -------
     sums : ndarray
         Sum of values[idx_lo:idx_hi] for each window.
     """
-    values = np.nan_to_num(values, nan=0.0, posinf=0.0, neginf=0.0)
-    cs     = np.concatenate(([0.0], np.cumsum(values)))
+    values = np.asarray(values)
+    if np.all(np.isfinite(values)):
+        v = values
+    else:
+        v = np.nan_to_num(values, nan=0.0, posinf=0.0, neginf=0.0)
+    cs    = np.empty(v.size + 1, dtype=v.dtype if np.issubdtype(v.dtype, np.floating) else float)
+    cs[0] = 0.0
+    np.cumsum(v, out=cs[1:])
     return cs[idx_hi] - cs[idx_lo]
 
 def window_nanmax_1d(values, idx_lo, idx_hi):
@@ -163,6 +169,21 @@ def window_nanmax_1d(values, idx_lo, idx_hi):
         else:
             out[ind] = 0.0
     return out
+
+def warmup_signal_noise_numba(dtype):
+    """
+    Compile/load the Numba covariance kernels before multiprocessing.
+
+    On Linux, the compiled functions are inherited by forked workers, which avoids
+    paying the compilation/loading overhead independently in every worker.
+    """
+    wave = np.linspace(1.0, 1.1, 32, dtype=dtype)
+    h    = np.ones((32, 1), dtype=dtype)
+    sep  = np.array([50.0 / (rad2arcsec * 1000.0)], dtype=dtype)
+    _    = compute_sigma_base_2_speck_numba(h=h, wave=wave, separation_rad=sep, D=38.54)
+    _    = compute_sigma_base_2_al_spat_numba(h=h, wave=wave, separation_rad=sep, pxscale_rad=1.0 / (rad2arcsec * 1000.0))
+    _    = compute_sigma_base_2_al_spec_fast(h=h)
+
 
 
 # --- Globals (context) used by multiprocessing workers ---
@@ -246,7 +267,8 @@ def process_IFU(idx):
     dwave_1D_list          = _IFU_CTX["dwave_1D_list"]
     trans_tell_tel_1D_list = _IFU_CTX["trans_tell_tel_1D_list"]
     trans_instru           = _IFU_CTX["trans_instru"]
-    background_2D_list     = _IFU_CTX["background_2D_list"]
+    background_1D_list     = _IFU_CTX["background_1D_list"]
+    pxscales               = _IFU_CTX["pxscales"]
     Rc                     = _IFU_CTX["Rc"]
     filter_type            = _IFU_CTX["filter_type"]
     range_1D_list          = _IFU_CTX["range_1D_list"]
@@ -261,20 +283,21 @@ def process_IFU(idx):
     pxscales_rad           = _IFU_CTX["pxscales_rad"]
 
     # --- Planet row ---
-    planet                = planet_table[idx]
-    separation_planet     = float(planet["AngSep"].value)           # [mas]
-    separation_planet_rad = separation_planet / (rad2arcsec * 1000) # [rad]
+    planet                    = planet_table[idx]
+    separation_planet         = float(planet["AngSep"].value)           # [mas]
+    separation_planet_rad     = separation_planet / (rad2arcsec * 1000) # [rad]
+    separation_planet_rad_arr = np.array([separation_planet_rad], dtype=dtype)
 
     # --- Computing the planet and star models for this planet row in [J/s/m²/µm] ---
-    planet_spectrum, _, _, star_spectrum = get_thermal_reflected_spectrum(planet=planet, thermal_model=thermal_model, reflected_model=reflected_model, instru=None, wave_model=wave_model, wave_K=wave_K, counts_vega_K=counts_vega_K, show=False, in_planet_mag=True, interpolated_spectrum=True)
+    planet_spectrum, _, _, star_spectrum = get_thermal_reflected_spectrum(planet=planet, thermal_model=thermal_model, reflected_model=reflected_model, instru=None, wave_model=wave_model, wave_K=wave_K, counts_vega_K=counts_vega_K, show=False, in_planet_mag=True, interpolated_spectrum=True, apply_kinematics=True)
     # Interpolating on wave_instru (constant sampling resolution wavelength axis)
     star_spectrum   = star_spectrum.interpolate_wavelength(wave_instru,   renorm=False) # [J/s/m2/µm]
     planet_spectrum = planet_spectrum.interpolate_wavelength(wave_instru, renorm=False) # [J/s/m2/µm]
 
 
     # --- Computing mag_star_1D for each l0 ---
-    star_flux_1D = star_spectrum.interpolate_wavelength(l0, renorm=False).flux  # (l0) [J/s/m2/µm]
-    mag_star_1D  = -2.5 * np.log10(star_flux_1D / vega_flux_1D)                 # (l0) [no unit]
+    star_flux_1D = np.interp(l0, star_spectrum.wavelength, star_spectrum.flux, left=np.nan, right=np.nan) # (l0) [J/s/m2/µm]
+    mag_star_1D  = -2.5 * np.log10(star_flux_1D / vega_flux_1D)                                           # (l0) [no unit]
 
 
     # --- PSF data linearly interpolated at the planet's separation and stellar magnitude ---
@@ -315,7 +338,7 @@ def process_IFU(idx):
         trans_tell_tel_i = trans_tell_tel_1D_list[i]
         star_i           = star_spectrum.degrade_resolution(wave_i,   renorm=False, R_output=res).flux # [ph/mn/µm]
         planet_i         = planet_spectrum.degrade_resolution(wave_i, renorm=False, R_output=res).flux # [ph/mn/µm]
-        idx_lo, idx_hi   = range_1D_list[i]
+        idx_lo, idx_hi   = range_1D_list[i] # (l0, Nl)
 
         # Converting in [ph/mn/bin]
         # The degraded spectra are still densities [ph/mn/um]; multiplying by
@@ -346,12 +369,12 @@ def process_IFU(idx):
             #     T_i = trans_tell_tel_i * planet_HF_i
             # The actual normalized template in each spectral window is (t = T/norm):
             #     t_ijk = T_i[sl] / sqrt(sum_sl(T_i**2))
-            T_i               = trans_tell_tel_i * planet_HF_i
-            T2_i              = T_i**2
-            norm2_2D          = window_sums_1d(values=T2_i, idx_lo=idx_lo, idx_hi=idx_hi)
-            valid_2D          = np.isfinite(norm2_2D) & (norm2_2D > 0)
-            norm_2D           = np.zeros_like(norm2_2D, dtype=dtype)
-            norm_2D[valid_2D] = np.sqrt(norm2_2D[valid_2D])
+            T_i               = trans_tell_tel_i * planet_HF_i                            # (wave_res)
+            T2_i              = T_i**2                                                    # (wave_res)
+            norm2_2D          = window_sums_1d(values=T2_i, idx_lo=idx_lo, idx_hi=idx_hi) # (l0, Nl)
+            valid_2D          = np.isfinite(norm2_2D) & (norm2_2D > 0)                    # (l0, Nl)
+            norm_2D           = np.zeros_like(norm2_2D, dtype=dtype)                      # (l0, Nl)
+            norm_2D[valid_2D] = np.sqrt(norm2_2D[valid_2D])                               # (l0, Nl)
 
             # CCF signal computation in [ph/mn], before multiplying by
             # the spatial PSF throughput and instrumental efficiency.
@@ -368,16 +391,16 @@ def process_IFU(idx):
             #     T_i = trans_tell_tel_i * planet_i
             # The actual normalized template in each spectral window is (t = T/norm):
             #     t_ijk = T_i[sl] / sqrt(sum_sl(T_i**2))
-            T_i               = trans_tell_tel_i * planet_i
-            T2_i              = T_i**2
-            norm2_2D          = window_sums_1d(values=T2_i, idx_lo=idx_lo, idx_hi=idx_hi)
-            valid_2D          = np.isfinite(norm2_2D) & (norm2_2D > 0)
-            norm_2D           = np.zeros_like(norm2_2D, dtype=float)
-            norm_2D[valid_2D] = np.sqrt(norm2_2D[valid_2D])
+            T_i               = trans_tell_tel_i * planet_i                               # (wave_res)
+            T2_i              = T_i**2                                                    # (wave_res)
+            norm2_2D          = window_sums_1d(values=T2_i, idx_lo=idx_lo, idx_hi=idx_hi) # (l0, Nl)
+            valid_2D          = np.isfinite(norm2_2D) & (norm2_2D > 0)                    # (l0, Nl)
+            norm_2D           = np.zeros_like(norm2_2D, dtype=float)                      # (l0, Nl)
+            norm_2D[valid_2D] = np.sqrt(norm2_2D[valid_2D])                               # (l0, Nl)
 
             # CCF/integrated signal computation in [ph/mn], before PSF and throughput factors.
             # delta = sum(trans*planet*t) = sum(T*t) = sum(T*T/norm) = norm**2/norm = norm
-            signal_2D = np.zeros_like(norm2_2D, dtype=float)
+            signal_2D           = np.zeros_like(norm2_2D, dtype=float)
             signal_2D[valid_2D] = norm_2D[valid_2D]
 
         else:
@@ -386,7 +409,7 @@ def process_IFU(idx):
         # Save signal in [ph/mn] before spatial PSF and instrumental-throughput factors.
         signal_3D[i] = signal_2D.astype(dtype)
 
-        # Stellar halo photon noise:
+        # Stellar halo photon noise in [ph/mn]**2:
         # sigma_halo^2 = sum(trans*star * t**2)
         #              = sum(trans*star * T**2) / norm**2
         sigma_halo_num_2D       = window_sums_1d(values=trans_tell_tel_star_i * T2_i, idx_lo=idx_lo, idx_hi=idx_hi)
@@ -394,19 +417,15 @@ def process_IFU(idx):
         sigma_halo_2D[valid_2D] = sigma_halo_num_2D[valid_2D] / norm2_2D[valid_2D]
         sigma_halo_2_3D[i]      = sigma_halo_2D.astype(dtype)
 
-        # Background photon noise
-        # background_2D_list[i] depends on l0, so this part keeps only a simple loop
-        # over j. This is much cheaper than looping over all spectral pixels in every
-        # (j, k) window.
-        sigma_bkg_2D = np.zeros_like(norm2_2D, dtype=float)
-        for j in range(N_l0):
-            background_ij      = background_2D_list[i][j]
-            sigma_bkg_num_j    = window_sums_1d(values=background_ij * T2_i, idx_lo=idx_lo[j], idx_hi=idx_hi[j])
-            m                  = valid_2D[j]
-            sigma_bkg_2D[j, m] = sigma_bkg_num_j[m] / norm2_2D[j, m]
-        sigma_bkg_2_3D[i] = sigma_bkg_2D.astype(dtype)
+        # Background photon noise in [ph/px/mn]**2
+        background_i           = background_1D_list[i]                                                    # (wave_res) [ph/mn/bin/mas2]
+        sigma_bkg_num_2D       = window_sums_1d(values=background_i * T2_i, idx_lo=idx_lo, idx_hi=idx_hi) # (l0, Nl)   [ph/mn/mas2]
+        sigma_bkg_num_2D      *= pxscales[:, None]**2                                                     # (l0, Nl)   [ph/mn/mas2] => [ph/px/mn]
+        sigma_bkg_2D           = np.zeros_like(norm2_2D, dtype=float)
+        sigma_bkg_2D[valid_2D] = sigma_bkg_num_2D[valid_2D] / norm2_2D[valid_2D]
+        sigma_bkg_2_3D[i]      = sigma_bkg_2D.astype(dtype)
 
-        # Systematic base term
+        # Systematic base term in [ph/mn]**2
         # This part is harder to vectorize cleanly because the covariance calculation
         # depends on the compressed wavelength grid, the local pxscale, and the exact
         # normalized h_PP vector in each window. We therefore keep the small (j, k)
@@ -422,7 +441,6 @@ def process_IFU(idx):
 
                 # Window-normalized template:
                 #     template_ijk = template_raw / sqrt(sum(template_raw**2)).
-                t_ijk = T_i[sl] / norm_2D[j, k]
 
                 # Sigma stellar-halo systematic noise base term, assuming
                 # sigma_m = 1.  This is the spectral covariance projection before
@@ -433,13 +451,13 @@ def process_IFU(idx):
                 #   C_m = 0.5 * (C_al_spec + C_al_spat).
                 # Therefore:
                 #   sigma_m,base^2 = 0.5 * (h^T C_al_spec h + h^T C_al_spat h).
-                h_PP                              = (trans_tell_tel_star_i[sl] * t_ijk)[:, None] # (wave, sep) weighted halo H*t
-                wave_c, h_PP_c, _                 = compress_h_for_sigma_base_2(wave=wave_ijk, h=h_PP, post_processing=post_processing, D=D, pxscale=pxscale_rad, separation_ref=separation_planet_rad, sep_unit="rad")
+                h_PP_native                       = (trans_tell_tel_star_i[sl] * T_i[sl] / norm_2D[j, k])[:, None] # (wave, sep) weighted halo H*t
+                wave_c, h_PP_c, _                 = compress_h_for_sigma_base_2(wave=wave_ijk, h=h_PP_native, post_processing=post_processing, D=D, pxscale=pxscale_rad, separation_ref=separation_planet_rad, sep_unit="rad")
                 if post_processing == "DI":
-                    sigma_syst_base_2_3D[i, j, k] = compute_sigma_base_2_speck_numba(h=h_PP_c, wave=wave_c, separation_rad=np.array([separation_planet_rad]), D=D)[0]
+                    sigma_syst_base_2_3D[i, j, k] = compute_sigma_base_2_speck_numba(h=h_PP_c, wave=wave_c, separation_rad=separation_planet_rad_arr, D=D)[0]
                 elif post_processing == "MM":
-                    sigma_base_2_al_spat          = compute_sigma_base_2_al_spat_numba(h=h_PP_c, wave=wave_c, separation_rad=np.array([separation_planet_rad]), pxscale_rad=pxscale_rad)[0]
-                    sigma_base_2_al_spec          = compute_sigma_base_2_al_spec_fast(h=h_PP)[0]
+                    sigma_base_2_al_spat          = compute_sigma_base_2_al_spat_numba(h=h_PP_c, wave=wave_c, separation_rad=separation_planet_rad_arr, pxscale_rad=pxscale_rad)[0]
+                    sigma_base_2_al_spec          = compute_sigma_base_2_al_spec_fast(h=h_PP_native)[0]
                     sigma_syst_base_2_3D[i, j, k] = 0.5 * (sigma_base_2_al_spec + sigma_base_2_al_spat)
 
 
@@ -551,7 +569,6 @@ def process_IM(idx):
     separation         = _IM_CTX["separation"]
     thermal_model      = _IM_CTX["thermal_model"]
     reflected_model    = _IM_CTX["reflected_model"]
-    wave_model         = _IM_CTX["wave_model"]
     wave_instru        = _IM_CTX["wave_instru"]
     wave_K             = _IM_CTX["wave_K"]
     counts_vega_K      = _IM_CTX["counts_vega_K"]
@@ -577,15 +594,12 @@ def process_IM(idx):
 
 
     # --- Computing the planet and star models for this planet row in [J/s/m²/µm] ---
-    planet_spectrum, _, _, star_spectrum = get_thermal_reflected_spectrum(planet=planet, thermal_model=thermal_model, reflected_model=reflected_model, instru=None, wave_model=wave_model, wave_K=wave_K, counts_vega_K=counts_vega_K, show=False, in_planet_mag=True, interpolated_spectrum=True)
-    # Interpolating on wave_instru (constant sampling resolution wavelength axis)
-    star_spectrum   = star_spectrum.interpolate_wavelength(wave_instru,   renorm=False) # [J/s/m2/µm]
-    planet_spectrum = planet_spectrum.interpolate_wavelength(wave_instru, renorm=False) # [J/s/m2/µm]
+    planet_spectrum, _, _, star_spectrum = get_thermal_reflected_spectrum(planet=planet, thermal_model=thermal_model, reflected_model=reflected_model, instru=None, wave_model=wave_instru, wave_K=wave_K, counts_vega_K=counts_vega_K, show=False, in_planet_mag=True, interpolated_spectrum=True, apply_kinematics=False)
 
 
     # --- Computing mag_star_1D for each l0 ---
-    star_flux_1D = star_spectrum.interpolate_wavelength(l0, renorm=False).flux  # (l0) [J/s/m2/µm]
-    mag_star_1D  = -2.5 * np.log10(star_flux_1D / vega_flux_1D)                 # (l0) [no unit]
+    star_flux_1D = np.interp(l0, star_spectrum.wavelength, star_spectrum.flux, left=np.nan, right=np.nan) # (l0) [J/s/m2/µm]
+    mag_star_1D  = -2.5 * np.log10(star_flux_1D / vega_flux_1D)                                           # (l0) [no unit]
 
 
     # --- PSF data linearly interpolated at the planet's separation and stellar magnitude ---
@@ -1669,7 +1683,7 @@ def main():
 
             # --- Preparing for wave axis, range, trans_tell_tel, background for each point ---
             trans_tell_tel_1D_list = [None] * len(R) # (R)
-            background_2D_list     = [None] * len(R) # (R)     [ph/px/mn/bin]
+            background_1D_list     = [None] * len(R) # (R)     [ph/px/mn/bin]
             wave_1D_list           = [None] * len(R) # (R)     [µm]
             dwave_1D_list          = [None] * len(R) # (R)     [µm/bin]
             range_1D_list          = [None] * len(R) # (R)
@@ -1721,12 +1735,13 @@ def main():
                 trans_tell_tel_1D_list[i] = trans_tell_tel.degrade_resolution(wave_res, renorm=False, R_output=res).flux
 
                 # Background spectrum on this grid in [ph/px/mn/bin]
-                background_res        = background.degrade_resolution(wave_res, renorm=False, R_output=res).flux
-                background_res       *= dwave_res                                      # (len(wave_res))     [ph/mn/µm/mas2]  => [ph/mn/bin/mas2]
-                background_2D_list[i] = background_res[None, :] * pxscales[:, None]**2 # (l0, len(wave_res)) [ph/mn/bin/mas2] => [ph/px/mn/bin]
+                background_res        = background.degrade_resolution(wave_res, renorm=False, R_output=res).flux # (len(wave_res))     [ph/mn/µm/mas2]
+                background_res       *= dwave_res                                                                # (len(wave_res))     [ph/mn/µm/mas2]  => [ph/mn/bin/mas2]
+                background_1D_list[i] = background_res.astype(dtype, copy=False)                                 # (len(wave_res))     [ph/mn/bin/mas2]
+
 
             # --- Global context worker ---
-            _IFU_CTX = dict(planet_table=planet_table, l0=l0, A_FWHM=A_FWHM, separation=separation, thermal_model=thermal_model, reflected_model=reflected_model, post_processing=post_processing, wave_model=wave_model, wave_instru=wave_instru, wave_K=wave_K, counts_vega_K=counts_vega_K, vega_flux_1D=vega_flux_1D, mag_star=mag_star, scale_spectrum=scale_spectrum, N_R=N_R, N_l0=N_l0, N_Nl=N_Nl, R=R, wave_1D_list=wave_1D_list, dwave_1D_list=dwave_1D_list, trans_tell_tel_1D_list=trans_tell_tel_1D_list, trans_instru=trans_instru, background_2D_list=background_2D_list, Rc=Rc, filter_type=filter_type, range_1D_list=range_1D_list, saturation_e=saturation_e, min_DIT=min_DIT, max_DIT=max_DIT, PSF_profile_5D_path=str(PSF_profile_5D_tmp_path), fraction_core_5D_path=str(fraction_core_5D_tmp_path), PSF_profile_max_4D_path=str(PSF_profile_max_4D_tmp_path), signal_path=str(signal_path), sigma_halo_2_path=str(sigma_halo_2_path), sigma_bkg_2_path=str(sigma_bkg_2_path), DIT_path=str(DIT_path), sigma_syst_base_2_path=str(sigma_syst_base_2_path), dtype=dtype, D=D, pxscales_rad=pxscales_rad)
+            _IFU_CTX = dict(planet_table=planet_table, l0=l0, A_FWHM=A_FWHM, separation=separation, thermal_model=thermal_model, reflected_model=reflected_model, post_processing=post_processing, wave_model=wave_model, wave_instru=wave_instru, wave_K=wave_K, counts_vega_K=counts_vega_K, vega_flux_1D=vega_flux_1D, mag_star=mag_star, scale_spectrum=scale_spectrum, N_R=N_R, N_l0=N_l0, N_Nl=N_Nl, R=R, wave_1D_list=wave_1D_list, dwave_1D_list=dwave_1D_list, trans_tell_tel_1D_list=trans_tell_tel_1D_list, trans_instru=trans_instru, background_1D_list=background_1D_list, pxscales=pxscales, Rc=Rc, filter_type=filter_type, range_1D_list=range_1D_list, saturation_e=saturation_e, min_DIT=min_DIT, max_DIT=max_DIT, PSF_profile_5D_path=str(PSF_profile_5D_tmp_path), fraction_core_5D_path=str(fraction_core_5D_tmp_path), PSF_profile_max_4D_path=str(PSF_profile_max_4D_tmp_path), signal_path=str(signal_path), sigma_halo_2_path=str(sigma_halo_2_path), sigma_bkg_2_path=str(sigma_bkg_2_path), DIT_path=str(DIT_path), sigma_syst_base_2_path=str(sigma_syst_base_2_path), dtype=dtype, D=D, pxscales_rad=pxscales_rad)
 
 
             # --- Arguments for Pool ---
@@ -1762,17 +1777,12 @@ def main():
             range_1D = (idx_lo, idx_hi)
 
             # Background total flux preparation (l0, Dl) in [ph/px/mn]
-            background         = background.flux * dl_instru # [ph/mn/µm/mas2] => [ph/mn/bin/mas2]
-            background_flux_2D = np.zeros((N_l0, N_Dl), dtype=dtype)
-            for j in range(N_l0): # for each l0
-                for k in range(N_Dl): # for each Dl
-                    sl                       = slice(idx_lo[j, k], idx_hi[j, k]) # cropped range
-                    background_jk            = background[sl]           # [ph/mn/bin/mas2]
-                    background_flux_2D[j, k] = np.nansum(background_jk) # [ph/mn/mas2]
-            background_flux_2D *= pxscales[:, None]**2 # [ph/mn/mas2] => [ph/px/mn]
+            background          = background.flux * dl_instru                                                   # [ph/mn/µm/mas2] => [ph/mn/bin/mas2]
+            background_flux_2D  = window_sums_1d(values=background, idx_lo=idx_lo, idx_hi=idx_hi).astype(dtype) # [ph/mn/mas2]
+            background_flux_2D *= pxscales[:, None]**2                                                          # [ph/mn/mas2] => [ph/px/mn]
 
             # --- Global context worker ---
-            _IM_CTX = dict(planet_table=planet_table, l0=l0, A_FWHM=A_FWHM, separation=separation, thermal_model=thermal_model, reflected_model=reflected_model, post_processing=post_processing, wave_model=wave_model, wave_instru=wave_instru, wave_K=wave_K, counts_vega_K=counts_vega_K, vega_flux_1D=vega_flux_1D, mag_star=mag_star, scale_spectrum=scale_spectrum, N_l0=N_l0, N_Dl=N_Dl, trans_instru=trans_instru, trans_tell_tel=trans_tell_tel.flux, background_flux_2D=background_flux_2D, range_1D=range_1D, saturation_e=saturation_e, min_DIT=min_DIT, max_DIT=max_DIT, PSF_profile_5D_path=str(PSF_profile_5D_tmp_path), fraction_core_5D_path=str(fraction_core_5D_tmp_path), PSF_profile_max_4D_path=str(PSF_profile_max_4D_tmp_path), signal_path=str(signal_path), sigma_halo_2_path=str(sigma_halo_2_path), sigma_bkg_2_path=str(sigma_bkg_2_path), DIT_path=str(DIT_path), dtype=dtype)
+            _IM_CTX = dict(planet_table=planet_table, l0=l0, A_FWHM=A_FWHM, separation=separation, thermal_model=thermal_model, reflected_model=reflected_model, post_processing=post_processing, wave_instru=wave_instru, wave_K=wave_K, counts_vega_K=counts_vega_K, vega_flux_1D=vega_flux_1D, mag_star=mag_star, scale_spectrum=scale_spectrum, N_l0=N_l0, N_Dl=N_Dl, trans_instru=trans_instru, trans_tell_tel=trans_tell_tel.flux, background_flux_2D=background_flux_2D, range_1D=range_1D, saturation_e=saturation_e, min_DIT=min_DIT, max_DIT=max_DIT, PSF_profile_5D_path=str(PSF_profile_5D_tmp_path), fraction_core_5D_path=str(fraction_core_5D_tmp_path), PSF_profile_max_4D_path=str(PSF_profile_max_4D_tmp_path), signal_path=str(signal_path), sigma_halo_2_path=str(sigma_halo_2_path), sigma_bkg_2_path=str(sigma_bkg_2_path), DIT_path=str(DIT_path), dtype=dtype)
 
             # --- Arguments for Pool ---
             init_worker  = init_worker_IM
@@ -1813,6 +1823,10 @@ def main():
             ctx_mp = mp.get_context("spawn")
         else:
             ctx_mp = mp.get_context("fork") # Linux
+
+        # Warmup for systematics in IFU
+        if instru_type == "IFU":
+            warmup_signal_noise_numba(dtype=dtype)
 
         # Computations
         print()
@@ -2105,7 +2119,8 @@ def main():
         r  = idim // ncols
         t  = idim % ncols
         ax = axes[r, t]
-        ax.grid(True, which="both", linestyle="--", linewidth=0.5, zorder=0.2)
+        ax.grid(which="major", linestyle="--", linewidth=0.7, alpha=0.45)
+        ax.grid(which="minor", linestyle=":",  linewidth=0.4, alpha=0.25)
         ax.tick_params(axis="both", which="major", labelsize=fontsize)
 
         # Plotting marginalized quantity
@@ -2258,7 +2273,8 @@ def main():
         r  = idim // ncols
         t  = idim % ncols
         ax = axes[r, t]
-        ax.grid(True, which="both", linestyle="--", linewidth=0.5, zorder=0.2)
+        ax.grid(which="major", linestyle="--", linewidth=0.7, alpha=0.45)
+        ax.grid(which="minor", linestyle=":",  linewidth=0.4, alpha=0.25)
         ax.tick_params(axis="both", which="major", labelsize=fontsize)
 
         # Case 1: x-axis is lambda0
