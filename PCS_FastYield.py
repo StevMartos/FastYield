@@ -26,7 +26,6 @@ from matplotlib.ticker import LogLocator, NullFormatter, AutoMinorLocator
 from matplotlib.lines import Line2D
 import matplotlib as mpl
 import matplotlib.colors as colors
-import matplotlib.gridspec as gridspec
 
 # import scipy modules
 from scipy.interpolate import RegularGridInterpolator
@@ -1399,17 +1398,21 @@ def main():
     N_PT_raw     = len(planet_table)
 
     # Filtering separation range (and regime, if necessary)
-    planet_table   = planet_table[(planet_table["AngSep"].value >= sep_min) & (planet_table["AngSep"].value <= sep_max)]
-    mask_thermal   = (planet_table[f"Planet{band_regime}mag(thermal)"] < planet_table[f"Planet{band_regime}mag(reflected)"])
-    mask_reflected = ~mask_thermal
+    planet_table       = planet_table[(planet_table["AngSep"].value >= sep_min) & (planet_table["AngSep"].value <= sep_max)]
+    mask_thermal_pre   = (planet_table[f"Planet{band_regime}mag(thermal)"] < planet_table[f"Planet{band_regime}mag(reflected)"])
+    mask_reflected_pre = ~mask_thermal_pre
     if light_regime == "thermal":
         print_suffix = f"in thermal light in the {band_regime}-band"
-        planet_table = planet_table[mask_thermal]
+        planet_table  = planet_table[mask_thermal_pre]
     elif light_regime == "reflected":
         print_suffix = f"in reflected light in the {band_regime}-band"
-        planet_table = planet_table[mask_reflected]
-    else:
+        planet_table  = planet_table[mask_reflected_pre]
+    elif light_regime == "thermal+reflected":
         print_suffix = "in thermal and reflected light"
+    else:
+        raise ValueError("light_regime must be 'thermal', 'reflected', or 'thermal+reflected'.")
+    mask_thermal       = np.asarray(planet_table[f"Planet{band_regime}mag(thermal)"] < planet_table[f"Planet{band_regime}mag(reflected)"])
+    mask_reflected     = ~mask_thermal
     separation_planets = planet_table["AngSep"].value # [mas]
     N_PT               = len(planet_table)
     print(f"\nKeeping {N_PT}/{N_PT_raw} planets between {sep_min:.0f} and {sep_max:.0f} mas {print_suffix}")
@@ -2054,7 +2057,7 @@ def main():
     params_max  = np.zeros((Ndim))
     params_imax = np.zeros((Ndim), dtype=int)
     for idim in range(Ndim):
-        pdet_1D           = reduce_hcube(hcube=Pdet, dims_to_keep=[idim], params=params, params_ranges=params_ranges, params_priors=params_priors, params_names=params_names)
+        pdet_1D           = reduce_hcube(hcube=Pdet_plot, dims_to_keep=[idim], params=params, params_ranges=params_ranges, params_priors=params_priors, params_names=params_names)
         params_imax[idim] = pdet_1D.argmax()
         params_max[idim]  = params[idim][pdet_1D.argmax()]
     
@@ -2459,7 +2462,7 @@ def main():
                         vmax_local = 1.0
                 else:
                     vmax_local = 1.0
-    
+                
                 im = ax.imshow(heatmap, origin="lower", aspect="auto", cmap=cmap, vmin=0.0, vmax=vmax_local)
     
                 # Annotate cells
@@ -2686,7 +2689,9 @@ def main():
 
 
     # DOMINANT NOISE REGIME PLOT IN OBSERVATIONAL AND PHYSICAL SPACES
-
+    
+    idx_sigma_m = [idx for idx, param_name in enumerate(params_names) if "sigma_m" in param_name][0]
+    
     # Noise labels and colors
     noise_labels = np.array(["Stellar halo", "Background", "Read noise", "Dark current", "Systematics"])
     noise_colors = {"Stellar halo": "tab:orange", "Background": "tab:blue", "Read noise": "tab:purple", "Dark current": "tab:green", "Systematics": "tab:red"}
@@ -2694,7 +2699,6 @@ def main():
     if snr_population_mode == "max":
         
         # Raw signal/noise terms have no sigma_m/FoV axes
-        idx_sigma_m     = [idx for idx, param_name in enumerate(params_names) if "sigma_m" in param_name][0]
         params_imax_raw = [params_imax[idim] for idim in range(Ndim) if idim not in [idx_sigma_m, idx_FoV]]
 
         # Read per-DIT terms at the max-Pdet parameter set
@@ -2773,30 +2777,32 @@ def main():
 
             sigma_halo_2_i = np.nan_to_num(np.asarray(sigma_halo_2_planets[ip], dtype=float).squeeze(), nan=0.0, posinf=0.0, neginf=0.0)
             sigma_bkg_2_i  = np.nan_to_num(np.asarray(sigma_bkg_2_planets[ip],  dtype=float).squeeze(), nan=0.0, posinf=0.0, neginf=0.0)
-            DIT_i          = np.nan_to_num(np.asarray(DIT_planets[ip],          dtype=float).squeeze(), nan=0.0, posinf=0.0, neginf=0.0)
-
-            if DIT_i.ndim != len(params_raw):
-                raise RuntimeError(f"DIT_i.ndim={DIT_i.ndim} but len(params_raw)={len(params_raw)}. DIT_i.shape={DIT_i.shape}, params_raw={params_names_raw}")
-
-            RON0_grid_i    = np.broadcast_to(RON0_grid,    DIT_i.shape)
-            RON_lim_grid_i = np.broadcast_to(RON_lim_grid, DIT_i.shape)
-            DC0_grid_i     = np.broadcast_to(DC0_grid,     DIT_i.shape)
-            min_DIT_grid_i = np.broadcast_to(min_DIT_grid, DIT_i.shape)
-
-            DIT_safe = np.where(np.isfinite(DIT_i) & (DIT_i > 0), DIT_i, np.inf)
-
+            DIT_i_raw      = np.asarray(DIT_planets[ip], dtype=float).squeeze()
+            
+            if DIT_i_raw.ndim != len(params_raw):
+                raise RuntimeError(f"DIT_i_raw.ndim={DIT_i_raw.ndim} but len(params_raw)={len(params_raw)}. DIT_i_raw.shape={DIT_i_raw.shape}, params_raw={params_names_raw}")
+            
+            valid_DIT = np.isfinite(DIT_i_raw) & (DIT_i_raw > 0)
+            DIT_safe  = np.where(valid_DIT, DIT_i_raw, 1.0)
+            
+            RON0_grid_i    = np.broadcast_to(RON0_grid,    DIT_safe.shape)
+            RON_lim_grid_i = np.broadcast_to(RON_lim_grid, DIT_safe.shape)
+            DC0_grid_i     = np.broadcast_to(DC0_grid,     DIT_safe.shape)
+            min_DIT_grid_i = np.broadcast_to(min_DIT_grid, DIT_safe.shape)
+            
             N_DIT_i  = np.floor(exposure_time / DIT_safe)
-            N_DIT_i  = np.clip(N_DIT_i, 1, None)
-            N_read_i = np.floor(DIT_safe / min_DIT_grid_i).astype(np.int32)
-
+            N_DIT_i  = np.where(valid_DIT, np.clip(N_DIT_i, 1, None), 0.0)
+            N_read_i = np.where(valid_DIT, np.floor(DIT_safe / min_DIT_grid_i), 0).astype(np.int32)
+            
             sigma_RON_2_i = RON0_grid_i**2
             mask_read     = N_read_i >= 2
             if np.any(mask_read):
                 n_read = N_read_i[mask_read].astype(float)
                 sigma_RON_2_i[mask_read] = RON0_grid_i[mask_read]**2 * 12 * (n_read - 1) / (n_read * (n_read + 1)) + RON_lim_grid_i[mask_read]**2
             sigma_RON_2_i *= A_FWHM
-
-            sigma_DC_2_i = DC0_grid_i * DIT_safe * A_FWHM
+            sigma_RON_2_i  = np.where(valid_DIT, sigma_RON_2_i, 0.0)
+            
+            sigma_DC_2_i = np.where(valid_DIT, DC0_grid_i * DIT_safe * A_FWHM, 0.0)
 
             if instru_type == "IFU":
                 sigma_syst_base_2_i = np.nan_to_num(np.asarray(sigma_syst_base_2_planets[ip], dtype=float).squeeze(), nan=0.0, posinf=0.0, neginf=0.0)
