@@ -16,6 +16,8 @@ import matplotlib as mpl
 import matplotlib.patheffects as pe
 from matplotlib.patches import Rectangle
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes, mark_inset
+from matplotlib.font_manager import FontProperties
+from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
 
 # import numpy modules
 import numpy as np
@@ -34,6 +36,8 @@ from sklearn.decomposition import PCA
 import statsmodels.api as sm
 from pathlib import Path
  
+
+
 
 
 ############################# Basic functions #################################
@@ -2409,6 +2413,163 @@ def plot_jwst_data(instru, band, target_name, planet_name, S, CCF_SNR, pxscale, 
     ax.text(0.02, 0.98, param_box, transform=ax.transAxes, ha='left', va='top', fontsize=12, color='white', bbox=dict(facecolor='black', edgecolor='white', linewidth=0.6, alpha=0.35, boxstyle='round,pad=0.3'))
     plt.tight_layout()
     plt.show()
+
+
+
+
+# -------------------------------------------------------------------------
+# Plotting helper for ELT simulated data
+# -------------------------------------------------------------------------
+
+def plot_elt_data(instru, band, target_name, planet_name, S, CCF_SNR, pxscale, FOV, sep_unit, size_core, y0, x0, y_star, x_star, y_planet, x_planet, radius, RA_offset, DEC_offset, band0, mag_star, exposure_time, calculation, SNR, T_planet, rv_planet, model, apodizer, zoom_CCF_2D):
+    
+    NbChannel, NbLine, NbColumn = S.shape
+    
+    # Build display extent centered on the fitted star.
+    extent = get_sky_extent(NbLine=NbLine, NbColumn=NbColumn, y_ref=y_star, x_ref=x_star, pxscale=pxscale)
+    
+    # Planet position in the same coordinate system.
+    if x_planet is not None and y_planet is not None:
+        x_pos, y_pos = pixel_to_sky_offset(y=y_planet, x=x_planet, y_ref=y_star, x_ref=x_star, pxscale=pxscale)
+        sep_planet   = np.hypot(x_pos, y_pos)
+        print("\nEstimated planet projected offset:")
+        print(f"  Delta x    = {x_pos:+.3f} {sep_unit}")
+        print(f"  Delta y    = {y_pos:+.3f} {sep_unit}")
+        print(f"  Separation = {sep_planet:.3f} {sep_unit}")
+        sign_loc_planet = np.sign(y_pos) if y_pos != 0 else +1
+        sign_loc_star   = -sign_loc_planet
+    else:
+        x_pos         = None
+        y_pos         = None
+        sign_loc_star = +1
+    
+    # --- Plot PSF ---
+    PSF           = np.nanmedian(np.nan_to_num(S), axis=0)
+    PSF[PSF == 0] = np.nan
+    if np.nanmin(PSF) < 0:
+        PSF += np.abs(np.nanmin(PSF))
+    PSF /= np.nanmax(PSF)
+    
+    PSF_cmap = "inferno"
+    fig, ax  = plt.subplots(figsize=(8, 8), dpi=300)
+    im       = ax.imshow(PSF, extent=extent, origin="lower", zorder=2, norm=mpl.colors.LogNorm(vmin=None, vmax=1), cmap=PSF_cmap)
+    ax.set_title(f'{instru} PSF of simulated {target_name} data on {band}-band', fontsize=18, fontweight="bold", pad=15)
+    ax.set_xlabel(rf'$\Delta$RA  [{sep_unit}]', fontsize=16)
+    ax.set_ylabel(rf'$\Delta$Dec [{sep_unit}]', fontsize=16)
+    ax.tick_params(which='both', top=True, right=True)
+    ax.minorticks_on()
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.4)
+    ax.tick_params(labelsize=12)
+    ax.plot(0, 0, marker='*', color='gold', markersize=18, zorder=4)
+    ax.text(0, 4*sign_loc_star*size_core*pxscale, f"{target_name}", color='gold', fontsize=12, weight='bold', ha='center', va='bottom', zorder=100, bbox=dict(facecolor='black', edgecolor='none', boxstyle='round,pad=0.3', alpha=0.4))
+    if y0 is not None and x0 is not None:
+        planet_text = planet_name if planet_name is not None else "Planet"
+        circle      = plt.Circle((x_pos, y_pos), radius, edgecolor='deepskyblue', fill=False, linewidth=2, zorder=3)
+        ax.add_patch(circle)
+        ax.plot(x_pos, y_pos, marker='o', color='deepskyblue', markersize=3, zorder=4)
+        if RA_offset is not None and DEC_offset is not None:
+            ax.plot(RA_offset, DEC_offset, marker='X', color='black', markersize=7, zorder=4)
+        if zoom_CCF_2D:
+            scale        = 0.35
+            halfspan     = 4*size_core*pxscale # ~ 4 FWHM
+            cx, cy       = x_pos, y_pos
+            zxmin, zxmax = cx - halfspan, cx + halfspan
+            zymin, zymax = cy - halfspan, cy + halfspan
+            rect = Rectangle((zxmin, zymin), zxmax - zxmin, zymax - zymin, fill=False, edgecolor='black', linewidth=1.5, linestyle='--', zorder=5)
+            ax.add_patch(rect)
+            axins = inset_axes(ax, width=f"{100*scale}%", height=f"{100*scale}%", loc="upper right", borderpad=1.0)
+            axins.imshow(PSF, extent=extent, origin="lower", zorder=2, norm=mpl.colors.LogNorm(vmin=None, vmax=1), cmap=PSF_cmap)
+            axins.plot(0, 0, marker='*', color='gold', markersize=18*(1+scale), zorder=4)
+            circle_ins = plt.Circle((x_pos, y_pos), radius, edgecolor='deepskyblue', fill=False, linewidth=2, zorder=3)
+            axins.add_patch(circle_ins)
+            axins.plot(x_pos, y_pos, marker='o', color='deepskyblue', markersize=3, zorder=4)
+            if RA_offset is not None and DEC_offset is not None:
+                axins.plot(RA_offset, DEC_offset, marker='X', color='black', markersize=7, zorder=4)
+            axins.text(x_pos, y_pos + 2*sign_loc_planet*size_core*pxscale, planet_text, color='deepskyblue', fontsize=12, weight='bold', ha='center', va='top', zorder=100, bbox=dict(facecolor='black', edgecolor='none', boxstyle='round,pad=0.3', alpha=0.4))
+            axins.set_xlim(zxmax, zxmin)  # keep East left
+            axins.set_ylim(zymin, zymax)
+            axins.tick_params(labelsize=10, which='both', top=True, right=True)
+            axins.minorticks_on()
+            mark_inset(ax, axins, loc1=3, loc2=2, fc="none", ec="black", linestyle="--", lw=1.2)
+        else:
+            ax.text(x_pos, y_pos + 2*sign_loc_planet*size_core*pxscale, planet_text, color='deepskyblue', fontsize=12, weight='bold', ha='center', va='top', zorder=100, bbox=dict(facecolor='black', edgecolor='none', boxstyle='round,pad=0.3', alpha=0.4))
+    cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    cbar.set_label('$S$ (in raw contrast)', fontsize=16, rotation=270, labelpad=16)
+    cbar.ax.tick_params(labelsize=12)
+    cbar.ax.minorticks_on()
+    ax.set_xlim(+FOV/2, -FOV/2)   # East left
+    ax.set_ylim(-FOV/2, +FOV/2)   # North up
+    fp       = FontProperties(size=10, weight='bold')
+    scalebar = AnchoredSizeBar(ax.transData, 100, '100 mas' if sep_unit == 'mas' else '0.1 arcsec', 'lower left', pad=0.35, color='white', frameon=False, size_vertical=2, fontproperties=fp)
+    ax.add_artist(scalebar)
+    add_north_east_arrows(ax, loc=(0.95, 0.05), length=0.10, color="white", fontsize=13, lw=2.4, mutation_scale=14)
+    param_box = (f"Band: {band}  |  Apodizer: {apodizer.replace('_', ' ')}\n{band0}={round(mag_star, 1):.1f}  |  $t_{{exp}}$={round(exposure_time):.0f} mn")
+    ax.text(0.02, 0.98, param_box, transform=ax.transAxes, ha='left', va='top', fontsize=12, color='white', bbox=dict(facecolor='black', edgecolor='white', linewidth=0.6, alpha=0.35, boxstyle='round,pad=0.3'))
+    plt.show()
+    
+    # --- Plot CCF ---
+    CCF_thr  = 5
+    CCF_cmap = "coolwarm"
+    fig, ax  = plt.subplots(figsize=(8, 8), dpi=300)
+    im       = ax.imshow(CCF_SNR, extent=extent, origin="lower", zorder=2, cmap=CCF_cmap, vmin=-CCF_thr, vmax=CCF_thr, interpolation='nearest')
+    ax.set_title(f'{instru} CCF of simulated {planet_name if planet_name is not None else target_name} on {band}-band', fontsize=18, fontweight="bold", pad=15)
+    ax.set_xlabel(rf'$\Delta$RA  [{sep_unit}]', fontsize=16)
+    ax.set_ylabel(rf'$\Delta$Dec [{sep_unit}]', fontsize=16)
+    ax.tick_params(which='both', top=True, right=True)
+    ax.minorticks_on()
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.4)
+    ax.tick_params(labelsize=12)
+    ax.plot(0, 0, marker='*', color='gold', markersize=18, zorder=4)
+    ax.text(0, 4*sign_loc_star*size_core*pxscale, f"{target_name}", color='gold', fontsize=12, weight='bold', ha='center', va='bottom', zorder=100, bbox=dict(facecolor='black', edgecolor='none', boxstyle='round,pad=0.3', alpha=0.4))
+    if y0 is not None and x0 is not None:
+        planet_text = planet_name if planet_name is not None else "Planet"
+        if calculation == "SNR" and SNR is not None:
+            planet_text += f"\nS/N={SNR:.1f}"
+        circle = plt.Circle((x_pos, y_pos), radius, edgecolor='deepskyblue', fill=False, linewidth=2, zorder=3)
+        ax.add_patch(circle)
+        ax.plot(x_pos, y_pos, marker='o', color='deepskyblue', markersize=3, zorder=4)
+        if RA_offset is not None and DEC_offset is not None:
+            ax.plot(RA_offset, DEC_offset, marker='X', color='black', markersize=7, zorder=4)
+        if zoom_CCF_2D:
+            scale        = 0.35
+            halfspan     = 4*size_core*pxscale # ~ 4 FWHM
+            cx, cy       = x_pos, y_pos
+            zxmin, zxmax = cx - halfspan, cx + halfspan
+            zymin, zymax = cy - halfspan, cy + halfspan
+            rect = Rectangle((zxmin, zymin), zxmax - zxmin, zymax - zymin, fill=False, edgecolor='black', linewidth=1.5, linestyle='--', zorder=5)
+            ax.add_patch(rect)
+            axins = inset_axes(ax, width=f"{100*scale}%", height=f"{100*scale}%", loc="upper right", borderpad=1.0)
+            axins.imshow(CCF_SNR, extent=extent, origin="lower", zorder=2, cmap=CCF_cmap, vmin=-CCF_thr, vmax=CCF_thr, interpolation='nearest')
+            axins.plot(0, 0, marker='*', color='gold', markersize=18*(1+scale), zorder=4)
+            circle_ins = plt.Circle((x_pos, y_pos), radius, edgecolor='deepskyblue', fill=False, linewidth=2, zorder=3)
+            axins.add_patch(circle_ins)
+            axins.plot(x_pos, y_pos, marker='o', color='deepskyblue', markersize=3, zorder=4)
+            if RA_offset is not None and DEC_offset is not None:
+                axins.plot(RA_offset, DEC_offset, marker='X', color='black', markersize=7, zorder=4)
+            axins.text(x_pos, y_pos + 2.5*sign_loc_planet*size_core*pxscale, planet_text, color='deepskyblue', fontsize=12, weight='bold', ha='center', va='top', zorder=100, bbox=dict(facecolor='black', edgecolor='none', boxstyle='round,pad=0.3', alpha=0.4))
+            axins.set_xlim(zxmax, zxmin) # keep East left
+            axins.set_ylim(zymin, zymax)
+            axins.tick_params(labelsize=10, which='both', top=True, right=True)
+            axins.minorticks_on()
+            mark_inset(ax, axins, loc1=3, loc2=2, fc="none", ec="black", linestyle="--", lw=1.2)
+        else:
+            ax.text(x_pos, y_pos + 2*sign_loc_planet*size_core*pxscale, planet_text, color='deepskyblue', fontsize=12, weight='bold', ha='center', va='top', zorder=100, bbox=dict(facecolor='black', edgecolor='none', boxstyle='round,pad=0.3', alpha=0.4))
+    cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    cbar.set_label('CCF [S/N]', fontsize=16, rotation=270, labelpad=25)
+    cbar.ax.tick_params(labelsize=12)
+    cbar.set_ticks(np.linspace(-CCF_thr, CCF_thr, 11))
+    cbar.ax.minorticks_on()
+    ax.set_xlim(+FOV/2, -FOV/2)   # East left
+    ax.set_ylim(-FOV/2, +FOV/2)   # North up
+    fp       = FontProperties(size=10, weight='bold')
+    scalebar = AnchoredSizeBar(ax.transData, 100, '100 mas' if sep_unit == 'mas' else '0.1 arcsec', 'lower left', pad=0.35, color='white', frameon=False, size_vertical=2, fontproperties=fp)
+    ax.add_artist(scalebar)
+    add_north_east_arrows(ax, loc=(0.95, 0.05), length=0.10, color="white", fontsize=13, lw=2.4, mutation_scale=14)
+    param_box = (rf'$T_{{p}}$={int(round(T_planet))} K  |  RV={round(rv_planet)} km/s' + '\n' + f'Band: {band}  |  Model: {model}')
+    ax.text(0.02, 0.98, param_box, transform=ax.transAxes, ha='left', va='top', fontsize=12, color='white', bbox=dict(facecolor='black', edgecolor='white', linewidth=0.6, alpha=0.35, boxstyle='round,pad=0.3'))
+    plt.show()
+
+
 
 
 
@@ -4844,11 +5005,7 @@ def rebin_flux_conserving(data, pxscale_in, pxscale_out, shape_out=None):
     ny_in, nx_in = data.shape[-2], data.shape[-1]
 
     if shape_out is None:
-        ny_out, nx_out = shape_out_same_or_larger_fov(
-            shape_in=(ny_in, nx_in),
-            pxscale_in=pxscale_in,
-            pxscale_out=pxscale_out,
-        )
+        ny_out, nx_out = shape_out_same_or_larger_fov(shape_in=(ny_in, nx_in), pxscale_in=pxscale_in, pxscale_out=pxscale_out)
     else:
         ny_out, nx_out = map(int, shape_out)
         if ny_out % 2 == 0 or nx_out % 2 == 0:
