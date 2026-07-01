@@ -1314,6 +1314,15 @@ def main():
         # Coronagraph inner working angle radius
         IWA_min          = 1              # [mas]
         IWA_max          = 100            # [mas]
+
+        # ! Fixed post-AO wavefront error and IWA (comment this passage to vary WFE and IWA, but huge files will be created)
+        # Post-AO wavefront error
+        WFE_min          = WFE_ref        # [nm]
+        WFE_max          = WFE_ref        # [nm]
+        # Coronagraph inner working angle
+        IWA_min          = IWA_ref        # [mas]
+        IWA_max          = IWA_ref        # [mas]
+
         # Instrumental transmission (without telescope transmission)
         trans_instru_min = 0.01           # [e-/ph]
         trans_instru_max = 0.20           # [e-/ph]
