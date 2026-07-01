@@ -1716,7 +1716,7 @@ class Spectrum:
             bin_type = "interp"
             
         # Warning for non-Nyquist sampled output
-        if verbose and np.nanmedian(R_output) > np.nanmedian(R_sampling_output):
+        if verbose and round(np.nanmedian(R_output)) > round(np.nanmedian(R_sampling_output)):
             print()
             print_warning(f"WARNING (self.degrade_resolution): The output spectral resolution ({round(np.nanmedian(R_output), -2):.0f}) is greater than the output sampling resolution ({round(np.nanmedian(R_sampling_output), -2):.0f}). Provide finer 'wave_output' to satisfy Nyquist (at least).")
         
@@ -2253,6 +2253,9 @@ def get_model_grid(model, instru=None, mol_broadening="air"):
     if model == "BT-Settl":
         T_grid  = np.concatenate([[200, 220, 240, 250, 260, 280, 300, 320, 340, 360, 380, 400, 450], np.arange(500, 900, 50), np.arange(900, 3100, 100)])
         lg_grid = np.arange(3.0, 5.5, 0.5)
+        
+        # # The 1500K models seem weird...
+        # T_grid = T_grid[T_grid != 1500]
         
     elif "PICASO" in model:
         T_grid  = np.concatenate([np.arange(200, 550, 50), np.arange(600, 3100, 100)])

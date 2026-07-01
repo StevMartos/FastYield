@@ -1482,7 +1482,7 @@ def PCA_subtraction(S_res, N_PCA, y0=None, x0=None, size_core=None, PCA_annular=
                 S_res_wo_planet = S_res_wo_planet * annular_mask(max(1, planet_sep - size_core - 1), planet_sep + size_core, value=np.nan, size=(NbLine, NbColumn))
             if PCA_mask:
                 # Apply a circular mask around the planet location
-                planet_mask                        = circular_mask(y0, x0, r=size_core, size=(NbLine, NbColumn))
+                planet_mask                        = circular_mask(y0, x0, r=2*size_core, size=(NbLine, NbColumn))
                 S_res_wo_planet[:, planet_mask==1] = np.nan
         
         # Reshape the cube to 2D (pixels x channels) and replace NaNs with the mean value of their spectral channel
@@ -1510,8 +1510,8 @@ def PCA_subtraction(S_res, N_PCA, y0=None, x0=None, size_core=None, PCA_annular=
         X = pca.inverse_transform(X)
         
         # Subtract the PCA reconstruction from the original data
-        S_res_sub = (S_res_sub - X).transpose()
-        S_res_sub = np.reshape(S_res_sub, (NbChannel, NbLine, NbColumn))
+        S_res_sub           = (S_res_sub - X).transpose()
+        S_res_sub           = np.reshape(S_res_sub, (NbChannel, NbLine, NbColumn))
         S_res_sub[nan_mask] = np.nan
         
         # ---------------------------
@@ -2421,7 +2421,7 @@ def plot_jwst_data(instru, band, target_name, planet_name, S, CCF_SNR, pxscale, 
 # Plotting helper for ELT simulated data
 # -------------------------------------------------------------------------
 
-def plot_elt_data(instru, band, target_name, planet_name, S, CCF_SNR, pxscale, FOV, sep_unit, size_core, y0, x0, y_star, x_star, y_planet, x_planet, radius, RA_offset, DEC_offset, band0, mag_star, exposure_time, calculation, SNR, T_planet, rv_planet, model, apodizer, zoom_CCF_2D):
+def plot_elt_data(instru, band, target_name, planet_name, S, CCF_SNR, pxscale, FOV, sep_unit, size_core, y0, x0, y_star, x_star, y_planet, x_planet, radius, RA_offset, DEC_offset, band0, mag_star, exposure_time, calculation, SNR, T_planet, rv_planet, model, apodizer, zoom_CCF_2D, factor_max_PSF=None, vmin_PSF=None, title_prefix="", title_suffix=""):
     
     NbChannel, NbLine, NbColumn = S.shape
     
@@ -2438,22 +2438,38 @@ def plot_elt_data(instru, band, target_name, planet_name, S, CCF_SNR, pxscale, F
         print(f"  Separation = {sep_planet:.3f} {sep_unit}")
         sign_loc_planet = np.sign(y_pos) if y_pos != 0 else +1
         sign_loc_star   = -sign_loc_planet
+        
+        if np.sign(y_pos)==1 and np.sign(x_pos)==-1:
+            loc_zoom       = "upper left"
+            loc1_zoom      = 1
+            loc2_zoom      = 4
+            borderpad_zoom = 4.0
+        else:
+            loc_zoom       = "upper right"
+            loc1_zoom      = 3
+            loc2_zoom      = 2
+            borderpad_zoom = 1.0
+
     else:
         x_pos         = None
         y_pos         = None
         sign_loc_star = +1
-    
+            
     # --- Plot PSF ---
     PSF           = np.nanmedian(np.nan_to_num(S), axis=0)
     PSF[PSF == 0] = np.nan
     if np.nanmin(PSF) < 0:
         PSF += np.abs(np.nanmin(PSF))
-    PSF /= np.nanmax(PSF)
+        
+    max_PSF = np.nanmax(PSF)
+    if factor_max_PSF is not None:
+        max_PSF *= factor_max_PSF
+    PSF /= max_PSF
     
     PSF_cmap = "inferno"
     fig, ax  = plt.subplots(figsize=(8, 8), dpi=300)
-    im       = ax.imshow(PSF, extent=extent, origin="lower", zorder=2, norm=mpl.colors.LogNorm(vmin=None, vmax=1), cmap=PSF_cmap)
-    ax.set_title(f'{instru} PSF of simulated {target_name} data on {band}-band', fontsize=18, fontweight="bold", pad=15)
+    im       = ax.imshow(PSF, extent=extent, origin="lower", zorder=2, norm=mpl.colors.LogNorm(vmin=vmin_PSF, vmax=1), cmap=PSF_cmap)
+    ax.set_title(title_prefix+f'ELT/{instru} PSF of {target_name} data on {band}-band'+title_suffix, fontsize=18, fontweight="bold", pad=15)
     ax.set_xlabel(rf'$\Delta$RA  [{sep_unit}]', fontsize=16)
     ax.set_ylabel(rf'$\Delta$Dec [{sep_unit}]', fontsize=16)
     ax.tick_params(which='both', top=True, right=True)
@@ -2461,7 +2477,7 @@ def plot_elt_data(instru, band, target_name, planet_name, S, CCF_SNR, pxscale, F
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.4)
     ax.tick_params(labelsize=12)
     ax.plot(0, 0, marker='*', color='gold', markersize=18, zorder=4)
-    ax.text(0, 4*sign_loc_star*size_core*pxscale, f"{target_name}", color='gold', fontsize=12, weight='bold', ha='center', va='bottom', zorder=100, bbox=dict(facecolor='black', edgecolor='none', boxstyle='round,pad=0.3', alpha=0.4))
+    ax.text(0, 3*sign_loc_star*size_core*pxscale, f"{target_name}", color='gold', fontsize=12, weight='bold', ha='center', va='bottom', zorder=100, bbox=dict(facecolor='black', edgecolor='none', boxstyle='round,pad=0.3', alpha=0.4))
     if y0 is not None and x0 is not None:
         planet_text = planet_name if planet_name is not None else "Planet"
         circle      = plt.Circle((x_pos, y_pos), radius, edgecolor='deepskyblue', fill=False, linewidth=2, zorder=3)
@@ -2477,7 +2493,7 @@ def plot_elt_data(instru, band, target_name, planet_name, S, CCF_SNR, pxscale, F
             zymin, zymax = cy - halfspan, cy + halfspan
             rect = Rectangle((zxmin, zymin), zxmax - zxmin, zymax - zymin, fill=False, edgecolor='black', linewidth=1.5, linestyle='--', zorder=5)
             ax.add_patch(rect)
-            axins = inset_axes(ax, width=f"{100*scale}%", height=f"{100*scale}%", loc="upper right", borderpad=1.0)
+            axins = inset_axes(ax, width=f"{100*scale}%", height=f"{100*scale}%", loc=loc_zoom, borderpad=borderpad_zoom)
             axins.imshow(PSF, extent=extent, origin="lower", zorder=2, norm=mpl.colors.LogNorm(vmin=None, vmax=1), cmap=PSF_cmap)
             axins.plot(0, 0, marker='*', color='gold', markersize=18*(1+scale), zorder=4)
             circle_ins = plt.Circle((x_pos, y_pos), radius, edgecolor='deepskyblue', fill=False, linewidth=2, zorder=3)
@@ -2490,7 +2506,7 @@ def plot_elt_data(instru, band, target_name, planet_name, S, CCF_SNR, pxscale, F
             axins.set_ylim(zymin, zymax)
             axins.tick_params(labelsize=10, which='both', top=True, right=True)
             axins.minorticks_on()
-            mark_inset(ax, axins, loc1=3, loc2=2, fc="none", ec="black", linestyle="--", lw=1.2)
+            mark_inset(ax, axins, loc1=loc1_zoom, loc2=loc2_zoom, fc="none", ec="black", linestyle="--", lw=1.2)
         else:
             ax.text(x_pos, y_pos + 2*sign_loc_planet*size_core*pxscale, planet_text, color='deepskyblue', fontsize=12, weight='bold', ha='center', va='top', zorder=100, bbox=dict(facecolor='black', edgecolor='none', boxstyle='round,pad=0.3', alpha=0.4))
     cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
@@ -2503,7 +2519,7 @@ def plot_elt_data(instru, band, target_name, planet_name, S, CCF_SNR, pxscale, F
     scalebar = AnchoredSizeBar(ax.transData, 100, '100 mas' if sep_unit == 'mas' else '0.1 arcsec', 'lower left', pad=0.35, color='white', frameon=False, size_vertical=2, fontproperties=fp)
     ax.add_artist(scalebar)
     add_north_east_arrows(ax, loc=(0.95, 0.05), length=0.10, color="white", fontsize=13, lw=2.4, mutation_scale=14)
-    param_box = (f"Band: {band}  |  Apodizer: {apodizer.replace('_', ' ')}\n{band0}={round(mag_star, 1):.1f}  |  $t_{{exp}}$={round(exposure_time):.0f} mn")
+    param_box = (f"Band: {band}  |  Apodizer: {apodizer.replace('_', ' ')}\n{band0}={round(mag_star, 1):.1f}  |  $t_{{exp}}$={exposure_time/60:.0f} hr")
     ax.text(0.02, 0.98, param_box, transform=ax.transAxes, ha='left', va='top', fontsize=12, color='white', bbox=dict(facecolor='black', edgecolor='white', linewidth=0.6, alpha=0.35, boxstyle='round,pad=0.3'))
     plt.show()
     
@@ -2512,7 +2528,7 @@ def plot_elt_data(instru, band, target_name, planet_name, S, CCF_SNR, pxscale, F
     CCF_cmap = "coolwarm"
     fig, ax  = plt.subplots(figsize=(8, 8), dpi=300)
     im       = ax.imshow(CCF_SNR, extent=extent, origin="lower", zorder=2, cmap=CCF_cmap, vmin=-CCF_thr, vmax=CCF_thr, interpolation='nearest')
-    ax.set_title(f'{instru} CCF of simulated {planet_name if planet_name is not None else target_name} on {band}-band', fontsize=18, fontweight="bold", pad=15)
+    ax.set_title(title_prefix+f'ELT/{instru} CCF of {planet_name if planet_name is not None else target_name} on {band}-band'+title_suffix, fontsize=18, fontweight="bold", pad=15)
     ax.set_xlabel(rf'$\Delta$RA  [{sep_unit}]', fontsize=16)
     ax.set_ylabel(rf'$\Delta$Dec [{sep_unit}]', fontsize=16)
     ax.tick_params(which='both', top=True, right=True)
@@ -2520,7 +2536,7 @@ def plot_elt_data(instru, band, target_name, planet_name, S, CCF_SNR, pxscale, F
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.4)
     ax.tick_params(labelsize=12)
     ax.plot(0, 0, marker='*', color='gold', markersize=18, zorder=4)
-    ax.text(0, 4*sign_loc_star*size_core*pxscale, f"{target_name}", color='gold', fontsize=12, weight='bold', ha='center', va='bottom', zorder=100, bbox=dict(facecolor='black', edgecolor='none', boxstyle='round,pad=0.3', alpha=0.4))
+    ax.text(0, 3*sign_loc_star*size_core*pxscale, f"{target_name}", color='gold', fontsize=12, weight='bold', ha='center', va='bottom', zorder=100, bbox=dict(facecolor='black', edgecolor='none', boxstyle='round,pad=0.3', alpha=0.4))
     if y0 is not None and x0 is not None:
         planet_text = planet_name if planet_name is not None else "Planet"
         if calculation == "SNR" and SNR is not None:
@@ -2538,7 +2554,7 @@ def plot_elt_data(instru, band, target_name, planet_name, S, CCF_SNR, pxscale, F
             zymin, zymax = cy - halfspan, cy + halfspan
             rect = Rectangle((zxmin, zymin), zxmax - zxmin, zymax - zymin, fill=False, edgecolor='black', linewidth=1.5, linestyle='--', zorder=5)
             ax.add_patch(rect)
-            axins = inset_axes(ax, width=f"{100*scale}%", height=f"{100*scale}%", loc="upper right", borderpad=1.0)
+            axins = inset_axes(ax, width=f"{100*scale}%", height=f"{100*scale}%", loc=loc_zoom, borderpad=borderpad_zoom)
             axins.imshow(CCF_SNR, extent=extent, origin="lower", zorder=2, cmap=CCF_cmap, vmin=-CCF_thr, vmax=CCF_thr, interpolation='nearest')
             axins.plot(0, 0, marker='*', color='gold', markersize=18*(1+scale), zorder=4)
             circle_ins = plt.Circle((x_pos, y_pos), radius, edgecolor='deepskyblue', fill=False, linewidth=2, zorder=3)
@@ -2551,7 +2567,7 @@ def plot_elt_data(instru, band, target_name, planet_name, S, CCF_SNR, pxscale, F
             axins.set_ylim(zymin, zymax)
             axins.tick_params(labelsize=10, which='both', top=True, right=True)
             axins.minorticks_on()
-            mark_inset(ax, axins, loc1=3, loc2=2, fc="none", ec="black", linestyle="--", lw=1.2)
+            mark_inset(ax, axins, loc1=loc1_zoom, loc2=loc2_zoom, fc="none", ec="black", linestyle="--", lw=1.2)
         else:
             ax.text(x_pos, y_pos + 2*sign_loc_planet*size_core*pxscale, planet_text, color='deepskyblue', fontsize=12, weight='bold', ha='center', va='top', zorder=100, bbox=dict(facecolor='black', edgecolor='none', boxstyle='round,pad=0.3', alpha=0.4))
     cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
