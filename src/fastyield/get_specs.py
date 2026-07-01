@@ -274,67 +274,49 @@ def get_wa(instru, sep_unit=None, band="instru"):
 # Get transmission
 # -------------------------------------------------------------------------
 
-@lru_cache(maxsize=64)
-def _get_transmission(instru, band, tellurics, apodizer, strehl=None, coronagraph=None, fill_value=np.nan):
+def _build_transmission(instru, wave_band, band, tellurics, apodizer, strehl=None, coronagraph=None, fill_value=np.nan, gaussian_filtering=True):
     """
-    Cached version of get_transmission()
-    """
-    from .spectrum import get_wave_band
-    wave_band   = get_wave_band(instru=instru, band=band)
-    trans       = get_transmission(instru=instru, wave_band=wave_band, band=band, tellurics=tellurics, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, fill_value=fill_value)
-    return trans
-
-
-
-def get_transmission(instru, wave_band, band, tellurics, apodizer, strehl=None, coronagraph=None, fill_value=np.nan, gaussian_filtering=True):
-    """
-    Build the total end-to-end transmission vector on a target wavelength grid.
-
-    This multiplies the instrumental throughput, the apodizer transmission,
-    and (optionally) the atmospheric transmission for ground-based cases.
-
-    Parameters
-    ----------
-    instru : str
-        Instrument name.
-    wave_band : (M,) array_like
-        Target wavelength grid for the band (µm).
-    band : str
-        Instrumental band identifier (e.g., "J", "H", "HK"...).
-    tellurics : bool
-        If True, multiplies by sky transmission (airmass=1.0).
-    apodizer : str
-        Apodizer key present in config_data["apodizers"].
-    strehl : str or None, optional
-        Strehl tag used to select the PSF header (for aperture correction).
-    coronagraph : str or None, optional
-        Coronagraph tag for PSF header selection.
-    fill_value : float, optional
-        Extrapolation fill value for interpolation (default: NaN).
-
-    Returns
-    -------
-    transmission : (M,) ndarray
-        Total system transmission sampled on 'wave_band'. Negative values are clipped to nan.
+    Actual transmission builder. Not cached directly because wave_band is an array.
     """
     # 1) Instrumental transmission on the band
     wave, trans = _load_instru_trans(instru=instru, band=band)
-    trans       = np.interp(wave_band, wave, trans, left=np.nan, right=np.nan)
+    trans       = np.interp(wave_band, wave, trans, left=fill_value, right=fill_value)
 
-    
     # 2) Apodizer throughput
     trans *= get_config_data(instru)["apodizers"][apodizer].transmission
 
-    # 3) Telluric transmission (only if necessary, i.e. for ground based observation)
-    if tellurics: # if ground-based observation
-        # import spectrum modules
+    # 3) Telluric transmission
+    if tellurics:
         from .spectrum import Spectrum
         wave_tell, tell = load_tell_trans(airmass=1.0)
-        trans          *= Spectrum(wave_tell, tell).degrade_resolution(wave_band, renorm=False, gaussian_filtering=gaussian_filtering).flux # degraded tellurics transmission on the considered band
+        trans          *= Spectrum(wave_tell, tell).degrade_resolution(wave_band, renorm=False, gaussian_filtering=gaussian_filtering).flux
 
     # Numerical cleanup
     trans[trans <= 0] = np.nan
     return trans
+
+@lru_cache(maxsize=64)
+def _get_transmission(instru, band, tellurics, apodizer, strehl=None, coronagraph=None, fill_value=np.nan, gaussian_filtering=True):
+    """
+    Cached transmission on the default wavelength grid of the band.
+    Never return this array directly to the user-facing API.
+    """
+    from .spectrum import get_wave_band
+    wave_band = get_wave_band(instru=instru, band=band)
+    return _build_transmission(instru=instru, wave_band=wave_band, band=band, tellurics=tellurics, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, fill_value=fill_value, gaussian_filtering=gaussian_filtering)
+
+def get_transmission(instru, wave_band=None, band=None, tellurics=True, apodizer=None, strehl=None, coronagraph=None, fill_value=np.nan, gaussian_filtering=True):
+    """
+    Public transmission function.
+
+    If wave_band is None, use the cached default band grid and return a copy.
+    If wave_band is provided, compute directly on that custom grid.
+    """
+    if wave_band is None:
+        return np.copy(_get_transmission(instru=instru, band=band, tellurics=tellurics, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, fill_value=fill_value, gaussian_filtering=gaussian_filtering))
+
+    wave_band = np.asarray(wave_band, dtype=float)
+    return _build_transmission(instru=instru, wave_band=wave_band, band=band, tellurics=tellurics, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, fill_value=fill_value, gaussian_filtering=gaussian_filtering)
 
 
 

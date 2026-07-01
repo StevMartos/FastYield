@@ -1320,15 +1320,6 @@ def main():
         # Coronagraph inner working angle radius
         IWA_min          = 1              # [mas]
         IWA_max          = 100            # [mas]
-
-        # ! Fixed post-AO wavefront error and IWA (comment this passage to vary WFE and IWA, but huge files will be created)
-        # Post-AO wavefront error
-        WFE_min          = WFE_ref        # [nm]
-        WFE_max          = WFE_ref        # [nm]
-        # Coronagraph inner working angle
-        IWA_min          = IWA_ref        # [mas]
-        IWA_max          = IWA_ref        # [mas]
-
         # Instrumental transmission (without telescope transmission)
         trans_instru_min = 0.01           # [e-/ph]
         trans_instru_max = 0.20           # [e-/ph]
@@ -2551,13 +2542,11 @@ def main():
 
     # Full-hypercube maximum
     idx_FoV         = [idx for idx, param_name in enumerate(params_names) if "FoV"     in param_name][0]
-    imax_flat       = np.nanargmax(Pdet)
-    params_imax     = np.array(np.unravel_index(imax_flat, Pdet.shape), dtype=int)
+    params_imax     = np.array(np.unravel_index(np.nanargmax(Pdet), Pdet.shape), dtype=int)
     params_max      = np.array([params[idim][params_imax[idim]] for idim in range(Ndim)])
-    Pdet_max        = Pdet[tuple(params_imax)]
     imax_FoV        = params_imax[idx_FoV]
     params_imax_snr = [params_imax[idim] for idim in range(Ndim) if idim != idx_FoV]
-    
+
     print("-------------------------------------------------------------")
     print("Population plot detection mode:")
     print(f"{'SNR mode':20}:      {snr_population_mode}")

@@ -1,6 +1,6 @@
 # import FastYield modules
 from .config import instrus, bands, rad2arcsec, R0_max
-from .get_specs import _get_transmission, get_PSF_profile, get_config_data, get_wa, get_band_lims, get_R_instru, get_logit_coronagraphic_profile_interp, get_R_corr_interp, get_bkg_flux_band
+from .get_specs import get_transmission, get_PSF_profile, get_config_data, get_wa, get_band_lims, get_R_instru, get_logit_coronagraphic_profile_interp, get_R_corr_interp, get_bkg_flux_band
 from .utils import airy_profile, get_r_core, power_law_extrapolation
 from .spectrum import filtered_flux, get_mag, get_resolution, get_spectrum_instru, get_spectrum_band, load_star_spectrum, load_planet_spectrum, load_vega_spectrum, get_counts_from_density
 from .signal_noise import get_DIT_RON, get_delta_cos_theta_syst, get_alpha_cos_theta_syst, get_beta, get_fn_MM, get_systematics, compute_sigma_base_2_al_spat_numba, compute_sigma_base_2_al_spec_numba, compute_sigma_base_2_speck_numba, compress_h_for_sigma_base_2, compute_sigma_base_2_al_spec_fast
@@ -295,7 +295,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
         # ------------------------------------
         # Total system transmission in [e-/ph]
         # ------------------------------------
-        trans = _get_transmission(instru=instru, band=band, tellurics=tellurics, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, fill_value=np.nan)
+        trans = get_transmission(instru=instru, band=band, tellurics=tellurics, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, fill_value=np.nan)
         
         # --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
         # PSF profiles (radial mean of Ms) [FoV flux fraction/px], fraction_core [FoV flux fraction/FWHM], separation axis [sep_unit], pxscale [sep_unit/px] (+ coronagraphic radial transmission, if any)
