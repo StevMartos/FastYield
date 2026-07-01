@@ -1716,7 +1716,7 @@ class Spectrum:
             bin_type = "interp"
             
         # Warning for non-Nyquist sampled output
-        if verbose and np.any(R_output > R_sampling_output):
+        if verbose and np.nanmedian(R_output) > np.nanmedian(R_sampling_output):
             print()
             print_warning(f"WARNING (self.degrade_resolution): The output spectral resolution ({round(np.nanmedian(R_output), -2):.0f}) is greater than the output sampling resolution ({round(np.nanmedian(R_sampling_output), -2):.0f}). Provide finer 'wave_output' to satisfy Nyquist (at least).")
         
@@ -3383,7 +3383,7 @@ def get_thermal_reflected_spectrum(planet, thermal_model="auto", reflected_model
             planet_thermal = planet_thermal.broad(vsini_planet)     # [J/s/m2/µm]
         if reflected_model != "None":
             planet_reflected = planet_reflected.broad(vsini_planet) # [J/s/m2/µm]
-        
+    
     # Doppler shifts
     rv_star   = planet["StarRadialVelocity"].value   # [km/s]
     rv_planet = planet["PlanetRadialVelocity"].value # [km/s]
@@ -3393,7 +3393,7 @@ def get_thermal_reflected_spectrum(planet, thermal_model="auto", reflected_model
             planet_thermal = planet_thermal.doppler_shift(rv_planet)     # [J/s/m2/µm]
         if reflected_model != "None":
             planet_reflected = planet_reflected.doppler_shift(rv_planet) # [J/s/m2/µm]
-        
+    
     # Total planet spectrum (thermal + reflected)
     planet_spectrum_K = Spectrum(wavelength=wave_K,     flux=planet_thermal_K.flux + planet_reflected_K.flux, R=R0_min,                                                    T=T_planet, lg=lg_planet, model=thermal_model+"+"+reflected_model, rv=rv_planet, vsini=vsini_planet)
     planet_spectrum   = Spectrum(wavelength=wave_model, flux=planet_thermal.flux   + planet_reflected.flux,   R=np.maximum.reduce([planet_thermal.R, planet_reflected.R]), T=T_planet, lg=lg_planet, model=thermal_model+"+"+reflected_model, rv=rv_planet, vsini=vsini_planet)
