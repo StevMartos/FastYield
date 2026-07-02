@@ -596,7 +596,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
             
     def draw_table_parameters(self):
         self.__plt2.clear()
-        self.__plt2.text(0.5, 1, f"{self.planet['PlanetName']} ({self.planet['PlanetType']})\n on {self.band}-band of {self.instru}", fontsize=22, weight='bold', bbox=dict(facecolor='white', edgecolor='gray', boxstyle='round,pad=0.5', alpha=0.9), va='center', ha='center', zorder=10)
+        self.__plt2.text(0.5, 1, f"{self.planet['PlanetName']} ({self.planet['PlanetType']})\n on {self.band}-band of {self.instru}", fontsize=22, weight='bold', bbox=dict(facecolor='white', edgecolor=secondary_color, boxstyle='round,pad=0.5', alpha=0.9), va='center', ha='center', zorder=10)
         if self.band == "INSTRU":
             self.mag_planet = self.planet["Planet"+self.band+"mag("+self.instru+")("+self.spectrum_contributions+")"].value
             self.mag_star   = self.planet["Star"+self.band+"mag("+self.instru+")"].value
@@ -622,7 +622,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         cells1 = table1.properties()["celld"]
         for (i, j), cell in cells1.items():
             cell.set_text_props(ha="center", va="center")
-            cell.set_edgecolor('gray')
+            cell.set_edgecolor(secondary_color)
             cell.set_linewidth(0.5)
         data2 =  [[ 'S/N', f'{round(self.SNR[self.planet_index], 1)}'], 
                     [ 'Flux ratio', '{0:.1e}'.format(self.flux_ratio)], 
@@ -641,7 +641,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         cells2 = table2.properties()["celld"]
         for (i, j), cell in cells2.items():
             cell.set_text_props(ha="center", va="center")
-            cell.set_edgecolor('gray')
+            cell.set_edgecolor(secondary_color)
             cell.set_linewidth(0.5)
         self.__plt2.text(1.05, -0.05, self.date, horizontalalignment='right', size=14, weight='light')
         

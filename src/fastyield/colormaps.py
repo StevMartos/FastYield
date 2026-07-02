@@ -1,10 +1,10 @@
 # import FastYield modules
-from .config import c, R0_max, config_data_list, T_earth, lg_earth, vrot_earth, drv_earth, airmass_earth, T_sun, lg_sun, vrot_sun, M_earth, M_sun, AU, G, colormaps_path, sim_data_path
-from .get_specs import load_tell_trans, get_config_data, get_transmission, get_PSF_profile, get_R_instru
-from .spectrum import get_counts_from_density, load_vega_spectrum, get_wave_K, get_wave_band, get_wavelength_axis_constant_R, filtered_flux, Spectrum, load_star_spectrum, load_planet_spectrum, load_albedo_spectrum, get_spectrum_contribution_name_model, get_thermal_reflected_spectrum
-from .FastCurves import FastCurves
-from .FastYield import planet_types, load_planet_table, get_SNR_from_table, build_match_dict, plot_matching_planets
-from .signal_noise import compute_sigma_base_2_al_spec_fast
+from fastyield.config import c, R0_max, config_data_list, T_earth, lg_earth, vrot_earth, drv_earth, airmass_earth, T_sun, lg_sun, vrot_sun, M_earth, M_sun, AU, G, colormaps_path, sim_data_path
+from fastyield.get_specs import load_tell_trans, get_config_data, get_transmission, get_PSF_profile, get_R_instru
+from fastyield.spectrum import get_counts_from_density, load_vega_spectrum, get_wave_K, get_wave_band, get_wavelength_axis_constant_R, filtered_flux, Spectrum, load_star_spectrum, load_planet_spectrum, load_albedo_spectrum, get_spectrum_contribution_name_model, get_thermal_reflected_spectrum
+from fastyield.FastCurves import FastCurves
+from fastyield.FastYield import planet_types, load_planet_table, get_SNR_from_table, build_match_dict, plot_matching_planets
+from fastyield.signal_noise import compute_sigma_base_2_al_spec_fast
 
 # import matplotlib modules
 import matplotlib.pyplot as plt
@@ -1152,7 +1152,8 @@ def colormap_bands_ptypes_SNR(mode="multi", Nmax=None, instru="HARMONI", thermal
     # Definig arrays
     planet_types_list = [ptype for ptype, planets in matching_planets.items() if len(planets) > 0]
     planet_types_arr  = np.array(planet_types_list, dtype=object)
-    bands             = np.array([band for band in config_data["gratings"]])
+    bands             = np.array([band                   for band in config_data["gratings"]])
+    bands_ticks       = np.array([band.replace("_", " ") for band in config_data["gratings"]])
 
     # Map each planet name to its row index to avoid repeated calls to get_planet_index
     name_to_index = {name: i for i, name in enumerate(planet_table["PlanetName"])}
@@ -1213,7 +1214,7 @@ def colormap_bands_ptypes_SNR(mode="multi", Nmax=None, instru="HARMONI", thermal
     plt.xlim(-0.5, len(planet_types_arr)-0.5)
     plt.xticks(planet_types_arr_idx, planet_types_arr, rotation=45, ha="right")
     plt.ylim(-0.5, len(bands)-0.5)
-    plt.yticks(bands_idx, bands)
+    plt.yticks(bands_idx, bands_ticks)
     plt.tight_layout()
     
     if save:
