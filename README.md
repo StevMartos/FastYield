@@ -24,7 +24,7 @@ For more details, see:
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="FastYield_
 example.png">
-    <img alt="FastYield Example" src="FastYield_example.png">
+    <img alt="FastYield Example" src="FastYield_GUI.png">
   </picture>
 </p>
 

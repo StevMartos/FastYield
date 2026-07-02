@@ -2,6 +2,7 @@
 from .config import c, R0_max
 from .utils import cut_spectral_frequencies, get_logL
 from .spectrum import get_wavelength_axis_constant_dl, Spectrum, get_resolution, filtered_flux, get_psd, load_star_spectrum, load_planet_spectrum, load_albedo_spectrum, load_mol_spectrum, get_model_grid, get_spectrum_band
+from .get_specs import get_config_data
 
 # import astropy modules
 from astropy.io import fits
@@ -141,8 +142,11 @@ def get_template(instru, wave, R, model, T, lg, rv, vsini, epsilon=0.8, fastbroa
             template.flux = np.ones_like(template.flux)
     elif "albedo" in model.lower():
         albedo_spectrum = load_albedo_spectrum(T_planet=T, lg_planet=lg, model=model, airmass=airmass)
-        albedo_spectrum = albedo_spectrum.interpolate_wavelength(star_spectrum.wavelength, renorm=False) # Interpolating on wave_model (constant dl)
-        template        = Spectrum(wavelength=star_spectrum.wavelength, flux=albedo_spectrum.flux*star_spectrum.flux, R=albedo_spectrum.R, T=T, lg=lg, model=model, rv=0, vsini=0)
+        if star_spectrum is not None:
+            albedo_spectrum = albedo_spectrum.interpolate_wavelength(star_spectrum.wavelength, renorm=False) # Interpolating on wave_model (constant dl)
+            template        = Spectrum(wavelength=star_spectrum.wavelength, flux=albedo_spectrum.flux*star_spectrum.flux, R=albedo_spectrum.R, T=T, lg=lg, model=model, rv=0, vsini=0)
+        else:
+            template = albedo_spectrum.copy()
     else:
         template = load_planet_spectrum(T_planet=T, lg_planet=lg, model=model, instru=instru)
     
@@ -246,7 +250,7 @@ def get_d_sim(instru, d, wave, trans, R, Rc, filter_type, model, T, lg, rv, vsin
     if template is None:
         template = get_template(instru=instru, wave=wave, R=R, model=model, T=T, lg=lg, rv=rv, vsini=vsini, epsilon=epsilon, fastbroad=fastbroad, airmass=airmass, star_spectrum=star_spectrum, wave_model=wave_model)
         if verbose:
-            print(f" get_d_sim: get_template: T={template.T:.0f}K, lg={template.lg:.2f}, rv={template.rv:.2f}km/s, vinsi={template.vsini:.2f}km/s...")
+            print(f" get_d_sim: get_template: model=model, T={template.T:.0f}K, lg={template.lg:.2f}, rv={template.rv:.2f}km/s, vinsi={template.vsini:.2f}km/s...")
     else:
         template = template.copy()
         
@@ -1067,12 +1071,14 @@ def get_CCF_1D_rv(instru, band, d, d_bkg, wave, trans, R, Rc, filter_type, model
             if sigma_l is not None:
                 if noise is None:
                     noise = np.random.normal(0, sigma_l, len(wave))
-                    if instru not in {"HARMONI", "ANDES"}: # Filtering noise at R
+                    if instru not in {"HARMONI", "ANDES"} or "bench" in get_config_data(instru=instru): # Filtering noise at R
                         noise = filtered_flux(flux=noise, R=R_sampling, Rc=R,  filter_type=filter_type)[1]
                     if Rc is not None: # Filtering noise under Rc
                         noise = filtered_flux(flux=noise, R=R_sampling, Rc=Rc, filter_type=filter_type)[0]
                     if cut_fringes:
                         noise = cut_spectral_frequencies(noise, R=R, Rmin=Rmin, Rmax=Rmax, target_name=target_name)
+                    if pca is not None:
+                        noise = get_pca_subtracted_data(data=noise, pca=pca)
                 d_sim_noise = d_sim + noise
                 if not compare_data:
                     res_d_sim_noise, psd_d_sim_noise = get_psd(wave, d_sim_noise, smooth=smooth_PSD)
@@ -2402,6 +2408,11 @@ def parameters_retrieval(instru, band, target_name, d, wave, trans, R, Rc, filte
         logL_4D     = np.full((NT, Nlg, Nvsini, Nrv), np.nan, dtype=dtype)
         logL_sim_4D = np.full((NT, Nlg, Nvsini, Nrv), np.nan, dtype=dtype)
         
+        # # Debug
+        # for i in range(NT):
+        #     for j in range(Nlg):
+        #         process_parameters_estimation((i, j, T_arr[i], lg_arr[j]))
+        
         if verbose:
             print()
         nproc = max(1, cpu_count() // 2)            
@@ -2569,14 +2580,14 @@ def parameters_retrieval(instru, band, target_name, d, wave, trans, R, Rc, filte
 
     if calc_logL and sigma_l is not None and not SNR_estimate:
         
-        params      = [T_arr, lg_arr, vsini_arr, rv_arr]
-        param_names = ["T", "logg", "Vsini", "RV"]
-        param_units = ["K", "dex", "km/s", "km/s"]
+        params0      = [T_arr, lg_arr, vsini_arr, rv_arr]
+        param_names0 = ["T", "logg", "Vsini", "RV"]
+        param_units0 = ["K", "dex", "km/s", "km/s"]
         
-        param_names, BF_values, optimal_values, uncertainties_1sigma, bounds_1sigma = custom_corner_plot(logL_4D, params, param_names, param_units, target_name, band, instru, model, R, Rc, sim=False, exposure_time=exposure_time, show=show)
+        param_names, BF_values, optimal_values, uncertainties_1sigma, bounds_1sigma = custom_corner_plot(logL_4D, params0, param_names0, param_units0, target_name, band, instru, model, R, Rc, sim=False, exposure_time=exposure_time, show=show)
     
         if calc_d_sim:
-            custom_corner_plot(logL_sim_4D, params, param_names, param_units, target_name, band, instru, model, R, Rc, sim=True, exposure_time=exposure_time, show=show)
+            custom_corner_plot(logL_sim_4D, params0, param_names0, param_units0, target_name, band, instru, model, R, Rc, sim=True, exposure_time=exposure_time, show=show)
         
         if fastcurves:
             return uncertainties_1sigma
@@ -2699,6 +2710,7 @@ def estimate_uncertainties_1sigma(P, func_marg, params):
         # Extract the 16th, 50th, and 84th percentiles
         lower_bound   = np.interp(0.16, cdf_fine, values_fine)
         optimal_value = np.interp(0.50, cdf_fine, values_fine)
+        #optimal_value = values_fine[np.nanargmax(p_fine)]
         upper_bound   = np.interp(0.84, cdf_fine, values_fine)
 
         # Define a symmetric 1-sigma uncertainty from the percentile interval
@@ -2825,7 +2837,7 @@ def custom_corner_plot(logL, params, param_names, param_units, target_name, band
     
     xmin = np.array([np.nanmin(param) for param in params])
     xmax = np.array([np.nanmax(param) for param in params])
-    
+        
     # Plot
     if show:
 
@@ -2934,12 +2946,14 @@ def custom_corner_plot(logL, params, param_names, param_units, target_name, band
                 if j > 0:
                     ax.set_yticklabels([])
 
-        suffix = "\nSimulation" if sim else ""
+        suffix = "\n\nSIMULATION" if sim else ""
+        #suffix = "\n\nHC BENCH" if sim else ""
         if exposure_time is None:
             exp_text = f"(R = {np.nanmedian(R):.0f}, $R_c$ = {Rc})"
         else:
-            exp_text = f"($t_{{exp}}$ = {round(exposure_time)}mn, R = {np.nanmedian(R):.0f}, $R_c$ = {Rc})"
-        fig.suptitle(f"Parameter estimation of {target_name.replace('_', ' ')} \n\n on {band}-band of {instru} with {model} model \n\n {exp_text}{suffix}", fontsize=18, x=0.63, y=0.88)
+            exp_text = f"($t_{{exp}}$ = {exposure_time/60:.0f} hr, R = {np.nanmedian(R):.0f}, $R_c$ = {Rc})"
+        fig.suptitle(f"Parameter estimation of {target_name.replace('_', ' ')}\n\non {band}-band of {instru} with {model} model\n\n{exp_text}{suffix}", fontsize=18, x=0.63, y=0.88)
+        #fig.suptitle(f"Parameter estimation of {target_name.replace('_', ' ')}\n\non {band}-band of {instru}\n\n{exp_text}{suffix}", fontsize=18, x=0.63, y=0.88)
         plt.show()
 
     return param_names, BF_values, optimal_values, uncertainties_1sigma, bounds_1sigma

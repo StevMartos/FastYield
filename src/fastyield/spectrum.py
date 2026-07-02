@@ -2254,13 +2254,9 @@ def get_model_grid(model, instru=None, mol_broadening="air"):
         T_grid  = np.concatenate([[200, 220, 240, 250, 260, 280, 300, 320, 340, 360, 380, 400, 450], np.arange(500, 900, 50), np.arange(900, 3100, 100)])
         lg_grid = np.arange(3.0, 5.5, 0.5)
         
-        # # The 1500K models seem weird...
-        # T_grid = T_grid[T_grid != 1500]
-        
     elif "PICASO" in model:
         T_grid  = np.concatenate([np.arange(200, 550, 50), np.arange(600, 3100, 100)])
-        lg_grid = np.arange(3.0, 5.5, 0.5)
-        #lg_grid = np.arange(2.5, 5.5, 0.5)
+        lg_grid = np.arange(2.5, 5.5, 0.5)
 
     elif "airless" in model.lower() and "rocky" in model.lower():
         T_grid  = np.concatenate([np.arange(200, 550, 50), np.arange(600, 3100, 100)])
@@ -2387,10 +2383,10 @@ def get_T_lg_valid(T=None, lg=None, P=None, model=None, instru=None, T_grid=None
 
 @lru_cache(maxsize=128)
 def get_planet_type_from_model(model):
-    model_clean = model.replace("_", " ").replace("-", " ").lower()
-    if "earth like" in model_clean:
+    model_clean = model.replace("_", "").replace("-", "").replace(" ", "").lower()
+    if "earthlike" in model_clean:
         planet_type = "earth_like"
-    elif "gas giant" in model_clean:
+    elif "gasgiant" in model_clean:
         planet_type = "gas_giant"
     else:
         raise ValueError(f"Ambiguous {model} model to extract a planet_type. Use for example 'PICASO_gas_giant' or 'PICASO_earth_like'.")

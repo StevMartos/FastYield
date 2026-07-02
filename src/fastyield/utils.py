@@ -2433,8 +2433,8 @@ def plot_elt_data(instru, band, target_name, planet_name, S, CCF_SNR, pxscale, F
         x_pos, y_pos = pixel_to_sky_offset(y=y_planet, x=x_planet, y_ref=y_star, x_ref=x_star, pxscale=pxscale)
         sep_planet   = np.hypot(x_pos, y_pos)
         print("\nEstimated planet projected offset:")
-        print(f"  Delta x    = {x_pos:+.3f} {sep_unit}")
         print(f"  Delta y    = {y_pos:+.3f} {sep_unit}")
+        print(f"  Delta x    = {x_pos:+.3f} {sep_unit}")
         print(f"  Separation = {sep_planet:.3f} {sep_unit}")
         sign_loc_planet = np.sign(y_pos) if y_pos != 0 else +1
         sign_loc_star   = -sign_loc_planet
@@ -2494,7 +2494,7 @@ def plot_elt_data(instru, band, target_name, planet_name, S, CCF_SNR, pxscale, F
             rect = Rectangle((zxmin, zymin), zxmax - zxmin, zymax - zymin, fill=False, edgecolor='black', linewidth=1.5, linestyle='--', zorder=5)
             ax.add_patch(rect)
             axins = inset_axes(ax, width=f"{100*scale}%", height=f"{100*scale}%", loc=loc_zoom, borderpad=borderpad_zoom)
-            axins.imshow(PSF, extent=extent, origin="lower", zorder=2, norm=mpl.colors.LogNorm(vmin=None, vmax=1), cmap=PSF_cmap)
+            axins.imshow(PSF, extent=extent, origin="lower", zorder=2, norm=mpl.colors.LogNorm(vmin=vmin_PSF, vmax=1), cmap=PSF_cmap)
             axins.plot(0, 0, marker='*', color='gold', markersize=18*(1+scale), zorder=4)
             circle_ins = plt.Circle((x_pos, y_pos), radius, edgecolor='deepskyblue', fill=False, linewidth=2, zorder=3)
             axins.add_patch(circle_ins)

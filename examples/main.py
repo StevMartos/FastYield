@@ -70,10 +70,10 @@ FastYield_interface()
 # all_SNR_table(table="Archive", instrus=instrus) # ~ 15 hours
 # all_SNR_table(table="Archive", instrus=["MIRIMRS", "NIRCam", "NIRSpec", "VIPAPYRUS"])
 
-
-
 # get_planet_table_SNR(instru="HARMONI", table="Archive", thermal_model="auto", reflected_model="auto",  apodizer="NO_SP",   strehl="JQ1", coronagraph=None, systematics=False) # ~ 2mn
 # get_planet_table_SNR(instru="HARMONI", table="Archive", thermal_model="auto", reflected_model="auto",  apodizer="SP_Prox", strehl="JQ1", coronagraph=None, systematics=False) # ~ 2mn
+# get_planet_table_SNR(instru="HARMONI", table="Archive", thermal_model="auto", reflected_model="auto",  apodizer="SP1",     strehl="JQ1", coronagraph=None, systematics=False) # ~ 2mn
+# get_planet_table_SNR(instru="HARMONI", table="Archive", thermal_model="auto", reflected_model="auto",  apodizer="SP2",     strehl="JQ1", coronagraph=None, systematics=False) # ~ 2mn
 
 # get_planet_table_SNR(instru="ANDES", table="Archive", thermal_model="auto", reflected_model="auto",    apodizer="NO_SP", strehl="MED", coronagraph=None,   systematics=False) # ~ 20 mn
 # get_planet_table_SNR(instru="ANDES", table="Archive", thermal_model="auto", reflected_model="auto",    apodizer="NO_SP", strehl="MED", coronagraph="LYOT", systematics=False) # ~ 20 mn
@@ -149,12 +149,12 @@ FastYield_interface()
 
 # colormap_bandwidth_Tp(instru="HARMONI", T_star=6000, delta_rv=30, spectrum_contributions="reflected", model="PICASO albedo(gas giant)", Rc=100, filter_type="gaussian", stellar_halo_photon_noise_limited=True)
 # colormap_bands_Tp(instru="HARMONI", T_star=6000, delta_rv=30, spectrum_contributions="thermal", model="BT-Settl", Rc=100, filter_type="gaussian", stellar_halo_photon_noise_limited=True)
-# colormap_bands_ptypes_SNR(mode="multi",  instru="HARMONI", thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl="JQ1", systematics=False, PCA=False, planet_types=planet_types)
-# colormap_bands_ptypes_SNR(mode="unique", instru="HARMONI", thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl="JQ1", systematics=False, PCA=False, planet_types=planet_types)
+colormap_bands_ptypes_SNR(mode="multi",  instru="HARMONI", thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl="JQ1", systematics=False, PCA=False, planet_types=planet_types)
+#colormap_bands_ptypes_SNR(mode="unique", instru="HARMONI", thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl="JQ1", systematics=False, PCA=False, planet_types=planet_types)
 # #colormap_bands_ptypes_SNR(mode="multi",  instru="ANDES",    thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl="MED", systematics=False, PCA=False, planet_types=planet_types)
 # #colormap_bands_ptypes_parameters(mode="unique", Nmax=1, instru="HARMONI", thermal_model="auto", reflected_model="auto", exposure_time=10*60, apodizer="SP_Prox", strehl="JQ1", coronagraph=None, systematics=False, PCA=False, PCA_mask=False, N_PCA=20, Rc=100, filter_type="gaussian", planet_types=planet_types_reduced)
 
-# colormap_rv(instru="HARMONI",    band="J", T_planet=300, T_star=3000, spectrum_contributions="reflected", model="flat", airmass=2.0, stellar_halo_photon_noise_limited=False)
+# colormap_rv(instru="HARMONI",   band="J", T_planet=300, T_star=3000, spectrum_contributions="reflected", model="flat", airmass=2.0, stellar_halo_photon_noise_limited=False)
 # colormap_vrot(instru="HARMONI", band="J", T_planet=300, T_star=3000, delta_rv=30, inc=0, spectrum_contributions="reflected", model="tellurics", airmass=2.0, stellar_halo_photon_noise_limited=False)
 
 # colormap_maxsep_phase_inc(instru="HARMONI", band="H", apodizer="NO_SP", strehl="JQ1", coronagraph=None)
