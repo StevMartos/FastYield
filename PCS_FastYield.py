@@ -1177,7 +1177,7 @@ def main():
     D          = 38.54     # [m]
     S          = 980.      # [m2]
     N_mirror   = 5         # Number of mirror at the ELT (in order to compute the telescope transmission)
-    trans_dust = 0.90  # effect of dust, from common ICD, section 4.11, p37 (Document Number: ESO-253082)
+    trans_dust = 0.90      # effect of dust, from common ICD, section 4.11, p37 (Document Number: ESO-253082)
 
     # --- Detector mode ---
     # "constant_H4RG"
