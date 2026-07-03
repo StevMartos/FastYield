@@ -878,7 +878,7 @@ def get_mask_detections(SNR_planets, SNR_thr, sim_dir, suffix, target_chunk_mb=2
 # Function for computing detection probability
 # --------------------------------------------
 
-def get_Pdet(mask_detections, FoV, p0_FoV, dtype, indices=None, target_chunk_mb=2048):
+def get_Pdet(mask_detections, FoV, p0_FoV, dtype, indices=None, target_chunk_mb=2048, jump_before_tqdm=True):
     # If no subset is provided, all planets are included
     if indices is None:
         indices = np.arange(len(p0_FoV), dtype=np.int32)
@@ -912,8 +912,9 @@ def get_Pdet(mask_detections, FoV, p0_FoV, dtype, indices=None, target_chunk_mb=
     bytes_per_planet = grid_size * bytes_per_bool
     target_bytes     = int(target_chunk_mb * 1024**2)
     chunk_size       = int(max(1, target_bytes // max(bytes_per_planet, 1)))
-
-    print()
+    
+    if jump_before_tqdm:
+        print()
     for i0 in tqdm(range(0, len(indices_valid), chunk_size), desc="Computing the detection probability for each parameters set"):
         i1        = min(i0 + chunk_size, len(indices_valid))
         idx_chunk = indices_valid[i0:i1]
@@ -1210,15 +1211,13 @@ def main():
     force_new_calc     = False                                 # Forcing new simulations calculations
     thermal_model      = "auto"                                # Model for the thermal spectrum of the planet ("auto", "BT-Settl", "Exo-REM", "SONORA", "PICASO", "Saumon", etc.)
     reflected_model    = "auto"                                # Model for the albedo of the planet ("auto", "tellurics", "flat", "PICASO")
-    instru_type        = "IFU"                                 # Type of instrument ("IFU" or "imager")
+    instru_type        = "imager"                              # Type of instrument ("IFU" or "imager")
     post_processing    = "MM"                                  # Post-processing method ("MM" or "DI")
     size_core          = 2                                     # [px/FWHM] Number of pixel per spatial FWHM along 1 direction (size_core >= 2 => Nyquist spatial sampling)
     A_FWHM             = size_core**2                          # Number of pixel per FWHM box area
     Rc                 = 1_000                                 # MM cut-off resolution (Rc~100 is enough to reach ~1e-8 with speckles only, Rc~1000 would allows to go further (more conservative))
     filter_type        = "gaussian"                            # MM filter type
     table_type         = "Archive"                             # "Archive": for all known exoplanets | "Simulated": TODO
-    light_regime       = "thermal+reflected"                   # "thermal+reflected", "thermal" or "reflected": Only considering planets expected to be in 'light_regime' light
-    band_regime        =  "H"#"J"                                   # Band where the thermal/reflected domination regime is estimated
 
     # --- WFE and IWA ref values ---
     WFE_ref = 50.026   # [nm RMS]
@@ -1409,26 +1408,12 @@ def main():
 
     # Filtering separation range (and regime, if necessary)
     planet_table       = planet_table[(planet_table["AngSep"].value >= sep_min) & (planet_table["AngSep"].value <= sep_max)]
-    mask_thermal_pre   = (planet_table[f"Planet{band_regime}mag(thermal)"] < planet_table[f"Planet{band_regime}mag(reflected)"])
-    mask_reflected_pre = ~mask_thermal_pre
-    if light_regime == "thermal":
-        print_suffix = f"in thermal light in the {band_regime}-band"
-        planet_table  = planet_table[mask_thermal_pre]
-    elif light_regime == "reflected":
-        print_suffix = f"in reflected light in the {band_regime}-band"
-        planet_table  = planet_table[mask_reflected_pre]
-    elif light_regime == "thermal+reflected":
-        print_suffix = "in thermal and reflected light"
-    else:
-        raise ValueError("light_regime must be 'thermal', 'reflected', or 'thermal+reflected'.")
-    mask_thermal       = np.asarray(planet_table[f"Planet{band_regime}mag(thermal)"] < planet_table[f"Planet{band_regime}mag(reflected)"])
-    mask_reflected     = ~mask_thermal
     separation_planets = planet_table["AngSep"].value # [mas]
     N_PT               = len(planet_table)
-    print(f"\nKeeping {N_PT}/{N_PT_raw} planets between {sep_min:.0f} and {sep_max:.0f} mas {print_suffix}")
+    print(f"\nKeeping {N_PT}/{N_PT_raw} planets between {sep_min:.0f} and {sep_max:.0f} mas in thermal and reflected light")
 
     # Prints simulation parameters
-    print_simulation_summary(instru=instru, instru_type=instru_type, detector=detector, post_processing=post_processing, D=D, S=S, N_mirror=N_mirror, trans_dust=trans_dust, RON0=RON0, RON_lim=RON_lim, DC0=DC0, saturation_e=saturation_e, min_DIT=min_DIT, max_DIT=max_DIT, coronagraph=coronagraph, apodizer=apodizer, strehl=strehl, thermal_model=thermal_model, reflected_model=reflected_model, SNR_thr=SNR_thr, exposure_time=exposure_time, size_core=size_core, A_FWHM=A_FWHM, Rc=Rc if instru_type == "IFU" else None, filter_type=filter_type if instru_type == "IFU" else None, table_type=table_type, band_regime=band_regime, light_regime=light_regime, sep_min=sep_min, sep_max=sep_max, N_PT_raw=N_PT_raw, N_PT=N_PT, force_new_calc=force_new_calc, l0=l0, R=R if instru_type == "IFU" else None, Nl=Nl if instru_type == "IFU" else None, Dl=Dl if instru_type == "imager" else None, WFE=WFE, IWA=IWA, trans_instru=trans_instru, sigma_m=sigma_m, FoV=FoV)
+    print_simulation_summary(instru=instru, instru_type=instru_type, detector=detector, post_processing=post_processing, D=D, S=S, N_mirror=N_mirror, trans_dust=trans_dust, RON0=RON0, RON_lim=RON_lim, DC0=DC0, saturation_e=saturation_e, min_DIT=min_DIT, max_DIT=max_DIT, coronagraph=coronagraph, apodizer=apodizer, strehl=strehl, thermal_model=thermal_model, reflected_model=reflected_model, SNR_thr=SNR_thr, exposure_time=exposure_time, size_core=size_core, A_FWHM=A_FWHM, Rc=Rc if instru_type == "IFU" else None, filter_type=filter_type if instru_type == "IFU" else None, table_type=table_type, sep_min=sep_min, sep_max=sep_max, N_PT_raw=N_PT_raw, N_PT=N_PT, force_new_calc=force_new_calc, l0=l0, R=R if instru_type == "IFU" else None, Nl=Nl if instru_type == "IFU" else None, Dl=Dl if instru_type == "imager" else None, WFE=WFE, IWA=IWA, trans_instru=trans_instru, sigma_m=sigma_m, FoV=FoV)
 
     # Build meta for YOUR case (IFU or imager)
     meta = dict(code_version=PCS_CODE_VERSION, dtype=str(dtype),
@@ -1440,7 +1425,7 @@ def main():
                 RON0=RON0, RON_lim=RON_lim, DC0=DC0, saturation_e=saturation_e, min_DIT=min_DIT, max_DIT=max_DIT,
 
                 # science / pipeline
-                coronagraph=coronagraph, apodizer=apodizer, strehl=strehl, thermal_model=thermal_model, reflected_model=reflected_model, instru_type=instru_type, post_processing=post_processing, size_core=size_core, R_model=R_model, table_type=table_type, light_regime=light_regime, band_regime=band_regime,
+                coronagraph=coronagraph, apodizer=apodizer, strehl=strehl, thermal_model=thermal_model, reflected_model=reflected_model, instru_type=instru_type, post_processing=post_processing, size_core=size_core, R_model=R_model, table_type=table_type,
 
                 # exploration space
                 l0_min=l0_min, l0_max=l0_max, WFE_min=WFE_min, WFE_max=WFE_max, IWA_min=IWA_min, IWA_max=IWA_max, trans_instru_min=trans_instru_min, trans_instru_max=trans_instru_max, sep_min=sep_min, sep_max=sep_max, N_PT=N_PT,
@@ -1876,6 +1861,7 @@ def main():
     alpha              = 0.9                 # Opacity
     gain               = False               # True for probability gain (normalized yield), False for absolute yields
     light_regime_plot  = "thermal+reflected" # 'thermal", "reflected" or "thermal+reflected"
+    band_regime_plot   =  "H"                # Band where the thermal/reflected domination regime is estimated
     ptypes             = ["Jupiter",                 "Saturn",                "Neptune",                 "Earth"]
     marker_ptypes      = {"Jupiter": "s",            "Saturn": "v",           "Neptune": "P",            "Earth": "o"}
     label_ptypes       = {"Jupiter": "Jupiter-like", "Saturn": "Saturn-like", "Neptune": "Neptune-like", "Earth": "Earth-like"}
@@ -1942,6 +1928,20 @@ def main():
     ncols = min(2, Ndim)
     nrows = int(np.ceil(Ndim / ncols))
     
+    # Thermal/Reflected regime split of the planet table
+    mag_th   = np.asarray(planet_table[f"Planet{band_regime_plot}mag(thermal)"], dtype=float)
+    mag_re   = np.asarray(planet_table[f"Planet{band_regime_plot}mag(reflected)"], dtype=float)
+    valid_th = np.isfinite(mag_th)
+    valid_re = np.isfinite(mag_re)
+    # Lower magnitude = brighter contribution.
+    mask_thermal   = valid_th & valid_re & (mag_th < mag_re)
+    mask_reflected = valid_th & valid_re & (mag_re < mag_th)
+    mask_unknown   = ~(mask_thermal | mask_reflected)
+    print(f"\nPlanet-light regime split in {band_regime_plot} band:")
+    print(f"                  => Thermal-dominated:   {mask_thermal.sum()}/{len(planet_table)}")
+    print(f"                  => Reflected-dominated: {mask_reflected.sum()}/{len(planet_table)}")
+    print(f"                  => Unknown regime:      {mask_unknown.sum()}/{len(planet_table)}")
+    
     # 1D MARGINALIZED DETECTION PROBABILITY GAIN PER PARAM, TYPE AND REGIME
     N_PT_ptypes_thermal   = np.zeros((len(ptypes)))
     N_PT_ptypes_reflected = np.zeros((len(ptypes)))
@@ -1953,22 +1953,22 @@ def main():
         mask_ptype_all            |= mask_ptype
         N_PT_ptypes_thermal[ipt]   = (mask_ptype & mask_thermal).sum()
         N_PT_ptypes_reflected[ipt] = (mask_ptype & mask_reflected).sum()
-        if "thermal" in light_regime:
+        if "thermal" in light_regime_plot:
             print(f"\n{label_ptypes[ptype]} in thermal light:")
             idx_ptype_thermal  = np.where(mask_ptype & mask_thermal)[0]
-            Pdet_ptype_thermal = get_Pdet(mask_detections=mask_detections, FoV=FoV, p0_FoV=p0_FoV, dtype=dtype, indices=idx_ptype_thermal)
+            Pdet_ptype_thermal = get_Pdet(mask_detections=mask_detections, FoV=FoV, p0_FoV=p0_FoV, dtype=dtype, indices=idx_ptype_thermal, jump_before_tqdm=False)
         else:
             Pdet_ptype_thermal = None
-        if "reflected" in light_regime:
+        if "reflected" in light_regime_plot:
             print(f"\n{label_ptypes[ptype]} in reflected light:")
             idx_ptype_reflected  = np.where(mask_ptype & mask_reflected)[0]
-            Pdet_ptype_reflected = get_Pdet(mask_detections=mask_detections, FoV=FoV, p0_FoV=p0_FoV, dtype=dtype, indices=idx_ptype_reflected)
+            Pdet_ptype_reflected = get_Pdet(mask_detections=mask_detections, FoV=FoV, p0_FoV=p0_FoV, dtype=dtype, indices=idx_ptype_reflected, jump_before_tqdm=False)
         else:
             Pdet_ptype_reflected = None
         for idim in sorted(dim_to_remove, reverse=True):
-            if "thermal" in light_regime:
+            if "thermal" in light_regime_plot:
                 Pdet_ptype_thermal = np.take(Pdet_ptype_thermal, 0, axis=idim)
-            if "reflected" in light_regime:
+            if "reflected" in light_regime_plot:
                 Pdet_ptype_reflected = np.take(Pdet_ptype_reflected, 0, axis=idim)
         Pdet_ptypes_thermal[ipt]   = Pdet_ptype_thermal
         Pdet_ptypes_reflected[ipt] = Pdet_ptype_reflected
@@ -1991,7 +1991,8 @@ def main():
 
     # Detected Earth-like planet in thermal and reflected light
     mask_earth = get_mask_planet_type(planet_table=planet_table, planet_type="Earth")
-    if "thermal" in light_regime:
+    print()
+    if "thermal" in light_regime_plot:
         idx_earth_thermal                   = np.where(mask_earth & mask_thermal)[0]
         mask_detections_earth_thermal       = mask_detections[idx_earth_thermal]
         mask_detected_earth_thermal         = np.any(mask_detections_earth_thermal, axis=tuple(range(1, mask_detections_earth_thermal.ndim)))
@@ -1999,7 +2000,7 @@ def main():
         planet_table_detected_earth_thermal = planet_table_earth_thermal[mask_detected_earth_thermal]
         print(f"\nDetected Earth-like planets in thermal-light in {exposure_time/60:.1f}hr: {len(planet_table_detected_earth_thermal)} / {len(planet_table_earth_thermal)}")
         print(list(planet_table_detected_earth_thermal["PlanetName"]))
-    if "reflected" in light_regime:
+    if "reflected" in light_regime_plot:
         idx_earth_reflected                   = np.where(mask_earth & mask_reflected)[0]
         mask_detections_earth_reflected       = mask_detections[idx_earth_reflected]
         mask_detected_earth_reflected         = np.any(mask_detections_earth_reflected, axis=tuple(range(1, mask_detections_earth_reflected.ndim)))
@@ -2009,10 +2010,6 @@ def main():
         print(list(planet_table_detected_earth_reflected["PlanetName"]))
     
     # Plot quantities for the considered ptypes and light_regime
-    if light_regime_plot == "thermal+reflected" and not ("thermal" in light_regime and "reflected" in light_regime):
-        raise RuntimeError("light_regime_plot='thermal+reflected' requires the main run to have light_regime='thermal+reflected'.")
-    if light_regime_plot not in {"thermal", "reflected", "thermal+reflected"}:
-        raise ValueError("light_regime_plot must be 'thermal', 'reflected', or 'thermal+reflected'.")
     if light_regime_plot == "thermal":
         Pdet_ptypes_plot = Pdet_ptypes_thermal
         N_PT_ptypes_plot = N_PT_ptypes_thermal
@@ -2135,7 +2132,7 @@ def main():
     title += f"\n\n assuming an {instru_type} with a Lyot coronagraph"
     title += f"\n \n and {post_processing.replace('DI', 'differential imaging').replace('MM', 'molecular mapping')} as post-processing method"
     title += f"\n\n for {N_PT_plot} {table_type.replace('Archive', 'known').replace('Simulated', 'simulated')} planets in {regime_label} light"
-    fig.suptitle(title, fontsize=14, weight="bold", x=0.63, y=0.85)
+    fig.suptitle(title, fontsize=12, weight="bold", x=0.63, y=0.9)
     fig.savefig(sim_dir / f"ELT_{instru}_{instru_type}_{post_processing}_corner_plot_{table_type}_{light_regime_plot}_Pdet.png", bbox_inches="tight", dpi=dpi)
     plt.show()
 
@@ -2157,11 +2154,11 @@ def main():
 
         # Plotting marginalized quantity
         for ipt, ptype in enumerate(ptypes):
-            if "thermal" in light_regime:
+            if "thermal" in light_regime_plot:
                 Pdet_thermal = reduce_hcube(hcube=Pdet_ptypes_thermal[ipt], dims_to_keep=[idim], params=params, params_ranges=params_ranges, params_priors=params_priors, params_names=params_names, verbose=False)
                 y_thermal    = convert_Pdet_to_plot_quantity(Pdet_curve=Pdet_thermal, N_PT=N_PT_ptypes_thermal[ipt], gain=gain)
                 ax.plot(params[idim], y_thermal, ls="-", lw=lw, c="C3", marker=marker_ptypes[ptype], ms=ms, markerfacecolor="white", markeredgewidth=1.5, alpha=alpha, zorder=3)
-            if "reflected" in light_regime:
+            if "reflected" in light_regime_plot:
                 Pdet_reflected = reduce_hcube(hcube=Pdet_ptypes_reflected[ipt], dims_to_keep=[idim], params=params, params_ranges=params_ranges, params_priors=params_priors, params_names=params_names, verbose=False)
                 y_reflected    = convert_Pdet_to_plot_quantity(Pdet_curve=Pdet_reflected, N_PT=N_PT_ptypes_reflected[ipt], gain=gain)
                 ax.plot(params[idim], y_reflected, ls="-", lw=lw, c="C0", marker=marker_ptypes[ptype], ms=ms, markerfacecolor="white", markeredgewidth=1.5, alpha=alpha, zorder=3)
@@ -2190,7 +2187,7 @@ def main():
             ax.add_artist(leg_ptype)
 
         # Planet-regime legend
-        if idim == 2 and light_regime == "thermal+reflected":
+        if idim == 2 and light_regime_plot == "thermal+reflected":
             handles_regime = [Line2D([], [], ls="-", lw=lw + 2, color="C3", label="Thermal"), Line2D([], [], ls="-", lw=lw + 2, color="C0", label="Reflected")]
             leg_regime = ax.legend(handles=handles_regime, fontsize=fontsize + 2, loc="upper right", frameon=True, edgecolor="gray", facecolor="white", title="Planet-light regime", title_fontsize=fontsize + 4)
             ax.add_artist(leg_regime)
@@ -2225,7 +2222,7 @@ def main():
     title += f"{post_processing.replace('DI', 'differential imaging').replace('MM', 'molecular mapping')}"
     fig.suptitle(title, fontsize=fontsize + 6, weight="bold", y=1.00)
     fig.tight_layout(h_pad=3.0, w_pad=3.0)
-    fig.savefig(sim_dir / f"ELT_{instru}_{instru_type}_{post_processing}_detection_{table_type}_{light_regime}_Pdet.png", bbox_inches="tight", dpi=dpi)
+    fig.savefig(sim_dir / f"ELT_{instru}_{instru_type}_{post_processing}_detection_{table_type}_{light_regime_plot}_Pdet.png", bbox_inches="tight", dpi=dpi)
     plt.show()
 
 
@@ -2342,16 +2339,16 @@ def main():
         quantity_name = "detection probability gain"
     else:
         quantity_name = "detection yield"
-    N_PT_plot        = int(np.sum([N_PT_ptypes_plot[ptypes.index(ptype)] for ptype in ptypes_plot]))
-    ptype_plot_label = "+".join(ptypes_plot)
-    title  = f"ELT/{instru} {quantity_name} in {exposure_time/60:.0f}hr for {N_PT_plot} "
+    N_PT_ptypes_plot_1D = int(np.sum([N_PT_ptypes_plot[ptypes.index(ptype)] for ptype in ptypes_plot]))
+    ptype_plot_label    = "+".join(ptypes_plot)
+    title  = f"ELT/{instru} {quantity_name} in {exposure_time/60:.0f}hr for {N_PT_ptypes_plot_1D} "
     title += f"{table_type.replace('Archive', 'known').replace('Simulated', 'simulated')} {ptype_plot_label}-like planets"
     title += f"\n\n assuming a Lyot coronagraphic {instru_type} with "
     title += f"{post_processing.replace('DI', 'differential imaging').replace('MM', 'molecular mapping')}"
     title += f"\n\n for the {light_regime_plot} planet-light regime"
     fig.suptitle(title, fontsize=fontsize + 6, weight="bold", y=0.98)
     fig.subplots_adjust(left=0.05, right=0.85, bottom=0.05, top=0.88, wspace=0.15, hspace=0.3)
-    fig.savefig(sim_dir / f"ELT_{instru}_{instru_type}_{post_processing}_detection_band_{table_type}_{light_regime}_Pdet.png", bbox_inches="tight", dpi=dpi)
+    fig.savefig(sim_dir / f"ELT_{instru}_{instru_type}_{post_processing}_detection_band_{table_type}_{light_regime_plot}_Pdet.png", bbox_inches="tight", dpi=dpi)
     plt.show()
 
 
@@ -2632,7 +2629,8 @@ def main():
             mask       = valid & not_detected & mask_ptype
             if not np.any(mask):
                 continue
-            ax.scatter(x[mask], y[mask], c='0.5', cmap=cmap, norm=norm, marker=marker_ptypes[ptype], s=ss, edgecolors="none", alpha=0.05, zorder=1)
+            ax.scatter(x[mask], y[mask], c='0.5', marker=marker_ptypes[ptype], s=ss, edgecolors="none", alpha=0.05, zorder=1)
+            #ax.scatter(x[mask], y[mask], c=Teff_star[mask], cmap=cmap, norm=norm, marker=marker_ptypes[ptype], s=ss, edgecolors="none", alpha=1-alpha, zorder=1)
         # Foreground: detected planets, with correct marker by planet type
         for ptype in ptypes:
             mask_ptype = get_mask_planet_type(planet_table=planet_table, planet_type=ptype)
@@ -2691,7 +2689,7 @@ def main():
     cbar.ax.tick_params(labelsize=fontsize-2)
     cbar.ax.minorticks_on()
 
-    fig.savefig(sim_dir / f"ELT_{instru}_{instru_type}_{post_processing}_detected_population_obs_phys_{table_type}_{light_regime}_{band_contrast_plot}band_{snr_population_mode}.png", bbox_inches="tight", dpi=dpi)
+    fig.savefig(sim_dir / f"ELT_{instru}_{instru_type}_{post_processing}_detected_population_obs_phys_{table_type}_{light_regime_plot}_{band_contrast_plot}band_{snr_population_mode}.png", bbox_inches="tight", dpi=dpi)
     plt.show()
 
 
@@ -2908,7 +2906,7 @@ def main():
     fig.suptitle(title, fontsize=fontsize+4, weight="bold", y=0.98)
     fig.subplots_adjust(left=0.07, right=0.97, bottom=0.10, top=0.86, wspace=0.25)
 
-    fig.savefig(sim_dir / f"ELT_{instru}_{instru_type}_{post_processing}_dominant_noise_regime_{table_type}_{light_regime}_{band_contrast_plot}band_{snr_population_mode}.png", bbox_inches="tight", dpi=dpi)
+    fig.savefig(sim_dir / f"ELT_{instru}_{instru_type}_{post_processing}_dominant_noise_regime_{table_type}_{light_regime_plot}_{band_contrast_plot}band_{snr_population_mode}.png", bbox_inches="tight", dpi=dpi)
     plt.show()
 
 
@@ -2992,7 +2990,7 @@ def main():
     fig.suptitle(title, fontsize=fontsize+4, weight="bold", y=0.98)
     fig.subplots_adjust(left=0.07, right=0.97, bottom=0.10, top=0.86, wspace=0.25)
 
-    fig.savefig(sim_dir / f"ELT_{instru}_{instru_type}_{post_processing}_thermal_reflected_complementarity_{table_type}_{light_regime}_{band_contrast_plot}band_{snr_population_mode}.png", bbox_inches="tight", dpi=dpi)
+    fig.savefig(sim_dir / f"ELT_{instru}_{instru_type}_{post_processing}_thermal_reflected_complementarity_{table_type}_{light_regime_plot}_{band_contrast_plot}band_{snr_population_mode}.png", bbox_inches="tight", dpi=dpi)
     plt.show()
 
 

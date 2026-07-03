@@ -87,7 +87,7 @@ def _print_section(title, char="="):
 def _print_kv(key, value, width=38):
     print(f"{key:<{width}} : {value}")
 
-def print_simulation_summary(instru, instru_type, detector, post_processing, D, S, N_mirror, trans_dust, RON0, RON_lim, DC0, saturation_e, min_DIT, max_DIT, coronagraph, apodizer, strehl, thermal_model, reflected_model, SNR_thr, exposure_time, size_core, A_FWHM, Rc, filter_type, table_type, band_regime, light_regime, sep_min, sep_max, N_PT_raw, N_PT, force_new_calc, N_px=None, l0=None, R=None, Nl=None, Dl=None, WFE=None, C_raw=None, IWA=None, trans_instru=None, sigma_m=None, FoV=None):
+def print_simulation_summary(instru, instru_type, detector, post_processing, D, S, N_mirror, trans_dust, RON0, RON_lim, DC0, saturation_e, min_DIT, max_DIT, coronagraph, apodizer, strehl, thermal_model, reflected_model, SNR_thr, exposure_time, size_core, A_FWHM, Rc, filter_type, table_type, sep_min, sep_max, N_PT_raw, N_PT, force_new_calc, N_px=None, l0=None, R=None, Nl=None, Dl=None, WFE=None, C_raw=None, IWA=None, trans_instru=None, sigma_m=None, FoV=None):
     _print_section("FastYield simulation summary")
 
     # General configuration
@@ -131,8 +131,6 @@ def print_simulation_summary(instru, instru_type, detector, post_processing, D, 
     # Catalog parameters
     _print_section("Catalog parameters", "-")
     _print_kv("Catalog type", table_type)
-    _print_kv("Regime selection", light_regime)
-    _print_kv("Regime reference band", band_regime)
     _print_kv("Separation range", f"[{_fmt_scalar(sep_min)}, {_fmt_scalar(sep_max)}] mas")
     _print_kv("Initial catalog size", f"{_fmt_scalar(N_PT_raw)} planets")
     _print_kv("Filtered catalog size", f"{_fmt_scalar(N_PT)} planets")

@@ -1125,24 +1125,28 @@ def colormap_bands_ptypes_SNR(mode="multi", Nmax=None, instru="HARMONI", thermal
         suffix = "with_systematics+PCA" if PCA else "with_systematics"
     else:
         suffix = "without_systematics"
-    SNR       = []
-    SNR_bands = {}
-    for band in config_data["gratings"]:
-        SNR_bands[f"{band}"] = []
+    SNR_configs       = []
+    SNR_bands_configs = {band: [] for band in config_data["gratings"]}
+    ref_names         = None
     for apodizer in config_data["apodizers"]:
         for coronagraph in config_data["coronagraphs"]:
-            coronagraph_str = "_"+str(coronagraph) if coronagraph is not None else ""
+            coronagraph_str = "_" + str(coronagraph) if coronagraph is not None else ""
             filename        = f"{table}_Pull_{instru}_{apodizer}_{strehl}{coronagraph_str}_{suffix}_{name_model}"
-            planet_table    = load_planet_table(f"{filename}.ecsv")    
-            SNR.append(get_SNR_from_table(planet_table=planet_table, exposure_time=exposure_time, band="INSTRU"))
+            planet_table    = load_planet_table(f"{filename}.ecsv")
+            current_names   = np.asarray(planet_table["PlanetName"], dtype=str).astype(str)
+            if ref_names is None:
+                ref_names = current_names.copy()
+            elif len(current_names) != len(ref_names) or np.any(current_names != ref_names):
+                raise ValueError(f"Inconsistent planet ordering/content in {filename}.ecsv. All apodizer/coronagraph tables must contain the same planets in the same order.")
+            SNR_configs.append(get_SNR_from_table(planet_table=planet_table, exposure_time=exposure_time, band="INSTRU"))
             for band in config_data["gratings"]:
-                SNR_bands[f"{band}"].append(get_SNR_from_table(planet_table=planet_table, exposure_time=exposure_time, band=band))
-    
+                SNR_bands_configs[band].append(get_SNR_from_table(planet_table=planet_table, exposure_time=exposure_time, band=band))
+        
     # Keeping only the best SNR over the apodizers/coronagraph config
-    planet_table["SNR"] = np.nanmax(np.stack(SNR, axis=0), axis=0)
+    planet_table["SNR"] = np.nanmax(np.stack(SNR_configs, axis=0), axis=0)
     for band in config_data["gratings"]:
-        planet_table[f"SNR_{band}"] = np.nanmax(np.stack(SNR_bands[f"{band}"], axis=0), axis=0)
-
+        planet_table[f"SNR_{band}"] = np.nanmax(np.stack(SNR_bands_configs[band], axis=0), axis=0)
+        
     # Find planets based on mode: the classification is performed once inside build_match_dict().
     matching_planets = build_match_dict(planet_table=planet_table, planet_types=planet_types, mode=mode, Nmax=Nmax)
 
@@ -1156,7 +1160,7 @@ def colormap_bands_ptypes_SNR(mode="multi", Nmax=None, instru="HARMONI", thermal
     bands_ticks       = np.array([band.replace("_", " ") for band in config_data["gratings"]])
 
     # Map each planet name to its row index to avoid repeated calls to get_planet_index
-    name_to_index = {name: i for i, name in enumerate(planet_table["PlanetName"])}
+    name_to_index = {str(name): i for i, name in enumerate(planet_table["PlanetName"])}
     
     # Build the global band-SNR matrix with shape (N_planets, N_bands)
     snr_by_band = np.vstack([np.asarray(planet_table[f"SNR_{band}"], dtype=float) for band in bands]).T
@@ -1164,18 +1168,26 @@ def colormap_bands_ptypes_SNR(mode="multi", Nmax=None, instru="HARMONI", thermal
     # Accumulate the relative SNR per planet type
     SNR = np.full((len(bands), len(planet_types_arr)), np.nan, dtype=float)
     for itype, ptype in enumerate(planet_types_arr):
-        idx = np.array([name_to_index[planet["PlanetName"]] for planet in matching_planets[ptype]], dtype=int)
-    
+        idx = np.array([name_to_index[str(planet["PlanetName"])] for planet in matching_planets[ptype]], dtype=int)
         snr = snr_by_band[idx, :].copy()  # shape = (N_planets_of_type, N_bands)
+
+        # Normalize each planet individually to convert absolute SNR into relative band-to-band SNR.
+        # Planets with no finite positive SNR in any band are ignored for the relative average.
+        den_planet             = np.full(snr.shape[0], np.nan, dtype=float)
+        has_finite             = np.isfinite(snr).any(axis=1)
+        den_planet[has_finite] = np.nanmax(snr[has_finite], axis=1)
     
-        # Normalize each planet individually to convert absolute SNR into relative band-to-band SNR
-        snr = snr / np.nanmax(snr, axis=1)[:, None]  # shape = (N_planets_of_type, N_bands)
+        valid_planets = has_finite & np.isfinite(den_planet) & (den_planet > 0)
+        if valid_planets.any():
+            snr_rel       = snr[valid_planets, :] / den_planet[valid_planets, None]
+            SNR[:, itype] = np.nanmean(snr_rel, axis=0)
     
-        # Average the relative SNR over all planets of the same type
-        SNR[:, itype] = np.nanmean(snr, axis=0)  # shape = (N_bands,)
-    
-    # Renormalize each planet-type column, since the per-type average does not necessarily peak at 1
-    SNR = SNR / np.nanmax(SNR, axis=0)[None, :]  # shape = (N_bands, N_planet_types)
+    # Renormalize each planet-type column, since the per-type average does not necessarily peak at 1.
+    den_type                  = np.full(SNR.shape[1], np.nan, dtype=float)
+    has_finite_type           = np.isfinite(SNR).any(axis=0)
+    den_type[has_finite_type] = np.nanmax(SNR[:, has_finite_type], axis=0)
+    valid_types               = has_finite_type & np.isfinite(den_type) & (den_type > 0)
+    SNR[:, valid_types]       = SNR[:, valid_types] / den_type[valid_types][None, :]
 
     # Plot
     planet_types_arr_idx          = np.arange(len(planet_types_arr))
@@ -1190,7 +1202,7 @@ def colormap_bands_ptypes_SNR(mode="multi", Nmax=None, instru="HARMONI", thermal
     plt.figure(figsize=(10, 8), dpi=300)
     plt.xlabel("Various planetary types", fontsize=16, weight='bold')
     plt.ylabel("Various spectral modes",  fontsize=16, weight='bold')
-    plt.title(f"{instru} S/N fluctuations\nin {spectrum_contributions} light ({name_model}-model)", fontsize=18, pad=14)
+    plt.title(f"{instru} relative band-to-band S/N gain\nin {spectrum_contributions} light ({name_model}-model)", fontsize=18, pad=14)
     plt.tick_params(axis='both', which='major', labelsize=12)
 
     # Heatmap with pcolormesh
@@ -1218,10 +1230,10 @@ def colormap_bands_ptypes_SNR(mode="multi", Nmax=None, instru="HARMONI", thermal
     plt.tight_layout()
     
     if save:
-        output_dir  = Path(colormaps_path) / "colormaps_bandwidth_resolution"
+        output_dir = Path(colormaps_path) / "colormaps_bands_planets_snr"
         output_dir.mkdir(parents=True, exist_ok=True)
-        filename    = f"colormaps_bands_planets_snr/colormap_bands_ptypes_SNR_{instru}_{strehl}_{suffix}_{name_model}_{mode}"
-        output_path = output_dir / f"{filename}.png"
+        filename    = f"colormap_bands_ptypes_SNR_{instru}_{strehl}_{suffix}_{name_model}_{mode}.png"
+        output_path = output_dir / filename
         plt.savefig(output_path, format="png", bbox_inches="tight")
     
     plt.show()

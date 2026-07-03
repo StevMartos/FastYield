@@ -2790,7 +2790,7 @@ def load_albedo_spectrum(T_planet, lg_planet, model="PICASO_albedo_gas_giant", a
         wave_tell, tell1, R_tell = load_tell_trans(airmass=1.0, return_R=True)
         tell                     = tell1**airmass
         
-        # Geometric albedo from PICASO
+        # Geometric albedo from analytical proxy
         albedo_geo = load_planet_spectrum(T_planet=T_planet, lg_planet=lg_planet, model="airless_rocky_albedo", interpolated_spectrum=interpolated_spectrum, instru=None, T_grid=T_grid, lg_grid=lg_grid)
         albedo_geo = albedo_geo.interpolate_wavelength(wave_output=wave_tell, renorm=False).flux
         

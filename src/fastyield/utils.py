@@ -1524,6 +1524,10 @@ def PCA_subtraction(S_res, N_PCA, y0=None, x0=None, size_core=None, PCA_annular=
             cmap    = plt.get_cmap("rainbow", Nk)
             extent  = [-NbColumn/2*pxscale, NbColumn/2*pxscale, -NbLine/2*pxscale, NbLine/2*pxscale]
             fig, ax = plt.subplots(Nk, 3, figsize=(16, Nk * 3), sharex='col', sharey='col', layout="constrained", gridspec_kw={'wspace': 0.05, 'hspace': 0}, dpi=300)
+            fig.suptitle(rf"PCA modes and spatial correlation maps — first {Nk} components", fontsize=22, fontweight="bold", y=1.05)
+            ax[0, 0].set_title("PCA spectral component",  fontsize=16, fontweight="bold", pad=12)
+            ax[0, 1].set_title("Power spectral density",  fontsize=16, fontweight="bold", pad=12)
+            ax[0, 2].set_title("Spatial correlation map", fontsize=16, fontweight="bold", pad=12)
             for k in range(Nk):
                 # Retrieve the k-th PCA component
                 pca_comp = pca.components_[k]
@@ -1557,7 +1561,7 @@ def PCA_subtraction(S_res, N_PCA, y0=None, x0=None, size_core=None, PCA_annular=
                 CCF        = np.zeros((NbLine, NbColumn)) + np.nan
                 valid      = norm != 0
                 CCF[valid] = corr[valid] / norm[valid]
-                cax  = ax[k, 2].imshow(CCF, extent=extent, zorder=3)
+                cax  = ax[k, 2].imshow(CCF, extent=extent, zorder=3, cmap="coolwarm")
                 cbar = fig.colorbar(cax, ax=ax[k, 2], orientation='vertical', shrink=0.8)
                 cbar.set_label("Correlation", fontsize=14, labelpad=20, rotation=270)
                 if k == Nk - 1:
