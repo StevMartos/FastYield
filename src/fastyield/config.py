@@ -569,32 +569,32 @@ config_data_VIPAPYRUS = {
                         }
 
 
-# HARMONI (HC Bench) demonstrator
-config_data_HARMONI = {
-                       'name':           "HARMONI",                                  # Instrument name
-                       'telescope_name': "ELT",                                      # Telescope name
-                       'type':           "IFU",                                      # Instrument type
-                       'bench':          True,                                       # HC bench (demonstrator)
-                       'gratings':       {"H": GratingInfo(1.5601, 1.69, 7555)},     # Spectral range [µm], resolving power
-                       'lambda_range':   {"lambda_min": 1.5601, "lambda_max": 1.69}, # Minimum and maximum instrumental wavelength range [µm]
-                       'size_core':      3,                                          # Size in pixels of the FWHM  (here: side of the PSF core box)
-                       'apodizers':      {"NO_SP":   ApodizerInfo(0.84),             # Available apodizers (transmission, IWA [mas])
-                                          "SP1":     ApodizerInfo(0.45),             # Available apodizers (transmission, IWA [mas])
-                                          "SP2":     ApodizerInfo(0.35),             # Available apodizers (transmission, IWA [mas])
-                                          "SP_Prox": ApodizerInfo(0.68)},            # Available apodizers (transmission, IWA [mas])
-                       'FPMs':           [30],                                       # FPM IWA available values in [mas]
-                       'strehls':        ["JQ1"],                                    # Available strehls
-                       'coronagraphs':   [None],                                     # Available coronagraphs
-                       'pxscale':        0.004,                                      # Pixel scale [arcsec/px]
-                       'FOV':            0.35,                                       # Field Of View [arcsec]
-                       'sep_unit':       "mas",                                      # Unit for angular separation
-                       'detector':       {"RON":          0*10.0,                    # Read-Out Noise [e-/px/read]
-                                          "RON_lim":      0*1.,                      # Read-Out Noise limit [e-/px/read]
-                                          "dark_current": 0*0.0053,                  # Dark current [e-/px/s]
-                                          "minDIT":       2.62/60,                   # Minimum Detector Integration Time [mn]
-                                          "maxDIT":       1,                         # Maximum Detector Integration Time [mn]
-                                          "saturation_e": 40_000},                   # Full well capacity [e-] 
-                     }
+# # HARMONI (HC Bench) demonstrator
+# config_data_HARMONI = {
+#                        'name':           "HARMONI",                                  # Instrument name
+#                        'telescope_name': "ELT",                                      # Telescope name
+#                        'type':           "IFU",                                      # Instrument type
+#                        'bench':          True,                                       # HC bench (demonstrator)
+#                        'gratings':       {"H": GratingInfo(1.5601, 1.69, 7555)},     # Spectral range [µm], resolving power
+#                        'lambda_range':   {"lambda_min": 1.5601, "lambda_max": 1.69}, # Minimum and maximum instrumental wavelength range [µm]
+#                        'size_core':      3,                                          # Size in pixels of the FWHM  (here: side of the PSF core box)
+#                        'apodizers':      {"NO_SP":   ApodizerInfo(0.84),             # Available apodizers (transmission, IWA [mas])
+#                                           "SP1":     ApodizerInfo(0.45),             # Available apodizers (transmission, IWA [mas])
+#                                           "SP2":     ApodizerInfo(0.35),             # Available apodizers (transmission, IWA [mas])
+#                                           "SP_Prox": ApodizerInfo(0.68)},            # Available apodizers (transmission, IWA [mas])
+#                        'FPMs':           [30],                                       # FPM IWA available values in [mas]
+#                        'strehls':        ["JQ1"],                                    # Available strehls
+#                        'coronagraphs':   [None],                                     # Available coronagraphs
+#                        'pxscale':        0.004,                                      # Pixel scale [arcsec/px]
+#                        'FOV':            0.35,                                       # Field Of View [arcsec]
+#                        'sep_unit':       "mas",                                      # Unit for angular separation
+#                        'detector':       {"RON":          0*10.0,                    # Read-Out Noise [e-/px/read]
+#                                           "RON_lim":      0*1.,                      # Read-Out Noise limit [e-/px/read]
+#                                           "dark_current": 0*0.0053,                  # Dark current [e-/px/s]
+#                                           "minDIT":       2.62/60,                   # Minimum Detector Integration Time [mn]
+#                                           "maxDIT":       1,                         # Maximum Detector Integration Time [mn]
+#                                           "saturation_e": 40_000},                   # Full well capacity [e-] 
+#                      }
 
 
 

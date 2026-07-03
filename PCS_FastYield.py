@@ -1211,7 +1211,7 @@ def main():
     force_new_calc     = False                                 # Forcing new simulations calculations
     thermal_model      = "auto"                                # Model for the thermal spectrum of the planet ("auto", "BT-Settl", "Exo-REM", "SONORA", "PICASO", "Saumon", etc.)
     reflected_model    = "auto"                                # Model for the albedo of the planet ("auto", "tellurics", "flat", "PICASO")
-    instru_type        = "imager"                              # Type of instrument ("IFU" or "imager")
+    instru_type        = "IFU"                                 # Type of instrument ("IFU" or "imager")
     post_processing    = "MM"                                  # Post-processing method ("MM" or "DI")
     size_core          = 2                                     # [px/FWHM] Number of pixel per spatial FWHM along 1 direction (size_core >= 2 => Nyquist spatial sampling)
     A_FWHM             = size_core**2                          # Number of pixel per FWHM box area
@@ -1861,7 +1861,7 @@ def main():
     alpha              = 0.9                 # Opacity
     gain               = False               # True for probability gain (normalized yield), False for absolute yields
     light_regime_plot  = "thermal+reflected" # 'thermal", "reflected" or "thermal+reflected"
-    band_regime_plot   =  "H"                # Band where the thermal/reflected domination regime is estimated
+    band_regime_plot   =  "H"                # Band where the thermal/reflected domination regime is splitted
     ptypes             = ["Jupiter",                 "Saturn",                "Neptune",                 "Earth"]
     marker_ptypes      = {"Jupiter": "s",            "Saturn": "v",           "Neptune": "P",            "Earth": "o"}
     label_ptypes       = {"Jupiter": "Jupiter-like", "Saturn": "Saturn-like", "Neptune": "Neptune-like", "Earth": "Earth-like"}
@@ -1937,7 +1937,7 @@ def main():
     mask_thermal   = valid_th & valid_re & (mag_th < mag_re)
     mask_reflected = valid_th & valid_re & (mag_re < mag_th)
     mask_unknown   = ~(mask_thermal | mask_reflected)
-    print(f"\nPlanet-light regime split in {band_regime_plot} band:")
+    print(f"\nPlanet-light regime split in {band_regime_plot}-band:")
     print(f"                  => Thermal-dominated:   {mask_thermal.sum()}/{len(planet_table)}")
     print(f"                  => Reflected-dominated: {mask_reflected.sum()}/{len(planet_table)}")
     print(f"                  => Unknown regime:      {mask_unknown.sum()}/{len(planet_table)}")
