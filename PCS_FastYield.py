@@ -2654,10 +2654,10 @@ def main():
         ax.tick_params(axis="both", which="minor", labelsize=fontsize-2, length=3, width=0.8)
 
     # Left panel: observational space
-    plot_detected_population_panel(ax=ax_obs, x=AngSep, y=contrast, valid=valid_obs, xlabel="Angular separation [mas]", ylabel=f"{band_contrast_plot}-band contrast", xlim=(5, sep_max), ylim=(1e-11, 1e-6), title="Observational space")
+    plot_detected_population_panel(ax=ax_obs, x=AngSep, y=contrast, valid=valid_obs, xlabel="Angular separation [mas]", ylabel=f"{band_contrast_plot}-band contrast", xlim=(5, 1000), ylim=(1e-11, 1e-6), title="Observational space")
 
     # Right panel: physical space
-    plot_detected_population_panel(ax=ax_phys, x=SMA, y=PlanetMass, valid=valid_phys, xlabel="Semi-major axis [AU]", ylabel=r"Planet mass [$M_\oplus$]", xlim=(np.nanmin(SMA[valid_phys]) / 1.2, np.nanmax(SMA[valid_phys]) * 1.2), ylim=(np.nanmin(PlanetMass[valid_phys]) / 1.2, np.nanmax(PlanetMass[valid_phys]) * 1.2), title="Physical space")
+    plot_detected_population_panel(ax=ax_phys, x=SMA, y=PlanetMass, valid=valid_phys, xlabel="Semi-major axis [AU]", ylabel=r"Planet mass [$M_\oplus$]", xlim=(5e-3, 2e2), ylim=(5e-2, 1e4), title="Physical space")
 
     # Planet-type legend in the left panel
     handles_ptype = [Line2D([], [], ls="", marker=marker_ptypes[ptype], ms=ms, markerfacecolor="white", markeredgecolor="k", markeredgewidth=1.5, color="k", label=label_ptypes[ptype]) for ptype in ptypes]
