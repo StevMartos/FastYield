@@ -1836,7 +1836,8 @@ def main():
         # Computations
         print()
         with ctx_mp.Pool(processes=nproc, initializer=init_worker, initargs=(_CTX,)) as pool:
-            for _ in tqdm(pool.imap_unordered(func_process, range(N_PT), chunksize=chunksize), total=N_PT, desc=tqdm_desc):
+            print(f'{tqdm_desc}:')
+            for _ in tqdm(pool.imap_unordered(func_process, range(N_PT), chunksize=chunksize), total=N_PT):
                 pass
         signal_planets.flush()
         sigma_halo_2_planets.flush()
