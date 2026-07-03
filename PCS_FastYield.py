@@ -2632,7 +2632,7 @@ def main():
             mask       = valid & not_detected & mask_ptype
             if not np.any(mask):
                 continue
-            ax.scatter(x[mask], y[mask], c=Teff_star[mask], cmap=cmap, norm=norm, marker=marker_ptypes[ptype], s=ss, edgecolors="none", alpha=1-alpha, zorder=1)
+            ax.scatter(x[mask], y[mask], c='0.5', cmap=cmap, norm=norm, marker=marker_ptypes[ptype], s=ss, edgecolors="none", alpha=0.05, zorder=1)
         # Foreground: detected planets, with correct marker by planet type
         for ptype in ptypes:
             mask_ptype = get_mask_planet_type(planet_table=planet_table, planet_type=ptype)
