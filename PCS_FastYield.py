@@ -1929,13 +1929,25 @@ def main():
     nrows = int(np.ceil(Ndim / ncols))
     
     # Thermal/Reflected regime split of the planet table
-    mag_th   = np.asarray(planet_table[f"Planet{band_regime_plot}mag(thermal)"], dtype=float)
-    mag_re   = np.asarray(planet_table[f"Planet{band_regime_plot}mag(reflected)"], dtype=float)
-    valid_th = np.isfinite(mag_th)
-    valid_re = np.isfinite(mag_re)
-    # Lower magnitude = brighter contribution.
-    mask_thermal   = valid_th & valid_re & (mag_th < mag_re)
-    mask_reflected = valid_th & valid_re & (mag_re < mag_th)
+    # Considering both thermal and reflected contribution
+    if thermal_model != "None" and reflected_model != "None":
+        mag_th   = np.asarray(planet_table[f"Planet{band_regime_plot}mag(thermal)"], dtype=float)
+        mag_re   = np.asarray(planet_table[f"Planet{band_regime_plot}mag(reflected)"], dtype=float)
+        valid_th = np.isfinite(mag_th)
+        valid_re = np.isfinite(mag_re)
+        # Lower magnitude = brighter contribution.
+        mask_thermal   = valid_th & valid_re & (mag_th < mag_re)
+        mask_reflected = valid_th & valid_re & (mag_re < mag_th)
+    # Thermal contribution only
+    elif thermal_model != "None" and reflected_model == "None":
+        light_regime_plot = "thermal"
+        mask_thermal      = np.full(N_PT, True)
+        mask_reflected    = ~mask_thermal
+    # Reflected contribution only
+    elif thermal_model == "None" and reflected_model != "None":
+        light_regime_plot = "reflected"
+        mask_reflected    = np.full(N_PT, True)
+        mask_thermal      = ~mask_reflected
     mask_unknown   = ~(mask_thermal | mask_reflected)
     print(f"\nPlanet-light regime split in {band_regime_plot}-band:")
     print(f"                  => Thermal-dominated:   {mask_thermal.sum()}/{len(planet_table)}")
