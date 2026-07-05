@@ -100,7 +100,7 @@ def colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_plan
     if spectrum_contributions=="reflected":
         albedo_spectrum = load_albedo_spectrum(T_planet, lg_planet, model=model, airmass=airmass)
         albedo_spectrum = albedo_spectrum.interpolate_wavelength(wave_model, renorm=False) # Interpolating on wave_model (constant dl)
-        planet_spectrum = Spectrum(wavelength=wave_model, flux=albedo_spectrum.flux*star_spectrum.flux, R=albedo_spectrum.R, T=T_planet, lg=lg_planet, model=model, rv=0, vsini=0)
+        planet_spectrum = Spectrum(wavelength=wave_model, flux=albedo_spectrum.flux*star_spectrum.flux, R=np.maximum.reduce([star_spectrum.R, albedo_spectrum.R]), T=T_planet, lg=lg_planet, model=model, rv=0, vsini=0)
     elif spectrum_contributions=="thermal":
         planet_spectrum = load_planet_spectrum(T_planet, lg_planet, model, instru=instru)
         planet_spectrum = planet_spectrum.interpolate_wavelength(wave_model, renorm=False) # Interpolating on wave_model (constant dl)
@@ -184,7 +184,7 @@ def colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_plan
         
         # Colorbar
         ax = plt.gca()
-        cbar = plt.colorbar(mesh, ax=ax, pad=0.025, shrink=1)
+        cbar = plt.colorbar(mesh, ax=ax, pad=0.03, shrink=1)
         cbar.minorticks_on()
         cbar.set_ticks(contour_levels)
         cbar.ax.tick_params(labelsize=12)
@@ -421,7 +421,7 @@ def colormap_bandwidth_resolution_with_constant_Dlambda(instru="HARMONI", T_plan
     if spectrum_contributions=="reflected":
         albedo_spectrum = load_albedo_spectrum(T_planet, lg_planet, model=model, airmass=airmass)
         albedo_spectrum = albedo_spectrum.interpolate_wavelength(wave_model, renorm=False) # Interpolating on wave_model (constant dl)
-        planet_spectrum = Spectrum(wavelength=wave_model, flux=albedo_spectrum.flux*star_spectrum.flux, R=albedo_spectrum.R, T=T_planet, lg=lg_planet, model=model, rv=0, vsini=0)
+        planet_spectrum = Spectrum(wavelength=wave_model, flux=albedo_spectrum.flux*star_spectrum.flux, R=np.maximum.reduce([star_spectrum.R, albedo_spectrum.R]), T=T_planet, lg=lg_planet, model=model, rv=0, vsini=0)
     elif spectrum_contributions=="thermal":
         planet_spectrum = load_planet_spectrum(T_planet, lg_planet, model, instru=instru)
         planet_spectrum = planet_spectrum.interpolate_wavelength(wave_model, renorm=False) # Interpolating on wave_model (constant dl)
@@ -491,7 +491,7 @@ def colormap_bandwidth_resolution_with_constant_Dlambda(instru="HARMONI", T_plan
         
         # Colorbar
         ax = plt.gca()
-        cbar = plt.colorbar(mesh, ax=ax, pad=0.025, shrink=1)
+        cbar = plt.colorbar(mesh, ax=ax, pad=0.03, shrink=1)
         cbar.minorticks_on()
         cbar.set_ticks(contour_levels)
         cbar.ax.tick_params(labelsize=12)
@@ -735,7 +735,7 @@ def colormap_bandwidth_Tp(instru, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_s
         
         # Colorbar
         ax = plt.gca()
-        cbar = plt.colorbar(mesh, ax=ax, pad=0.025, shrink=1)
+        cbar = plt.colorbar(mesh, ax=ax, pad=0.03, shrink=1)
         cbar.minorticks_on()
         cbar.set_ticks(contour_levels)
         cbar.ax.tick_params(labelsize=12)
@@ -821,7 +821,7 @@ def process_colormap_bandwidth_Tp(i):
     if spectrum_contributions=="reflected":
         albedo_spectrum = load_albedo_spectrum(T_planet, lg_planet, model=model, airmass=airmass)
         albedo_spectrum = albedo_spectrum.interpolate_wavelength(wave_model, renorm=False) # Interpolating on wave_model (constant dl)
-        planet_spectrum = Spectrum(wavelength=wave_model, flux=albedo_spectrum.flux*star_spectrum.flux, R=albedo_spectrum.R, T=T_planet, lg=lg_planet, model=model, rv=0, vsini=0)
+        planet_spectrum = Spectrum(wavelength=wave_model, flux=albedo_spectrum.flux*star_spectrum.flux, R=np.maximum.reduce([star_spectrum.R, albedo_spectrum.R]), T=T_planet, lg=lg_planet, model=model, rv=0, vsini=0)
     elif spectrum_contributions=="thermal":
         planet_spectrum = load_planet_spectrum(T_planet, lg_planet, model, instru=instru)
         planet_spectrum = planet_spectrum.interpolate_wavelength(wave_model, renorm=False) # Interpolating on wave_model (constant dl)
@@ -1004,7 +1004,7 @@ def colormap_bands_Tp(instru, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, 
         
         # Colorbar
         ax   = plt.gca()
-        cbar = plt.colorbar(mesh, ax=ax, pad=0.025, shrink=1)
+        cbar = plt.colorbar(mesh, ax=ax, pad=0.03, shrink=1)
         cbar.minorticks_on()
         cbar.set_ticks(contour_levels)
         cbar.ax.tick_params(labelsize=12)
@@ -1058,7 +1058,7 @@ def process_colormap_bands_Tp(i):
     if spectrum_contributions=="reflected":
         albedo_spectrum = load_albedo_spectrum(T_planet, lg_planet, model=model, airmass=airmass)
         albedo_spectrum = albedo_spectrum.interpolate_wavelength(wave_model, renorm=False) # Interpolating on wave_model (constant dl)
-        planet_spectrum = Spectrum(wavelength=wave_model, flux=albedo_spectrum.flux*star_spectrum.flux, R=albedo_spectrum.R, T=T_planet, lg=lg_planet, model=model, rv=0, vsini=0)
+        planet_spectrum = Spectrum(wavelength=wave_model, flux=albedo_spectrum.flux*star_spectrum.flux, R=np.maximum.reduce([star_spectrum.R, albedo_spectrum.R]), T=T_planet, lg=lg_planet, model=model, rv=0, vsini=0)
     elif spectrum_contributions=="thermal":
         planet_spectrum = load_planet_spectrum(T_planet, lg_planet, model, instru=instru)
         planet_spectrum = planet_spectrum.interpolate_wavelength(wave_model, renorm=False) # Interpolating on wave_model (constant dl)
@@ -1501,7 +1501,7 @@ def colormap_rv(instru="HARMONI", band="H", T_planet=T_earth, T_star=T_sun, lg_p
     if spectrum_contributions=="reflected":
         albedo_spectrum = load_albedo_spectrum(T_planet, lg_planet, model=model, airmass=airmass)
         albedo_spectrum = albedo_spectrum.interpolate_wavelength(wave_model, renorm=False) # Interpolating on wave_model (constant dl)
-        planet_spectrum = Spectrum(wavelength=wave_model, flux=albedo_spectrum.flux*star_spectrum.flux, R=albedo_spectrum.R, T=T_planet, lg=lg_planet, model=model, rv=0, vsini=0)
+        planet_spectrum = Spectrum(wavelength=wave_model, flux=albedo_spectrum.flux*star_spectrum.flux, R=np.maximum.reduce([star_spectrum.R, albedo_spectrum.R]), T=T_planet, lg=lg_planet, model=model, rv=0, vsini=0)
     elif spectrum_contributions=="thermal":
         planet_spectrum = load_planet_spectrum(T_planet, lg_planet, model, instru=instru)
         planet_spectrum = planet_spectrum.interpolate_wavelength(wave_model, renorm=False) # Interpolating on wave_model (constant dl)
@@ -1540,11 +1540,11 @@ def colormap_rv(instru="HARMONI", band="H", T_planet=T_earth, T_star=T_sun, lg_p
     # Plots
     for plot in plots_colormaps:
         plt.figure(figsize=(10, 6), dpi=300)
-        plt.xlabel(r" Planet-star differential radial velocity $\Delta rv$ [km/s]", fontsize=16)
-        plt.ylabel(r"Star radial velocity $rv_{\star}$ [km/s]",                     fontsize=16)
+        plt.xlabel(r" Planet-star differential radial velocity $\Delta rv$ [km/s]", fontsize=18)
+        plt.ylabel(r"Star radial velocity $rv_{\star}$ [km/s]",                     fontsize=18)
         plt.xlim(delta_rv_arr[0], delta_rv_arr[-1])
         plt.ylim(rv_star_arr[0], rv_star_arr[-1])
-        plt.tick_params(axis='both', which='major', labelsize=12)
+        plt.tick_params(axis='both', which='major', labelsize=14)
         plt.minorticks_on()
         
         if plot == "SNR":
@@ -1563,33 +1563,33 @@ def colormap_rv(instru="HARMONI", band="H", T_planet=T_earth, T_star=T_sun, lg_p
         
         # Contours
         cs = plt.contour(delta_rv_arr, rv_star_arr, data, colors='k', linewidths=0.5, alpha=0.7)
-        plt.clabel(cs, inline=True, fontsize=8, fmt="%d%%")
+        plt.clabel(cs, inline=True, fontsize=10, fmt="%d%%")
         
         # Colorbar
-        ax = plt.gca()
-        cbar = plt.colorbar(mesh, ax=ax, pad=0.025, shrink=1)
+        ax   = plt.gca()
+        cbar = plt.colorbar(mesh, ax=ax, pad=0.03, shrink=1)
         cbar.minorticks_on()
         #cbar.set_ticks(contour_levels)
-        cbar.ax.tick_params(labelsize=12)
-        cbar.set_label(cbar_label, rotation=270, labelpad=16, fontsize=16)
+        cbar.ax.tick_params(labelsize=14)
+        cbar.set_label(cbar_label, rotation=270, labelpad=16, fontsize=18)
         
         # c/R
         c_kms      = c / 1000       # [km/s]
         c_over_R   = c_kms / R_band # [km/s]   
         line_color = "black"
-        alpha      = 0.4444
+        alpha      = 0.4
         line_style = "-"
-        line_width = 4.444
+        line_width = 4.4
         plt.axvline(-c_over_R, color=line_color, linestyle=line_style, linewidth=line_width, alpha=alpha, zorder=5)
         plt.axvline(+c_over_R, color=line_color, linestyle=line_style, linewidth=line_width, alpha=alpha, zorder=5)
         bbox=dict(boxstyle="round,pad=0.2", fc="black", ec="none", alpha=0.5)
         if c_over_R < 10:
-            plt.text(-c_over_R, 1.025, r"$-c/R$", color="black", fontsize=12, ha="right", va="center",  fontweight="bold", transform=ax.get_xaxis_transform())
-            plt.text(+c_over_R, 1.025, r"$+c/R$", color="black", fontsize=12, ha="left",  va="center",  fontweight="bold", transform=ax.get_xaxis_transform())
+            plt.text(-c_over_R, 1.025, r"$-c/R$", color="black", fontsize=14, ha="right", va="center",  fontweight="bold", transform=ax.get_xaxis_transform())
+            plt.text(+c_over_R, 1.025, r"$+c/R$", color="black", fontsize=14, ha="left",  va="center",  fontweight="bold", transform=ax.get_xaxis_transform())
         else:
-            plt.text(-c_over_R, 1.025, r"$-c/R$", color="black", fontsize=12, ha="center", va="center", fontweight="bold", transform=ax.get_xaxis_transform())
-            plt.text(+c_over_R, 1.025, r"$+c/R$", color="black", fontsize=12, ha="center", va="center", fontweight="bold", transform=ax.get_xaxis_transform())
-        plt.text(0.98,      0.98,  rf"$c/R \approx {c_over_R:.1f}\,\mathrm{{km\,s^{{-1}}}}$", color="white", fontsize=14, ha="right",  va="top", fontweight="bold", bbox=bbox, transform=plt.gca().transAxes)
+            plt.text(-c_over_R, 1.025, r"$-c/R$", color="black", fontsize=14, ha="center", va="center", fontweight="bold", transform=ax.get_xaxis_transform())
+            plt.text(+c_over_R, 1.025, r"$+c/R$", color="black", fontsize=14, ha="center", va="center", fontweight="bold", transform=ax.get_xaxis_transform())
+        plt.text(0.98, 0.98,  rf"$c/R \approx {c_over_R:.0f}\,\mathrm{{km\,s^{{-1}}}}$", color="white", fontsize=16, ha="right",  va="top", fontweight="bold", bbox=bbox, transform=plt.gca().transAxes)
             
         noise_regime = "stellar halo photon noise regime" if stellar_halo_photon_noise_limited else "detector noise regime"
         
@@ -1599,7 +1599,7 @@ def colormap_rv(instru="HARMONI", band="H", T_planet=T_earth, T_star=T_sun, lg_p
             title_text = (f"{instru} {band}-band {'S/N' if plot=='SNR' else 'Lost signal'} fluctuations in {noise_regime} ({tell}) \n in {spectrum_contributions} light ({model}-model), $T_*$={T_star}K, $T_p$={T_planet}K")
         else:
             title_text = title
-        plt.title(title_text, fontsize=16, pad=24, weight=title_weight)
+        plt.title(title_text, fontsize=16, pad=26, weight=title_weight)
         plt.tight_layout()
         
         if save:
@@ -1741,11 +1741,11 @@ def colormap_vrot(instru="HARMONI", band="H", T_planet=T_earth, T_star=T_sun, lg
     # Plots
     for plot in plots_colormaps:
         plt.figure(figsize=(10, 6), dpi=300)
-        plt.xlabel(r"Planet equatorial rotation velocity $V_p$ [km/s]",     fontsize=16)
-        plt.ylabel(r"Star equatorial rotation velocity $V_{\star}$ [km/s]", fontsize=16)
+        plt.xlabel(r"Planet equatorial rotation velocity $V_p$ [km/s]",     fontsize=18)
+        plt.ylabel(r"Star equatorial rotation velocity $V_{\star}$ [km/s]", fontsize=18)
         plt.xlim(vrot_planet_arr[0], vrot_planet_arr[-1])
         plt.ylim(vrot_star_arr[0], vrot_star_arr[-1])
-        plt.tick_params(axis='both', which='major', labelsize=12)
+        plt.tick_params(axis='both', which='major', labelsize=14)
         plt.minorticks_on()
         
         if plot == "SNR":
@@ -1764,27 +1764,27 @@ def colormap_vrot(instru="HARMONI", band="H", T_planet=T_earth, T_star=T_sun, lg
         
         # Contours
         cs = plt.contour(vrot_planet_arr, vrot_star_arr, data, colors='k', linewidths=0.5, alpha=0.7)
-        plt.clabel(cs, inline=True, fontsize=8, fmt="%d%%")
+        plt.clabel(cs, inline=True, fontsize=10, fmt="%d%%")
         
         # Colorbar
         ax   = plt.gca()
-        cbar = plt.colorbar(mesh, ax=ax, pad=0.025, shrink=1)
+        cbar = plt.colorbar(mesh, ax=ax, pad=0.03, shrink=1)
         cbar.minorticks_on()
         #cbar.set_ticks(contour_levels)
-        cbar.ax.tick_params(labelsize=12)
-        cbar.set_label(cbar_label, rotation=270, labelpad=14, fontsize=14)
-        
+        cbar.ax.tick_params(labelsize=14)
+        cbar.set_label(cbar_label, rotation=270, labelpad=16, fontsize=18)
+
         # c/R
         c_kms      = c/1000 # [km/s]
         c_over_R   = c_kms / R_band        
         line_color = "black"
-        alpha      = 0.4444
+        alpha      = 0.4
         line_style = "-"
-        line_width = 4.444
+        line_width = 4.4
         plt.axvline(+c_over_R, color=line_color, linestyle=line_style, linewidth=line_width, alpha=alpha, zorder=5)
         bbox=dict(boxstyle="round,pad=0.2", fc="black", ec="none", alpha=0.5)
-        plt.text(+c_over_R, 1.025, r"$c/R$",                                                  color="black", fontsize=12, ha="center", va="center", fontweight="bold", transform=ax.get_xaxis_transform())
-        plt.text(0.98,      0.98,  rf"$c/R \approx {c_over_R:.1f}\,\mathrm{{km\,s^{{-1}}}}$", color="white", fontsize=14, ha="right",  va="top",    fontweight="bold", bbox=bbox, transform=plt.gca().transAxes)
+        plt.text(+c_over_R, 1.025, r"$c/R$",                                                  color="black", fontsize=14, ha="center", va="center", fontweight="bold", transform=ax.get_xaxis_transform())
+        plt.text(0.98,      0.98,  rf"$c/R \approx {c_over_R:.0f}\,\mathrm{{km\,s^{{-1}}}}$", color="white", fontsize=14, ha="right",  va="top",    fontweight="bold", bbox=bbox, transform=plt.gca().transAxes)
         
         noise_regime = "stellar halo photon noise regime" if stellar_halo_photon_noise_limited else "detector noise regime"
         
@@ -1844,7 +1844,7 @@ def process_colormap_vrot(i):
     # Preparing the planet spectrum (if necessary)
     if planet_spectrum is None:
         star_spectrum_broad_ref = star_spectrum.broad(vrot_star)          # [J/µm]
-        planet_spectrum         = Spectrum(wavelength=wave_model, flux=albedo_spectrum.flux*star_spectrum_broad_ref.flux, R=albedo_spectrum.R, T=albedo_spectrum.T, lg=albedo_spectrum.lg, model=albedo_spectrum.model, rv=0, vsini=0)
+        planet_spectrum         = Spectrum(wavelength=wave_model, flux=albedo_spectrum.flux*star_spectrum_broad_ref.flux, R=np.maximum.reduce([star_spectrum.R, albedo_spectrum.R]), T=albedo_spectrum.T, lg=albedo_spectrum.lg, model=albedo_spectrum.model, rv=0, vsini=0)
         planet_spectrum         = planet_spectrum.doppler_shift(delta_rv) # Shifting the spectrum
 
     SNR_1D         = np.zeros((len(vrot_planet_arr))) + np.nan
@@ -1999,30 +1999,30 @@ def colormap_maxsep_phase_inc(instru="HARMONI", band="H", apodizer="NO_SP", stre
         g_arr = ( np.sin(a_arr) + (np.pi - a_arr) * np.cos(a_arr) ) / np.pi                   # Lambert phase function
         
         # Plot the Lambert phase function as a function of phase and inclination
-        fig, ax = plt.subplots(figsize=(11, 7), dpi=300)
+        fig, ax = plt.subplots(figsize=(10, 6), dpi=300)
         mesh    = ax.pcolormesh(inc_arr, phase_arr, g_arr, shading="auto", vmin=0.0, vmax=1.0)
         levels  = np.linspace(0, 1.0, 11)
-        cs      = ax.contour(inc_arr, phase_arr, g_arr, levels=levels, colors="k", linewidths=0.6, alpha=0.7)
-        ax.clabel(cs, inline=True, fontsize=8, fmt="%.2f")
+        cs      = ax.contour(inc_arr, phase_arr, g_arr, levels=levels, colors="white", linewidths=0.6, alpha=0.7)
+        ax.clabel(cs, inline=True, fontsize=10, fmt="%.2f")
         # Axes
-        ax.set_xlabel(r"Inclination $i$ [°]",   fontsize=14)
-        ax.set_ylabel(r"Phase $\varphi$ [rad]", fontsize=14, labelpad=10)
+        ax.set_xlabel(r"Inclination $i$ [°]",   fontsize=18, labelpad=10)
+        ax.set_ylabel(r"Phase $\varphi$ [rad]", fontsize=19, labelpad=10)
         ax.set_xlim(inc_arr[0],   inc_arr[-1])
         ax.set_ylim(phase_arr[0], phase_arr[-1])
-        ax.tick_params(axis="both", which="major", labelsize=12)
+        ax.tick_params(axis="both", which="major", labelsize=14)
         ax.minorticks_on()
         # Key orbital phases on the y-axis
         ax.set_yticks([0, 0.5 * np.pi, np.pi, 1.5 * np.pi, 2.0 * np.pi])
-        ax.set_yticklabels([r"$0$", r"$\pi/2$", r"$\pi$", r"$3\pi/2$", r"$2\pi$"], fontsize=12)
+        ax.set_yticklabels([r"$0$", r"$\pi/2$", r"$\pi$", r"$3\pi/2$", r"$2\pi$"], fontsize=14)
         # Colorbar
-        cbar = fig.colorbar(mesh, ax=ax, pad=0.025, shrink=1)
+        cbar = fig.colorbar(mesh, ax=ax, pad=0.03, shrink=1)
         cbar.minorticks_on()
         cbar.set_ticks(levels)
-        cbar.ax.tick_params(labelsize=12)
-        cbar.set_label(r"Lambert phase function $g(\alpha)$", rotation=270, labelpad=20, fontsize=14)
+        cbar.ax.tick_params(labelsize=14)
+        cbar.set_label(r"Lambert phase function $g(\alpha)$", rotation=270, labelpad=24, fontsize=18)
         # Additional annotations: inclination
-        ax.text(0,  -0.08, "Pole-on", transform=ax.get_xaxis_transform(), ha="center", va="top", fontsize=12, weight="bold", clip_on=False)
-        ax.text(90, -0.08, "Edge-on", transform=ax.get_xaxis_transform(), ha="center", va="top", fontsize=12, weight="bold", clip_on=False)
+        ax.text(0,  -0.08, "Pole-on", transform=ax.get_xaxis_transform(), ha="center", va="top", fontsize=14, weight="bold", clip_on=False)
+        ax.text(90, -0.08, "Edge-on", transform=ax.get_xaxis_transform(), ha="center", va="top", fontsize=14, weight="bold", clip_on=False)
         # Additional annotations: orbital phases inside the panel
         x_label = inc_arr[0] + 0.005 * (inc_arr[-1] - inc_arr[0])
         phase_labels = [
@@ -2033,7 +2033,7 @@ def colormap_maxsep_phase_inc(instru="HARMONI", band="H", apodizer="NO_SP", stre
             (2.0 * np.pi-0.05, "Inferior conjunction", "top"),
         ]
         for y, label, va in phase_labels:
-            ax.text(x_label, y, label, ha="left", va=va, fontsize=12, color="white", bbox=dict(facecolor="black", edgecolor="none", alpha=0.45, pad=1.8))
+            ax.text(x_label, y, label, ha="left", va=va, fontsize=14, color="white", bbox=dict(facecolor="black", edgecolor="none", alpha=0.45, pad=1.8))
         # Layout
         #fig.set_title("Lambert phase function", fontsize=16, pad=14)
         plt.show()
@@ -2079,7 +2079,7 @@ def colormap_maxsep_phase_inc(instru="HARMONI", band="H", apodizer="NO_SP", stre
     params       = [max_sep_arr, phase_arr, inc_arr]
     log_param    = [True, False, False]
     names_param  = [r"$\rho_{max}$ [arcsec]",                  r"$\varphi$ [rad]", r"$i$ [°]"]
-    labels_param = [r"$\rho_{max}$ [arcsec] or SMA/d [AU/pc]", r"$\varphi$ [rad]", r"$i$ [°]"]
+    labels_param = [r"$\rho_{max}$ [arcsec]""\n(or SMA/d [AU/pc])", r"$\varphi$ [rad]", r"$i$ [°]"]
     Ndim         = len(params)
     xmin         = np.array([np.nanmin(p) for p in params])
     xmax         = np.array([np.nanmax(p) for p in params])
@@ -2102,6 +2102,7 @@ def colormap_maxsep_phase_inc(instru="HARMONI", band="H", apodizer="NO_SP", stre
         for idim in range(Ndim):
             for jdim in range(Ndim):
                 ax = axes[idim, jdim]
+                ax.tick_params(axis="both", which="major", labelsize=14)
                 if jdim > idim:  # Upper triangular part of the matrix
                     ax.axis("off")
                     continue
@@ -2110,13 +2111,13 @@ def colormap_maxsep_phase_inc(instru="HARMONI", band="H", apodizer="NO_SP", stre
                     snr = snr / np.nanmax(snr)
                     ax.plot(params[idim], 100*snr, color="k")
                     ax.axvline(optimal_values[idim], color="k", linestyle="--")
-                    ax.set_title(f"{names_param[idim]} = {optimal_values[idim]:.2f}", fontsize=14)
+                    ax.set_title(f"{names_param[idim]} = {optimal_values[idim]:.2f}", fontsize=16)
                     if idim == Ndim-1:
-                        ax.set_xlabel(labels_param[idim], fontsize=14)
+                        ax.set_xlabel(labels_param[idim], fontsize=16)
                     ax.set_xlim(xmin[idim], xmax[idim])
                     ax.set_ylim(vmin, vmax)
                     if idim == Ndim//2:
-                        ax.set_ylabel("$GAIN_{S/N}$ [%]", fontsize=14, rotation=270, labelpad=15)
+                        ax.set_ylabel("$GAIN_{S/N}$ [%]", fontsize=18, rotation=270, labelpad=15)
                     ax.yaxis.tick_right()
                     ax.yaxis.set_label_position("right")
                     ax.tick_params(axis="y", which="both", left=False, right=True)
@@ -2132,9 +2133,9 @@ def colormap_maxsep_phase_inc(instru="HARMONI", band="H", apodizer="NO_SP", stre
                     ax.axhline(optimal_values[idim], color="k", linestyle="--")
                     ax.plot(optimal_values[jdim], optimal_values[idim], "X", color="black")
                     if jdim == 0:
-                        ax.set_ylabel(labels_param[idim], fontsize=14)
+                        ax.set_ylabel(labels_param[idim], fontsize=18)
                     if idim == Ndim - 1:
-                        ax.set_xlabel(labels_param[jdim], fontsize=14)
+                        ax.set_xlabel(labels_param[jdim], fontsize=18)
                     ax.set_xlim(xmin[jdim], xmax[jdim])
                     ax.set_ylim(xmin[idim], xmax[idim])
                     if log_param[jdim]:
@@ -2147,7 +2148,7 @@ def colormap_maxsep_phase_inc(instru="HARMONI", band="H", apodizer="NO_SP", stre
                     ax.set_yticklabels([])
         
         # Title
-        fig.suptitle(title_list[idx_snr], weight=title_weight, fontsize=16, x=0.67, y=0.86)
+        fig.suptitle(title_list[idx_snr], weight=title_weight, fontsize=18, x=0.69, y=0.85)
         plt.show()
     
     return max_sep_arr, phase_arr, inc_arr, SNR_halo_3D, SNR_syst_3D
@@ -2191,7 +2192,7 @@ def process_colormap_maxsep_phase_inc(k):
     
     # Preparing the planet spectrum
     if planet_spectrum is None and spectrum_contributions == "reflected":
-        planet_spectrum = Spectrum(wavelength=wave_model, flux=albedo_spectrum.flux*star_spectrum_broad_ref.flux, R=albedo_spectrum.R, T=albedo_spectrum.T, lg=albedo_spectrum.lg, model=albedo_spectrum.model, rv=0, vsini=0)
+        planet_spectrum = Spectrum(wavelength=wave_model, flux=albedo_spectrum.flux*star_spectrum_broad_ref.flux, R=np.maximum.reduce([star_spectrum.R, albedo_spectrum.R]), T=albedo_spectrum.T, lg=albedo_spectrum.lg, model=albedo_spectrum.model, rv=0, vsini=0)
     planet_broad       = planet_spectrum.broad(vsini_planet)                                            # [J/µm]
     planet_broad.flux *= wave_model
     planet_broad       = planet_broad.degrade_resolution(wave_band, renorm=False)         # [ph/µm]
@@ -2261,7 +2262,7 @@ def process_colormap_maxsep_phase_inc(k):
 
 ######################## signal(MM) / signal(DI) = alpha - beta / delta: Resolution VS Temperature ###########################################################################################################################################################################################
 
-def colormap_MM_DI_R_Tp(lmin=1, lmax=2.5, Rmin=1_000, Rmax=100_000, Tmin=200, Tmax=2_000, tellurics=True, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, delta_rv=drv_earth, vsini_planet=vrot_earth, vsini_star=vrot_sun, spectrum_contributions="thermal", model="BT-Settl", airmass=airmass_earth, Rc=100, filter_type="gaussian", num=100, title=None):    
+def colormap_MM_DI_R_Tp(lmin=1, lmax=2.5, Rmin=1_000, Rmax=100_000, Tmin=200, Tmax=2_000, tellurics=True, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, delta_rv=drv_earth, vsini_planet=vrot_earth, vsini_star=vrot_sun, spectrum_contributions="thermal", model="BT-Settl", airmass=airmass_earth, Rc=100, filter_type="gaussian", num=100, title=None, save=False):    
     
     # Global model-bandwidth (with constant dl step, must be evenly spaced in order to create the model spectra, for the rotational broadening with Vsini)
     lmin_model = 0.9*lmin                                    # [µm] a bit larger for doppler shifts and to avoid edge effects
@@ -2323,12 +2324,12 @@ def colormap_MM_DI_R_Tp(lmin=1, lmax=2.5, Rmin=1_000, Rmax=100_000, Tmin=200, Tm
     
     # Plots
     plt.figure(figsize=(10, 6), dpi=300)
-    plt.xlabel("Spectral resolution", fontsize=14)
-    plt.ylabel("Planet temperature [K]", fontsize=14)
+    plt.xlabel("Spectral resolution",    fontsize=18)
+    plt.ylabel("Planet temperature [K]", fontsize=18)
     plt.ylim([T_arr[0], T_arr[-1]])
     plt.xlim(R_arr[0],  R_arr[-1])
     plt.xscale('log')
-    plt.tick_params(axis='both', which='major', labelsize=12)
+    plt.tick_params(axis='both', which='major', labelsize=16)
     plt.minorticks_on()
     
     data       = 100 * residual_signal
@@ -2340,14 +2341,14 @@ def colormap_MM_DI_R_Tp(lmin=1, lmax=2.5, Rmin=1_000, Rmax=100_000, Tmin=200, Tm
     
     # Contours
     cs = plt.contour(R_arr, T_arr, data, colors='k', linewidths=0.5, alpha=0.7)
-    plt.clabel(cs, inline=True, fontsize=8, fmt="%d%%")
+    plt.clabel(cs, inline=True, fontsize=12, fmt="%d%%")
     
     # Colorbar
     ax = plt.gca()
-    cbar = plt.colorbar(mesh, ax=ax, pad=0.025, shrink=1)
+    cbar = plt.colorbar(mesh, ax=ax, pad=0.03, shrink=1)
     cbar.minorticks_on()
-    cbar.ax.tick_params(labelsize=12)
-    cbar.set_label(cbar_label, rotation=270, labelpad=20, fontsize=14)
+    cbar.ax.tick_params(labelsize=16)
+    cbar.set_label(cbar_label, rotation=270, labelpad=24, fontsize=18)
     
     # Title
     if title is None:
@@ -2355,13 +2356,17 @@ def colormap_MM_DI_R_Tp(lmin=1, lmax=2.5, Rmin=1_000, Rmax=100_000, Tmin=200, Tm
         title_text = (f"Molecular mapping residual signal fluctuations ({tell}) \n in {spectrum_contributions} light ({model}-model), $T_*$={T_star}K, "r"$\Delta$rv="f"{delta_rv}km/s")    
     else:
         title_text = title
-    plt.title(title_text, fontsize=16, pad=14)
+    plt.title(title_text, fontsize=20, weight="bold", pad=14)
     
     plt.tight_layout()
-    filename   = f"colormaps_bandwidth_Tp/Colormap_MM_DI_R_Tp_residual_signal_{tellurics}_{spectrum_contributions}_{model}_Rc{Rc}_Ts{T_star}K_drv{delta_rv}kms_broad{vsini_planet}kms"    
-    output_dir = colormaps_path + filename + ("_with_tellurics" if tellurics else "") + ".png"
-    output_dir.mkdir(parents=True, exist_ok=True)
-    plt.savefig(output_dir, format='png', bbox_inches='tight')
+    if save:
+        output_dir = Path(colormaps_path) / "colormaps_bandwidth_resolution"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        filename   = f"colormaps_bandwidth_Tp/Colormap_MM_DI_R_Tp_residual_signal_{tellurics}_{spectrum_contributions}_{model}_Rc{Rc}_Ts{T_star}K_drv{delta_rv}kms_broad{vsini_planet}kms"    
+        if tellurics:
+            filename += "_with_tellurics"
+        output_path = output_dir / f"{filename}.png"
+        plt.savefig(output_path, format="png", bbox_inches="tight")
     plt.show()
         
     return R_arr, T_arr, residual_signal
@@ -2393,7 +2398,7 @@ def process_colormap_MM_DI_R_Tp(i):
     if spectrum_contributions=="reflected":
         albedo_spectrum = load_albedo_spectrum(T_planet, lg_planet, model=model, airmass=airmass)
         albedo_spectrum = albedo_spectrum.interpolate_wavelength(wave_model, renorm=False) # Interpolating on wave_model (constant dl)
-        planet_spectrum = Spectrum(wavelength=wave_model, flux=albedo_spectrum.flux*star_spectrum.flux, R=albedo_spectrum.R, T=T_planet, lg=lg_planet, model=model, rv=0, vsini=0)
+        planet_spectrum = Spectrum(wavelength=wave_model, flux=albedo_spectrum.flux*star_spectrum.flux, R=np.maximum.reduce([star_spectrum.R, albedo_spectrum.R]), T=T_planet, lg=lg_planet, model=model, rv=0, vsini=0)
     elif spectrum_contributions=="thermal":
         planet_spectrum = load_planet_spectrum(T_planet, lg_planet, model, instru=None)
         planet_spectrum = planet_spectrum.interpolate_wavelength(wave_model, renorm=False) # Interpolating on wave_model (constant dl)

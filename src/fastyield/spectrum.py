@@ -2389,7 +2389,7 @@ def get_planet_type_from_model(model):
     elif "gasgiant" in model_clean:
         planet_type = "gas_giant"
     else:
-        raise ValueError(f"Ambiguous {model} model to extract a planet_type. Use for example 'PICASO_gas_giant' or 'PICASO_earth_like'.")
+        raise ValueError(f"Ambiguous {model} model to extract a planet_type. Use for example 'PICASO_gas_giant', 'PICASO_earth_like', 'PSG_gas_giant' or 'PSG_earth_like'.")
     return planet_type
 
 
