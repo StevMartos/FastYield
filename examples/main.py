@@ -2,7 +2,7 @@
 from fastyield.config import set_sim_data_path, instrus, planet_types, planet_types_reduced
 from fastyield.FastCurves import FastCurves
 from fastyield.FastYield_interface import FastYield_interface
-from fastyield.FastYield import planet_table_classification, planet_table_classification_histogram, planet_table_statistics, yield_plot_instrus_texp, yield_plot_bands_texp, yield_hist_instrus_ptypes, yield_hist_instrus_ptypes_ELT, yield_corner_instru, yield_corner_instrus, yield_corner_models, yield_contrast_instru, yield_contrast_ELT_earthlike, get_archive_table, all_SNR_table, get_planet_table_SNR
+from fastyield.FastYield import planet_table_classification, planet_table_classification_histogram, planet_table_statistics, yield_plot_instrus_texp, yield_plot_bands_texp, yield_hist_instrus_ptypes, yield_hist_instrus_ptypes_ELT, yield_corner_instru, yield_corner_instrus, yield_corner_models, yield_contrast_instru, yield_contrast_ELT_earthlike, get_archive_table, all_SNR_table, get_planet_table_SNR, yield_heatmap_ELT, yield_population_plot
 from fastyield.colormaps import colormap_bandwidth_resolution_with_constant_Nlambda, colormap_bandwidth_resolution_with_constant_Dlambda, colormap_bandwidth_Tp, colormap_bands_Tp, colormap_bands_ptypes_SNR, colormap_bands_ptypes_parameters, colormap_rv, colormap_vrot, colormap_maxsep_phase_inc
 
 # Required if FASTYIELD_SIM_DATA_PATH is not defined:
@@ -13,11 +13,64 @@ from fastyield.colormaps import colormap_bandwidth_resolution_with_constant_Nlam
 
 
 
+
+
+# yield_population_plot(
+#     instru="HARMONI",
+#     strehl="JQ1",
+#     config_mode="max",
+#     exposure_time=10*60,
+#     band_snr="INSTRU",
+#     band_contrast_plot="I",
+#     band_regime_plot="I",
+#     systematics=False,
+#     PCA=False,
+#     ss_detected=150,
+#     ss_nondetected=65,
+# )
+
+
+
+
+
+
+# yield_heatmap_ELT(
+#     instru="HARMONI",
+#     thermal_model="auto",
+#     reflected_model="auto",
+#     exposure_time=10*60,
+#     strehl="JQ1",
+#     systematics=False,
+#     split_ptypes_by_regime=True,
+#     band_regime_plot="INSTRU",
+#     PCA=False,
+#     fraction=True,
+# )
+
+
+
+
+# heatmaps, N_planets, meta = yield_heatmap_ELT(
+#     instru="ANDES",
+#     thermal_model="auto",
+#     reflected_model="auto",
+#     exposure_time=10*60,
+#     strehl="MED",
+#     systematics=False,
+#     split_ptypes_by_regime=True,
+#     band_regime_plot=None,
+#     PCA=False,
+#     fraction=False,
+#     save=True,
+# )
+
+
+
 #------------------------------------------------------------------------------#
 #                       Graphic User Interface (GUI):                          #
 #------------------------------------------------------------------------------#
 
-FastYield_interface()
+#FastYield_interface()
 
 
 
@@ -29,11 +82,11 @@ FastYield_interface()
 # planet_table_classification_histogram()
 # planet_table_statistics()
 
-
 # TODO : filtrer les sep < IWA ??? (une idée serait de se dire que de toute facon on sera propablement limité par les systématiques même la unresolved spectroscopy est possible)
 
 # yield_plot_instrus_texp(thermal_model="auto", reflected_model="auto", fraction=False)
 # yield_plot_bands_texp(table="Archive", instru="HARMONI", thermal_model="auto", reflected_model="auto", systematics=False, PCA=False, fraction=False)
+# yield_plot_bands_texp(table="Archive", instru="ANDES", thermal_model="auto", reflected_model="auto", systematics=False, PCA=False, fraction=False)
 
 # yield_hist_instrus_ptypes(exposure_time=10*60,     thermal_model="auto", reflected_model="auto", planet_types=planet_types_reduced, fraction=False)
 # yield_hist_instrus_ptypes_ELT(exposure_time=10*60, thermal_model="auto", reflected_model="auto", planet_types=planet_types,         fraction=False, instrus=["HARMONI", "HARMONI+SP_Prox", "ANDES", "ANDES+LYOT"])
@@ -70,13 +123,13 @@ FastYield_interface()
 # all_SNR_table(table="Archive", instrus=instrus) # ~ 15 hours
 # all_SNR_table(table="Archive", instrus=["MIRIMRS", "NIRCam", "NIRSpec", "VIPAPYRUS"])
 
-# get_planet_table_SNR(instru="HARMONI", table="Archive", thermal_model="auto", reflected_model="auto",  apodizer="NO_SP",   strehl="JQ1", coronagraph=None, systematics=False) # ~ 2mn
-# get_planet_table_SNR(instru="HARMONI", table="Archive", thermal_model="auto", reflected_model="auto",  apodizer="SP_Prox", strehl="JQ1", coronagraph=None, systematics=False) # ~ 2mn
-# get_planet_table_SNR(instru="HARMONI", table="Archive", thermal_model="auto", reflected_model="auto",  apodizer="SP1",     strehl="JQ1", coronagraph=None, systematics=False) # ~ 2mn
-# get_planet_table_SNR(instru="HARMONI", table="Archive", thermal_model="auto", reflected_model="auto",  apodizer="SP2",     strehl="JQ1", coronagraph=None, systematics=False) # ~ 2mn
+get_planet_table_SNR(instru="HARMONI", table="Archive", thermal_model="auto", reflected_model="auto",  apodizer="NO_SP",   strehl="JQ1", coronagraph=None, systematics=False) # ~ 2mn
+get_planet_table_SNR(instru="HARMONI", table="Archive", thermal_model="auto", reflected_model="auto",  apodizer="SP_Prox", strehl="JQ1", coronagraph=None, systematics=False) # ~ 2mn
+get_planet_table_SNR(instru="HARMONI", table="Archive", thermal_model="auto", reflected_model="auto",  apodizer="SP1",     strehl="JQ1", coronagraph=None, systematics=False) # ~ 2mn
+get_planet_table_SNR(instru="HARMONI", table="Archive", thermal_model="auto", reflected_model="auto",  apodizer="SP2",     strehl="JQ1", coronagraph=None, systematics=False) # ~ 2mn
 
-# get_planet_table_SNR(instru="ANDES", table="Archive", thermal_model="auto", reflected_model="auto",    apodizer="NO_SP", strehl="MED", coronagraph=None,   systematics=False) # ~ 20 mn
-# get_planet_table_SNR(instru="ANDES", table="Archive", thermal_model="auto", reflected_model="auto",    apodizer="NO_SP", strehl="MED", coronagraph="LYOT", systematics=False) # ~ 20 mn
+get_planet_table_SNR(instru="ANDES", table="Archive", thermal_model="auto", reflected_model="auto", apodizer="NO_SP", strehl="MED", coronagraph=None,   systematics=False) # ~ 20 mn
+get_planet_table_SNR(instru="ANDES", table="Archive", thermal_model="auto", reflected_model="auto", apodizer="NO_SP", strehl="MED", coronagraph="LYOT", systematics=False) # ~ 20 mn
 
 
 

@@ -1209,7 +1209,7 @@ def main():
     SNR_thr            = 5                                     # Detection threshold
     exposure_time      = 10*60                                 # Total exposure time per planet [mn]
     force_new_calc     = False                                 # Forcing new simulations calculations
-    thermal_model      = "auto"                                # Model for the thermal spectrum of the planet ("auto", "BT-Settl", "Exo-REM", "SONORA", "PICASO", "Saumon", etc.)
+    thermal_model      = "auto"                                # Model for the thermal spectrum of the planet ("auto", "None", "BT-Settl", "Exo-REM", "SONORA", "PICASO", "Saumon", etc.)
     reflected_model    = "auto"                                # Model for the albedo of the planet ("auto", "tellurics", "flat", "PICASO")
     instru_type        = "IFU"                                 # Type of instrument ("IFU" or "imager")
     post_processing    = "MM"                                  # Post-processing method ("MM" or "DI")
@@ -1336,7 +1336,7 @@ def main():
         # For Imager: sigma_m is the effective fractional modulation of the final integrated stellar halo integrated over the full exposure time, the FWHM and the considered band.
         # The total systematic variance over the full exposure is then:
         # sigma_syst_tot^2 = sigma_m^2 * halo_2*N_DIT^2
-        sigma_m_min      = 1e-4       # [dimensionless]
+        sigma_m_min      = 1e-5       # [dimensionless]
         sigma_m_max      = 1e-2       # [dimensionless]
         # Field of View
         FoV_min          = 10         # [mas]
@@ -1932,7 +1932,7 @@ def main():
     # Thermal/Reflected regime split of the planet table
     # Considering both thermal and reflected contribution
     if thermal_model != "None" and reflected_model != "None":
-        mag_th   = np.asarray(planet_table[f"Planet{band_regime_plot}mag(thermal)"], dtype=float)
+        mag_th   = np.asarray(planet_table[f"Planet{band_regime_plot}mag(thermal)"],   dtype=float)
         mag_re   = np.asarray(planet_table[f"Planet{band_regime_plot}mag(reflected)"], dtype=float)
         valid_th = np.isfinite(mag_th)
         valid_re = np.isfinite(mag_re)
@@ -2712,8 +2712,9 @@ def main():
     idx_sigma_m = [idx for idx, param_name in enumerate(params_names) if "sigma_m" in param_name][0]
     
     # Noise labels and colors
-    noise_labels = np.array(["Stellar halo", "Background", "Read noise", "Dark current", "Systematics"])
-    noise_colors = {"Stellar halo": "tab:orange", "Background": "tab:blue", "Read noise": "tab:purple", "Dark current": "tab:green", "Systematics": "tab:red"}
+    residuals    = "Systematics" if post_processing=="MM" else "Speckles"
+    noise_labels = np.array(["Stellar halo", "Background", "Read noise", "Dark current", residuals])
+    noise_colors = {"Stellar halo": "tab:orange", "Background": "tab:blue", "Read noise": "tab:purple", "Dark current": "tab:green", residuals: "tab:red"}
 
     if snr_population_mode == "max":
         
