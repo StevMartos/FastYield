@@ -1,6 +1,6 @@
 # import FastYield modules
-from .config import T_sun, R0_max, LMIN, LMAX, bands, instrus, colors_instru, simulated_path, archive_path, ignore_reflected_thresh_um, SNR_thresh, planet_types, planet_types_reduced, m_u, kB, G, vesc_earth, sim_data_path
-from .get_specs import get_config_data, get_band_lims, get_wa, get_R_instru
+from .config import h, c, T_sun, R0_max, LMIN, LMAX, bands, instrus, colors_instru, simulated_path, archive_path, ignore_reflected_thresh_um, SNR_thresh, planet_types, planet_types_reduced, m_u, kB, G, vesc_earth, sim_data_path, instrus_with_systematics
+from .get_specs import get_config_data, get_band_lims, get_wa, get_R_instru, get_DL_FWHM
 from .utils import faded
 from .spectrum import load_vega_spectrum, get_mag, get_spectrum_contribution_name_model, get_thermal_reflected_spectrum, get_counts_from_density, get_wave_K, get_wave_model
 from .FastCurves import FastCurves
@@ -31,6 +31,7 @@ import numpy as np
 from scipy.interpolate import RegularGridInterpolator
 
 # import other modules
+from pathlib import Path
 import time
 from tqdm import tqdm
 from multiprocessing import Pool, cpu_count
@@ -572,9 +573,6 @@ def inject_known_values(planet_table):
     # _IKV(planet_table, planet_name="LkCa 15 c", value=13.66,  unit=mag_unit, quantity="Kmag", obj="planet", uncertainty=0.52)  # https://arxiv.org/pdf/1511.07456
     # _IKV(planet_table, planet_name="LkCa 15 c", value=np.nan, unit=u.K,      quantity="teff", obj="planet", uncertainty=None)  # https://arxiv.org/pdf/1511.07456
     
-    
-    
-    
     return planet_table
 
 
@@ -893,7 +891,7 @@ def plot_matching_planets(matching_planets, exposure_time, mode, planet_types=pl
     # Plot
     fig, ax = plt.subplots(figsize=(12, 6), dpi=300)
     if instru is not None:
-        fig.suptitle(f"{instru}", fontsize=16, y=1.15)
+        fig.suptitle(f"ELT/{instru}", fontsize=18, weight="bold", y=1.13)
         #fig.suptitle("Predicted ELT/{instru} performance for the best targets in each planetary class", fontsize=16, y=1.15)
     ax.set_frame_on(False)
     ax.xaxis.set_visible(False)
@@ -917,8 +915,8 @@ def plot_matching_planets(matching_planets, exposure_time, mode, planet_types=pl
              "Mass [M⊕]":      _format_range(criteria, "mass"),
              "Radius [R⊕]":    _format_range(criteria, "radius"),
              "Temperature [K]": _format_range(criteria, "teff"),
-             "Number of Planets\nconsidered": len(matching_planets[ptype]),
-             f"Number of Planets\ndetected (in {int(round(exposure_time/60))} h)": sum(planet["SNR"] > SNR_thresh for planet in matching_planets[ptype])}
+             "Number of planets\nconsidered": len(matching_planets[ptype]),
+             f"Number of planets\ndetected (in {int(round(exposure_time/60))} h)": sum(planet["SNR"] > SNR_thresh for planet in matching_planets[ptype])}
             for ptype, criteria in planet_types.items()])
         table = ax.table(cellText=conditions_df.values, colLabels=conditions_df.columns, cellLoc='center', loc='center')
     
@@ -968,6 +966,53 @@ def get_SNR_from_table(planet_table, exposure_time, band):
     SNR[idx_valid[valid_noise]] = S[valid_noise] / N[valid_noise]
 
     return SNR
+
+
+
+def get_contrast_from_table(planet_table, exposure_time, band_quantity, band_contrast, instru, spectrum_contributions):
+    """
+    Compute the 5-sigma contrast limit from a table with per-band
+    signal/noise/DIT columns.
+
+    band_quantity defines the band in which signal and noise are evaluated.
+    band_contrast defines the photometric band in which the returned contrast
+    is expressed.
+
+    Invalid rows are returned as NaN.
+    """
+    DIT        = np.asarray(planet_table[f"DIT_{band_quantity}"], dtype=float)
+    signal     = np.asarray(planet_table[f"signal_{band_quantity}"], dtype=float)
+    sigma_fund = np.asarray(planet_table[f"sigma_fund_{band_quantity}"], dtype=float)
+    sigma_syst = np.asarray(planet_table[f"sigma_syst_{band_quantity}"], dtype=float)
+    contrast   = np.full(len(planet_table), np.nan, dtype=float)
+
+    if band_contrast == "INSTRU":
+        star_mag_col   = f"StarINSTRUmag({instru})"
+        planet_mag_col = f"PlanetINSTRUmag({instru})({spectrum_contributions})"
+    else:
+        star_mag_col   = f"Star{band_contrast}mag"
+        planet_mag_col = f"Planet{band_contrast}mag({spectrum_contributions})"
+
+    missing_cols = [col for col in [star_mag_col, planet_mag_col] if col not in planet_table.colnames]
+    if missing_cols:
+        raise KeyError(f"Missing magnitude columns: {missing_cols}")
+
+    mag_star   = np.asarray(planet_table[star_mag_col], dtype=float)
+    mag_planet = np.asarray(planet_table[planet_mag_col], dtype=float)
+
+    valid = np.isfinite(DIT) & np.isfinite(signal) & np.isfinite(sigma_fund) & np.isfinite(sigma_syst) & np.isfinite(mag_star) & np.isfinite(mag_planet) & (DIT > 0) & (signal > 0) & (sigma_fund >= 0) & (sigma_syst >= 0)
+
+    N_DIT       = exposure_time / DIT[valid]
+    flux_ratio  = 10**(0.4*(mag_planet[valid] - mag_star[valid]))  # F_star/F_planet
+    signal_0    = signal[valid] * flux_ratio                       # Signal per DIT at unit contrast
+    S_0         = N_DIT * signal_0
+    N           = np.sqrt(N_DIT*sigma_fund[valid]**2 + N_DIT**2*sigma_syst[valid]**2)
+    valid_value = np.isfinite(S_0) & np.isfinite(N) & (S_0 > 0) & (N > 0)
+    idx_valid   = np.where(valid)[0]
+
+    contrast[idx_valid[valid_value]] = 5*N[valid_value] / S_0[valid_value]
+
+    return contrast
 
 
 
@@ -1896,61 +1941,61 @@ def get_archive_table(seed=None):
     print("\n(8) Computing star and planet logg from (M and R) where possible")
     
     
-    # -----------------------------------------------------------------------------
-    # 9) Filtering physically inconsistent planetary outliers
-    # -----------------------------------------------------------------------------
-    # This replaces hard clipping. We do not modify outlier values: we remove rows
-    # only when a valid planet mass, radius, or effective temperature exists but is
-    # outside a broad exoplanet/planetary-companion domain.
-    #
-    # Missing values are kept here, because the S/N-usability filter in step 10
-    # already handles missing quantities.
+    # # -----------------------------------------------------------------------------
+    # # 9) Filtering physically inconsistent planetary outliers
+    # # -----------------------------------------------------------------------------
+    # # This replaces hard clipping. We do not modify outlier values: we remove rows
+    # # only when a valid planet mass, radius, or effective temperature exists but is
+    # # outside a broad exoplanet/planetary-companion domain.
+    # #
+    # # Missing values are kept here, because the S/N-usability filter in step 10
+    # # already handles missing quantities.
     
-    M_min    = 0.0    * u.M_earth
-    M_max    = 80.0   * u.M_jup
-    R_min    = 0.0    * u.R_earth
-    R_max    = 40.0   * u.R_earth
-    Teff_min = 0.0    * u.K
-    Teff_max = 3000.0 * u.K
+    # M_min    = 0.0    * u.M_earth
+    # M_max    = 80.0   * u.M_jup
+    # R_min    = 0.0    * u.R_earth
+    # R_max    = 40.0   * u.R_earth
+    # Teff_min = 0.0    * u.K
+    # Teff_max = 3000.0 * u.K
     
-    Mp   = planet_table["PlanetMass"].to(u.M_earth)
-    Rp   = planet_table["PlanetRadius"].to(u.R_earth)
-    Teff = planet_table["PlanetTeff"].to(u.K)
+    # Mp   = planet_table["PlanetMass"].to(u.M_earth)
+    # Rp   = planet_table["PlanetRadius"].to(u.R_earth)
+    # Teff = planet_table["PlanetTeff"].to(u.K)
     
-    Mp_valid   = get_valid_mask(Mp)
-    Rp_valid   = get_valid_mask(Rp)
-    Teff_valid = get_valid_mask(Teff)
+    # Mp_valid   = get_valid_mask(Mp)
+    # Rp_valid   = get_valid_mask(Rp)
+    # Teff_valid = get_valid_mask(Teff)
     
-    Mp_outlier   = Mp_valid   & ((Mp   <= M_min.to(u.M_earth)) | (Mp   > M_max.to(u.M_earth)))
-    Rp_outlier   = Rp_valid   & ((Rp   <= R_min.to(u.R_earth)) | (Rp   > R_max.to(u.R_earth)))
-    Teff_outlier = Teff_valid & ((Teff <= Teff_min)            | (Teff > Teff_max))
+    # Mp_outlier   = Mp_valid   & ((Mp   <= M_min.to(u.M_earth)) | (Mp   > M_max.to(u.M_earth)))
+    # Rp_outlier   = Rp_valid   & ((Rp   <= R_min.to(u.R_earth)) | (Rp   > R_max.to(u.R_earth)))
+    # Teff_outlier = Teff_valid & ((Teff <= Teff_min)            | (Teff > Teff_max))
     
-    planet_param_outlier = Mp_outlier | Rp_outlier | Teff_outlier
-    planet_param_keep    = ~planet_param_outlier
+    # planet_param_outlier = Mp_outlier | Rp_outlier | Teff_outlier
+    # planet_param_keep    = ~planet_param_outlier
     
-    print("\n(9) Filtering physically inconsistent planetary outliers:")
-    print(f"                  => Accepted PlanetMass range:   0 < Mp   <= {M_max.to_value(u.M_jup):.0f} Mjup ({M_max.to_value(u.M_earth):.0f} Mearth)")
-    print(f"                  => Accepted PlanetRadius range: 0 < Rp   <= {R_max.to_value(u.R_earth):.0f} Rearth")
-    print(f"                  => Accepted PlanetTeff range:   0 < Teff <= {Teff_max.to_value(u.K):.0f} K")
-    print(f"                  => Out-of-range PlanetMass, rejected:          {Mp_outlier.sum()}")
-    print(f"                  => Out-of-range PlanetRadius, rejected:        {Rp_outlier.sum()}")
-    print(f"                  => Out-of-range PlanetTeff, rejected:          {Teff_outlier.sum()}")
-    print(f"                  => Keeping after physical-outlier filter:      {int(planet_param_keep.sum())}/{len(planet_table)} planets")
+    # print("\n(9) Filtering physically inconsistent planetary outliers:")
+    # print(f"                  => Accepted PlanetMass range:   0 < Mp   <= {M_max.to_value(u.M_jup):.0f} Mjup ({M_max.to_value(u.M_earth):.0f} Mearth)")
+    # print(f"                  => Accepted PlanetRadius range: 0 < Rp   <= {R_max.to_value(u.R_earth):.0f} Rearth")
+    # print(f"                  => Accepted PlanetTeff range:   0 < Teff <= {Teff_max.to_value(u.K):.0f} K")
+    # print(f"                  => Out-of-range PlanetMass, rejected:          {Mp_outlier.sum()}")
+    # print(f"                  => Out-of-range PlanetRadius, rejected:        {Rp_outlier.sum()}")
+    # print(f"                  => Out-of-range PlanetTeff, rejected:          {Teff_outlier.sum()}")
+    # print(f"                  => Keeping after physical-outlier filter:      {int(planet_param_keep.sum())}/{len(planet_table)} planets")
     
-    if planet_param_outlier.any():
-        rejected_names          = np.asarray(planet_table["PlanetName"][planet_param_outlier], dtype=str).astype(str)
-        rejected_names_to_print = rejected_names[:25].tolist()
-        suffix = f" (+{len(rejected_names) - len(rejected_names_to_print)} more)" if len(rejected_names) > len(rejected_names_to_print) else ""
-        print(f"                  => First rejected targets: {', '.join(rejected_names_to_print)}{suffix}")
+    # if planet_param_outlier.any():
+    #     rejected_names          = np.asarray(planet_table["PlanetName"][planet_param_outlier], dtype=str).astype(str)
+    #     rejected_names_to_print = rejected_names[:25].tolist()
+    #     suffix = f" (+{len(rejected_names) - len(rejected_names_to_print)} more)" if len(rejected_names) > len(rejected_names_to_print) else ""
+    #     print(f"                  => First rejected targets: {', '.join(rejected_names_to_print)}{suffix}")
             
-    planet_table = planet_table[planet_param_keep]
+    # planet_table = planet_table[planet_param_keep]
     
-    # Rebuild discovery-method masks after filtering, otherwise the masks no longer
-    # have the same length as planet_table in step 10 and below.
-    im_mask = planet_table["DiscoveryMethod"] == "Imaging"
-    rv_mask = planet_table["DiscoveryMethod"] == "Radial Velocity"
-    tr_mask = planet_table["DiscoveryMethod"] == "Transit"
-    ot_mask = (~im_mask) & (~rv_mask) & (~tr_mask)
+    # # Rebuild discovery-method masks after filtering, otherwise the masks no longer
+    # # have the same length as planet_table in step 10 and below.
+    # im_mask = planet_table["DiscoveryMethod"] == "Imaging"
+    # rv_mask = planet_table["DiscoveryMethod"] == "Radial Velocity"
+    # tr_mask = planet_table["DiscoveryMethod"] == "Transit"
+    # ot_mask = (~im_mask) & (~rv_mask) & (~tr_mask)
 
 
     # -----------------------------------------------------------------------------
@@ -2089,15 +2134,36 @@ def warmup_instrument_caches(instru, config_data, apodizer, strehl, coronagraph,
         if background is not None:
             get_bkg_flux_band(instru=instru, band=band, background_level=background)
 
-
-
 def _init_snr_worker(ctx):
     global _SNR_CTX
     _SNR_CTX    = ctx
     config_data = get_config_data(ctx["instru"])
     warmup_instrument_caches(instru=ctx["instru"], config_data=config_data, apodizer=ctx["apodizer"], strehl=ctx["strehl"], coronagraph=ctx["coronagraph"], background=ctx["background"])
 
+def get_photon_weights(wave):
+    """
+    Precompute the photon-conversion integration weights associated with a wavelength grid.
+    """
+    wave    = np.asarray(wave, dtype=float)
+    dwave   = np.gradient(wave)                         # [µm/bin]
+    weights = wave*1e-6/(h*c) * dwave                   # [ph/J] * [µm/bin]
+    return weights
 
+def get_counts_from_weights(density, weights):
+    """
+    Integrate a spectral energy density using precomputed photon-conversion weights.
+    """
+    counts = np.nansum(density * weights) # [ph/s/m2]
+    if not np.isfinite(counts) or counts <= 0.0:
+        return np.nan
+    return counts
+
+def get_mag_from_weights(density_obs, weights, counts_vega):
+    """
+    Compute a Vega magnitude using precomputed photon-conversion weights.
+    """
+    counts_obs = get_counts_from_weights(density=density_obs, weights=weights) # [ph/s/m2]
+    return -2.5 * np.log10(counts_obs / counts_vega)
     
 def process_SNR(idx):
     """
@@ -2141,6 +2207,7 @@ def process_SNR(idx):
     PCA                    = _SNR_CTX["PCA"]
     N_PCA                  = _SNR_CTX["N_PCA"]
     masks                  = _SNR_CTX["masks"]
+    weights                = _SNR_CTX["weights"]
     bands_valid            = _SNR_CTX["bands_valid"]
     
     # Planet row
@@ -2152,28 +2219,30 @@ def process_SNR(idx):
     # Re-computing the magnitudes (in case the models is different from the original table)
     mags = {}
     
-    # Instru mags
-    mask_instru = masks[instru]
-    mags[f"StarINSTRUmag({instru})"] = get_mag(wave=wave_model[mask_instru], density_obs=star_spectrum.flux[mask_instru],   density_vega=None, counts_vega=counts_vega[instru])
+    # Instrumental magnitudes
+    mask_instru    = masks[instru]
+    weights_instru = weights[instru]    
+    mags[f"StarINSTRUmag({instru})"] = get_mag_from_weights(density_obs=star_spectrum.flux[mask_instru], weights=weights_instru, counts_vega=counts_vega[instru])
     if "thermal" in spectrum_contributions:
-        mags[f"PlanetINSTRUmag({instru})(thermal)"] = get_mag(wave=wave_model[mask_instru], density_obs=planet_thermal.flux[mask_instru], density_vega=None, counts_vega=counts_vega[instru])
+        mags[f"PlanetINSTRUmag({instru})(thermal)"] = get_mag_from_weights(density_obs=planet_thermal.flux[mask_instru], weights=weights_instru, counts_vega=counts_vega[instru])
     if "reflected" in spectrum_contributions:
-        mags[f"PlanetINSTRUmag({instru})(reflected)"] = get_mag(wave=wave_model[mask_instru], density_obs=planet_reflected.flux[mask_instru], density_vega=None, counts_vega=counts_vega[instru])
+        mags[f"PlanetINSTRUmag({instru})(reflected)"] = get_mag_from_weights(density_obs=planet_reflected.flux[mask_instru], weights=weights_instru, counts_vega=counts_vega[instru])
     if spectrum_contributions == "thermal+reflected":
-        mags[f"PlanetINSTRUmag({instru})(thermal+reflected)"] = get_mag(wave=wave_model[mask_instru], density_obs=planet_spectrum.flux[mask_instru], density_vega=None, counts_vega=counts_vega[instru])
-        
-    # Bands mags
+        mags[f"PlanetINSTRUmag({instru})(thermal+reflected)"] = get_mag_from_weights(density_obs=planet_spectrum.flux[mask_instru], weights=weights_instru, counts_vega=counts_vega[instru])
+    
+    # Standard-band magnitudes
     for band in bands_valid:
-        mask_band = masks[band]
+        mask_band    = masks[band]
+        weights_band = weights[band]    
         if band != "K":
-            mags[f"Star{band}mag"] = get_mag(wave=wave_model[mask_band], density_obs=star_spectrum.flux[mask_band],   density_vega=None, counts_vega=counts_vega[band])
+            mags[f"Star{band}mag"] = get_mag_from_weights(density_obs=star_spectrum.flux[mask_band], weights=weights_band, counts_vega=counts_vega[band])
         if "thermal" in spectrum_contributions:
-            mags[f"Planet{band}mag(thermal)"] = get_mag(wave=wave_model[mask_band], density_obs=planet_thermal.flux[mask_band], density_vega=None, counts_vega=counts_vega[band])
+            mags[f"Planet{band}mag(thermal)"] = get_mag_from_weights(density_obs=planet_thermal.flux[mask_band], weights=weights_band, counts_vega=counts_vega[band])
         if "reflected" in spectrum_contributions:
-            mags[f"Planet{band}mag(reflected)"] = get_mag(wave=wave_model[mask_band], density_obs=planet_reflected.flux[mask_band], density_vega=None, counts_vega=counts_vega[band])
+            mags[f"Planet{band}mag(reflected)"] = get_mag_from_weights(density_obs=planet_reflected.flux[mask_band], weights=weights_band, counts_vega=counts_vega[band])
         if spectrum_contributions == "thermal+reflected":
-            mags[f"Planet{band}mag(thermal+reflected)"] = get_mag(wave=wave_model[mask_band], density_obs=planet_spectrum.flux[mask_band], density_vega=None, counts_vega=counts_vega[band])
-
+            mags[f"Planet{band}mag(thermal+reflected)"] = get_mag_from_weights(density_obs=planet_spectrum.flux[mask_band], weights=weights_band, counts_vega=counts_vega[band])
+            
     # Computing the SNR for the planet
     mag_s = mags[f"StarINSTRUmag({instru})"]
     mag_p = mags[f"PlanetINSTRUmag({instru})({spectrum_contributions})"]
@@ -2257,15 +2326,18 @@ def get_planet_table_SNR(instru, table="Archive", thermal_model="None", reflecte
     counts_vega_K       = get_counts_from_density(wave=wave_K, density=vega_spectrum_K.flux)
     counts_vega         = {}
     masks               = {}
+    weights             = {}
     bands_valid         = []
     masks[instru]       = (wave_model >= lmin_instru) & (wave_model <= lmax_instru)
-    counts_vega[instru] = get_counts_from_density(wave=wave_model[masks[instru]], density=vega_spectrum.flux[masks[instru]])
+    weights[instru]     = get_photon_weights(wave_model[masks[instru]])
+    counts_vega[instru] = get_counts_from_weights(density=vega_spectrum.flux[masks[instru]], weights=weights[instru])
     for band in bands:
         lmin_band, lmax_band = get_band_lims(band)
         if lmin_instru <= lmin_band and lmax_instru >= lmax_band: # if this band is inside the instrumental range
             bands_valid.append(band)
             masks[band]       = (wave_model >= lmin_band) & (wave_model <= lmax_band)
-            counts_vega[band] = get_counts_from_density(wave=wave_model[masks[band]], density=vega_spectrum.flux[masks[band]])
+            weights[band]     = get_photon_weights(wave_model[masks[band]])
+            counts_vega[band] = get_counts_from_weights(density=vega_spectrum.flux[masks[band]], weights=weights[band])
     
     # Band where magnitudes are defined for the FastCurves computations
     band0 = "instru"
@@ -2281,7 +2353,7 @@ def get_planet_table_SNR(instru, table="Archive", thermal_model="None", reflecte
 
     # --- 5) Init global context for workers ---
     global _SNR_CTX
-    _SNR_CTX = dict(planet_table=planet_table, instru=instru, thermal_model=thermal_model, reflected_model=reflected_model, spectrum_contributions=spectrum_contributions, wave_model=wave_model, wave_K=wave_K, counts_vega=counts_vega, counts_vega_K=counts_vega_K, band0=band0, exposure_time=exposure_time, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, Rc=Rc, filter_type=filter_type, background=background, systematics=systematics, PCA=PCA, N_PCA=N_PCA, masks=masks, bands_valid=bands_valid)    
+    _SNR_CTX = dict(planet_table=planet_table, instru=instru, thermal_model=thermal_model, reflected_model=reflected_model, spectrum_contributions=spectrum_contributions, wave_model=wave_model, wave_K=wave_K, counts_vega=counts_vega, counts_vega_K=counts_vega_K, band0=band0, exposure_time=exposure_time, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, Rc=Rc, filter_type=filter_type, background=background, systematics=systematics, PCA=PCA, N_PCA=N_PCA, masks=masks, weights=weights, bands_valid=bands_valid)    
     
     # Function to enter the estimations in the planet_table
     def set_planet_table_values(planet_table, idx, mags, name_band, signal_planet, sigma_fund_planet, sigma_syst_planet, DIT_band):
@@ -2327,10 +2399,10 @@ def get_planet_table_SNR(instru, table="Archive", thermal_model="None", reflecte
             set_planet_table_values(planet_table, idx, mags, name_band, signal_planet, sigma_fund_planet, sigma_syst_planet, DIT_band)
     
     else: # if no PCA, uses multiprocessing
-        nproc     = max(1, cpu_count() // 2)
+        nproc     = max(1, cpu_count() - 3)
         chunksize = max(1, len(planet_table) // (20 * nproc))
         with Pool(processes=nproc, initializer=_init_snr_worker, initargs=(_SNR_CTX,),) as pool:
-            iterator = pool.imap(process_SNR, range(len(planet_table)), chunksize=chunksize)
+            iterator = pool.imap_unordered(process_SNR, range(len(planet_table)), chunksize=chunksize)
             for result in tqdm(iterator, total=len(planet_table), desc="Multiprocessing"):
                 idx, mags, name_band, signal_planet, sigma_fund_planet, sigma_syst_planet, DIT_band = result
                 set_planet_table_values(planet_table, idx, mags, name_band, signal_planet, sigma_fund_planet, sigma_syst_planet, DIT_band)
@@ -2338,6 +2410,7 @@ def get_planet_table_SNR(instru, table="Archive", thermal_model="None", reflecte
     print(f"\n Calculating SNR took {(time.time()-time1)/60:.1f} mn")
     filename = get_filename_table(table=table, instru=instru, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, systematics=systematics, PCA=PCA, name_model=name_model)
     planet_table.write(f"{path}/{filename}", format='ascii.ecsv', overwrite=True)
+    print(f"Table saved: {path}/{filename}")
     
 
 
@@ -2363,9 +2436,9 @@ def all_SNR_table(table="Archive", instrus=instrus): # takes ~ 13 hours
                                 continue
                             else:
                                 get_planet_table_SNR(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, systematics=False)
-                                # if instru in instrus_with_systematics:
-                                #     get_planet_table_SNR(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, systematics=True)
-                                #     get_planet_table_SNR(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, systematics=True, PCA=True, N_PCA=20)
+                                if instru in instrus_with_systematics:
+                                    get_planet_table_SNR(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, systematics=True)
+                                    get_planet_table_SNR(instru=instru, table=table, thermal_model=thermal_model, reflected_model=reflected_model, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, systematics=True, PCA=True, N_PCA=20)
     
     print('\n Calculating all SNR took {0:.3f} s'.format(time.time()-time0))
 
@@ -2466,16 +2539,16 @@ def planet_table_classification(planet_table=None):
         xlim = ax.get_xlim()
         ylim = ax.get_ylim()
         by_type = {}
-        for key, c in planet_types.items():
+        for key, crit in planet_types.items():
             tname = key.split(" ", 1)[1]  # ex: "Sub-Earth"
             d = by_type.setdefault(tname, {
                 "m_min": np.inf, "m_max": -np.inf,
                 "r_min": np.inf, "r_max": -np.inf
             })
-            d["m_min"] = min(d["m_min"], c["mass_min"])
-            d["m_max"] = max(d["m_max"], c["mass_max"])
-            d["r_min"] = min(d["r_min"], c["radius_min"])
-            d["r_max"] = max(d["r_max"], c["radius_max"])
+            d["m_min"] = min(d["m_min"], crit["mass_min"])
+            d["m_max"] = max(d["m_max"], crit["mass_max"])
+            d["r_min"] = min(d["r_min"], crit["radius_min"])
+            d["r_max"] = max(d["r_max"], crit["radius_max"])
     
         # borne infinie -> limite d’axe
         bounds = []
@@ -2952,7 +3025,7 @@ def yield_plot_instrus_texp(thermal_model="auto", reflected_model="auto", fracti
         yield_nirspec_syst_pca[i] = ratio * len(planet_table_nirspec_syst_pca[SNR_nirspec_syst_pca > SNR_thresh])               / norm_nirspec
 
     lw = 2
-    plt.figure(dpi=300, figsize=(14, 8))
+    plt.figure(dpi=300, figsize=(13, 7))
     plt.plot(exposure_time, yield_harmoni,          lw=lw, c=colors_instru["HARMONI"], label="ELT/HARMONI")
     plt.plot(exposure_time, yield_andes,            lw=lw, c=colors_instru["ANDES"],   label="ELT/ANDES")
     plt.plot(exposure_time, yield_eris,             lw=lw, c=colors_instru["ERIS"],    label="VLT/ERIS")
@@ -2964,25 +3037,26 @@ def yield_plot_instrus_texp(thermal_model="auto", reflected_model="auto", fracti
     plt.plot(exposure_time, yield_nirspec_non_syst, lw=lw, c=colors_instru["NIRSpec"], label="JWST/NIRSpec/IFU")
     plt.plot(exposure_time, yield_nirspec_syst,     lw=lw, c=colors_instru["NIRSpec"], ls='--')
     plt.plot(exposure_time, yield_nirspec_syst_pca, lw=lw, c=colors_instru["NIRSpec"], ls=':')
-    plt.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    plt.grid(which="major", linestyle="--", linewidth=0.7, alpha=0.45)
+    plt.grid(which="minor", linestyle=":",  linewidth=0.4, alpha=0.25)
     plt.minorticks_on()
     plt.xscale('log')
-    plt.xlabel('Exposure time per target [mn]', fontsize=18)
+    plt.xlabel('Exposure time per target [mn]', fontsize=20)
     if fraction:
-        plt.ylabel('Fraction of planets re-detected [%]', fontsize=18)
+        plt.ylabel('Fraction of planets re-detected [%]', fontsize=20)
     else:
-        plt.ylabel('Number of planets re-detected', fontsize=18)
+        plt.ylabel('Number of planets re-detected', fontsize=20)
         plt.yscale('log')
     plt.xlim(exposure_time[0], exposure_time[-1])
-    plt.title('Known exoplanets detection yield', fontsize=20, weight='bold')
-    plt.tick_params(axis='both', labelsize=16)
-    plt.legend(fontsize=16, loc="upper left", frameon=True, fancybox=True, edgecolor="gray", facecolor="whitesmoke", title="Instruments", title_fontsize=18)    
+    plt.title('Known exoplanets detection yield', fontsize=22, weight='bold', pad=22)
+    plt.tick_params(axis='both', labelsize=18)
+    plt.legend(fontsize=16, ncols=2, loc="upper left", frameon=True, fancybox=True, edgecolor="gray", facecolor="whitesmoke", title="Instruments", title_fontsize=18)    
     ax        = plt.gca()
     ax_legend = ax.twinx()
     ax_legend.plot([], [], 'k-',  label='Without Systematics',    linewidth=lw)
     ax_legend.plot([], [], 'k--', label='With Systematics',       linewidth=lw)
     ax_legend.plot([], [], 'k:',  label='With Systematics + PCA', linewidth=lw)
-    ax_legend.legend(fontsize=16, loc="upper center", frameon=True, fancybox=True, edgecolor="gray", facecolor="whitesmoke", title="Systematic assumption", title_fontsize=18)
+    ax_legend.legend(fontsize=16, loc="lower right", frameon=True, fancybox=True, edgecolor="gray", facecolor="whitesmoke", title="Systematic assumption", title_fontsize=18)
     ax_legend.tick_params(axis='y', colors='w')  # Masking ticks
     plt.tight_layout()
     plt.show()
@@ -3048,7 +3122,8 @@ def yield_plot_bands_texp(table="Archive", instru="HARMONI", thermal_model="auto
                     plt.plot(exposure_time, yields[ib, im], color=cmap(ib), label=band.replace("_", " "), ls=ls_modes[im], lw=3)
                 else:
                     plt.plot(exposure_time, yields[ib, im], color=cmap(ib), ls=ls_modes[im], lw=3)
-    plt.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    plt.grid(which="major", linestyle="--", linewidth=0.7, alpha=0.45)
+    plt.grid(which="minor", linestyle=":",  linewidth=0.4, alpha=0.25)
     plt.minorticks_on()
     plt.xscale('log')
     plt.xlabel('Exposure time per target [mn]', fontsize=16)
@@ -3084,7 +3159,7 @@ def yield_plot_bands_texp(table="Archive", instru="HARMONI", thermal_model="auto
 ####################
 
 def yield_hist_instrus_ptypes(exposure_time=10*60, thermal_model="auto", reflected_model="auto", planet_types=planet_types_reduced, fraction=False):
-        
+
     spectrum_contributions, name_model = get_spectrum_contribution_name_model(thermal_model, reflected_model)
 
     planet_table_harmoni          = load_planet_table(f"Archive_Pull_HARMONI_NO_SP_JQ1_without_systematics_{name_model}.ecsv")
@@ -3111,18 +3186,6 @@ def yield_hist_instrus_ptypes(exposure_time=10*60, thermal_model="auto", reflect
     planet_table_nirspec_non_syst["SNR"] = get_SNR_from_table(planet_table=planet_table_nirspec_non_syst, exposure_time=exposure_time, band="INSTRU")
     planet_table_nirspec_syst["SNR"]     = get_SNR_from_table(planet_table=planet_table_nirspec_syst,     exposure_time=exposure_time, band="INSTRU")
     planet_table_nirspec_syst_pca["SNR"] = get_SNR_from_table(planet_table=planet_table_nirspec_syst_pca, exposure_time=exposure_time, band="INSTRU")
-
-    
-    # # TODO: only keeping reflected light planets for ELT instruments
-    # band_regime    = "H"
-    # mask_thermal   = (planet_table_harmoni[f"Planet{band_regime}mag(thermal)"] < planet_table_harmoni[f"Planet{band_regime}mag(reflected)"])
-    # mask_reflected = ~mask_thermal
-    # planet_table_harmoni = planet_table_harmoni[mask_reflected]
-    
-    # mask_thermal   = (planet_table_andes[f"Planet{band_regime}mag(thermal)"] < planet_table_andes[f"Planet{band_regime}mag(reflected)"])
-    # mask_reflected = ~mask_thermal
-    # planet_table_andes = planet_table_andes[mask_reflected]
-    
 
     # Dictionnaries giving the list of planets for mp[type]
     mp_harmoni          = build_match_dict(planet_table=planet_table_harmoni,          planet_types=planet_types)
@@ -3213,26 +3276,28 @@ def yield_hist_instrus_ptypes(exposure_time=10*60, thermal_model="auto", reflect
 
     plt.bar(indices - 4.5*bar_width, yield_harmoni,          bar_width, edgecolor="black", color=colors_instru["HARMONI"], linewidth=linewidth, label="ELT/HARMONI")
     plt.bar(indices - 3.5*bar_width, yield_andes,            bar_width, edgecolor="black", color=colors_instru["ANDES"],   linewidth=linewidth, label="ELT/ANDES")
-    plt.bar(indices - 2.5*bar_width, yield_eris,             bar_width, edgecolor="black", color=colors_instru["ERIS"],    linewidth=linewidth, label="VLT/ERIS")
     plt.bar(indices - 1.5*bar_width, yield_mirimrs_non_syst, bar_width, edgecolor="black", color=colors_instru["MIRIMRS"], linewidth=linewidth, label="JWST/MIRI/MRS")
-    plt.bar(indices - 0.5*bar_width, yield_mirimrs_syst,     bar_width, edgecolor="black", color=colors_instru["MIRIMRS"], linewidth=linewidth, label="JWST/MIRI/MRS (with syst)",        hatch='//')
-    plt.bar(indices + 0.5*bar_width, yield_mirimrs_syst_pca, bar_width, edgecolor="black", color=colors_instru["MIRIMRS"], linewidth=linewidth, label="JWST/MIRI/MRS (with syst+PCA)",    hatch='xx')
+    plt.bar(indices - 0.5*bar_width, yield_mirimrs_syst,     bar_width, edgecolor="black", color=colors_instru["MIRIMRS"], linewidth=linewidth, label="JWST/MIRI/MRS (w/ syst)",        hatch='//')
+    plt.bar(indices + 0.5*bar_width, yield_mirimrs_syst_pca, bar_width, edgecolor="black", color=colors_instru["MIRIMRS"], linewidth=linewidth, label="JWST/MIRI/MRS (w/ syst+PCA)",    hatch='xx')
+    plt.bar(indices - 2.5*bar_width, yield_eris,             bar_width, edgecolor="black", color=colors_instru["ERIS"],    linewidth=linewidth, label="VLT/ERIS")
     plt.bar(indices + 1.5*bar_width, yield_nircam,           bar_width, edgecolor="black", color=colors_instru["NIRCam"],  linewidth=linewidth, label="JWST/NIRCam")
     plt.bar(indices + 2.5*bar_width, yield_nirspec_non_syst, bar_width, edgecolor="black", color=colors_instru["NIRSpec"], linewidth=linewidth, label="JWST/NIRSpec/IFU")
-    plt.bar(indices + 3.5*bar_width, yield_nirspec_syst,     bar_width, edgecolor="black", color=colors_instru["NIRSpec"], linewidth=linewidth, label="JWST/NIRSpec/IFU (with syst)",     hatch='//')
-    plt.bar(indices + 4.5*bar_width, yield_nirspec_syst_pca, bar_width, edgecolor="black", color=colors_instru["NIRSpec"], linewidth=linewidth, label="JWST/NIRSpec/IFU (with syst+PCA)", hatch='xx')
+    plt.bar(indices + 3.5*bar_width, yield_nirspec_syst,     bar_width, edgecolor="black", color=colors_instru["NIRSpec"], linewidth=linewidth, label="JWST/NIRSpec/IFU (w/ syst)",     hatch='//')
+    plt.bar(indices + 4.5*bar_width, yield_nirspec_syst_pca, bar_width, edgecolor="black", color=colors_instru["NIRSpec"], linewidth=linewidth, label="JWST/NIRSpec/IFU (w/ syst+PCA)", hatch='xx')
 
     plt.xticks(indices, planet_types_array, rotation=45, ha="right", fontsize=14)
-    plt.yticks(fontsize=14)
+    plt.yticks(fontsize=18)
     plt.xlim(-0.5, len(planet_types_array) - 0.5)
+    plt.ylim(0.5, 2_000)
     if fraction:
-        plt.ylabel('Fraction of planets re-detected [%]', fontsize=16)
+        plt.ylabel('Fraction of planets re-detected [%]', fontsize=18)
     else:
-        plt.ylabel('Number of planets re-detected', fontsize=16)
+        plt.ylabel('Number of planets re-detected', fontsize=18)
         plt.yscale('log')
-    plt.title(f'Known Exoplanets Detection Yield for {int(round(exposure_time/60))} h per target', fontsize=18, fontweight='bold')
-    plt.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7, zorder=-10)
-    plt.legend(title="Instruments", title_fontsize=14, fontsize=12, loc="upper left", frameon=True, edgecolor="gray", facecolor="whitesmoke", ncol=2)
+    plt.title(f'Known exoplanets detection yield for {int(round(exposure_time/60))} h per target', fontsize=20, pad=20, fontweight='bold')
+    plt.grid(which="major", linestyle="--", linewidth=0.7, alpha=0.45, zorder=-10)
+    plt.grid(which="minor", linestyle=":",  linewidth=0.4, alpha=0.25, zorder=-10)
+    plt.legend(title="Instruments", title_fontsize=16, fontsize=14, loc="upper left", frameon=True, edgecolor="gray", facecolor="whitesmoke", ncol=2)
     plt.tight_layout()
     plt.show()
 
@@ -3316,7 +3381,7 @@ def yield_hist_instrus_ptypes_ELT(exposure_time=10*60, thermal_model="auto", ref
         plt.axvspan(i0 - 0.5, i1 + 0.5, facecolor=band.get(tag, '#EEEEEE'), alpha=0.3, zorder=-20)
         plt.axvline(i1 + 0.5, color=sep.get(tag, '0.8'), lw=linewidth, ls=(0, (4, 3)), alpha=0.9, zorder=-15)
         xmid = 0.5 * (i0 + i1)
-        plt.text(xmid, 1.01, tag.upper(), ha='center', va='bottom', transform=plt.gca().get_xaxis_transform(), fontsize=14, color=sep.get(tag, '0.4'), fontweight='bold')
+        plt.text(xmid, 1.01, tag.upper(), ha='center', va='bottom', transform=plt.gca().get_xaxis_transform(), fontsize=18, color=sep.get(tag, '0.4'), fontweight='bold')
     plt.axvline(segments[0][1] - 0.5, color=sep.get(segments[0][0], '0.8'), lw=linewidth, ls=(0, (4, 3)), alpha=0.9, zorder=-15)
     
     for i, instru in enumerate(instrus):
@@ -3343,16 +3408,17 @@ def yield_hist_instrus_ptypes_ELT(exposure_time=10*60, thermal_model="auto", ref
                 plt.bar(indices + idx*bar_width, N_andes_lyot,   bar_width, edgecolor=colors_instru["ANDES"],   color=faded(colors_instru["ANDES"]),   linewidth=linewidth, zorder=1)
         
     plt.xticks(indices, planet_types_array, rotation=45, ha="right", fontsize=14)
-    plt.yticks(fontsize=14)
+    plt.yticks(fontsize=16)
     plt.xlim(-0.5, len(planet_types_array) - 0.5)
     if fraction:
-        plt.ylabel('Fraction of planets re-detected [%]', fontsize=16)
+        plt.ylabel('Fraction of planets re-detected [%]', fontsize=18, labelpad=18)
     else:
-        plt.ylabel('Number of planets re-detected', fontsize=16)
+        plt.ylabel('Number of planets re-detected', fontsize=18, labelpad=18)
         plt.yscale('log')
-    plt.title(f'Known Exoplanets Detection Yield for {int(round(exposure_time/60))} h per target', fontsize=18, fontweight='bold', pad=30)
-    plt.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7, zorder=-10)
-    plt.legend(title="Instruments", title_fontsize=14, fontsize=12, loc="upper center", frameon=True, edgecolor="gray", facecolor="whitesmoke", ncol=2)
+    plt.title(f'Known exoplanets detection yield for {exposure_time/60:.0f} h per target', fontsize=20, fontweight='bold', pad=36)
+    plt.grid(which="major", linestyle="--", linewidth=0.7, alpha=0.45, zorder=-10)
+    plt.grid(which="minor", linestyle=":",  linewidth=0.4, alpha=0.25, zorder=-10)
+    plt.legend(title="Instruments", title_fontsize=16, fontsize=14, loc="upper center", frameon=True, edgecolor="gray", facecolor="whitesmoke", ncol=2)
     plt.tight_layout()
     plt.show()
 
@@ -3446,7 +3512,8 @@ def yield_corner_instru(instru="HARMONI", exposure_time=6*60, thermal_model="BT-
     
 
 
-def yield_corner_instrus(instru1="HARMONI", instru2="ANDES", band1="INSTRU", band2="INSTRU", apodizer1="NO_SP", apodizer2="NO_SP", strehl1="JQ1", strehl2="MED", coronagraph1=None, coronagraph2=None, exposure_time=6*60, thermal_model="auto", reflected_model="auto", systematics=False, PCA=False):
+def yield_corner_instrus(instru1="HARMONI", instru2="ANDES", band1="INSTRU", band2="INSTRU", apodizer1="NO_SP", apodizer2="NO_SP", strehl1="JQ1", strehl2="MED", coronagraph1=None, coronagraph2=None, exposure_time=6*60, thermal_model="auto", reflected_model="auto", systematics=False, PCA=False, all_configs_if_different=True):
+    
     instrus       = [instru1,      instru2]
     bands         = [band1,        band2]
     apodizers     = [apodizer1,    apodizer2]
@@ -3457,96 +3524,237 @@ def yield_corner_instrus(instru1="HARMONI", instru2="ANDES", band1="INSTRU", ban
     ndim          = 6 # Mp, Rp, Tp, a, d, sep
     alpha_earth   = 0.5
     color_earth   = "seagreen"
-    earth_values  = np.array([np.log10(1), np.log10(1), 300, np.log10(1), None, None]) # M_earth, R_earth, T_earth, 1 AU, None, None
+    earth_values  = np.array([np.log10(1), np.log10(1), 300, np.log10(1), None, None], dtype=object)
+    all_configs_mode = all_configs_if_different and (instru1 != instru2)
 
-    # WORKING ANGLE
-    IWA = np.zeros((len(instrus)))
-    OWA = np.zeros((len(instrus)))
-    for ni, instru in enumerate(instrus):
-        IWA[ni], OWA[ni] = get_wa(instru=instru, sep_unit="mas")    
-    iwa = np.nanmin(IWA)
-    owa = np.nanmax(OWA)
+    fontsize_tick     = 15
+    fontsize_label    = 20
+    fontsize_title    = 18
+    fontsize_legend   = 18
+    fontsize_suptitle = 22
     
+    PlanetMassMin   = None  # [M_earth]
+    PlanetMassMax   = None  # [M_earth]
+    PlanetRadiusMin = None  # [R_earth]
+    PlanetRadiusMax = None  # [R_earth]
+    PlanetTeffMin   = None   # [K]
+    PlanetTeffMax   = 3000  # [K]
+    SMAMin          = None  # [AU]
+    SMAMax          = None  # [AU]
+    DistanceMin     = None  # [pc]
+    DistanceMax     = None  # [pc]
+    AngSepMin       = None  # [mas]
+    AngSepMax       = None  # [mas]
+    
+    parameter_bounds = {
+        "PlanetMass":   (PlanetMassMin,   PlanetMassMax),
+        "PlanetRadius": (PlanetRadiusMin, PlanetRadiusMax),
+        "PlanetTeff":   (PlanetTeffMin,   PlanetTeffMax),
+        "SMA":          (SMAMin,          SMAMax),
+        "Distance":     (DistanceMin,     DistanceMax),
+        "AngSep":       (AngSepMin,       AngSepMax),
+    }
+
+    # Small helpers
+    def get_col_array(planet_table, colname):
+        col = planet_table[colname]
+        return np.asarray(col.value if hasattr(col, "value") else col, dtype=float)
+
+    def get_bounds(bounds):
+        if np.isscalar(bounds):
+            return None, bounds
+        return bounds
+
+    def get_valid_bounds_mask(planet_table):
+        cols = ["PlanetMass", "PlanetRadius", "PlanetTeff", "SMA", "Distance", "AngSep"]
+        positive_cols = ["PlanetMass", "PlanetRadius", "PlanetTeff", "SMA", "Distance", "AngSep"]
+        mask = np.ones(len(planet_table), dtype=bool)
+        for col in cols:
+            x = get_col_array(planet_table, col)
+            mask &= ~get_invalid_mask(planet_table[col])
+            mask &= np.isfinite(x)
+            if col in positive_cols:
+                mask &= x > 0
+        for col, bounds in parameter_bounds.items():
+            vmin, vmax = get_bounds(bounds)
+            x = get_col_array(planet_table, col)
+            if vmin is not None:
+                mask &= x >= vmin
+            if vmax is not None:
+                mask &= x <= vmax
+        return mask
+
+    def table_to_corner_data(planet_table):
+        data = np.zeros((len(planet_table), ndim))
+        data[:, 0] = np.log10(get_col_array(planet_table, "PlanetMass"))
+        data[:, 1] = np.log10(get_col_array(planet_table, "PlanetRadius"))
+        data[:, 2] = get_col_array(planet_table, "PlanetTeff")
+        data[:, 3] = np.log10(get_col_array(planet_table, "SMA"))
+        data[:, 4] = np.log10(get_col_array(planet_table, "Distance"))
+        data[:, 5] = np.log10(get_col_array(planet_table, "AngSep"))
+        return data
+
+    def get_corner_ranges(data):
+        ranges = []
+        for idim in range(data.shape[1]):
+            xmin, xmax = np.nanmin(data[:, idim]), np.nanmax(data[:, idim])
+            if not np.isfinite(xmin) or not np.isfinite(xmax):
+                xmin, xmax = 0.0, 1.0
+            if xmin == xmax:
+                dx = 0.5 if xmin == 0 else 0.05 * abs(xmin)
+                xmin, xmax = xmin - dx, xmax + dx
+            ranges.append((xmin, xmax))
+        return ranges
+
+    def get_table_filename(instru, apodizer, strehl, coronagraph):
+        coronagraph_str = "_" + str(coronagraph) if coronagraph is not None else ""
+        suffix = "with_systematics+PCA" if (systematics and PCA) else ("with_systematics" if systematics else "without_systematics")
+        return f"Archive_Pull_{instru}_{apodizer}_{strehl}{coronagraph_str}_{suffix}_{name_model}.ecsv"
+
+    def get_detected_table_fixed(instru, band, apodizer, strehl, coronagraph):
+        filename = get_table_filename(instru, apodizer, strehl, coronagraph)
+        planet_table = load_planet_table(filename)
+        SNR = get_SNR_from_table(planet_table=planet_table, exposure_time=exposure_time, band=band)
+        mask = get_valid_bounds_mask(planet_table) & np.isfinite(SNR) & (SNR > SNR_thresh)
+        return planet_table[mask]
+
+    def get_detected_table_all_configs(instru):
+        config_data = get_config_data(instru)
+        detected_names = set()
+        N_loaded = 0
+        bands_all = list(config_data["gratings"].keys())
+        strehls_all = list(config_data["strehls"])
+        apodizers_all = list(config_data["apodizers"].keys())
+        coronagraphs_all = list(config_data["coronagraphs"])
+        for strehl in strehls_all:
+            for apodizer in apodizers_all:
+                for coronagraph in coronagraphs_all:
+                    filename = get_table_filename(instru, apodizer, strehl, coronagraph)
+                    try:
+                        planet_table = load_planet_table(filename)
+                    except Exception:
+                        continue
+                    N_loaded += 1
+                    names = np.asarray(planet_table["PlanetName"], dtype=str)
+                    mask_valid = get_valid_bounds_mask(planet_table)
+
+                    for band in bands_all:
+                        required_cols = [f"DIT_{band}", f"signal_{band}", f"sigma_fund_{band}", f"sigma_syst_{band}"]
+                        if np.any([col not in planet_table.colnames for col in required_cols]):
+                            continue
+
+                        SNR = get_SNR_from_table(planet_table=planet_table, exposure_time=exposure_time, band=band)
+                        detected_names.update(names[mask_valid & np.isfinite(SNR) & (SNR > SNR_thresh)])
+
+        if N_loaded == 0:
+            raise FileNotFoundError(f"No table found for {instru} in all_configs_if_different mode.")
+
+        raw_names = np.asarray(planet_table_raw["PlanetName"], dtype=str)
+        return planet_table_raw[np.isin(raw_names, list(detected_names))]
+
+    def get_instru_label(instru, apodizer, coronagraph):
+        if all_configs_mode:
+            return f"{instru}"
+        if instru == "HARMONI":
+            return "HARMONI w/o apodizer" if apodizer == "NO_SP" else f"HARMONI w/ {apodizer.replace('_', ' ')}"
+        if instru == "ANDES":
+            return "ANDES w/o coronagraph" if coronagraph is None else f"ANDES w/ {coronagraph}"
+        return instru
+
     # MODELS NAME
     spectrum_contributions, name_model = get_spectrum_contribution_name_model(thermal_model, reflected_model)
-    
+
     # RAW TABLE
     planet_table_raw = load_planet_table("Archive_Pull_For_FastYield.ecsv")
-    planet_table_raw = planet_table_raw[ (~get_invalid_mask(planet_table_raw["PlanetMass"])) & (~get_invalid_mask(planet_table_raw["PlanetRadius"])) & (~get_invalid_mask(planet_table_raw["PlanetTeff"])) & (~get_invalid_mask(planet_table_raw["SMA"])) & (~get_invalid_mask(planet_table_raw["Distance"])) & (~get_invalid_mask(planet_table_raw["AngSep"]))]
-    planet_table_raw = planet_table_raw[(planet_table_raw["AngSep"]>iwa*u.mas)]
-    data_raw       = np.zeros((len(planet_table_raw), ndim))
-    data_raw[:, 0] = np.log10(np.array(planet_table_raw["PlanetMass"].value))
-    data_raw[:, 1] = np.log10(np.array(planet_table_raw["PlanetRadius"].value))
-    data_raw[:, 2] = np.array(planet_table_raw["PlanetTeff"].value)
-    data_raw[:, 3] = np.log10(np.array(planet_table_raw["SMA"].value))
-    data_raw[:, 4] = np.log10(np.array(planet_table_raw["Distance"].value))
-    data_raw[:, 5] = np.log10(np.array(planet_table_raw["AngSep"].value))
-    figure = corner.corner( # https://corner.readthedocs.io/en/latest/api/
-        data           = data_raw,
-        bins           = 20,
-        labels         = [r"$log(\frac{M_p}{M_{\oplus}})$", r"$log(\frac{R_p}{R_{\oplus}})$", r"$T \, [\mathrm{K}]$", r"$log(\frac{SMA}{AU})$", r"$log(\frac{d}{pc})$", r"$log(\frac{sep}{mas})$"],
-        quantiles      = [0.16, 0.5, 0.84],   # below -+1 sigma 
-        levels         = [0.68, 0.95, 0.997], # 1, 2 and 3 sigma contour
-        show_titles    = True,
-        title_kwargs   = {"fontsize": 14, "pad": 10},
-        top_ticks      = False,
-        plot_density   = True,
-        plot_contours  = True,
-        fill_contours  = True,
-        smooth         = smooth_corner,
-        smooth1d       = smooth_corner,
-        color          = "gray",
-        contour_kwargs = {"colors": ["black"], "alpha": 0.85, "linewidths": 1.3},
-        hist_kwargs    = {"color": "black", "alpha": 0.85, "linewidth": 1.3},
-        label_kwargs   = {"fontsize": 16})
-    
+    planet_table_raw = planet_table_raw[get_valid_bounds_mask(planet_table_raw)]
+
+    if len(planet_table_raw) == 0:
+        raise ValueError("No planet remains after applying validity and parameter_bounds cuts.")
+
+    data_raw = table_to_corner_data(planet_table_raw)
+    corner_ranges = get_corner_ranges(data_raw)
+
+    labels = [
+        r"$\log_{10}(M_p/M_{\oplus})$",
+        r"$\log_{10}(R_p/R_{\oplus})$",
+        r"$T_p \, [\mathrm{K}]$",
+        r"$\log_{10}(a/\mathrm{AU})$",
+        r"$\log_{10}(d/\mathrm{pc})$",
+        r"$\log_{10}(\mathrm{sep}/\mathrm{mas})$",
+    ]
+
+    figure = corner.corner(
+        data=data_raw,
+        bins=20,
+        labels=labels,
+        range=corner_ranges,
+        quantiles=[0.5],
+        levels=[0.68, 0.95, 0.997],
+        show_titles=False,
+        title_kwargs={"fontsize": fontsize_title, "pad": 10},
+        top_ticks=False,
+        plot_density=True,
+        plot_contours=True,
+        fill_contours=True,
+        smooth=smooth_corner,
+        smooth1d=smooth_corner,
+        color="gray",
+        contour_kwargs={"colors": ["black"], "alpha": 0.85, "linewidths": 1.4},
+        hist_kwargs={"color": "black", "alpha": 0.85, "linewidth": 1.4},
+        label_kwargs={"fontsize": fontsize_label},
+    )
+    axes           = np.array(figure.axes).reshape((ndim, ndim))
+    diag_ylims_raw = [axes[i, i].get_ylim() for i in range(ndim)]
+
     # DETECTIONS TABLES
     yields = np.zeros((len(instrus)))
     for ni, instru in enumerate(instrus):
-        band            = bands[ni]
-        apodizer        = apodizers[ni]
-        strehl          = strehls[ni]
-        coronagraph_str = "_"+str(coronagraphs[ni]) if coronagraphs[ni] is not None else ""
-        if systematics:
-            suffix = "with_systematics+PCA" if PCA else "with_systematics"
+        band = bands[ni]
+        apodizer = apodizers[ni]
+        strehl = strehls[ni]
+        coronagraph = coronagraphs[ni]
+
+        if all_configs_mode:
+            planet_table = get_detected_table_all_configs(instru)
         else:
-            suffix = "without_systematics"
-        planet_table = load_planet_table(f"Archive_Pull_{instru}_{apodizer}_{strehl}{coronagraph_str}_{suffix}_{name_model}.ecsv")
-        planet_table = planet_table[ (~get_invalid_mask(planet_table["PlanetMass"])) & (~get_invalid_mask(planet_table["PlanetRadius"])) & (~get_invalid_mask(planet_table["PlanetTeff"])) & (~get_invalid_mask(planet_table["SMA"])) & (~get_invalid_mask(planet_table["Distance"])) & (~get_invalid_mask(planet_table["AngSep"]))]
-        planet_table = planet_table[(planet_table["AngSep"]>IWA[ni]*u.mas)]
-        SNR          = get_SNR_from_table(planet_table=planet_table, exposure_time=exposure_time, band=band)
-        planet_table = planet_table[SNR > SNR_thresh]
-        yields[ni]   = len(planet_table)
-        data       = np.zeros((len(planet_table), ndim))
-        data[:, 0] = np.log10(np.array(planet_table["PlanetMass"].value))
-        data[:, 1] = np.log10(np.array(planet_table["PlanetRadius"].value))
-        data[:, 2] = np.array(planet_table["PlanetTeff"].value)
-        data[:, 3] = np.log10(np.array(planet_table["SMA"].value))
-        data[:, 4] = np.log10(np.array(planet_table["Distance"].value))
-        data[:, 5] = np.log10(np.array(planet_table["AngSep"].value))
+            planet_table = get_detected_table_fixed(instru, band, apodizer, strehl, coronagraph)
+
+        yields[ni] = len(planet_table)
+
+        if len(planet_table) == 0:
+            continue
+
+        data = table_to_corner_data(planet_table)
+
         corner.corner(
-            data           = data,
-            fig            = figure,
-            bins           = 20,
-            quantiles      = [0.5], # below -+1 sigma 
-            levels         = [0.68, 0.95, 0.997], # 1, 2 and 3 sigma contour
-            show_titles    = False,
-            top_ticks      = False,
-            plot_density   = True,
-            plot_contours  = True,
-            fill_contours  = True,
-            color          = colors_instru[ni],
-            contour_kwargs = {"colors": [colors_instru[ni]], "alpha": 0.85, "linewidths": 1.3},
-            hist_kwargs    = {"color": colors_instru[ni], "alpha": 0.85, "linewidth": 1.3},
-            smooth         = smooth_corner,
-            smooth1d       = smooth_corner)
-            
-    # Earth points
+            data=data,
+            fig=figure,
+            bins=20,
+            range=corner_ranges,
+            quantiles=[0.5],
+            levels=[0.68, 0.95, 0.997],
+            show_titles=False,
+            top_ticks=False,
+            plot_density=True,
+            plot_contours=True,
+            fill_contours=True,
+            color=colors_instru[ni],
+            contour_kwargs={"colors": [colors_instru[ni]], "alpha": 0.85, "linewidths": 1.5},
+            hist_kwargs={"color": colors_instru[ni], "alpha": 0.85, "linewidth": 1.5},
+            smooth=smooth_corner,
+            smooth1d=smooth_corner,
+        )
+        
     axes = np.array(figure.axes).reshape((ndim, ndim))
+    for i in range(ndim):
+        axes[i, i].set_xlim(corner_ranges[i])
+        axes[i, i].set_ylim(diag_ylims_raw[i])
+        
+    # Earth points    
     for i in range(ndim):
         if earth_values[i] is not None:
             ax = axes[i, i]
-            ax.axvline(earth_values[i], color=color_earth, alpha=alpha_earth)
+            ax.axvline(earth_values[i], color=color_earth, alpha=alpha_earth, lw=3)
     for yi in range(ndim):
         for xi in range(yi):
             ax = axes[yi, xi]
@@ -3556,152 +3764,361 @@ def yield_corner_instrus(instru1="HARMONI", instru2="ANDES", band1="INSTRU", ban
                 ax.axhline(earth_values[yi], color=color_earth, alpha=alpha_earth, lw=3)
             if earth_values[xi] is not None and earth_values[yi] is not None:
                 ax.plot(earth_values[xi], earth_values[yi], marker="s", c=color_earth, ms=10)
-               
+
+    # Font sizes on axes
+    for ax in figure.axes:
+        ax.tick_params(axis="both", which="major", labelsize=fontsize_tick)
+        ax.xaxis.label.set_size(fontsize_label)
+        ax.yaxis.label.set_size(fontsize_label)
+        ax.title.set_size(fontsize_title)
+
+    # Legends
     handles = []
     for ni, instru in enumerate(instrus):
         handles.append(mlines.Line2D([], [], color="w", label=""))
-        if instru == "HARMONI":
-            if apodizers[ni] == "NO_SP":
-                instru_label = "HARMONI w/o apodizer"
-            else:
-                instru_label = f"HARMONI w/ {apodizers[ni].replace('_', ' ')}"
-        elif instru == "ANDES":
-            if coronagraphs[ni] is None:
-                instru_label = "ANDES w/o coronagraph"
-            else:
-                instru_label = f"ANDES w/ {coronagraphs[ni]}"
-        else:
-            instru_label = instru
-        handles.append(mlines.Line2D([], [], linestyle="-", marker="s", color=colors_instru[ni], label=instru_label+f" ({round(yields[ni])} / {len(planet_table_raw)})"))
-    plt.legend(handles=handles, frameon=True, bbox_to_anchor=(1, ndim), loc="upper right", fontsize=14, title="Instruments:", title_fontsize=16)
-    handles = [mlines.Line2D([], [], linestyle="-", marker="s", color=color_earth, label="Earth")]
-    ax_legend = plt.gca().twinx()
-    ax_legend.legend(handles=handles, frameon=True, bbox_to_anchor=(1, ndim), loc="lower right", fontsize=14)
-    ax_legend.tick_params(axis='y', colors='w')
-    if instru1 == instru2 == "HARMONI" or instru1 == instru2 == "ANDES":
-        figure.suptitle(f"{instru1} re-detections statistics with {len(planet_table_raw)} known planets between {round(iwa)} and {round(owa)} mas\nfor {round(exposure_time/60)} hours per target (with {name_model} model in {spectrum_contributions} light)", fontsize=18, y=1.05, fontweight="bold")
+        instru_label = get_instru_label(instru, apodizers[ni], coronagraphs[ni])
+        handles.append(mlines.Line2D([], [], linestyle="-", marker="s", color=colors_instru[ni], label=instru_label + f" ({round(yields[ni])} / {len(planet_table_raw)})"))
+    fig = plt.gcf()
+    fig.legend(handles=handles, frameon=True, bbox_to_anchor=(0.95, 0.7), loc="upper right", fontsize=fontsize_legend, title="Instruments:", title_fontsize=fontsize_legend+2)
+    handles_earth = [mlines.Line2D([], [], linestyle="-", marker="s", color=color_earth, label="Earth")]
+    fig.legend(handles=handles_earth, frameon=True, bbox_to_anchor=(0.82, 0.75), loc="upper right", fontsize=fontsize_legend)
+
+    # Title
+    if instru1 == instru2:
+        title = f"ELT/{instru1} re-detections statistics\n\nwith {len(planet_table_raw)} known planets for {round(exposure_time/60)} hr per target"
     else:
-        figure.suptitle(f"{instru1} VS {instru2} re-detections statistics with {len(planet_table_raw)} known planets between {round(iwa)} and {round(owa)} mas\nfor {round(exposure_time/60)} hours per target (with {name_model} model in {spectrum_contributions} light)", fontsize=18, y=1.05, fontweight="bold")
-    plt.gcf().set_dpi(300)
-    plt.tight_layout()
-    plt.show()
+        title = f"ELT/{instru1} VS ELT/{instru2} re-detections statistics\n\nwith {len(planet_table_raw)} known planets for {round(exposure_time/60)} hr per target"
 
+    figure.suptitle(title, fontsize=fontsize_suptitle, fontweight="bold", x=0.63, y=0.93)
 
-
-def yield_corner_models(model1="tellurics", model2="flat", spectrum_contributions="reflected", instru="ANDES", apodizer="NO_SP", strehl="MED", exposure_time=6*60, band="INSTRU"):
-    models        = [model1, model2]
-    color_models  = ["crimson", "royalblue"]
-    smooth_corner = 1
-    ndim          = 6 # Mp, Rp, Tp, d, a, sep
-    alpha_earth   = 0.5
-    color_earth   = "g"
-    earth_values  = np.array([np.log10(1), np.log10(1), 300, np.log10(1), None, None])
-    
-    # WORKING ANGLE
-    iwa, owa = get_wa(instru=instru, sep_unit="mas")    
-    
-    # RAW TABLE
-    planet_table_raw = load_planet_table("Archive_Pull_For_FastYield.ecsv")
-    planet_table_raw = planet_table_raw[ (~get_invalid_mask(planet_table_raw["PlanetMass"])) & (~get_invalid_mask(planet_table_raw["PlanetRadius"])) & (~get_invalid_mask(planet_table_raw["PlanetTeff"])) & (~get_invalid_mask(planet_table_raw["SMA"])) & (~get_invalid_mask(planet_table_raw["Distance"])) & (~get_invalid_mask(planet_table_raw["AngSep"]))]
-    planet_table_raw = planet_table_raw[(planet_table_raw["AngSep"]>iwa*u.mas)&(planet_table_raw["AngSep"]<owa*u.mas)]
-    #planet_table_raw = planet_table_raw[(planet_table_raw["AngSep"]>iwa*u.mas)] # TODO : crop upper WA (with owa) ?
-    data_raw       = np.zeros((len(planet_table_raw), ndim))
-    data_raw[:, 0] = np.log10(np.array(planet_table_raw["PlanetMass"].value))
-    data_raw[:, 1] = np.log10(np.array(planet_table_raw["PlanetRadius"].value))
-    data_raw[:, 2] = np.array(planet_table_raw["PlanetTeff"].value)
-    data_raw[:, 3] = np.log10(np.array(planet_table_raw["SMA"].value))
-    data_raw[:, 4] = np.log10(np.array(planet_table_raw["Distance"].value))
-    data_raw[:, 5] = np.log10(np.array(planet_table_raw["AngSep"].value))
-    figure = corner.corner( # https://corner.readthedocs.io/en/latest/api/
-        data           = data_raw,
-        bins           = 20,
-        labels         = [r"$log(\frac{M_p}{M_{\oplus}})$", r"$log(\frac{R_p}{R_{\oplus}})$", r"$T \, [\mathrm{K}]$", r"$log(\frac{SMA}{AU})$", r"$log(\frac{d}{pc})$", r"$log(\frac{sep}{mas})$"],
-        quantiles      = [0.16, 0.5, 0.84],   # below -+1 sigma 
-        levels         = [0.68, 0.95, 0.997], # 1, 2 and 3 sigma contour
-        show_titles    = True,
-        title_kwargs   = {"fontsize": 14, "pad": 10},
-        top_ticks      = False,
-        plot_density   = True,
-        plot_contours  = True,
-        fill_contours  = True,
-        smooth         = smooth_corner,
-        smooth1d       = smooth_corner,
-        color          = "gray",
-        contour_kwargs = {"colors": ["black"], "alpha": 0.85, "linewidths": 1.3},
-        hist_kwargs    = {"color": "black", "alpha": 0.85, "linewidth": 1.3},
-        label_kwargs   = {"fontsize": 16})
-    
-    # DETECTIONS TABLES
-    yields = np.zeros((len(models)))
-    for im, model in enumerate(models):
-        if model == "PICASO":
-            name_model = "PICASO_"+spectrum_contributions+"_only"
-        else:
-            name_model = model
-        planet_table = load_planet_table(f"Archive_Pull_{instru}_{apodizer}_{strehl}_without_systematics_{name_model}.ecsv")
-        planet_table = planet_table[ (~get_invalid_mask(planet_table["PlanetMass"])) & (~get_invalid_mask(planet_table["PlanetRadius"])) & (~get_invalid_mask(planet_table["PlanetTeff"])) & (~get_invalid_mask(planet_table["SMA"])) & (~get_invalid_mask(planet_table["Distance"])) & (~get_invalid_mask(planet_table["AngSep"]))]
-        planet_table = planet_table[(planet_table["AngSep"]>iwa*u.mas)&(planet_table["AngSep"]<owa*u.mas)]
-        #planet_table = planet_table[(planet_table["AngSep"]>iwa*u.mas)] # TODO : crop upper WA (with owa) ?
-        SNR          = get_SNR_from_table(planet_table=planet_table, exposure_time=exposure_time, band=band)
-        planet_table = planet_table[SNR > SNR_thresh]
-        yields[im]   = len(planet_table)
-        data       = np.zeros((len(planet_table), ndim))
-        data[:, 0] = np.log10(np.array(planet_table["PlanetMass"].value))
-        data[:, 1] = np.log10(np.array(planet_table["PlanetRadius"].value))
-        data[:, 2] = np.array(planet_table["PlanetTeff"].value)
-        data[:, 3] = np.log10(np.array(planet_table["SMA"].value))
-        data[:, 4] = np.log10(np.array(planet_table["Distance"].value))
-        data[:, 5] = np.log10(np.array(planet_table["AngSep"].value))
-        corner.corner(
-            data           = data,
-            fig            = figure,
-            bins           = 20,
-            quantiles      = [0.5], # below -+1 sigma 
-            levels         = [0.68, 0.95, 0.997], # 1, 2 and 3 sigma contour
-            show_titles    = False,
-            top_ticks      = False,
-            plot_density   = True,
-            plot_contours  = True,
-            fill_contours  = True,
-            color          = color_models[im],
-            contour_kwargs = {"colors": [color_models[im]], "alpha": 0.85, "linewidths": 1.3},
-            hist_kwargs    = {"color": color_models[im], "alpha": 0.85, "linewidth": 1.3},
-            smooth         = smooth_corner,
-            smooth1d       = smooth_corner)
-    
-    # Earth points
-    axes = np.array(figure.axes).reshape((ndim, ndim))
-    for i in range(ndim):
-        if earth_values[i] is not None:
-            ax = axes[i, i]
-            ax.axvline(earth_values[i], color=color_earth, alpha=alpha_earth)
-    for yi in range(ndim):
-        for xi in range(yi):
-            ax = axes[yi, xi]
-            if earth_values[xi] is not None:
-                ax.axvline(earth_values[xi], color=color_earth, alpha=alpha_earth, lw=5)
-            if earth_values[yi] is not None:
-                ax.axhline(earth_values[yi], color=color_earth, alpha=alpha_earth, lw=5)
-            if earth_values[xi] is not None and earth_values[yi] is not None:
-                ax.plot(earth_values[xi], earth_values[yi], "s"+color_earth, ms=10)
-                
-    handles = []
-    for im, model in enumerate(models):
-        handles.append(mlines.Line2D([], [], color="w", label=""))
-        handles.append(mlines.Line2D([], [], linestyle="-", marker="s", color=color_models[im], label=model+f" ({round(yields[im])} / {len(planet_table_raw)})"))
-    plt.legend(handles=handles, frameon=True, bbox_to_anchor=(1, ndim), loc="upper right", fontsize=14, title="Models:", title_fontsize=16)
-    handles = [mlines.Line2D([], [], linestyle="-", marker="s", color=color_earth, label="Earth")]
-    ax_legend = plt.gca().twinx()
-    ax_legend.legend(handles=handles, frameon=True, bbox_to_anchor=(1, ndim), loc="lower right", fontsize=14)
-    figure.suptitle(f"{instru} re-detections statistics with {len(planet_table_raw)} known planets between {round(iwa)} and {round(owa)} mas\nfor {round(exposure_time/60)} hours per target (with {spectrum_contributions} light)", fontsize=18, y=1.05, fontweight="bold")
     plt.gcf().set_dpi(300)
     plt.show()
+
+
 
 
 
 ##################
 # Yield contrast #
 ##################
+
+def yield_plot_instrus_contrast(table="Archive", exposure_time=10*60, thermal_model="auto", reflected_model="auto", band_quantity="INSTRU", band_contrast="H", mode="best", nbins=18, min_per_bin=3):
+    """
+    Plot rebinned 5-sigma contrast limits for several instruments.
+
+    mode="best"   : minimum contrast in each separation bin.
+    mode="median" : median contrast with the 16th-84th percentile interval.
+    """
+
+    if mode not in ("best", "median"):
+        raise ValueError("mode must be 'best' or 'median'.")
+
+    if band_contrast == "INSTRU":
+        raise ValueError("For a multi-instrument comparison, band_contrast must be a common photometric band, e.g. 'H'.")
+
+    spectrum_contributions, name_model = get_spectrum_contribution_name_model(thermal_model, reflected_model)
+    spectrum_contributions_thermal, name_model_thermal = get_spectrum_contribution_name_model(thermal_model, "None")
+
+    # Each configuration contains:
+    # instru, apodizer, strehl, coronagraph, systematics, PCA, name_model, spectrum_contributions
+    curve_specs = [
+        {
+            "key": "HARMONI",
+            "label": "ELT/HARMONI",
+            "color": colors_instru["HARMONI"],
+            "ls": "-",
+            "lw": 4,
+            "configs": [
+                ("HARMONI", "NO_SP", "JQ1", None, False, False, name_model, spectrum_contributions),
+                #("HARMONI", "SP_Prox", "JQ1", None, False, False, name_model, spectrum_contributions),
+            ],
+        },
+        {
+            "key": "ANDES",
+            "label": "ELT/ANDES w/o coronagraph",
+            "color": colors_instru["ANDES"],
+            "ls": "-",
+            "lw": 4,
+            "configs": [
+                ("ANDES", "NO_SP", "MED", None, False, False, name_model, spectrum_contributions),
+            ],
+        },
+        {
+            "key": "ANDES_LYOT",
+            "label": "ELT/ANDES w/ LYOT",
+            "color": colors_instru["ANDES"],
+            "ls": "-",
+            "marker": "o",
+            "lw": 4,
+            "configs": [
+                ("ANDES", "NO_SP", "MED", "LYOT", False, False, name_model, spectrum_contributions),
+            ],
+        },
+        {
+            "key": "ERIS",
+            "label": "VLT/ERIS",
+            "color": colors_instru["ERIS"],
+            "ls": "-",
+            "lw": 4,
+            "configs": [
+                ("ERIS", "NO_SP", "JQ0", None, False, False, name_model, spectrum_contributions),
+            ],
+        },
+        {
+            "key": "MIRIMRS",
+            "label": "JWST/MIRI/MRS",
+            "color": colors_instru["MIRIMRS"],
+            "ls": "-",
+            "lw": 4,
+            "configs": [
+                ("MIRIMRS", "NO_SP", "NO_JQ", None, False, False, name_model_thermal, spectrum_contributions_thermal),
+            ],
+        },
+        {
+            "key": "MIRIMRS_syst",
+            "label": None,
+            "color": colors_instru["MIRIMRS"],
+            "ls": "--",
+            "lw": 4,
+            "configs": [
+                ("MIRIMRS", "NO_SP", "NO_JQ", None, True, False, name_model_thermal, spectrum_contributions_thermal),
+            ],
+        },
+        {
+            "key": "MIRIMRS_PCA",
+            "label": None,
+            "color": colors_instru["MIRIMRS"],
+            "ls": ":",
+            "lw": 4,
+            "configs": [
+                ("MIRIMRS", "NO_SP", "NO_JQ", None, True, True, name_model_thermal, spectrum_contributions_thermal),
+            ],
+        },
+        {
+            "key": "NIRCam",
+            "label": "JWST/NIRCam",
+            "color": colors_instru["NIRCam"],
+            "ls": "-",
+            "lw": 4,
+            "configs": [
+                ("NIRCam", "NO_SP", "NO_JQ", "MASK335R", False, False, name_model, spectrum_contributions),
+            ],
+        },
+        {
+            "key": "NIRSpec",
+            "label": "JWST/NIRSpec/IFU",
+            "color": colors_instru["NIRSpec"],
+            "ls": "-",
+            "lw": 4,
+            "configs": [
+                ("NIRSpec", "NO_SP", "NO_JQ", None, False, False, name_model_thermal, spectrum_contributions_thermal),
+            ],
+        },
+        {
+            "key": "NIRSpec_syst",
+            "label": None,
+            "color": colors_instru["NIRSpec"],
+            "ls": "--",
+            "lw": 4,
+            "configs": [
+                ("NIRSpec", "NO_SP", "NO_JQ", None, True, False, name_model_thermal, spectrum_contributions_thermal),
+            ],
+        },
+        # {
+        #     "key": "NIRSpec_PCA",
+        #     "label": None,
+        #     "color": colors_instru["NIRSpec"],
+        #     "ls": ":",
+        #     "lw": 3,
+        #     "configs": [
+        #         ("NIRSpec", "NO_SP", "NO_JQ", None, True, True, name_model_thermal, spectrum_contributions_thermal),
+        #     ],
+        # },
+    ]
+
+    def load_config(config):
+        instru, apodizer, strehl, coronagraph, systematics, PCA, model_name, _ = config
+        filename = get_filename_table(table=table, instru=instru, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, systematics=systematics, PCA=PCA, name_model=model_name)
+        return load_planet_table(filename)
+
+    def get_binned_curve(separation, contrast, bins):
+        xbin = np.sqrt(bins[:-1]*bins[1:])
+        y = np.full(len(xbin), np.nan)
+        ylow = np.full(len(xbin), np.nan)
+        yhigh = np.full(len(xbin), np.nan)
+
+        for ibin in range(len(xbin)):
+            mask = np.isfinite(separation) & np.isfinite(contrast) & (separation >= bins[ibin]) & (separation < bins[ibin+1]) & (separation > 0) & (contrast > 0)
+
+            if np.sum(mask) < (1 if mode == "best" else min_per_bin):
+                continue
+
+            if mode == "best":
+                y[ibin] = np.nanmin(contrast[mask])
+            else:
+                y[ibin] = np.nanmedian(contrast[mask])
+                ylow[ibin], yhigh[ibin] = np.nanpercentile(contrast[mask], [16, 84])
+
+        return xbin, y, ylow, yhigh
+
+    def get_planet_contrast(planet_table, instru, contributions):
+        if band_contrast == "INSTRU":
+            star_mag_col   = f"StarINSTRUmag({instru})"
+            planet_mag_col = f"PlanetINSTRUmag({instru})({contributions})"
+        else:
+            star_mag_col   = f"Star{band_contrast}mag"
+            planet_mag_col = f"Planet{band_contrast}mag({contributions})"
+
+        missing_cols = [col for col in [star_mag_col, planet_mag_col] if col not in planet_table.colnames]
+        if missing_cols:
+            raise KeyError(f"Missing magnitude columns: {missing_cols}")
+
+        mag_star = np.asarray(planet_table[star_mag_col], dtype=float)
+        mag_planet = np.asarray(planet_table[planet_mag_col], dtype=float)
+
+        return 10**(-0.4*(mag_planet - mag_star))
+
+    # Load tables and compute one contrast value per planet
+    curves = {}
+    planet_table_ref = None
+    instru_ref = None
+    contributions_ref = None
+
+    for spec in curve_specs:
+        configs = spec["configs"]
+        tables = [load_config(config) for config in configs]
+        contrasts = [
+            get_contrast_from_table(
+                planet_table=planet_table,
+                exposure_time=exposure_time,
+                band_quantity=band_quantity,
+                band_contrast=band_quantity,#band_contrast,
+                instru=config[0],
+                spectrum_contributions=config[7],
+            )
+            for planet_table, config in zip(tables, configs)
+        ]
+
+        names_ref = np.asarray(tables[0]["PlanetName"], dtype=str)
+        for planet_table in tables[1:]:
+            names = np.asarray(planet_table["PlanetName"], dtype=str)
+            if len(names) != len(names_ref) or np.any(names != names_ref):
+                raise ValueError(f"Inconsistent planet ordering for {spec['key']}.")
+
+        # For HARMONI: min(NO_SP, SP_Prox) planet by planet
+        contrast = contrasts[0].copy()
+        for contrast_config in contrasts[1:]:
+            contrast = np.fmin(contrast, contrast_config)
+
+        separation = np.asarray(tables[0]["AngSep"].value if hasattr(tables[0]["AngSep"], "value") else tables[0]["AngSep"], dtype=float)
+        curves[spec["key"]] = {"separation": separation, "contrast": contrast, **spec}
+
+        if planet_table_ref is None:
+            planet_table_ref = tables[0]
+            instru_ref = configs[0][0]
+            contributions_ref = configs[0][7]
+
+    # Common logarithmic separation bins
+    all_sep = np.concatenate([curve["separation"][np.isfinite(curve["separation"]) & (curve["separation"] > 0)] for curve in curves.values()])
+    sep_min, sep_max = np.nanmin(all_sep), np.nanmax(all_sep)
+    bins = np.logspace(np.log10(sep_min), np.log10(sep_max), nbins+1)
+
+    # Figure
+    fig, ax = plt.subplots(figsize=(15, 8.5), dpi=300)
+
+    # All known planets
+    separation_planets = np.asarray(planet_table_ref["AngSep"].value if hasattr(planet_table_ref["AngSep"], "value") else planet_table_ref["AngSep"], dtype=float)
+    planet_contrast = get_planet_contrast(planet_table_ref, instru_ref, contributions_ref)
+    PlanetTeff = np.asarray(planet_table_ref["PlanetTeff"].value if hasattr(planet_table_ref["PlanetTeff"], "value") else planet_table_ref["PlanetTeff"], dtype=float)
+    discovery_method = np.asarray(planet_table_ref["DiscoveryMethod"], dtype=str)
+
+    cmap = plt.get_cmap("plasma")
+    norm = mpl.colors.Normalize(vmin=100, vmax=3000, clip=True)
+    methods = {
+        "Transit": ("v", "Transit"),
+        "Radial Velocity": ("o", "Radial velocity"),
+        "Imaging": ("s", "Direct imaging"),
+        "Other": ("P", "Other"),
+    }
+
+    for method, (marker, label) in methods.items():
+        method_mask = discovery_method == method if method != "Other" else ~np.isin(discovery_method, ["Transit", "Radial Velocity", "Imaging"])
+        mask = method_mask & np.isfinite(separation_planets) & np.isfinite(planet_contrast) & np.isfinite(PlanetTeff) & (separation_planets > 0) & (planet_contrast > 0) & (PlanetTeff > 0)
+
+        ax.scatter(
+            separation_planets[mask],
+            planet_contrast[mask],
+            c=PlanetTeff[mask],
+            cmap=cmap,
+            norm=norm,
+            marker=marker,
+            s=50,
+            edgecolors="k",
+            linewidths=0.4,
+            alpha=0.1,
+            zorder=1,
+        )
+
+    # Rebinned contrast curves
+    results = {}
+    instrument_handles = []
+
+    for key, curve in curves.items():
+        xbin, y, ylow, yhigh = get_binned_curve(curve["separation"], curve["contrast"], bins)
+        line, = ax.plot(xbin, y, color=curve["color"], ls=curve["ls"], lw=curve["lw"], marker=curve.get("marker", None), ms=11, label=curve["label"] if curve["label"] is not None else "_nolegend_", zorder=5)
+        
+        # if mode == "median":
+        #     ax.fill_between(xbin, ylow, yhigh, color=curve["color"], alpha=0.15, linewidth=0, zorder=4)
+
+        if curve["label"] is not None:
+            instrument_handles.append(line)
+
+        results[key] = {"separation": xbin, "contrast": y, "contrast_low": ylow, "contrast_high": yhigh}
+
+    # Discovery-method legend
+    handles_methods = [Line2D([], [], ls="", marker=marker, ms=11, markerfacecolor="white", markeredgecolor="k", color="k", label=label) for marker, label in methods.values()]
+    legend_methods = ax.legend(handles=handles_methods, loc="upper right", fontsize=14, frameon=True, edgecolor="gray", facecolor="white", title="Discovery method", title_fontsize=16, framealpha=1.0)
+    ax.add_artist(legend_methods)
+
+    # Instrument legend
+    legend_instrus = ax.legend(handles=instrument_handles, loc="lower left", fontsize=14, frameon=True, edgecolor="gray", facecolor="white", title="Instruments", title_fontsize=16, framealpha=1.0)
+    ax.add_artist(legend_instrus)
+
+    # Configuration/systematics legend
+    handles_systematics = [
+        Line2D([], [], color="k", ls="-", lw=3, label="Without systematics"),
+        Line2D([], [], color="k", ls="--", lw=3, label="With systematics"),
+        Line2D([], [], color="k", ls=":", lw=3, label="With systematics + PCA"),
+    ]
+    ax.legend(handles=handles_systematics, loc="upper center", fontsize=14, frameon=True, edgecolor="gray", facecolor="white", title="Configuration", title_fontsize=16, framealpha=1.0)
+
+    # Planet-temperature colorbar
+    sm = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+    sm.set_array([])
+    cbar = fig.colorbar(sm, ax=ax, pad=0.02)
+    cbar.set_label(r"Planet $T_\mathrm{eff}$ [K]", fontsize=19, rotation=270, labelpad=27)
+    cbar.ax.tick_params(labelsize=15)
+
+    mode_label = "minimum contrast per separation bin" if mode == "best" else "median contrast and 16th–84th percentiles"
+
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xlim(1e-1, 1e3)
+    ax.set_ylim(1e-10, 1e-1)
+    ax.set_xlabel("Angular separation [mas]", fontsize=21)
+    ax.set_ylabel(rf"5$\sigma$ {band_contrast}-band contrast", fontsize=21)
+    ax.set_title(rf"Exoplanet 5$\sigma$ contrast limits in {exposure_time/60:.0f} hr per target" + f"\n{mode_label}", fontsize=23, weight="bold", pad=18)
+    ax.grid(which="major", linestyle="--", linewidth=0.7, alpha=0.45)
+    ax.grid(which="minor", linestyle=":", linewidth=0.4, alpha=0.25)
+    ax.tick_params(axis="both", which="major", labelsize=18)
+    ax.tick_params(axis="both", which="minor", labelsize=18)
+
+    fig.tight_layout()
+    plt.show()
+
+    return results, fig, ax
+
+
 
 def yield_contrast_instru(instru="ANDES", exposure_time=6*60, thermal_model="BT-Settl", reflected_model="PICASO", apodizer="NO_SP", strehl="MED", coronagraph=None, systematics=False, PCA=False, table="Archive", band="INSTRU"):
     config_data = get_config_data(instru)
@@ -3761,7 +4178,8 @@ def yield_contrast_instru(instru="ANDES", exposure_time=6*60, thermal_model="BT-
     ax1.set_yscale("log")
     ax1.set_xlim(np.nanmin(x), np.nanmax(x))
     ax1.set_ylim(np.nanmin(y), np.nanmax(y))
-    ax1.grid(True, which='both', linestyle='--', linewidth=0.5)
+    ax1.grid(which="major", linestyle="--", linewidth=0.7, alpha=0.45, zorder=-10)
+    ax1.grid(which="minor", linestyle=":",  linewidth=0.4, alpha=0.25, zorder=-10)
     ax1.minorticks_on()
     if coronagraph is not None:
         ax1.set_title(f'{instru} re-detections with {coronagraph} coronagraph ({spectrum_contributions} light with {name_model})\n (from {round(lmin, 1):.1f} to {round(lmax, 1):.1f} µm with R ≈ {int(round(R, -2))}) with '+r'$t_{exp}$='+f'{round(exposure_time/60):.0f}h ', fontsize=16)
@@ -3827,7 +4245,8 @@ def Vrot_plots():
     plt.yscale('log')
     plt.xscale('log')
     plt.xlim(1)
-    plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+    plt.grid(which="major", linestyle="--", linewidth=0.7, alpha=0.45, zorder=-10)
+    plt.grid(which="minor", linestyle=":",  linewidth=0.4, alpha=0.25, zorder=-10)
     plt.minorticks_on()
     plt.tight_layout()
     plt.show()
@@ -3844,7 +4263,8 @@ def Vrot_plots():
     plt.yscale('log')
     plt.xscale('log')
     plt.xlim(1)
-    plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+    plt.grid(which="major", linestyle="--", linewidth=0.7, alpha=0.45, zorder=-10)
+    plt.grid(which="minor", linestyle=":",  linewidth=0.4, alpha=0.25, zorder=-10)
     plt.minorticks_on()
     plt.tight_layout()
     plt.show()
@@ -4158,7 +4578,8 @@ def yield_contrast_ELT_earthlike(thermal_model="BT-Settl", reflected_model="tell
     ax1.fill_between(separation_ANDES,   loA3, hiA3, color=colors_instru["ANDES"],   alpha=alpha_sig, zorder=z0,   edgecolor="gray")
     
     # ---------- grille en dessous des bandes ----------
-    ax1.grid(True, which='both', linestyle='--', linewidth=0.5, zorder=z0-1)
+    ax1.grid(which="major", linestyle="--", linewidth=0.7, alpha=0.45, zorder=z0-1)
+    ax1.grid(which="minor", linestyle=":",  linewidth=0.4, alpha=0.25, zorder=z0-1)
     
     # ---------- points AU-DESSUS de la grille ----------
     scatter_kwargs = dict(marker="o", edgecolors="k", linewidths=0.5, alpha=0.9, zorder=10)
@@ -4298,7 +4719,8 @@ def yield_contrast_ELT_earthlike(thermal_model="BT-Settl", reflected_model="tell
     ax1.set_ylabel("Contrast", fontsize=16)
     
     # Grille sous les contours
-    ax1.grid(True, which='both', linestyle='--', linewidth=0.5, zorder=0.2)
+    ax1.grid(which="major", linestyle="--", linewidth=0.7, alpha=0.45, zorder=-10)
+    ax1.grid(which="minor", linestyle=":",  linewidth=0.4, alpha=0.25, zorder=-10)
     
     # ---------------------- Probabilité de détection ----------------------
     ymin, ymax = ax1.get_ylim()
@@ -4373,231 +4795,174 @@ def yield_contrast_ELT_earthlike(thermal_model="BT-Settl", reflected_model="tell
     plt.tight_layout()
     plt.show()
 
-    
 
 
+def yield_heatmap_ELT(table="Archive", instru="HARMONI", thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl=None, systematics=False, PCA=False, split_ptypes_by_regime=False, band_regime_plot=None, fraction=False, SNR_thresh=SNR_thresh, heatmaps=None, ptypes_heatmap=None, bands_plot=None, config_labels=None, config_axis_name=None, x_axis_name=None, panel_labels=None, title=None, save_dir=None, filename=None):
+    """Plot ELT yield heatmaps from FastYield tables or already-computed heatmaps."""
 
-def yield_heatmap_ELT(
-    table="Archive",
-    instru="HARMONI",
-    thermal_model="auto",
-    reflected_model="auto",
-    exposure_time=10*60,
-    strehl=None,
-    systematics=False,
-    PCA=False,
-    ptypes_heatmap=None,
-    split_ptypes_by_regime=False,
-    band_regime_plot=None,
-    regime_mag_tie_atol=0.0,
-    SNR_thr=SNR_thresh,
-    fraction=False,
-    cmap_name="inferno",
-    local_vmax=True,
-    annotate=True,
-    fontsize=13,
-    dpi=300,
-):
-    """
-    Plot ELT yield heatmaps as a function of spectral band and configuration.
+    # Optional mode using already-computed heatmaps
+    precomputed = heatmaps is not None
+    if precomputed:
+        if ptypes_heatmap is None or bands_plot is None or config_labels is None:
+            raise ValueError("ptypes_heatmap, bands_plot and config_labels must be provided with precomputed heatmaps.")
+        ptypes_heatmap   = list(ptypes_heatmap)
+        bands_plot       = list(bands_plot)
+        config_labels    = list(config_labels)
+        panel_labels     = {} if panel_labels is None else panel_labels
+        config_axis_name = "Configuration" if config_axis_name is None else config_axis_name
+        x_axis_name      = "Spectral band" if x_axis_name is None else x_axis_name
+        colorbar_label   = "Detected [%]" if fraction  else "Detected"
+        for ptype in ptypes_heatmap:
+            if ptype not in heatmaps:
+                raise KeyError(f"Missing heatmap for {ptype!r}.")
+            if np.shape(heatmaps[ptype]) != (len(config_labels), len(bands_plot)):
+                raise ValueError(f"Heatmap {ptype!r} has shape {np.shape(heatmaps[ptype])}, expected {(len(config_labels), len(bands_plot))}.")
 
-    If split_ptypes_by_regime=True, each planet type is split into reflected-
-    and thermal-dominated populations using the planet magnitudes in band_regime_plot.
-    If band_regime_plot=None, the thermal/reflected split is recomputed band by band.
-    """
-
-    # Setup
-    config_data                        = get_config_data(instru)
-    spectrum_contributions, name_model = get_spectrum_contribution_name_model(thermal_model, reflected_model)
-    bands_plot                         = list(config_data["gratings"].keys())
-    base_ptypes                        = list(planet_types_reduced.keys())
-    base_ptypes                        = ["Earth", "Neptune", "Saturn", "Jupiter"]
-    ptype_specs                        = ptype_specs = sum(([{"key": f"{ptype} - Reflected", "base": ptype, "regime": "reflected"}, {"key": f"{ptype} - Thermal", "base": ptype, "regime": "thermal"}] for ptype in base_ptypes), []) if split_ptypes_by_regime else [{"key": ptype, "base": ptype, "regime": None} for ptype in base_ptypes]
-    ptypes_heatmap                     = [spec["key"] for spec in ptype_specs]
-    regime_by_current_band             = split_ptypes_by_regime and (band_regime_plot is None)
-
-    # Configurations
-    if instru == "HARMONI":
-        config_axis_name = "Apodizer"
-        config_values    = list(config_data["apodizers"].keys())
-        configs          = [{"label": str(cfg).replace("_", " "), "apodizer": cfg, "coronagraph": config_data["coronagraphs"][0]} for cfg in config_values]
-    elif instru == "ANDES":
-        config_axis_name = "Coronagraph"
-        config_values    = list(config_data["coronagraphs"])
-        configs          = [{"label": "No coronagraph" if cfg is None else str(cfg), "apodizer":  config_data["apodizers"][0], "coronagraph": cfg} for cfg in config_values]
+    # Mode using FastYield tables
     else:
-        raise ValueError("yield_heatmap_ELT is designed for HARMONI and ANDES.")
-    config_labels = [cfg["label"] for cfg in configs]
+        config_data                        = get_config_data(instru)
+        spectrum_contributions, name_model = get_spectrum_contribution_name_model(thermal_model, reflected_model)
+        bands_plot                         = list(config_data["gratings"].keys())
+        base_ptypes                        = ["Jupiter", "Saturn", "Neptune", "Earth"]
+        ptype_specs                        = sum(([{"key": f"{ptype}-like - Reflected", "base": ptype, "regime": "reflected"}, {"key": f"{ptype}-like - Thermal", "base": ptype, "regime": "thermal"}] for ptype in base_ptypes), []) if split_ptypes_by_regime else [{"key": ptype, "base": ptype, "regime": None} for ptype in base_ptypes]
+        ptypes_heatmap                     = [spec["key"] for spec in ptype_specs]
+        regime_by_current_band             = split_ptypes_by_regime and band_regime_plot is None
 
-    # Small helpers
-    def get_ptype_mask(planet_table, ptype):
-        if ptype.lower() in ("all", "all planets", "total"):
-            return np.ones(len(planet_table), dtype=bool)
-        return np.asarray(get_mask_planet_type(planet_table=planet_table, planet_type=ptype), dtype=bool)
+        if instru == "HARMONI":
+            config_axis_name = "Apodizer"
+            configs          = [{"label": str(cfg).replace("_", " "), "apodizer": cfg, "coronagraph": config_data["coronagraphs"][0]} for cfg in config_data["apodizers"]]
+        elif instru == "ANDES":
+            config_axis_name = "Coronagraph"
+            configs          = [{"label": "No coronagraph" if cfg is None else str(cfg), "apodizer": "NO_SP", "coronagraph": cfg} for cfg in config_data["coronagraphs"]]
+        else:
+            raise ValueError("yield_heatmap_ELT is designed for HARMONI and ANDES unless precomputed heatmaps are provided.")
+        config_labels  = [cfg["label"] for cfg in configs]
+        x_axis_name    = "Spectral resolution" if instru == "ANDES" else "Spectral band"
+        colorbar_label = "Detected [%]" if fraction else "Detected"
 
-    def get_regime_masks(planet_table, band):
-        col_th = f"Planet{band}mag({instru})(thermal)" if band == "INSTRU" else f"Planet{band}mag(thermal)"
-        col_re = f"Planet{band}mag({instru})(reflected)" if band == "INSTRU" else f"Planet{band}mag(reflected)"
+        def get_ptype_mask(planet_table, ptype):
+            if ptype.lower() in ("all", "all planets", "total"):
+                return np.ones(len(planet_table), dtype=bool)
+            return np.asarray(get_mask_planet_type(planet_table=planet_table, planet_type=ptype), dtype=bool)
 
-        if col_th not in planet_table.colnames or col_re not in planet_table.colnames:
-            raise KeyError(f"Missing reflected/thermal columns for band {band}: {col_th}, {col_re}")
+        def get_regime_masks(planet_table, band):
+            col_th = f"Planet{band}mag({instru})(thermal)"   if band == "INSTRU" else f"Planet{band}mag(thermal)"
+            col_re = f"Planet{band}mag({instru})(reflected)" if band == "INSTRU" else f"Planet{band}mag(reflected)"
+            if col_th not in planet_table.colnames or col_re not in planet_table.colnames:
+                raise KeyError(f"Missing reflected/thermal columns for band {band}: {col_th}, {col_re}")
+            mag_th = np.asarray(planet_table[col_th], dtype=float)
+            mag_re = np.asarray(planet_table[col_re], dtype=float)
+            valid  = np.isfinite(mag_th) & np.isfinite(mag_re)
+            return {"thermal": valid & (mag_th < mag_re), "reflected": valid & (mag_re < mag_th)}
 
-        mag_th = np.asarray(planet_table[col_th], dtype=float)
-        mag_re = np.asarray(planet_table[col_re], dtype=float)
-        valid  = np.isfinite(mag_th) & np.isfinite(mag_re)
+        heatmaps             = {ptype: np.full((len(configs), len(bands_plot)), np.nan, dtype=float) for ptype in ptypes_heatmap}
+        detected_names_total = {ptype: set() for ptype in ptypes_heatmap}
+        for icfg, cfg in enumerate(configs):
+            filename_table = get_filename_table(table=table, instru=instru, apodizer=cfg["apodizer"], strehl=strehl, coronagraph=cfg["coronagraph"], systematics=systematics, PCA=PCA, name_model=name_model)
+            planet_table   = load_planet_table(filename_table)
+            base_masks     = {ptype: get_ptype_mask(planet_table, ptype) for ptype in base_ptypes}
+            if split_ptypes_by_regime and not regime_by_current_band:
+                regime_masks = get_regime_masks(planet_table, band_regime_plot)
+                masks_fixed  = {spec["key"]: base_masks[spec["base"]] & regime_masks[spec["regime"]] for spec in ptype_specs}
+            elif not split_ptypes_by_regime:
+                masks_fixed = {spec["key"]: base_masks[spec["base"]] for spec in ptype_specs}
 
-        return {
-            "thermal": valid & (mag_th < mag_re - regime_mag_tie_atol),
-            "reflected": valid & (mag_re < mag_th - regime_mag_tie_atol),
-        }
-
-    # -------------------------------------------------------------------------
-    # Compute heatmaps
-    # -------------------------------------------------------------------------
-    heatmaps  = {ptype: np.full((len(configs), len(bands_plot)), np.nan, dtype=float) for ptype in ptypes_heatmap}
-    N_planets = {ptype: np.zeros((len(configs), len(bands_plot)), dtype=int) for ptype in ptypes_heatmap} if regime_by_current_band else {ptype: np.zeros(len(configs), dtype=int) for ptype in ptypes_heatmap}
-
-    for icfg, cfg in enumerate(configs):
-        filename = get_filename_table(table=table, instru=instru, apodizer=cfg["apodizer"], strehl=strehl, coronagraph=cfg["coronagraph"], systematics=systematics, PCA=PCA, name_model=name_model)
-        planet_table = load_planet_table(filename)
-
-        base_masks = {ptype: get_ptype_mask(planet_table, ptype) for ptype in base_ptypes}
-
-        if split_ptypes_by_regime and not regime_by_current_band:
-            regime_masks = get_regime_masks(planet_table, band_regime_plot)
-            masks_fixed = {spec["key"]: base_masks[spec["base"]] & regime_masks[spec["regime"]] for spec in ptype_specs}
-            for ptype in ptypes_heatmap:
-                N_planets[ptype][icfg] = int(np.sum(masks_fixed[ptype]))
-
-        elif not split_ptypes_by_regime:
-            masks_fixed = {spec["key"]: base_masks[spec["base"]] for spec in ptype_specs}
-            for ptype in ptypes_heatmap:
-                N_planets[ptype][icfg] = int(np.sum(masks_fixed[ptype]))
-
-        for iband, band in enumerate(bands_plot):
-            missing_cols = [col for col in [f"DIT_{band}", f"signal_{band}", f"sigma_fund_{band}", f"sigma_syst_{band}"] if col not in planet_table.colnames]
-            if len(missing_cols) > 0:
-                raise KeyError(f"Missing columns for band {band!r} in {filename}: {missing_cols}")
-
-            SNR = get_SNR_from_table(planet_table=planet_table, exposure_time=exposure_time, band=band)
-            detected = np.isfinite(SNR) & (SNR > SNR_thr)
-
-            if regime_by_current_band:
-                regime_masks = get_regime_masks(planet_table, band)
-                masks = {spec["key"]: base_masks[spec["base"]] & regime_masks[spec["regime"]] for spec in ptype_specs}
+            for iband, band in enumerate(bands_plot):
+                missing_cols = [col for col in [f"DIT_{band}", f"signal_{band}", f"sigma_fund_{band}", f"sigma_syst_{band}"] if col not in planet_table.colnames]
+                if missing_cols:
+                    raise KeyError(f"Missing columns for band {band!r} in {filename_table}: {missing_cols}")
+                SNR      = get_SNR_from_table(planet_table=planet_table, exposure_time=exposure_time, band=band)
+                detected = np.isfinite(SNR) & (SNR >= SNR_thresh)
+                if regime_by_current_band:
+                    regime_masks = get_regime_masks(planet_table, band)
+                    masks        = {spec["key"]: base_masks[spec["base"]] & regime_masks[spec["regime"]] for spec in ptype_specs}
+                else:
+                    masks = masks_fixed
+                planet_names = np.asarray(planet_table["PlanetName"], dtype=str)
                 for ptype in ptypes_heatmap:
-                    N_planets[ptype][icfg, iband] = int(np.sum(masks[ptype]))
-            else:
-                masks = masks_fixed
+                    N_ptype        = int(np.sum(masks[ptype]))
+                    mask_det_ptype = detected & masks[ptype]
+                    N_det          = int(np.sum(mask_det_ptype))
+                    detected_names_total[ptype].update(planet_names[mask_det_ptype])
+                    heatmaps[ptype][icfg, iband] = 100.0*N_det/N_ptype if fraction and N_ptype > 0 else (np.nan if fraction else float(N_det))
 
-            for ptype in ptypes_heatmap:
-                N_ptype = int(np.sum(masks[ptype]))
-                N_det = int(np.sum(detected & masks[ptype]))
-                heatmaps[ptype][icfg, iband] = 100.0 * N_det / N_ptype if fraction and N_ptype > 0 else (np.nan if fraction else float(N_det))
+        panel_labels = {ptype: f"{str(ptype).replace('_', ' ')} (total: {len(detected_names_total[ptype])})" for ptype in ptypes_heatmap}
+        if title is None:
+            axis_text = "resolution × configuration" if instru == "ANDES" else "band × configuration"
+            title     = f"ELT/{instru}: {axis_text} {'fractional yield' if fraction else 'yield'} with {exposure_time/60:.0f} hr per target"
 
-    # -------------------------------------------------------------------------
     # Plot
-    # -------------------------------------------------------------------------
-    nptype    = len(ptypes_heatmap)
-    ncols     = min(4, nptype)
-    nrows     = int(np.ceil(nptype / ncols))
-    fig, axes = plt.subplots(nrows, ncols, figsize=(max(5.2*ncols, 6.0), max((2.2 + 0.45*len(configs))*nrows, 3.8)), dpi=dpi, squeeze=False)
-    cmap      = plt.get_cmap(cmap_name)
+    nptype     = len(ptypes_heatmap)
+    ncols      = 2
+    nrows      = int(np.ceil(nptype / ncols))
+    fig, axes  = plt.subplots(nrows, ncols, figsize=(max(5.2*ncols, 6.0), max((2.2 + 0.45*len(config_labels))*nrows, 3.8)), dpi=300, squeeze=False)
+    cmap       = plt.get_cmap("inferno")
+    fontsize   = 13
+    local_vmax = True
 
     if local_vmax:
         global_vmax = None
     else:
-        vals = np.concatenate([heatmaps[ptype].ravel() for ptype in ptypes_heatmap])
-        global_vmax = np.nanmax(vals[np.isfinite(vals)]) if np.any(np.isfinite(vals)) else 1.0
+        values      = np.concatenate([np.asarray(heatmaps[ptype], dtype=float).ravel() for ptype in ptypes_heatmap])
+        global_vmax = np.nanmax(values[np.isfinite(values)]) if np.any(np.isfinite(values)) else 1.0
         global_vmax = 1.0 if not np.isfinite(global_vmax) or global_vmax <= 0 else global_vmax
 
     for ipt, ptype in enumerate(ptypes_heatmap):
-        ax = axes[ipt // ncols, ipt % ncols]
-        hmap = heatmaps[ptype]
+        ax   = axes[ipt//ncols, ipt%ncols]
+        hmap = np.asarray(heatmaps[ptype], dtype=float)
         vmax = np.nanmax(hmap) if local_vmax and np.any(np.isfinite(hmap)) else global_vmax
         vmax = 1.0 if not np.isfinite(vmax) or vmax <= 0 else vmax
+        im   = ax.imshow(hmap, origin="lower", aspect="auto", cmap=cmap, vmin=0.0, vmax=vmax)
 
-        im = ax.imshow(hmap, origin="lower", aspect="auto", cmap=cmap, vmin=0.0, vmax=vmax)
+        for icfg in range(len(config_labels)):
+            for iband in range(len(bands_plot)):
+                val = hmap[icfg, iband]
+                if not np.isfinite(val):
+                    continue
+                text = f"{val:.0f}%" if fraction else (f"{val:.1f}" if instru == "PCS" else f"{int(round(val))}")
+                ax.text(iband, icfg, text, ha="center", va="center", fontsize=fontsize-1, color="white" if val < 0.55*vmax else "black", weight="bold")
 
-        if annotate:
-            for icfg in range(len(configs)):
-                for iband in range(len(bands_plot)):
-                    val = hmap[icfg, iband]
-                    if np.isfinite(val):
-                        ax.text(iband, icfg, f"{val:.0f}%" if fraction else f"{int(round(val))}", ha="center", va="center", fontsize=fontsize-4, color="white" if val < 0.55*vmax else "black", weight="bold")
-
-        ax.set_title(str(ptype).replace("_", " "), fontsize=fontsize+1, pad=8, weight="bold")
+        ax.set_title(panel_labels.get(ptype, str(ptype)), fontsize=fontsize+3, pad=fontsize+3, weight="bold")
         ax.set_xticks(np.arange(len(bands_plot)))
-        ax.set_xticklabels([str(band).replace("_", " ") for band in bands_plot], fontsize=fontsize-3)
+        ax.set_xticklabels([str(value) for value in bands_plot], fontsize=fontsize)
         ax.set_yticks(np.arange(len(config_labels)))
-        ax.set_yticklabels(config_labels, fontsize=fontsize-3)
-
-        if ipt // ncols == nrows - 1:
-            ax.set_xlabel("Spectral band", fontsize=fontsize, labelpad=8)
+        ax.set_yticklabels([str(value) for value in config_labels], fontsize=fontsize)
+        if ipt//ncols == nrows-1:
+            ax.set_xlabel(x_axis_name, fontsize=fontsize+5, labelpad=fontsize)
         else:
             ax.tick_params(labelbottom=False)
-
-        if ipt % ncols == 0:
-            ax.set_ylabel(config_axis_name, fontsize=fontsize, labelpad=10)
+        if ipt%ncols == 0:
+            ax.set_ylabel(config_axis_name, fontsize=fontsize+5, labelpad=fontsize-3)
         else:
             ax.tick_params(labelleft=False)
-
         ax.set_xticks(np.arange(-0.5, len(bands_plot), 1), minor=True)
-        ax.set_yticks(np.arange(-0.5, len(configs), 1), minor=True)
+        ax.set_yticks(np.arange(-0.5, len(config_labels), 1), minor=True)
         ax.grid(which="minor", color="w", linestyle="-", linewidth=0.6, alpha=0.18)
         ax.tick_params(which="minor", bottom=False, left=False)
         ax.tick_params(axis="both", which="major", length=4, width=0.8, pad=3)
 
-        cbar = fig.colorbar(im, ax=ax, pad=0.018, shrink=0.82)
-        cbar.ax.tick_params(labelsize=fontsize-5)
-        cbar.set_label("Detected [%]" if fraction else "Detected", fontsize=fontsize-4, labelpad=8)
+        cbar = fig.colorbar(im, ax=ax, pad=0.03)
+        cbar.ax.tick_params(labelsize=fontsize)
+        cbar.set_label(colorbar_label, fontsize=fontsize+3, labelpad=16, rotation=270)
+        if not fraction:
+            cbar.ax.yaxis.set_major_locator(mpl.ticker.MaxNLocator(nbins=4, integer=instru != "PCS"))
 
-    for k in range(nptype, nrows*ncols):
-        axes[k // ncols, k % ncols].axis("off")
-
-    syst_label = "with systematics + PCA" if (systematics and PCA) else ("with systematics" if systematics else "without systematics")
-    regime_label = "band-dependent reflected/thermal split" if split_ptypes_by_regime and regime_by_current_band else (f"reflected/thermal split from {band_regime_plot}" if split_ptypes_by_regime else "unsplit planet types")
-    title = f"ELT/{instru} band × configuration {'fractional yield' if fraction else 'yield'}"
-    title += f"\n{exposure_time/60:.1f} h per target, S/N > {SNR_thr:g}, {spectrum_contributions} light ({name_model}), {syst_label}, {regime_label}"
-
-    fig.suptitle(title, fontsize=fontsize+3, weight="bold", y=0.995)
-    fig.subplots_adjust(left=0.10, right=0.98, bottom=0.08, top=0.88, wspace=0.22, hspace=0.34)
+    for ipt in range(nptype, nrows*ncols):
+        axes[ipt//ncols, ipt%ncols].axis("off")
+    if title is not None:
+        fig.suptitle(title, fontsize=fontsize+8, weight="bold", y=0.96)
+    fig.subplots_adjust(left=0.10, right=0.98, bottom=0.08, top=0.88, wspace=0.16, hspace=0.30)
+    if save_dir is not None:
+        save_dir = Path(save_dir)
+        save_dir.mkdir(parents=True, exist_ok=True)
+        filename = f"ELT_{instru}_yield_heatmap.png" if filename is None else filename
+        fig.savefig(save_dir/filename, bbox_inches="tight", dpi=300)
     plt.show()
-
-    return heatmaps, N_planets, fig, axes
-
+    return fig, axes
 
 
 
-
-def yield_population_plot(
-    table="Archive",
-    instru="HARMONI",
-    thermal_model="auto",
-    reflected_model="auto",
-    exposure_time=10*60,
-    strehl=None,
-    config_mode="fixed",
-    apodizer=None,
-    coronagraph=None,
-    band_snr="INSTRU",
-    band_contrast_plot="I",
-    band_regime_plot=None,
-    systematics=False,
-    PCA=False,
-    SNR_thr=SNR_thresh,
-    ptypes_plot=None,
-    obs_xlim=(5, 1000),
-    obs_ylim=(1e-11, 1e-6),
-    phys_xlim=(5e-3, 2e2),
-    phys_ylim=(5e-2, 1e4),
-    ss_detected=170,
-    ss_nondetected=80,
-    alpha_detected=0.90,
-    alpha_nondetected=0.10,
-    fontsize=15,
-    dpi=300,
-):
+def yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl="JQ1", config_mode="best", apodizer="NO_SP", coronagraph=None, band_snr="INSTRU", band_contrast_plot="INSTRU", band_regime_plot="INSTRU", systematics=False, PCA=False, planet_table=None, SNR_plot=None, dominant_noise=None, SNR_thr=None, save_dir=None, DL_mas=None):
     """
     Plot in one call:
       1) detected population,
@@ -4606,50 +4971,63 @@ def yield_population_plot(
 
     Detection is computed from get_SNR_from_table().
     If config_mode="fixed", one configuration is used.
-    If config_mode="max", the best SNR over all apodizer/coronagraph configurations is used planet by planet.
+    If config_mode="max",   the best SNR over all apodizer/coronagraph configurations is used planet by planet.
     """
-
-    # -------------------------------------------------------------------------
-    # Setup
-    # -------------------------------------------------------------------------
-    config_data = get_config_data(instru)
-    if config_data["type"] == "imager":
-        raise KeyError(f"{instru} is not a spectrograph but an {config_data['type']}.")
-
-    if strehl is None:
-        strehl = config_data["strehls"][0]
-
-    if band_regime_plot is None:
-        band_regime_plot = band_contrast_plot
-
+    
+    if instru == "PCS":
+        obs_xlim      = (1e-2, 1e3)
+        obs_xlim      = (1e-2, 1e6)
+    else:
+        obs_xlim      = (1e-2, 1e6)
+    obs_ylim          = (1e-10, 1e-1)
+    phys_xlim         = (5e-3, 1e3) # [SMA]
+    phys_ylim         = (5e-1, 1e4) # [M_earth]
+    ss_detected       = 180
+    ss_nondetected    = 90
+    alpha_detected    = 0.95
+    alpha_nondetected = 0.05
+    fontsize          = 22
+    dpi               = 300
+    
+    # Optional mode using already-computed FastYield results
+    precomputed = planet_table is not None or SNR_plot is not None or dominant_noise is not None
+    if precomputed and (planet_table is None or SNR_plot is None):
+        raise ValueError("planet_table and SNR_plot must both be provided in precomputed mode.")
+    SNR_thr  = SNR_thresh if SNR_thr is None else float(SNR_thr)
+    save_dir = None if save_dir is None else Path(save_dir)
+    if save_dir is not None:
+        save_dir.mkdir(parents=True, exist_ok=True)
+    
     spectrum_contributions, name_model = get_spectrum_contribution_name_model(thermal_model, reflected_model)
-
-    apodizers = list(config_data["apodizers"].keys())
-    coronagraphs = list(config_data["coronagraphs"])
-
-    if config_mode.lower() in ("max", "best", "all"):
-        configs = [{"apodizer": apo, "coronagraph": coro, "label": str(apo).replace("_", " ") + (f" + {coro}" if coro is not None else "")} for apo in apodizers for coro in coronagraphs]
-    elif config_mode.lower() in ("fixed", "single"):
-        apodizer = apodizers[0] if apodizer is None else apodizer
-        coronagraph = coronagraphs[0] if coronagraph is None else coronagraph
-        configs = [{"apodizer": apodizer, "coronagraph": coronagraph, "label": str(apodizer).replace("_", " ") + (f" + {coronagraph}" if coronagraph is not None else "")}]
+    
+    if precomputed:
+        config_data = None
+        configs     = None
+        DL_mas      = get_DL_FWHM(instru="ANDES", sep_unit="mas", band="INSTRU") if DL_mas is None else float(DL_mas) # ANDES DL PROXY FOR PCS
     else:
-        raise ValueError("config_mode must be 'fixed' or 'max'.")
+        config_data  = get_config_data(instru)
+        apodizers    = list(config_data["apodizers"].keys())
+        coronagraphs = list(config_data["coronagraphs"])
+        DL_mas       = get_DL_FWHM(instru=instru, sep_unit="mas", band="INSTRU") if DL_mas is None else float(DL_mas)
+        if config_mode.lower() in ("max", "best", "all"):
+            configs = [{"apodizer": apo, "coronagraph": coro, "label": str(apo).replace("_", " ") + (f" + {coro}" if coro is not None else "")} for apo in apodizers for coro in coronagraphs]
+        elif config_mode.lower() in ("fixed", "single"):
+            apodizer    = apodizers[0] if apodizer is None else apodizer
+            coronagraph = coronagraphs[0] if coronagraph is None else coronagraph
+            configs     = [{"apodizer": apodizer, "coronagraph": coronagraph, "label": str(apodizer).replace("_", " ") + (f" + {coronagraph}" if coronagraph is not None else "")}]
+        else:
+            raise ValueError("config_mode must be 'fixed' or 'max'.")
 
-    if ptypes_plot is None:
-        ptypes_plot = list(planet_types_reduced.keys()) if "planet_types_reduced" in globals() else list(planet_types.keys())
-    elif isinstance(ptypes_plot, str):
-        ptypes_plot = [ptypes_plot]
-    else:
-        ptypes_plot = list(ptypes_plot)
-
-    marker_default = ["o", "s", "^", "D", "v", "P", "X", "*", "<", ">"]
+    ptypes_plot         = ["Jupiter", "Saturn", "Neptune", "Earth"]    
+    marker_default      = ["s",       "v",      "P",       "o"]
     marker_ptypes_local = {ptype: globals().get("marker_ptypes", {}).get(ptype, marker_default[i % len(marker_default)]) for i, ptype in enumerate(ptypes_plot)}
-    label_ptypes_local = {ptype: globals().get("label_ptypes", {}).get(ptype, str(ptype).replace("_", " ")) for ptype in ptypes_plot}
+    label_ptypes_local  = {ptype: globals().get("label_ptypes",  {}).get(ptype, str(ptype).replace("_", " ")) for ptype in ptypes_plot}
+    
+    detection_methods_plot   = ["Transit", "Radial Velocity", "Imaging", "Other"]
+    marker_detection_methods = {"Transit": "v", "Radial Velocity": "o", "Imaging": "s", "Other": "P"}
+    label_detection_methods  = {"Transit": "Transit", "Radial Velocity": "Radial velocity", "Imaging": "Direct imaging", "Other": "Other"}
 
-    # -------------------------------------------------------------------------
     # Helpers
-    # -------------------------------------------------------------------------
     def arr(colname):
         col = planet_table[colname]
         return np.asarray(col.value if hasattr(col, "value") else col, dtype=float)
@@ -4660,35 +5038,32 @@ def yield_population_plot(
         return np.asarray(get_mask_planet_type(planet_table=planet_table, planet_type=ptype), dtype=bool)
 
     def get_combined_planet_mag(band):
-        col_tot, col_th, col_re = f"Planet{band}mag(thermal+reflected)", f"Planet{band}mag(thermal)", f"Planet{band}mag(reflected)"
+        if band=="INSTRU":
+            col_tot, col_th, col_re = f"PlanetINSTRUmag({instru})(thermal+reflected)", f"PlanetINSTRUmag({instru})(thermal)", f"PlanetINSTRUmag({instru})(reflected)"
+        else:
+            col_tot, col_th, col_re = f"Planet{band}mag(thermal+reflected)", f"Planet{band}mag(thermal)", f"Planet{band}mag(reflected)"
         if col_tot in planet_table.colnames:
             return np.asarray(planet_table[col_tot], dtype=float)
-
-        mag = np.full(len(planet_table), np.nan, dtype=float)
+        mag  = np.full(len(planet_table), np.nan, dtype=float)
         flux = np.zeros(len(planet_table), dtype=float)
-
         if col_th in planet_table.colnames:
             mag_th = np.asarray(planet_table[col_th], dtype=float)
             flux[np.isfinite(mag_th)] += 10**(-0.4 * mag_th[np.isfinite(mag_th)])
-
         if col_re in planet_table.colnames:
             mag_re = np.asarray(planet_table[col_re], dtype=float)
             flux[np.isfinite(mag_re)] += 10**(-0.4 * mag_re[np.isfinite(mag_re)])
-
         mag[np.isfinite(flux) & (flux > 0)] = -2.5 * np.log10(flux[np.isfinite(flux) & (flux > 0)])
         return mag
 
     def get_dominant_noise(planet_table, band):
         DIT = np.asarray(planet_table[f"DIT_{band}"], dtype=float)
         DIT = np.where(np.isfinite(DIT) & (DIT > 0), DIT, np.nan)
-
         if all(col in planet_table.colnames for col in [f"sigma_fund_{band}", f"sigma_syst_{band}"]):
             var_fund = exposure_time / DIT * np.asarray(planet_table[f"sigma_fund_{band}"], dtype=float)**2
             var_syst = (exposure_time / DIT)**2 * np.asarray(planet_table[f"sigma_syst_{band}"], dtype=float)**2
-            labels = np.array(["Fundamental noise", "Systematics" if systematics else "Residuals"], dtype=object)
-            idx = np.nanargmax(np.vstack([var_fund, var_syst]), axis=0)
+            labels   = np.array(["Fundamental noise", "Systematics" if systematics else "Residuals"], dtype=object)
+            idx      = np.nanargmax(np.vstack([var_fund, var_syst]), axis=0)
             return labels[idx]
-
         return np.full(len(planet_table), "Unknown", dtype=object)
 
     def setup_axes(ax, xlabel, ylabel, xlim, ylim, title):
@@ -4696,201 +5071,252 @@ def yield_population_plot(
         ax.set_yscale("log")
         ax.set_xlim(*xlim)
         ax.set_ylim(*ylim)
-        ax.set_xlabel(xlabel, fontsize=fontsize, labelpad=10)
-        ax.set_ylabel(ylabel, fontsize=fontsize, labelpad=10)
+        ax.set_xlabel(xlabel, fontsize=fontsize+2, labelpad=10)
+        ax.set_ylabel(ylabel, fontsize=fontsize+2, labelpad=10)
         ax.set_title(title, fontsize=fontsize+2, weight="bold", pad=10)
-        ax.grid(True, which="major", ls="-", lw=0.7, alpha=0.22)
-        ax.grid(True, which="minor", ls="-", lw=0.4, alpha=0.10)
+        ax.grid(which="major", linestyle="--", linewidth=0.7, alpha=0.45, zorder=-10)
+        ax.grid(which="minor", linestyle=":",  linewidth=0.4, alpha=0.25, zorder=-10)
         ax.tick_params(axis="both", which="major", labelsize=fontsize-2, length=6, width=1.0)
         ax.tick_params(axis="both", which="minor", labelsize=fontsize-2, length=3, width=0.8)
 
-    def add_ptype_legend(ax):
-        handles = [Line2D([], [], ls="", marker=marker_ptypes_local[ptype], ms=11, markerfacecolor="white", markeredgecolor="k", markeredgewidth=1.5, color="k", label=label_ptypes_local[ptype]) for ptype in ptypes_plot]
-        ax.add_artist(ax.legend(handles=handles, fontsize=fontsize-2, loc="lower left", frameon=True, edgecolor="gray", facecolor="white", title="Planet type", title_fontsize=fontsize))
-
-    def add_detection_legend(ax):
+    def add_ptype_legend(ax, loc="lower right"):
+        handles = [Line2D([], [], ls="", marker=marker_ptypes_local[ptype], ms=13, markerfacecolor="white", markeredgecolor="k", markeredgewidth=1.5, color="k", label=label_ptypes_local[ptype]) for ptype in ptypes_plot]
+        ax.add_artist(ax.legend(handles=handles, fontsize=fontsize-2, loc=loc, frameon=True, edgecolor="gray", facecolor="white", title="Planet type", title_fontsize=fontsize))
+    
+    def add_detection_method_legend(ax, loc="lower right"):
+        handles = [Line2D([], [], ls="", marker=marker_detection_methods[method], ms=13, markerfacecolor="white", markeredgecolor="k", markeredgewidth=1.5, color="k", label=label_detection_methods[method]) for method in detection_methods_plot]
+        ax.add_artist(ax.legend(handles=handles, fontsize=fontsize-2, loc=loc, frameon=True, edgecolor="gray", facecolor="white", title="Discovery method", title_fontsize=fontsize))
+    
+    def add_detection_legend(ax, loc="lower left"):
         handles = [
-            Line2D([], [], ls="", marker="o", ms=11, markerfacecolor="0.65", markeredgecolor="none", alpha=0.35, color="0.65", label="Non-detected"),
-            Line2D([], [], ls="", marker="o", ms=11, markerfacecolor="0.65", markeredgecolor="k", markeredgewidth=1.5, alpha=alpha_detected, color="0.65", label="Detected"),
+            Line2D([], [], ls="", marker="o", ms=13, markerfacecolor="0.65", markeredgecolor="none", alpha=0.35, color="0.65", label="Non-detected"),
+            Line2D([], [], ls="", marker="o", ms=13, markerfacecolor="0.65", markeredgecolor="k", markeredgewidth=1.5, alpha=alpha_detected, color="0.65", label="Detected"),
         ]
-        ax.add_artist(ax.legend(handles=handles, fontsize=fontsize, loc="lower right", frameon=True, edgecolor="gray", facecolor="white"))
+        ax.add_artist(ax.legend(handles=handles, fontsize=fontsize-2, loc=loc, frameon=True, edgecolor="gray", facecolor="white"))
+    
+    def get_marker_groups(space):
+        if space == "obs":
+            return detection_methods_plot, masks_detection_method, marker_detection_methods
+        return ptypes_plot, masks_ptype, marker_ptypes_local
 
-    def plot_population_panel(ax, x, y, valid, xlabel, ylabel, xlim, ylim, title):
-        for ptype in ptypes_plot:
-            mask = valid & not_detected & masks_ptype[ptype]
+    def plot_population_panel(ax, x, y, valid, xlabel, ylabel, xlim, ylim, title, space):
+        groups, masks, markers = get_marker_groups(space)
+        for group in groups:
+            mask = valid & not_detected & masks[group]
             if np.any(mask):
-                ax.scatter(x[mask], y[mask], c="0.70", marker=marker_ptypes_local[ptype], s=ss_nondetected, edgecolors="none", alpha=alpha_nondetected, zorder=1)
-
-        for ptype in ptypes_plot:
-            mask = valid & detected & masks_ptype[ptype]
+                #ax.scatter(x[mask], y[mask], c="0.70", marker=markers[group], s=ss_nondetected, edgecolors="none", alpha=alpha_nondetected, zorder=1)
+                ax.scatter(x[mask], y[mask], c=Teff_star[mask], cmap=cmap_teff, norm=norm_teff, marker=markers[group], s=ss_nondetected, edgecolors="none", alpha=alpha_nondetected, zorder=1)
+        for group in groups:
+            mask = valid & detected & masks[group]
             if np.any(mask):
-                ax.scatter(x[mask], y[mask], c=Teff_star[mask], cmap=cmap_teff, norm=norm_teff, marker=marker_ptypes_local[ptype], s=ss_detected, edgecolors="k", linewidths=0.75, alpha=alpha_detected, zorder=3)
-
+                ax.scatter(x[mask], y[mask], c=Teff_star[mask], cmap=cmap_teff, norm=norm_teff, marker=markers[group], s=ss_detected, edgecolors="k", linewidths=0.75, alpha=alpha_detected, zorder=3)
         setup_axes(ax, xlabel, ylabel, xlim, ylim, title)
-
-    def plot_class_panel(ax, x, y, valid, classes, labels, colors, alphas, xlabel, ylabel, xlim, ylim, title):
+        
+    def plot_population_planet_teff_panel(ax, x, y, valid, xlabel, ylabel, xlim, ylim, title, space):
+        groups, masks, markers = get_marker_groups(space)
+        for group in groups:
+            mask = valid & not_detected & masks[group]
+            if np.any(mask):
+                #ax.scatter(x[mask], y[mask], c="0.70", marker=markers[group], s=ss_nondetected, edgecolors="none", alpha=alpha_nondetected, zorder=1)
+                ax.scatter(x[mask], y[mask], c=PlanetTeff[mask], cmap=cmap_planet_teff, norm=norm_planet_teff, marker=markers[group], s=ss_nondetected, edgecolors="none", alpha=alpha_nondetected, zorder=1)
+        for group in groups:
+            mask = valid & detected & masks[group]
+            if np.any(mask):
+                ax.scatter(x[mask], y[mask], c=PlanetTeff[mask], cmap=cmap_planet_teff, norm=norm_planet_teff, marker=markers[group], s=ss_detected, edgecolors="k", linewidths=0.75, alpha=alpha_detected, zorder=3)
+        setup_axes(ax, xlabel, ylabel, xlim, ylim, title)
+        
+    def plot_class_panel(ax, x, y, valid, classes, labels, colors, alphas, xlabel, ylabel, xlim, ylim, title, space):
+        groups, masks, markers = get_marker_groups(space)
         for label in labels:
-            for ptype in ptypes_plot:
-                mask = valid & masks_ptype[ptype] & (classes == label)
+            for group in groups:
+                mask = valid & masks[group] & (classes == label)
                 if np.any(mask):
                     detected_label = label != "Non-detected"
-                    ax.scatter(x[mask], y[mask], c=colors[label], marker=marker_ptypes_local[ptype], s=ss_detected if detected_label else ss_nondetected, edgecolors="k" if detected_label else "none", linewidths=0.75 if detected_label else 0.0, alpha=alphas[label], zorder=3 if detected_label else 1)
-
+                    ax.scatter(x[mask], y[mask], c=colors[label], marker=markers[group], s=ss_detected if detected_label else ss_nondetected, edgecolors="k" if detected_label else "none", linewidths=0.75 if detected_label else 0.0, alpha=alphas[label], zorder=3 if detected_label else 1)
         setup_axes(ax, xlabel, ylabel, xlim, ylim, title)
-
-    def make_two_panel(title, plot_func):
-        fig, axes = plt.subplots(1, 2, figsize=(24, 10.5), dpi=dpi)
-        plot_func(axes[0], AngSep, contrast, valid_obs, "Angular separation [mas]", f"{band_contrast_plot}-band contrast", obs_xlim, obs_ylim, "Observational space")
-        plot_func(axes[1], SMA, PlanetMass, valid_phys, "Semi-major axis [AU]", r"Planet mass [$M_\oplus$]", phys_xlim, phys_ylim, "Physical space")
-        add_ptype_legend(axes[0])
-        add_detection_legend(axes[1])
-        fig.suptitle(title, fontsize=fontsize+4, weight="bold", y=0.98)
-        fig.subplots_adjust(left=0.07, right=0.97, bottom=0.10, top=0.84, wspace=0.25)
+    
+    def make_two_panel(title, plot_func, valid_obs_plot=None, valid_phys_plot=None, subtitle=None):
+        valid_obs_plot  = valid_obs if valid_obs_plot is None else valid_obs_plot
+        valid_phys_plot = valid_phys if valid_phys_plot is None else valid_phys_plot
+        fig, axes       = plt.subplots(1, 2, figsize=(22, 10), dpi=dpi)
+        plot_func(axes[0], AngSep, contrast, valid_obs_plot, "Angular separation [mas]", f"{band_contrast_plot}-band contrast", obs_xlim, obs_ylim, "Observational space", "obs")
+        plot_func(axes[1], SMA, PlanetMass, valid_phys_plot, "Semi-major axis [AU]", r"Planet mass [$M_\oplus$]", phys_xlim, phys_ylim, "Physical space", "phys")
+        if np.isfinite(DL_mas):
+            axes[0].axvline(DL_mas, color="k", linestyle="--", linewidth=2.5, zorder=4)
+            axes[0].annotate("Diffraction limit", xy=(DL_mas, 0.8), xycoords=axes[0].get_xaxis_transform(), xytext=(8, 0), textcoords="offset points", rotation=270, ha="left", va="center", fontsize=fontsize, fontweight="bold", color="k", bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.75, "pad": 2}, zorder=5)
+        add_detection_legend(axes[0], loc="lower left")
+        add_detection_method_legend(axes[0], loc="lower right")
+        add_ptype_legend(axes[1], loc="lower right")
+        fig.suptitle(title, fontsize=fontsize+5, weight="bold", y=0.98)
+        if subtitle is not None:
+            fig.text(0.5, 0.905, subtitle, ha="center", va="center", fontsize=fontsize+2, fontweight="normal")
+        fig.subplots_adjust(left=0.07, right=0.97, bottom=0.10, top=0.82, wspace=0.23)
         return fig, axes
-
-    # -------------------------------------------------------------------------
-    # Load tables and compute SNR
-    # -------------------------------------------------------------------------
-    loaded_labels, SNR_configs, dominant_configs = [], [], []
-    SNR_bands_configs = {band: [] for band in config_data["gratings"]}
-    ref_names, planet_table = None, None
-
-    for cfg in configs:
-        filename = get_filename_table(table=table, instru=instru, apodizer=cfg["apodizer"], strehl=strehl, coronagraph=cfg["coronagraph"], systematics=systematics, PCA=PCA, name_model=name_model)
-        planet_table = load_planet_table(filename)
-        names = np.asarray(planet_table["PlanetName"], dtype=str)
-
-        if ref_names is None:
-            ref_names, planet_table = names.copy(), planet_table.copy()
-        elif len(names) != len(ref_names) or np.any(names != ref_names):
-            raise ValueError(f"Inconsistent planet ordering/content in {filename}.")
-
-        SNR_configs.append(get_SNR_from_table(planet_table=planet_table, exposure_time=exposure_time, band=band_snr))
-        dominant_configs.append(get_dominant_noise(planet_table, band_snr))
-        loaded_labels.append(cfg["label"])
-
+    
+    def save_and_show(fig, filename):
+        if save_dir is not None:
+            fig.savefig(save_dir / filename, bbox_inches="tight", dpi=dpi)
+        plt.show()
+    
+    # Load tables and compute SNR, unless quantities were already computed
+    if not precomputed:
+        loaded_labels, SNR_configs, dominant_configs = [], [], []
+        SNR_bands_configs = {band: [] for band in config_data["gratings"]}
+        ref_names = None
+        for cfg in configs:
+            filename = get_filename_table(table=table, instru=instru, apodizer=cfg["apodizer"], strehl=strehl, coronagraph=cfg["coronagraph"], systematics=systematics, PCA=PCA, name_model=name_model)
+            planet_table_cfg = load_planet_table(filename)
+            names = np.asarray(planet_table_cfg["PlanetName"], dtype=str)
+            if ref_names is None:
+                ref_names = names.copy()
+                planet_table = planet_table_cfg.copy()
+            elif len(names) != len(ref_names) or np.any(names != ref_names):
+                raise ValueError(f"Inconsistent planet ordering/content in {filename}.")
+            SNR_configs.append(get_SNR_from_table(planet_table=planet_table_cfg, exposure_time=exposure_time, band=band_snr))
+            dominant_configs.append(get_dominant_noise(planet_table_cfg, band_snr))
+            loaded_labels.append(cfg["label"])
+            for band in config_data["gratings"]:
+                SNR_bands_configs[band].append(get_SNR_from_table(planet_table=planet_table_cfg, exposure_time=exposure_time, band=band))
+        SNR_stack = np.stack(SNR_configs, axis=0)
+        SNR_stack_max = np.where(np.isfinite(SNR_stack), SNR_stack, -np.inf)
+        best_idx = np.argmax(SNR_stack_max, axis=0)
+        SNR_plot = np.max(SNR_stack_max, axis=0)
+        SNR_plot[~np.isfinite(SNR_plot) | (SNR_plot == -np.inf)] = np.nan
+        planet_table["SNR"] = SNR_plot
+        if len(loaded_labels) == 1:
+            planet_table["BestConfig"] = np.full(len(planet_table), loaded_labels[0], dtype="U128")
+        else:
+            planet_table["BestConfig"] = np.asarray([loaded_labels[i] if np.isfinite(SNR_plot[ip]) else "" for ip, i in enumerate(best_idx)], dtype="U128")
         for band in config_data["gratings"]:
-            SNR_bands_configs[band].append(get_SNR_from_table(planet_table=planet_table, exposure_time=exposure_time, band=band))
-
-    SNR_stack = np.stack(SNR_configs, axis=0)
-    SNR_stack_max = np.where(np.isfinite(SNR_stack), SNR_stack, -np.inf)
-    best_idx = np.argmax(SNR_stack_max, axis=0)
-    SNR_plot = np.max(SNR_stack_max, axis=0)
-    SNR_plot[~np.isfinite(SNR_plot) | (SNR_plot == -np.inf)] = np.nan
-
-    planet_table["SNR"] = SNR_plot
-    planet_table["BestConfig"] = np.full(len(planet_table), loaded_labels[0], dtype="U128") if len(loaded_labels) == 1 else np.asarray([loaded_labels[i] if np.isfinite(SNR_plot[ip]) else "" for ip, i in enumerate(best_idx)], dtype="U128")
-
-    for band in config_data["gratings"]:
-        SNR_band_stack = np.stack(SNR_bands_configs[band], axis=0)
-        SNR_band = np.max(np.where(np.isfinite(SNR_band_stack), SNR_band_stack, -np.inf), axis=0)
-        SNR_band[~np.isfinite(SNR_band) | (SNR_band == -np.inf)] = np.nan
-        planet_table[f"SNR_{band}"] = SNR_band
-
-    detected = np.isfinite(SNR_plot) & (SNR_plot >= SNR_thr)
-    not_detected = np.isfinite(SNR_plot) & (SNR_plot < SNR_thr)
-    planet_table["Detected"] = detected
-
-    dominant_stack = np.stack(dominant_configs, axis=0)
-    dominant_noise = np.asarray([dominant_stack[best_idx[ip], ip] if np.isfinite(SNR_plot[ip]) else "Unknown" for ip in range(len(planet_table))], dtype=object)
+            SNR_band_stack = np.stack(SNR_bands_configs[band], axis=0)
+            SNR_band = np.max(np.where(np.isfinite(SNR_band_stack), SNR_band_stack, -np.inf), axis=0)
+            SNR_band[~np.isfinite(SNR_band) | (SNR_band == -np.inf)] = np.nan
+            planet_table[f"SNR_{band}"] = SNR_band
+        dominant_stack = np.stack(dominant_configs, axis=0)
+        dominant_noise = np.asarray([dominant_stack[best_idx[ip], ip] if np.isfinite(SNR_plot[ip]) else "Unknown" for ip in range(len(planet_table))], dtype=object)
+        config_label = loaded_labels[0] if len(loaded_labels) == 1 else "best SNR over all configurations"
+    else:
+        planet_table = planet_table.copy()
+        SNR_plot = np.asarray(SNR_plot, dtype=float)
+        dominant_noise = np.full(len(planet_table), "Unknown", dtype=object) if dominant_noise is None else np.asarray(dominant_noise, dtype=object)
+        if SNR_plot.shape != (len(planet_table),):
+            raise ValueError(f"SNR_plot must have shape ({len(planet_table)},), got {SNR_plot.shape}.")
+        if dominant_noise.shape != (len(planet_table),):
+            raise ValueError(f"dominant_noise must have shape ({len(planet_table)},), got {dominant_noise.shape}.")
+        planet_table["SNR"] = SNR_plot
+        planet_table["DominantNoise"] = dominant_noise
+        config_label = "precomputed FastYield parameter grid"
+    detected                      = np.isfinite(SNR_plot) & (SNR_plot >= SNR_thr)
+    not_detected                  = np.isfinite(SNR_plot) & (SNR_plot <  SNR_thr)
+    planet_table["Detected"]      = detected
     planet_table["DominantNoise"] = dominant_noise
 
-    # -------------------------------------------------------------------------
     # Data and masks
-    # -------------------------------------------------------------------------
-    AngSep = arr("AngSep")
-    SMA = arr("SMA")
+    AngSep     = arr("AngSep")
+    SMA        = arr("SMA")
     PlanetMass = arr("PlanetMass")
-    Teff_star = arr("StarTeff")
-    Pmag = get_combined_planet_mag(band_contrast_plot)
-    Smag = np.asarray(planet_table[f"Star{band_contrast_plot}mag"], dtype=float)
-    contrast = 10**(-(Pmag - Smag) / 2.5)
+    Teff_star  = arr("StarTeff")
+    PlanetTeff = arr("PlanetTeff")
+    Pmag       = get_combined_planet_mag(band_contrast_plot)
+    if band_contrast_plot == "INSTRU":
+        Smag   = np.asarray(planet_table[f"StarINSTRUmag({instru})"], dtype=float)
+    else:
+        Smag   = np.asarray(planet_table[f"Star{band_contrast_plot}mag"], dtype=float)
+    contrast   = 10**(-(Pmag - Smag) / 2.5)
 
-    valid_obs = np.isfinite(AngSep) & np.isfinite(contrast) & np.isfinite(Teff_star) & (AngSep > 0) & (contrast > 0)
-    valid_phys = np.isfinite(SMA) & np.isfinite(PlanetMass) & np.isfinite(Teff_star) & (SMA > 0) & (PlanetMass > 0)
-    masks_ptype = {ptype: get_ptype_mask(ptype) for ptype in ptypes_plot}
-
-    mag_th = np.asarray(planet_table[f"Planet{band_regime_plot}mag(thermal)"], dtype=float)
-    mag_re = np.asarray(planet_table[f"Planet{band_regime_plot}mag(reflected)"], dtype=float)
-    mask_thermal = np.isfinite(mag_th) & np.isfinite(mag_re) & (mag_th < mag_re)
+    valid_obs              = np.isfinite(AngSep) & np.isfinite(contrast) & np.isfinite(Teff_star) & (AngSep > 0) & (contrast > 0)
+    valid_phys             = np.isfinite(SMA) & np.isfinite(PlanetMass) & np.isfinite(Teff_star) & (SMA > 0) & (PlanetMass > 0)
+    valid_obs_planet_teff  = np.isfinite(AngSep) & np.isfinite(contrast) & np.isfinite(PlanetTeff) & (AngSep > 0) & (contrast > 0) & (PlanetTeff > 0)
+    valid_phys_planet_teff = np.isfinite(SMA) & np.isfinite(PlanetMass) & np.isfinite(PlanetTeff) & (SMA > 0) & (PlanetMass > 0) & (PlanetTeff > 0)
+    masks_ptype            = {ptype: get_ptype_mask(ptype) for ptype in ptypes_plot}
+    
+    if "DiscoveryMethod" in planet_table.colnames:
+        discovery_method = np.asarray(planet_table["DiscoveryMethod"], dtype=str)
+        masks_detection_method = {
+            "Transit": discovery_method == "Transit",
+            "Radial Velocity": discovery_method == "Radial Velocity",
+            "Imaging": discovery_method == "Imaging",
+            "Other": ~np.isin(discovery_method, ["Transit", "Radial Velocity", "Imaging"]),
+        }
+    else:
+        detection_methods_plot   = ["Other"]
+        marker_detection_methods = {"Other": "o"}
+        label_detection_methods  = {"Other": "All planets"}
+        masks_detection_method   = {"Other": np.ones(len(planet_table), dtype=bool)}
+        
+    if band_regime_plot == "INSTRU":
+        mag_th     = np.asarray(planet_table[f"PlanetINSTRUmag({instru})(thermal)"],   dtype=float)
+        mag_re     = np.asarray(planet_table[f"PlanetINSTRUmag({instru})(reflected)"], dtype=float)
+    else:
+        mag_th     = np.asarray(planet_table[f"Planet{band_regime_plot}mag(thermal)"],   dtype=float)
+        mag_re     = np.asarray(planet_table[f"Planet{band_regime_plot}mag(reflected)"], dtype=float)
+    mask_thermal   = np.isfinite(mag_th) & np.isfinite(mag_re) & (mag_th < mag_re)
     mask_reflected = np.isfinite(mag_th) & np.isfinite(mag_re) & (mag_re < mag_th)
 
-    light_class = np.full(len(planet_table), "Non-detected", dtype=object)
-    light_class[detected & mask_thermal] = "Detected, thermal-dominated"
-    light_class[detected & mask_reflected] = "Detected, reflected-dominated"
+    light_class                                              = np.full(len(planet_table), "Non-detected", dtype=object)
+    light_class[detected & mask_thermal]                     = "Detected, thermal-dominated"
+    light_class[detected & mask_reflected]                   = "Detected, reflected-dominated"
     light_class[detected & ~(mask_thermal | mask_reflected)] = "Detected, unclassified"
-    planet_table["LightRegime"] = light_class
+    planet_table["LightRegime"]                              = light_class
 
-    # -------------------------------------------------------------------------
     # Plot style
-    # -------------------------------------------------------------------------
     cmap_teff = plt.get_cmap("afmhot")
     norm_teff = mpl.colors.Normalize(vmin=2000, vmax=10_000, clip=True)
+    mask_planet_teff_color = detected & np.isfinite(PlanetTeff) & (PlanetTeff > 0)
+    if not np.any(mask_planet_teff_color):
+        raise ValueError("No detected planet has a finite strictly positive PlanetTeff.")
+    PlanetTeffMin    = np.nanmin(PlanetTeff[mask_planet_teff_color])
+    PlanetTeffMax    = 3000 # np.nanmax(PlanetTeff[mask_planet_teff_color])
+    cmap_planet_teff = plt.get_cmap("plasma")
+    norm_planet_teff = mpl.colors.Normalize(vmin=PlanetTeffMin, vmax=PlanetTeffMax, clip=True)
 
-    N_total = len(planet_table)
-    N_det = int(np.sum(detected))
-    Ndet_thermal = int(np.sum(detected & mask_thermal))
+    N_total        = len(planet_table)
+    N_det          = int(np.sum(detected))
+    Ndet_thermal   = int(np.sum(detected & mask_thermal))
     Ndet_reflected = int(np.sum(detected & mask_reflected))
-    config_label = loaded_labels[0] if len(loaded_labels) == 1 else "best SNR over all configurations"
-    syst_label = "with systematics + PCA" if (systematics and PCA) else ("with systematics" if systematics else "without systematics")
-    table_label = str(table).replace("Archive", "known").replace("Simulated", "simulated")
-    title_suffix = f"S/N band: {band_snr}, S/N ≥ {SNR_thr:g}, {config_label}, {spectrum_contributions} light ({name_model}), {syst_label}"
+    syst_label     = "with systematics + PCA" if (systematics and PCA) else ("with systematics" if systematics else "without systematics")
+    table_label    = str(table).replace("Archive", "known").replace("Simulated", "simulated")
+    title_suffix   = f"S/N band: {band_snr}, S/N ≥ {SNR_thr:g}, {config_label}, {spectrum_contributions} light ({name_model}), {syst_label}"
 
-    # -------------------------------------------------------------------------
     # 1) Detected population
-    # -------------------------------------------------------------------------
-    fig_pop, axes_pop = make_two_panel(
-        title=f"ELT/{instru} detected population\n{N_det} detected planets in {exposure_time/60:.1f} h per target among {N_total} {table_label} planets\n{title_suffix}",
-        plot_func=plot_population_panel,
-    )
-
-    sm = mpl.cm.ScalarMappable(norm=norm_teff, cmap=cmap_teff)
+    fig_pop, axes_pop = make_two_panel(title=f"ELT/{instru} detected population in {exposure_time/60:.0f} hr per target", subtitle=f"{N_det:.0f}/{N_total:.0f} detections", plot_func=plot_population_panel)
+    sm                = mpl.cm.ScalarMappable(norm=norm_teff, cmap=cmap_teff)
     sm.set_array([])
-    cbar = fig_pop.colorbar(sm, cax=fig_pop.add_axes([0.89, 0.15, 0.02, 0.70]))
-    cbar.set_label(r"Star $T_\mathrm{eff}$ [K]", fontsize=fontsize, rotation=270, labelpad=25)
+    cbar = fig_pop.colorbar(sm, ax=axes_pop, pad=0.03, fraction=0.03)
+    cbar.set_label(r"Star $T_\mathrm{eff}$ [K]", fontsize=fontsize+2, rotation=270, labelpad=30)
     cbar.ax.tick_params(labelsize=fontsize-2)
-
-    # -------------------------------------------------------------------------
-    # 2) Dominant noise regime
-    # -------------------------------------------------------------------------
-    noise_class = dominant_noise.copy()
+    save_and_show(fig_pop, f"ELT_{instru}_detected_population_{table}_{band_contrast_plot}band.png")
+    
+    # 2) Detected population colored by planet temperature
+    fig_planet_teff, axes_planet_teff = make_two_panel(title=f"ELT/{instru} detected population in {exposure_time/60:.0f} hr per target", subtitle=f"{N_det:.0f}/{N_total:.0f} detections", plot_func=plot_population_planet_teff_panel, valid_obs_plot=valid_obs_planet_teff, valid_phys_plot=valid_phys_planet_teff)
+    sm = mpl.cm.ScalarMappable(norm=norm_planet_teff, cmap=cmap_planet_teff)
+    sm.set_array([])
+    cbar = fig_planet_teff.colorbar(sm, ax=axes_planet_teff, pad=0.03, fraction=0.03)
+    cbar.set_label(r"Planet $T_\mathrm{eff}$ [K]", fontsize=fontsize+2, rotation=270, labelpad=30)
+    cbar.ax.tick_params(labelsize=fontsize-2)
+    save_and_show(fig_planet_teff, f"ELT_{instru}_detected_population_planet_teff_{table}_{band_contrast_plot}band.png")
+    
+    # 3) Dominant noise regime
+    noise_class               = dominant_noise.copy()
     noise_class[not_detected] = "Non-detected"
-    noise_labels = ["Non-detected"] + [lab for lab in ["Fundamental noise", "Residuals", "Systematics", "Unknown"] if np.any(noise_class == lab)]
-    noise_colors = {"Non-detected": "0.78", "Fundamental noise": "planet_table:orange", "Residuals": "planet_table:red", "Systematics": "planet_table:red", "Unknown": "0.50"}
-    noise_alphas = {"Non-detected": 0.20, "Fundamental noise": alpha_detected, "Residuals": alpha_detected, "Systematics": alpha_detected, "Unknown": alpha_detected}
-
-    fig_noise, axes_noise = make_two_panel(
-        title=f"ELT/{instru} dominant noise regime\n{N_det} detected planets in {exposure_time/60:.1f} h per target among {N_total} {table_label} planets\n{title_suffix}",
-        plot_func=lambda ax, x, y, valid, xlabel, ylabel, xlim, ylim, title: plot_class_panel(ax, x, y, valid, noise_class, noise_labels, noise_colors, noise_alphas, xlabel, ylabel, xlim, ylim, title),
-    )
-
-    handles_noise = [Line2D([], [], ls="", marker="o", ms=11, markerfacecolor=noise_colors[lab], markeredgecolor="k", color=noise_colors[lab], label=lab) for lab in noise_labels if lab != "Non-detected"]
+    noise_order               = ["Stellar halo", "Background", "Read noise", "Dark current", "Residuals", "Systematics", "Fundamental noise", "Unknown"]
+    noise_colors              = {"Non-detected": "0.78", "Stellar halo": "tab:orange", "Background": "tab:blue", "Read noise": "tab:purple", "Dark current": "tab:green", "Residuals": "tab:red", "Systematics": "tab:red", "Fundamental noise": "tab:orange", "Unknown": "0.50"}
+    noise_labels              = ["Non-detected"] + [label for label in noise_order if np.any(noise_class == label)]
+    noise_alphas              = {label: 0.20 if label == "Non-detected" else alpha_detected for label in noise_labels}
+    fig_noise, axes_noise     = make_two_panel(title=f"ELT/{instru} dominant noise regime in {exposure_time/60:.0f} hr per target", subtitle=f"{N_det:.0f}/{N_total:.0f} detections", plot_func=lambda ax, x, y, valid, xlabel, ylabel, xlim, ylim, title, space: plot_class_panel(ax, x, y, valid, noise_class, noise_labels, noise_colors, noise_alphas, xlabel, ylabel, xlim, ylim, title, space))
+    handles_noise             = [Line2D([], [], ls="", marker="o", ms=11, markerfacecolor=noise_colors[lab], markeredgecolor="k", color=noise_colors[lab], label=lab) for lab in noise_labels if lab != "Non-detected"]
     axes_noise[1].add_artist(axes_noise[1].legend(handles=handles_noise, fontsize=fontsize-2, loc="center right", frameon=True, edgecolor="gray", facecolor="white", title="Dominant noise", title_fontsize=fontsize))
+    save_and_show(fig_noise, f"ELT_{instru}_dominant_noise_{table}_{band_contrast_plot}band.png")
 
-    # -------------------------------------------------------------------------
-    # 3) Thermal/reflected complementarity
-    # -------------------------------------------------------------------------
-    light_labels = ["Non-detected", "Detected, thermal-dominated", "Detected, reflected-dominated"] + (["Detected, unclassified"] if np.any(light_class == "Detected, unclassified") else [])
-    light_colors = {"Non-detected": "0.78", "Detected, thermal-dominated": "C3", "Detected, reflected-dominated": "C0", "Detected, unclassified": "0.25"}
-    light_alphas = {"Non-detected": 0.20, "Detected, thermal-dominated": alpha_detected, "Detected, reflected-dominated": alpha_detected, "Detected, unclassified": alpha_detected}
-
-    fig_light, axes_light = make_two_panel(
-        title=f"ELT/{instru} thermal/reflected complementarity\n{N_det} detected planets in {exposure_time/60:.1f} h: {Ndet_thermal} thermal-dominated + {Ndet_reflected} reflected-dominated\n{title_suffix}",
-        plot_func=lambda ax, x, y, valid, xlabel, ylabel, xlim, ylim, title: plot_class_panel(ax, x, y, valid, light_class, light_labels, light_colors, light_alphas, xlabel, ylabel, xlim, ylim, title),
-    )
-
-    handles_light = [
-        Line2D([], [], ls="", marker="o", ms=11, markerfacecolor=light_colors["Detected, thermal-dominated"], markeredgecolor="k", color=light_colors["Detected, thermal-dominated"], label="Thermal"),
-        Line2D([], [], ls="", marker="o", ms=11, markerfacecolor=light_colors["Detected, reflected-dominated"], markeredgecolor="k", color=light_colors["Detected, reflected-dominated"], label="Reflected"),
-    ]
+    # 4) Thermal/reflected complementarity
+    light_labels          = ["Non-detected", "Detected, thermal-dominated", "Detected, reflected-dominated"] + (["Detected, unclassified"] if np.any(light_class == "Detected, unclassified") else [])
+    light_colors          = {"Non-detected": "0.78", "Detected, thermal-dominated": "C3", "Detected, reflected-dominated": "C0", "Detected, unclassified": "0.25"}
+    light_alphas          = {"Non-detected": 0.20, "Detected, thermal-dominated": alpha_detected, "Detected, reflected-dominated": alpha_detected, "Detected, unclassified": alpha_detected}
+    fig_light, axes_light = make_two_panel(title=f"ELT/{instru} thermal/reflected complementarity in {exposure_time/60:.0f} hr", subtitle=f"{N_det:.0f}/{N_total:.0f} detections", plot_func=lambda ax, x, y, valid, xlabel, ylabel, xlim, ylim, title, space: plot_class_panel(ax, x, y, valid, light_class, light_labels, light_colors, light_alphas, xlabel, ylabel, xlim, ylim, title, space))
+    handles_light         = [Line2D([], [], ls="", marker="o", ms=11, markerfacecolor=light_colors["Detected, thermal-dominated"], markeredgecolor="k", color=light_colors["Detected, thermal-dominated"], label="Thermal"), Line2D([], [], ls="", marker="o", ms=11, markerfacecolor=light_colors["Detected, reflected-dominated"], markeredgecolor="k", color=light_colors["Detected, reflected-dominated"], label="Reflected")]
     axes_light[1].add_artist(axes_light[1].legend(handles=handles_light, fontsize=fontsize-2, loc="center right", frameon=True, edgecolor="gray", facecolor="white", title=f"Planet-light regime ({band_regime_plot})", title_fontsize=fontsize))
+    save_and_show(fig_light, f"ELT_{instru}_thermal_reflected_{table}_{band_regime_plot}band.png")
 
-    figs = {"population": fig_pop, "dominant_noise": fig_noise, "thermal_reflected": fig_light}
-    axes = {"population": axes_pop, "dominant_noise": axes_noise, "thermal_reflected": axes_light}
-
-    plt.show()
-
-    return planet_table, figs, axes
 
 
 

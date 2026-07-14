@@ -93,8 +93,8 @@ def get_wave_band(instru, band):
     lmax_band   = config_data['gratings'][band].lmax       # Lambda_max of the considered band [µm]
     R_band      = config_data['gratings'][band].R          # Spectral resolution of the band
     # TODO: decide whether we want constant dl or constant R
-    wave_band = get_wavelength_axis_constant_dl(lmin=lmin_band, lmax=lmax_band, R=R_band) # Constant dl wavelength array on the considered band
-    #wave_band = get_wavelength_axis_constant_R(lmin=lmin_band, lmax=lmax_band, R=R_band) # Constant R  wavelength array on the considered band
+    #wave_band = get_wavelength_axis_constant_dl(lmin=lmin_band, lmax=lmax_band, R=R_band) # Constant dl wavelength array on the considered band
+    wave_band = get_wavelength_axis_constant_R(lmin=lmin_band, lmax=lmax_band, R=R_band) # Constant R  wavelength array on the considered band
 
     return wave_band # [µm]
 
@@ -809,7 +809,7 @@ def _gaussian_filter_axis0(flux_filled, valid_filled, sigma):
     flux_filled  = np.asarray(flux_filled, dtype=float)
     valid_filled = np.asarray(valid_filled, dtype=bool)
 
-    # 1D case: exactly the historical behavior
+    # 1D case:
     if flux_filled.ndim == 1:
         flux_LF = np.full_like(flux_filled, np.nan, dtype=float)
         if np.any(valid_filled):
@@ -887,6 +887,39 @@ def filtered_flux(flux, R, Rc, filter_type="gaussian", show=False):
     # No filter applied
     if Rc is None or np.all(Rc == 0):
         return np.zeros_like(flux), np.copy(flux)
+
+    # ---------------------------------------------------------------------
+    # Fast path: most common FastYield/FastCurves case
+    # ---------------------------------------------------------------------
+    # This avoids:
+    #   - fill_nan_linear() when the spectrum has no NaN;
+    #   - Rc_to_sigma() + np.nanmedian();
+    #   - _gaussian_filter_axis0();
+    #   - all multidimensional / variable-sigma machinery.
+    if filter_type == "gaussian" and flux.ndim == 1 and np.ndim(R) == 0 and np.ndim(Rc) == 0 and not show:
+        R_float  = float(R)
+        Rc_float = float(Rc)
+        
+        if np.isfinite(R_float) and np.isfinite(Rc_float) and R_float > 0.0 and Rc_float > 0.0:
+            sigma = _SIGMA_RC_FACTOR * R_float / Rc_float
+
+            # Ultra-fast case: no NaN at all
+            if np.all(np.isfinite(flux)):
+                flux_LF = gaussian_filter1d(flux, sigma=sigma)
+                return flux - flux_LF, flux_LF
+
+            # Fast NaN-aware 1D case: same behavior as the generic path,
+            # but without going through the full multidimensional machinery.
+            valid        = np.isfinite(flux)
+            flux_filled  = fill_nan_linear(x=None, y=flux, axis=0)
+            valid_filled = np.isfinite(flux_filled)
+
+            flux_LF = np.full_like(flux, np.nan, dtype=float)
+            if np.any(valid_filled):
+                flux_LF[valid_filled] = gaussian_filter1d(flux_filled[valid_filled], sigma=sigma)
+
+            flux_LF[~valid] = np.nan
+            return flux - flux_LF, flux_LF
 
     valid        = np.isfinite(flux)
     flux_filled  = fill_nan_linear(x=None, y=flux, axis=0) # NaN gaps are filled with linear interpolation along the spectral axis
@@ -1408,30 +1441,35 @@ class Spectrum:
     
     #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
     
-    def density_to_photons(self, config_data):
+    def density_to_photons(self, config_data, dwave=None):
         """
-        Convert a spectral *density* [J/s/m2/µm] into [ph/bin/mn] (total ph over the FoV)
-        collected by the telescope.
-
+        Convert a spectral energy density [J/s/m2/µm] into photon counts per
+        spectral bin and per minute [ph/bin/mn] over the telescope collecting area.
+    
         Parameters
         ----------
         config_data : dict-like
-            Instrument configuration; must contain 'telescope['area']' [m2].
-
+            Instrument configuration; must contain 'telescope["area"]' in [m2].
+        dwave : ndarray, optional
+            Wavelength bin widths in [µm/bin]. If provided, it avoids recomputing
+            'np.gradient(self.wavelength)'.
+    
         Returns
         -------
         Spectrum
-            New Spectrum instance with flux in [ph/bin/mn] (total ph over the FoV).
+            New Spectrum instance with flux in [ph/bin/mn].
         """
-        spectrum       = self.copy()                      # New Spectrum instance
-        area           = config_data["telescope"]["area"] # Effective collecting area [m2], accounting for central hole, secondary mirror, and spider obscuration
-        wave           = spectrum.wavelength              # Wavelength axis [µm]
-        dl             = np.gradient(wave)                # Wavelength spacing Δλ [µm/bin]
-        factor         = wave*1e-6/(h*c) * area*dl*60     # [J/s/m2/µm] => [ph/s/m2/µm] using λ[m]/(h*c) => [ph/bin/mn] using collecting area and bin width and minutes
-        spectrum.flux *= factor
-        if spectrum.sigma is not None:
-            spectrum.sigma *= factor
-        return spectrum # [ph/bin/mn] (total ph over the FoV)
+        area = config_data["telescope"]["area"] # [m2]
+        wave = self.wavelength                  # [µm]
+        if dwave is None:
+            dwave = np.gradient(wave)           # [µm/bin]
+        scale = wave*1e-6/(h*c) * area*dwave*60 # [J/s/m2/µm] => [ph/bin/mn]
+        flux  = self.flux * scale               # [ph/bin/mn]
+        if self.sigma is not None:
+            sigma = self.sigma * scale          # [ph/bin/mn]
+        else:
+            sigma = None
+        return Spectrum(wavelength=wave, flux=flux, R=self.R, T=self.T, lg=self.lg, model=self.model, rv=self.rv, vsini=self.vsini, sigma=sigma, P=self.P, airmass=self.airmass)
 
     #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
                 
@@ -1711,7 +1749,7 @@ class Spectrum:
         sigma_LSF = R_sampling_input / ( np.sqrt(2*np.log(2)) * R_input ) # [input px]
         
         # Finding whether downbinning can be applied
-        if np.nanmedian(R_sampling_output) > np.nanmedian(R_sampling_input) and bin_type != "interp":
+        if round(np.nanmedian(R_sampling_output)) > round(np.nanmedian(R_sampling_input)) and bin_type != "interp":
             print_warning(f"WARNING (self.degrade_resolution): The output sampling resolution ({np.nanmedian(R_sampling_output):.0f}) is greater than the input sampling resolution ({np.nanmedian(R_sampling_input):.0f}). This function only supports down-binning (otherwise NaN would be injected). The output spectrum will only be linearily interpolate. Provide a coarser 'wave_output' to properly apply self.degrade_resolution.")
             bin_type = "interp"
             
@@ -1867,6 +1905,8 @@ class Spectrum:
         Spectrum
             Doppler-shifted spectrum (same sampling as input).
         """
+        if rv == 0:
+            return self.copy()
         spectrum             = self.copy()
         beta                 = 1000*rv / c
         spectrum.wavelength *= np.sqrt( (1 + beta) / (1 - beta) ) # Offset wavelength axis
@@ -2257,6 +2297,9 @@ def get_model_grid(model, instru=None, mol_broadening="air"):
     elif "PICASO" in model:
         T_grid  = np.concatenate([np.arange(200, 550, 50), np.arange(600, 3100, 100)])
         lg_grid = np.arange(2.5, 5.5, 0.5)
+        # # TODO: old grid
+        # T_grid  = np.append([200, 220, 240, 250, 260, 280, 300, 320, 340, 360, 380, 400, 450], np.append(np.arange(500, 1000, 50), np.arange(1000, 3100, 100)))
+        # lg_grid = np.array([3.0, 3.5, 4.0, 4.5, 5.0])
 
     elif "airless" in model.lower() and "rocky" in model.lower():
         T_grid  = np.concatenate([np.arange(200, 550, 50), np.arange(600, 3100, 100)])
@@ -2523,11 +2566,13 @@ def _load_spectrum(T=None, lg=None, P=None, mol_broadening=None, model=None, ins
 
 
 
-def load_spectrum(T=None, lg=None, P=None, mol_broadening=None, model=None, instru=None):
+def load_spectrum(T=None, lg=None, P=None, mol_broadening=None, model=None, instru=None, copy=True):
     """
-    Public safe loader: returns a copy of the cached raw Spectrum.
+    Public safe loader. By default returns a copy of the cached raw Spectrum.
+    Use copy=False only internally when the returned spectrum is read-only.
     """
-    return _load_spectrum(T=_cache_float(T), lg=_cache_float(lg), P=_cache_float(P), mol_broadening=mol_broadening, model=model, instru=instru).copy()
+    spec = _load_spectrum(T=_cache_float(T), lg=_cache_float(lg), P=_cache_float(P), mol_broadening=mol_broadening, model=model, instru=instru)
+    return spec.copy() if copy else spec
 
 
 
@@ -2578,12 +2623,12 @@ def interpolate_T_lg_spectrum(T_valid=None, lg_valid=None, P_valid=None, T=None,
     
         # No interpolation
         if T_lo == T_hi and P_lo == P_hi:
-            return load_spectrum(T=T_lo, P=P_lo, mol_broadening=mol_broadening, model=model, instru=instru).copy()
+            return load_spectrum(T=T_lo, P=P_lo, mol_broadening=mol_broadening, model=model, instru=instru, copy=True)
         
         # Interpolation only along T
         elif P_lo == P_hi:
-            s_lo = load_spectrum(T=T_lo, P=P_lo, mol_broadening=mol_broadening, model=model, instru=instru)
-            s_hi = load_spectrum(T=T_hi, P=P_lo, mol_broadening=mol_broadening, model=model, instru=instru)
+            s_lo = load_spectrum(T=T_lo, P=P_lo, mol_broadening=mol_broadening, model=model, instru=instru, copy=False)
+            s_hi = load_spectrum(T=T_hi, P=P_lo, mol_broadening=mol_broadening, model=model, instru=instru, copy=False)
             wave = s_lo.wavelength
             if len(s_hi.wavelength) != len(wave) or np.any(s_hi.wavelength != wave):
                 s_hi = s_hi.interpolate_wavelength(wave, renorm=False)
@@ -2594,8 +2639,8 @@ def interpolate_T_lg_spectrum(T_valid=None, lg_valid=None, P_valid=None, T=None,
     
         # Interpolation only along P, in log10(P)
         elif T_lo == T_hi:
-            s_lo = load_spectrum(T=T_lo, P=P_lo, mol_broadening=mol_broadening, model=model, instru=instru)
-            s_hi = load_spectrum(T=T_lo, P=P_hi, mol_broadening=mol_broadening, model=model, instru=instru)
+            s_lo = load_spectrum(T=T_lo, P=P_lo, mol_broadening=mol_broadening, model=model, instru=instru, copy=False)
+            s_hi = load_spectrum(T=T_lo, P=P_hi, mol_broadening=mol_broadening, model=model, instru=instru, copy=False)
             wave = s_lo.wavelength
             if len(s_hi.wavelength) != len(wave) or np.any(s_hi.wavelength != wave):
                 s_hi = s_hi.interpolate_wavelength(wave, renorm=False)
@@ -2606,10 +2651,10 @@ def interpolate_T_lg_spectrum(T_valid=None, lg_valid=None, P_valid=None, T=None,
 
         # Bilinear interpolation in (T, log10(P))
         else:
-            s_ll = load_spectrum(T=T_lo, P=P_lo, mol_broadening=mol_broadening, model=model, instru=instru)
-            s_lh = load_spectrum(T=T_lo, P=P_hi, mol_broadening=mol_broadening, model=model, instru=instru)
-            s_hl = load_spectrum(T=T_hi, P=P_lo, mol_broadening=mol_broadening, model=model, instru=instru)
-            s_hh = load_spectrum(T=T_hi, P=P_hi, mol_broadening=mol_broadening, model=model, instru=instru)
+            s_ll = load_spectrum(T=T_lo, P=P_lo, mol_broadening=mol_broadening, model=model, instru=instru, copy=False)
+            s_lh = load_spectrum(T=T_lo, P=P_hi, mol_broadening=mol_broadening, model=model, instru=instru, copy=False)
+            s_hl = load_spectrum(T=T_hi, P=P_lo, mol_broadening=mol_broadening, model=model, instru=instru, copy=False)
+            s_hh = load_spectrum(T=T_hi, P=P_hi, mol_broadening=mol_broadening, model=model, instru=instru, copy=False)
             wave = s_ll.wavelength
             if len(s_lh.wavelength) != len(wave) or np.any(s_lh.wavelength != wave):
                 s_lh = s_lh.interpolate_wavelength(wave, renorm=False)
@@ -2638,12 +2683,12 @@ def interpolate_T_lg_spectrum(T_valid=None, lg_valid=None, P_valid=None, T=None,
 
         # No interpolation
         if T_lo == T_hi and lg_lo == lg_hi:
-            return load_spectrum(T=T_lo, lg=lg_lo, model=model, instru=instru).copy()
+            return load_spectrum(T=T_lo, lg=lg_lo, model=model, instru=instru, copy=True)
 
         # Interpolation only along T
         elif lg_lo == lg_hi:
-            s_lo = load_spectrum(T=T_lo, lg=lg_lo, model=model, instru=instru)
-            s_hi = load_spectrum(T=T_hi, lg=lg_lo, model=model, instru=instru)
+            s_lo = load_spectrum(T=T_lo, lg=lg_lo, model=model, instru=instru, copy=False)
+            s_hi = load_spectrum(T=T_hi, lg=lg_lo, model=model, instru=instru, copy=False)
             wave = s_lo.wavelength
             if len(s_hi.wavelength) != len(wave) or np.any(s_hi.wavelength != wave):
                 s_hi = s_hi.interpolate_wavelength(wave, renorm=False)
@@ -2651,8 +2696,8 @@ def interpolate_T_lg_spectrum(T_valid=None, lg_valid=None, P_valid=None, T=None,
 
         # Interpolation only along logg
         elif T_lo == T_hi:
-            s_lo = load_spectrum(T=T_lo, lg=lg_lo, model=model, instru=instru)
-            s_hi = load_spectrum(T=T_lo, lg=lg_hi, model=model, instru=instru)
+            s_lo = load_spectrum(T=T_lo, lg=lg_lo, model=model, instru=instru, copy=False)
+            s_hi = load_spectrum(T=T_lo, lg=lg_hi, model=model, instru=instru, copy=False)
             wave = s_lo.wavelength
             if len(s_hi.wavelength) != len(wave) or np.any(s_hi.wavelength != wave):
                 s_hi = s_hi.interpolate_wavelength(wave, renorm=False)
@@ -2660,10 +2705,10 @@ def interpolate_T_lg_spectrum(T_valid=None, lg_valid=None, P_valid=None, T=None,
 
         # Bilinear interpolation in (T, logg)
         else:
-            s_ll = load_spectrum(T=T_lo, lg=lg_lo, model=model, instru=instru)
-            s_lh = load_spectrum(T=T_lo, lg=lg_hi, model=model, instru=instru)
-            s_hl = load_spectrum(T=T_hi, lg=lg_lo, model=model, instru=instru)
-            s_hh = load_spectrum(T=T_hi, lg=lg_hi, model=model, instru=instru)
+            s_ll = load_spectrum(T=T_lo, lg=lg_lo, model=model, instru=instru, copy=False)
+            s_lh = load_spectrum(T=T_lo, lg=lg_hi, model=model, instru=instru, copy=False)
+            s_hl = load_spectrum(T=T_hi, lg=lg_lo, model=model, instru=instru, copy=False)
+            s_hh = load_spectrum(T=T_hi, lg=lg_hi, model=model, instru=instru, copy=False)
             wave = s_ll.wavelength
             if len(s_lh.wavelength) != len(wave) or np.any(s_lh.wavelength != wave):
                 s_lh = s_lh.interpolate_wavelength(wave, renorm=False)
@@ -2729,7 +2774,7 @@ def load_planet_spectrum(T_planet=1000, lg_planet=4.0, model="BT-Settl", interpo
     
         # Load the spectrum with the closest parameters values in the model grid
         else:
-            return load_spectrum(T=T_valid, lg=lg_valid, model=model, instru=instru).copy()
+            return load_spectrum(T=T_valid, lg=lg_valid, model=model, instru=instru, copy=True)
 
 
 
@@ -2855,7 +2900,7 @@ def load_mol_spectrum(T_mol=1000, P_mol=1.0, airmass=1.0, mol_broadening="air", 
 
     # Load the spectrum with the closest parameters values in the model grid
     else:
-        spectrum = load_spectrum(T=T_valid, lg=None, P=P_valid, mol_broadening=mol_broadening, model=model, instru=None).copy()
+        spectrum = load_spectrum(T=T_valid, lg=None, P=P_valid, mol_broadening=mol_broadening, model=model, instru=None, copy=True)
     
     if mol_broadening == "air":
         spectrum.flux    = spectrum.flux**airmass
@@ -2901,7 +2946,7 @@ def load_star_spectrum(T_star, lg_star, model="BT-NextGen", interpolated_spectru
 
     # Load the spectrum with the closest parameters values in the model grid
     else:
-        return load_spectrum(T=T_valid, lg=lg_valid, model=model, instru=None).copy()
+        return load_spectrum(T=T_valid, lg=lg_valid, model=model, instru=None, copy=True)
 
 
 
@@ -2949,123 +2994,181 @@ def load_vega_spectrum():
         
 
 
+@lru_cache(maxsize=128)
+def get_vega_counts_on_band(lmin, lmax, R):
+    wave = get_wavelength_axis_constant_dl(lmin=lmin, lmax=lmax, R=R)
+    vega = load_vega_spectrum().interpolate_wavelength(wave, renorm=False)
+    counts_vega = get_counts_from_density(wave=wave, density=vega.flux)
+    return wave, counts_vega
+
+
+
 #######################################################################################################################
 ############################################# Spectra on instru and band: #############################################
 #######################################################################################################################
 
-def get_spectrum_instru(band0, R, config_data, mag, spectrum, wave_instru=None):
+def get_spectrum_instru(spectrum, mag, config_data, band0=None, R_instru=None, wave_instru=None, dwave_instru=None, wave_band0=None, counts_vega_band0=None):
     """
-    Restrict a spectrum to the instrument wavelength range and scale it to match
-    the given Vega magnitude in 'band0'. Return both the photon-rate spectrum
-    (photons/min) over the instrument range and the corresponding energy-density
-    spectrum (J/s/m2/µm) sampled on the same grid.
+    Resample an input spectrum on the instrument wavelength grid and scale it to
+    match a Vega magnitude in a reference band.
 
-    Notes
-    -----
-    - The input 'spectrum' **must** be in energy density units (J/s/m2/µm).
-    - Magnitude is assumed to be Vega-based; the zero point comes from 'load_vega_spectrum()'.
-    - No in-place modification is performed on the input 'spectrum'.
+    The input spectrum must be expressed as an energy flux density
+    ('J/s/m2/µm'). The function first computes the multiplicative scale factor
+    required to reproduce the input Vega magnitude in 'band0'. It then resamples
+    the scaled spectrum onto the instrument wavelength grid and converts it into
+    photon counts per spectral bin and per minute.
+
+    To speed up repeated calls, precomputed wavelength grids and Vega photon
+    counts can be passed directly:
+      - 'wave_instru' avoids rebuilding the instrument-wide wavelength grid;
+      - 'wave_band0' and 'counts_vega_band0' avoid recomputing the reference
+        photometric grid and Vega normalization.
+
+    No in-place modification is performed on the input 'spectrum'.
 
     Parameters
     ----------
-    band0: str
-        Band in which the input magnitude is defined. Use '"instru"' to
-        use the full instrument range; otherwise provide a band key like "J", "H", etc.
-    R: float
-        Reference sampling resolution used to construct intermediate wavelength grids.
-        Should be comfortably higher than the instrument resolving power.
-    config_data: dict
-        Instrument configuration dict containing:
-        - "name"
-        - "lambda_range": {"lambda_min", "lambda_max"}
-        - "telescope": {"area": ...}
-    mag: float
-        Vega magnitude to impose in 'band0'.
-    spectrum: Spectrum
-        Input spectrum in J/s/m2/µm.
+    spectrum : Spectrum
+        Input spectrum in energy density units, i.e. 'J/s/m2/µm'.
+    mag : float
+        Vega magnitude to impose in the reference band 'band0'.
+    config_data : dict
+        Instrument configuration dictionary. It must contain at least:
+          - 'name';
+          - 'lambda_range' with 'lambda_min' and 'lambda_max';
+          - 'telescope' with 'area'.
+    band0 : str, optional
+        Reference band in which 'mag' is defined. Use 'instru' to use the full
+        instrument wavelength range. Required unless both 'wave_band0' and
+        'counts_vega_band0' are provided.
+    R_instru : float, optional
+        Sampling resolving power used to build 'wave_instru' if it is not provided.
+        Required only when 'wave_instru' is None.
+    wave_instru : ndarray, optional
+        Instrument-wide wavelength grid in µm. If provided, it is used directly.
+    wave_band0 : ndarray, optional
+        Reference-band wavelength grid in µm used to compute the magnitude scaling.
+        If not provided, it is built from 'band0' at 'R0_min'.
+    dwave_instru : ndarray, optional
+        Wavelength bin widths associated with 'wave_instru', in µm/bin. If not
+        provided, they are computed with 'np.gradient(wave_instru)'. Supplying
+        this argument avoids recomputing the same gradient in repeated calls.
+    counts_vega_band0 : float, optional
+        Vega photon counts integrated over 'wave_band0'. If not provided, it is
+        computed with 'get_vega_counts_on_band()'.
 
     Returns
     -------
-    spectrum_instru: Spectrum
-        Spectrum restricted to the instrument range and converted to ph/bin/mn.
-    spectrum_density: Spectrum
-        Same wavelength grid as 'spectrum_instru', but in J/s/m2/µm (energy density).
+    spectrum_instru : Spectrum
+        Spectrum sampled on 'wave_instru' and converted to 'ph/bin/mn'
+        over the full FoV.
+    spectrum_density : Spectrum
+        Same spectrum sampled on 'wave_instru', still expressed as energy density
+        in 'J/s/m2/µm', after magnitude scaling.
 
     Raises
     ------
+    ValueError
+        If 'wave_instru' is not provided and 'R_instru' is missing.
     KeyError
-        If 'band0' cannot be resolved to a wavelength range via globals.
+        If 'band0' cannot be resolved to a valid wavelength range.
     """
-    # Resolve the reference band limits for magnitude scaling
-    try:
-        lmin_band0, lmax_band0 = get_band_lims(band=config_data["name"] if band0.lower() == "instru" else band0) # [µm]
-    except Exception:
-        raise KeyError(f"{band0} is not a recognized band. Choose among: {bands} or 'instru' for full instrument range.")        
-    
-    # Build an intermediate grid on band0 to compute the Vega scaling ratio: F_obj = F_vega * 10^{-0.4*mag}
-    wave_band0     = get_wavelength_axis_constant_dl(lmin=lmin_band0, lmax=lmax_band0, R=R0_min) # Wavelength array on band0 [µm]
-    spectrum_band0 = spectrum.interpolate_wavelength(wave_band0,             renorm=False)       # [J/s/m2/µm] Interpolating the input spectrum on band0
-    vega_band0     = load_vega_spectrum().interpolate_wavelength(wave_band0, renorm=False)       # [J/s/m2/µm] Getting the vega spectrum
-    scale          = get_scale_to_mag(wave=wave_band0, density_obs=spectrum_band0.flux, density_vega=vega_band0.flux, mag=mag)
-    
-    # Restriction of spectra to instrumental range + adjustment of spectra to the input magnitude
+
+    # Reference-band grid and Vega normalization for magnitude scaling
+    if wave_band0 is None or counts_vega_band0 is None:
+        if band0 is None:
+            raise ValueError("'band0' must be provided when 'wave_band0' or 'counts_vega_band0' is None.")
+        try:
+            band0_name             = config_data["name"] if band0.lower() == "instru" else band0
+            lmin_band0, lmax_band0 = get_band_lims(band=band0_name) # [µm]
+        except Exception:
+            raise KeyError(f"{band0} is not a recognized band. Choose among: {bands} or 'instru' for the full instrument range.")
+        wave_band0, counts_vega_band0 = get_vega_counts_on_band(float(lmin_band0), float(lmax_band0), float(R0_min)) # [µm], [ph/s/m2]
+
+    # Compute the multiplicative factor that imposes the input Vega magnitude
+    spectrum_band0 = spectrum.interpolate_wavelength(wave_band0, renorm=False) # [J/s/m2/µm]
+    scale          = get_scale_to_mag(wave=wave_band0, density_obs=spectrum_band0.flux, density_vega=None, counts_vega=counts_vega_band0, mag=mag)
+
+    # Instrument-wide wavelength grid
     if wave_instru is None:
-        lmin_instru = 0.98*config_data["lambda_range"]["lambda_min"]                          # Lambda min [µm]
-        lmax_instru = 1.02*config_data["lambda_range"]["lambda_max"]                          # Lambda max [µm] (a bit larger to avoid edge effects)
-        wave_instru = get_wavelength_axis_constant_R(lmin=lmin_instru, lmax=lmax_instru, R=R) # Wavelength array on the instrumental bandwidth with constant sampling resolution
-    spectrum_scaled       = spectrum.copy()                                                   # Making a copy of the input spetrum 
-    spectrum_scaled.flux *= scale                                                             # Adjusting the spectrum to the input magnitude
-    spectrum_density      = spectrum_scaled.interpolate_wavelength(wave_instru, renorm=False) # [J/s/m2/µm]   
-
-    # Conversion [J/s/m2/µm] to [ph/bin/mn] (total ph over the FoV)
-    spectrum_instru = spectrum_density.density_to_photons(config_data=config_data)
+        if R_instru is None:
+            raise ValueError("'R_instru' must be provided when 'wave_instru' is None.")
+        lmin_instru = 0.98 * config_data["lambda_range"]["lambda_min"]                               # [µm]
+        lmax_instru = 1.02 * config_data["lambda_range"]["lambda_max"]                               # [µm], slightly extended to avoid edge effects
+        wave_instru = get_wavelength_axis_constant_R(lmin=lmin_instru, lmax=lmax_instru, R=R_instru) # [µm]
+    if dwave_instru is None:
+        dwave_instru = np.gradient(wave_instru)
     
-    return spectrum_instru, spectrum_density # [ph/bin/mn] (total ph over the FoV) and [J/s/m2/µm]
+    # Resample and scale the energy-density spectrum
+    spectrum_density       = spectrum.interpolate_wavelength(wave_instru, renorm=False) # [J/s/m2/µm]
+    spectrum_density.flux *= scale                                                      # magnitude scaling
+    if spectrum_density.sigma is not None:
+        spectrum_density.sigma *= scale
+
+    # Convert energy density to photon counts per spectral bin
+    spectrum_instru = spectrum_density.density_to_photons(config_data=config_data, dwave=dwave_instru) # [ph/bin/mn]
+
+    return spectrum_instru, spectrum_density # [ph/bin/mn] (total ph over the FoV), [J/s/m2/µm]
 
 
 
-def get_spectrum_band(spectrum_instru, config_data=None, instru=None, band=None, wave_band=None, R_output=None, degrade_resolution=True, verbose=False):
+def get_spectrum_band(spectrum_instru=None, spectrum_instru_density=None, config_data=None, instru=None, band=None, wave_band=None, dwave_band=None, R_output=None, degrade_resolution=True, verbose=False):
     """
-    Extract and resample an input instrument spectrum onto the wavelength grid of a given band.
+    Extract and resample an instrument spectrum onto the wavelength grid of a given band.
 
-    The input spectrum is assumed to be provided in flux per spectral bin ('ph/bin/mn').
-    Internally, it is first converted into a flux density ('ph/µm/mn') by dividing by the
-    local wavelength bin width. The spectrum is then either:
-      - degraded to the target wavelength grid and spectral resolution, or
+    The function expects the spectrum to be available either:
+      - as 'spectrum_instru', with flux expressed per spectral bin ('ph/bin/mn');
+      - or directly as 'spectrum_instru_density', with flux expressed as a spectral
+        density ('ph/µm/mn').
+
+    If 'spectrum_instru_density' is provided, it is used directly. This is the
+    preferred and fastest path when several bands are extracted from the same
+    instrument-wide spectrum, because the conversion from 'ph/bin/mn' to
+    'ph/µm/mn' can be performed only once outside the band loop.
+
+    If only 'spectrum_instru' is provided, it is internally converted into a
+    flux-density spectrum by dividing the flux, and the optional uncertainty, by
+    the local wavelength bin width.
+
+    The flux-density spectrum is then either:
+      - degraded to the target wavelength grid and spectral resolution; or
       - simply interpolated onto the target wavelength grid.
 
-    Finally, the flux density is converted back to flux per bin ('ph/bin/mn') on the
-    output wavelength grid.
+    Finally, the output spectrum is converted back from flux density ('ph/µm/mn')
+    to flux per spectral bin ('ph/bin/mn') on the target band grid.
 
     Parameters
     ----------
-    spectrum_instru : Spectrum
+    spectrum_instru : Spectrum, optional
         Input spectrum sampled on the instrument wavelength grid, with flux expressed
-        in 'ph/bin/mn'.
-
+        in 'ph/bin/mn'. Required only if 'spectrum_instru_density' is not provided.
+    spectrum_instru_density : Spectrum, optional
+        Input spectrum sampled on the instrument wavelength grid, with flux expressed
+        in 'ph/µm/mn'. If provided, it is used directly and avoids repeating the
+        bin-to-density conversion for each band.
     config_data : dict, optional
         Instrument configuration dictionary. Required if 'wave_band' is not provided,
-        since it is used together with 'band' to retrieve the wavelength grid.
-    
-    instru : str
-        Instrument's name. 
-    
+        since it is used together with 'band' to retrieve the target wavelength grid.
+    instru : str, optional
+        Instrument name. Required if 'wave_band' is not provided, because it is passed
+        to 'get_wave_band()'.
     band : str, optional
         Name of the spectral band to extract. Must be a valid key of
         'config_data["gratings"]'. Used only if 'wave_band' is not provided.
-
     wave_band : ndarray, optional
         Target wavelength grid for the selected band, in µm. If provided, it takes
-        precedence over 'band' and 'config_data'.
-
+        precedence over 'band', 'config_data', and 'instru'.
+    dwave_band : ndarray, optional
+        Wavelength bin widths associated with 'wave_band', in µm/bin. If not provided,
+        they are computed with 'np.gradient(wave_band)'. Supplying this argument avoids
+        recomputing the same gradient inside repeated calls.
     R_output : float, optional
         Target spectral resolution used when 'degrade_resolution=True'. Passed to
-        'spectrum_instru_density.degrade_resolution()'.
-
+        'degrade_resolution()'.
     degrade_resolution : bool, optional
-        If True, degrade the input spectrum to the target wavelength grid and resolution.
-        If False, only interpolate the spectrum onto 'wave_band'. Default is True.
-
+        If True, degrade the input spectrum to the target wavelength grid and spectral
+        resolution. If False, only interpolate the spectrum onto 'wave_band'.
+        Default is True.
     verbose : bool, optional
         If True, print additional information during the resolution degradation step.
         Default is False.
@@ -3075,24 +3178,54 @@ def get_spectrum_band(spectrum_instru, config_data=None, instru=None, band=None,
     Spectrum
         Spectrum resampled on 'wave_band', with flux expressed in 'ph/bin/mn'.
     """
+
+    # Target wavelength grid
     if wave_band is None:
+        if config_data is None:
+            raise ValueError("'config_data' must be provided when 'wave_band' is None.")
         if band not in config_data["gratings"]:
             raise KeyError(f"Band '{band}' is not defined in config_data['gratings']: {[band for band in config_data['gratings']]}.")
-        wave_band = get_wave_band(instru=instru, band=band)
-    
-    spectrum_instru_density       = spectrum_instru.copy()                          # [ph/bin/mn]
-    dwave_in                      = np.gradient(spectrum_instru_density.wavelength) # [µm/bin]
-    spectrum_instru_density.flux /= dwave_in                                        # [ph/µm/mn]
-    if spectrum_instru_density.sigma is not None:
-        spectrum_instru_density.sigma /= dwave_in                                   # [ph/µm/mn]
+        wave_band = get_wave_band(instru=instru, band=band) # [µm]
+
+    # Input spectrum in flux density
+    if spectrum_instru_density is None:
+        if spectrum_instru is None:
+            raise ValueError("Either 'spectrum_instru' or 'spectrum_instru_density' must be provided.")
+
+        dwave_in = np.gradient(spectrum_instru.wavelength) # [µm/bin]
+
+        flux_density  = spectrum_instru.flux / dwave_in # [ph/µm/mn]
+        sigma_density = spectrum_instru.sigma / dwave_in if spectrum_instru.sigma is not None else None # [ph/µm/mn]
+
+        spectrum_instru_density = Spectrum(
+            wavelength = spectrum_instru.wavelength,
+            flux       = flux_density,
+            R          = spectrum_instru.R,
+            T          = spectrum_instru.T,
+            lg         = spectrum_instru.lg,
+            model      = spectrum_instru.model,
+            rv         = spectrum_instru.rv,
+            vsini      = spectrum_instru.vsini,
+            sigma      = sigma_density,
+            P          = spectrum_instru.P,
+            airmass    = spectrum_instru.airmass,
+        ) # [ph/µm/mn]
+
+    # Resample the flux-density spectrum onto the band wavelength grid
     if degrade_resolution:
         spectrum_band = spectrum_instru_density.degrade_resolution(wave_band, renorm=False, R_output=R_output, verbose=verbose) # [ph/µm/mn]
     else:
-        spectrum_band = spectrum_instru_density.interpolate_wavelength(wave_band, renorm=False)                                 # [ph/µm/mn]
-    dwave_out           = np.gradient(wave_band) # [µm/bin]
-    spectrum_band.flux *= dwave_out              # [ph/bin/mn]
+        spectrum_band = spectrum_instru_density.interpolate_wavelength(wave_band, renorm=False) # [ph/µm/mn]
+
+    # Output bin widths
+    if dwave_band is None:
+        dwave_band = np.gradient(wave_band) # [µm/bin]
+
+    # Convert output spectrum from flux density back to flux per bin
+    spectrum_band.flux *= dwave_band # [ph/bin/mn]
     if spectrum_band.sigma is not None:
-        spectrum_band.sigma *= dwave_out         # [ph/bin/mn]
+        spectrum_band.sigma *= dwave_band # [ph/bin/mn]
+
     return spectrum_band # [ph/bin/mn]
 
 

@@ -1,5 +1,6 @@
 # import FastYield modules
 from .config import config_data_list, lmin_bands, lmax_bands, rad2arcsec, get_sim_data_path, R0_max
+from .prints_helpers import print_warning
 
 # import astropy modules
 from astropy.io import fits
@@ -166,7 +167,8 @@ def get_R_instru(instru):
     """
     config_data = get_config_data(instru=instru)
     R_instru    = 2*np.nanmax([config_data["gratings"][band].R for band in config_data["gratings"]])
-    R_instru    = min(R_instru, R0_max) # Fixing the upper limit of resolution in order to speeds up the calculation (it also need to be high enough for instruments with very high resolution)
+    #R_instru    = min(R_instru, R0_max) # Fixing the upper limit of resolution in order to speeds up the calculation (it also need to be high enough for instruments with very high resolution)
+    R_instru    = max(min(R_instru, R0_max), 100_000) # Fixing the upper limit of resolution in order to speeds up the calculation (it also need to be high enough for instruments with very high resolution), and lower limit to avoid bias
     return R_instru
 
 
@@ -280,7 +282,10 @@ def _build_transmission(instru, wave_band, band, tellurics, apodizer, strehl=Non
     """
     # 1) Instrumental transmission on the band
     wave, trans = _load_instru_trans(instru=instru, band=band)
-    trans       = np.interp(wave_band, wave, trans, left=fill_value, right=fill_value)
+    if fill_value == "extrapolate":
+        trans = interp1d(wave, trans, bounds_error=False, fill_value=fill_value)(wave_band)
+    else:
+        trans = np.interp(wave_band, wave, trans, left=fill_value, right=fill_value)
 
     # 2) Apodizer throughput
     trans *= get_config_data(instru)["apodizers"][apodizer].transmission
@@ -410,11 +415,10 @@ def get_PSF_profile(band, strehl, apodizer, coronagraph, instru, separation_plan
     Load, interpolate, and optionally extrapolate an azimuthally averaged PSF radial profile.
     
     This function reads the PSF surface-brightness profile associated with a given
-    instrumental configuration, interpolates it onto a convenient separation grid,
-    and returns the profile converted from surface-brightness units to flux fraction
-    per pixel area. It also returns the fraction of flux contained in the PSF core
-    (if available in the FITS header), the separation grid, the pixel scale, and
-    the focal-plane mask inner working angle (IWA).
+    instrumental configuration, interpolates it onto a requested separation grid, and
+    returns the profile converted from surface-brightness units to flux fraction per
+    pixel area. It also returns the fraction of flux contained in the PSF core, when
+    available, the separation grid, and the pixel scale.
     
     Parameters
     ----------
@@ -430,34 +434,42 @@ def get_PSF_profile(band, strehl, apodizer, coronagraph, instru, separation_plan
         Instrument name.
     separation_planet : float or None, optional
         Planet separation to include explicitly in the returned separation grid,
-        expressed in the instrument separation unit ('mas' or 'arcsec' depending on
-        'config_data["sep_unit"]'). If larger than the nominal outer working angle,
-        the grid is extended up to this value.
+        expressed in the instrument separation unit, i.e. arcsec or mas depending on
+        'config_data["sep_unit"]'. If larger than the nominal outer working angle,
+        the separation grid is extended up to this value.
     return_FastYield : bool, optional
         If True and 'separation_planet' is provided, return a minimal separation grid
-        containing the key evaluation points instead of a densely sampled grid.
-        In practice, the returned grid contains at least 0, 'separation_planet',
-        and the focal-plane-mask IWA (after sorting and duplicate removal).
+        containing the key evaluation points instead of a densely sampled grid. In
+        practice, the returned grid contains at least 0, 'separation_planet', and the
+        focal-plane-mask IWA, after sorting and duplicate removal.
     new_extrapolation : bool, optional
         If True, force a refit of the power-law slope used for extrapolation, even if
         a previously fitted value is already stored in the PSF FITS header.
     sampling : int, optional
         Number of samples per pixel-scale element used to build the dense separation
         grid. Higher values produce a finer sampling.
+    return_hdr : bool, optional
+        If True, also return the FITS header associated with the PSF profile.
+    separation : ndarray or None, optional
+        User-defined separation grid. If None, the grid is built internally using
+        'get_separation_axis'.
     
     Returns
     -------
     PSF_profile : ndarray of shape (Ns,)
         Interpolated PSF radial profile evaluated on the returned separation grid.
-        The output is converted from surface-brightness units
-        ('flux fraction / sep_unit^2') to flux fraction per pixel area.
+        The output is converted from surface-brightness units, i.e. flux fraction per
+        separation-unit squared, to flux fraction per pixel area.
     fraction_core : float or None
         Fraction of total flux contained in the PSF core, as stored in the FITS
         header under the 'FC' keyword. Returns None if unavailable.
     separation : ndarray of shape (Ns,)
-        Separation grid in the instrument separation unit ('mas' or 'arcsec').
+        Separation grid in the instrument separation unit, i.e. arcsec or mas.
     pxscale : float
         Pixel scale in the same separation unit per pixel.
+    hdr : fits.Header, optional
+        FITS header associated with the PSF profile. Returned only if
+        'return_hdr=True'.
     
     Notes
     -----
@@ -466,13 +478,27 @@ def get_PSF_profile(band, strehl, apodizer, coronagraph, instru, separation_plan
     - If the requested separation grid extends beyond the last tabulated PSF point,
       the profile is extrapolated using a pure power law anchored to the last valid
       tabulated value:
-      
-          y(x) = y0 * (x / x0)^slope
     
-      where 'slope' is fitted in log-log space over the full valid profile
-      excluding 'r = 0'.
+          y(x) = y0 * (x / x0)**slope
+    
+      where 'slope' is fitted in log-log space from the valid PSF profile.
+    - For a diffraction-limited Airy-like halo, the asymptotic envelope typically
+      decreases approximately as 'r**-3', so 'slope ~ -3' is a useful physical
+      reference value.
+    - For realistic AO / high-contrast PSFs, the outer halo can differ from the
+      ideal Airy case because of residual turbulence, AO correction, coronagraphy,
+      apodization, diffraction from telescope structures, and instrumental
+      scattering. Typical effective values are therefore roughly:
+    
+          slope ~ -3        : diffraction-limited / Airy-like wings
+          slope ~ -3.5 to -4: relatively steep AO/turbulent halo
+          slope ~ -2 to -3  : flatter residual halo or instrumental scattering
+          slope >= 0        : generally suspicious for an external PSF extrapolation
+    
+    - In practice, 'slope' should be interpreted as an effective local slope of the
+      outer PSF halo, not as a universal property of high-contrast PSFs.
     - The fitted extrapolation slope is cached in the PSF FITS header under the
-      keyword ''slope'' for reuse in subsequent calls.
+      keyword 'slope' for reuse in subsequent calls.
     - For 'MIRIMRS', the final conversion to per-pixel-area units uses
       'config_data["pxscale0"][band]**2' instead of 'pxscale**2', because the PSF
       profile is handled in detector-space coordinates before cube-space correction.
@@ -505,7 +531,13 @@ def get_PSF_profile(band, strehl, apodizer, coronagraph, instru, separation_plan
             log_x             = np.log(x)
             log_y             = np.log(y) 
             valid             = np.isfinite(log_x) & np.isfinite(log_y)
-            slope, _          = np.polyfit(log_x[valid], log_y[valid], 1) # Global log-log slope fit
+            slope_fit, _      = np.polyfit(log_x[valid], log_y[valid], 1) # Global log-log slope fit
+            if (not np.isfinite(slope_fit)) or (slope_fit >= 0) or (slope_fit < -8): # Global log-log slope fit
+                print_warning(f"WARNING: Suspicious PSF extrapolation slope ({slope_fit}); using slope = -3.0")
+                slope = -3.0
+            else:
+                slope = slope_fit
+            
             # Persist in header for next runs
             hdul                    = fits.open(psf_file)
             hdul[0].header['slope'] = slope
