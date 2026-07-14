@@ -1016,6 +1016,38 @@ def get_contrast_from_table(planet_table, exposure_time, band_quantity, band_con
 
 
 
+def get_contrast_from_saved_SNR(planet_table, band_contrast, instru, spectrum_contributions, SNR_col):
+    """
+    Compute the 5-sigma contrast limit directly from a precomputed SNR.
+
+    The saved SNR must correspond to the actual planet flux represented
+    by the magnitude columns.
+    """
+    if band_contrast == "INSTRU":
+        star_mag_col   = f"StarINSTRUmag({instru})"
+        planet_mag_col = f"PlanetINSTRUmag({instru})({spectrum_contributions})"
+    else:
+        star_mag_col   = f"Star{band_contrast}mag"
+        planet_mag_col = f"Planet{band_contrast}mag({spectrum_contributions})"
+
+    missing_cols = [col for col in [star_mag_col, planet_mag_col, SNR_col] if col not in planet_table.colnames]
+    if missing_cols:
+        raise KeyError(f"Missing columns: {missing_cols}")
+
+    mag_star   = np.asarray(planet_table[star_mag_col], dtype=float)
+    mag_planet = np.asarray(planet_table[planet_mag_col], dtype=float)
+    SNR        = np.asarray(planet_table[SNR_col], dtype=float)
+    contrast   = np.full(len(planet_table), np.nan, dtype=float)
+
+    valid = np.isfinite(mag_star) & np.isfinite(mag_planet) & np.isfinite(SNR) & (SNR > 0)
+    planet_contrast = 10**(-0.4*(mag_planet[valid] - mag_star[valid]))
+
+    contrast[valid] = 5*planet_contrast/SNR[valid]
+
+    return contrast
+
+
+
 def get_size_from_SNR(SNR, s0=50, ds=200, SNR_min=SNR_thresh, SNR_max=1_000):
     """
     Map SNR to a marker size for plotting using a log stretch.
@@ -3815,19 +3847,39 @@ def yield_plot_instrus_contrast(table="Archive", exposure_time=10*60, thermal_mo
 
     if band_contrast == "INSTRU":
         raise ValueError("For a multi-instrument comparison, band_contrast must be a common photometric band, e.g. 'H'.")
-
-    spectrum_contributions, name_model = get_spectrum_contribution_name_model(thermal_model, reflected_model)
+    
+    # For PCS
+    exposure_label = f"{exposure_time/60:g}".replace(".", "p")
+    SNR_col        = f"SNR_INSTRU_{exposure_label}h"
+    
+    spectrum_contributions, name_model                 = get_spectrum_contribution_name_model(thermal_model, reflected_model)
     spectrum_contributions_thermal, name_model_thermal = get_spectrum_contribution_name_model(thermal_model, "None")
 
     # Each configuration contains:
     # instru, apodizer, strehl, coronagraph, systematics, PCA, name_model, spectrum_contributions
+    lw0 = 6
     curve_specs = [
+        {
+            "key": "PCS",
+            "label": "ELT/PCS w/ Lyot",
+            "color": colors_instru["PCS"],
+            "ls": "-",
+            "marker": "o",
+            "mfc": "none",
+            "mec": colors_instru["PCS"],
+            "mew": lw0/2,
+            "lw": lw0,
+            "use_saved_SNR": True,
+            "configs": [
+                ("PCS", "NO_SP", "Q2", "LYOT", False, False, name_model, spectrum_contributions),
+            ],
+        },
         {
             "key": "HARMONI",
             "label": "ELT/HARMONI",
             "color": colors_instru["HARMONI"],
             "ls": "-",
-            "lw": 4,
+            "lw": lw0,
             "configs": [
                 ("HARMONI", "NO_SP", "JQ1", None, False, False, name_model, spectrum_contributions),
                 #("HARMONI", "SP_Prox", "JQ1", None, False, False, name_model, spectrum_contributions),
@@ -3838,18 +3890,21 @@ def yield_plot_instrus_contrast(table="Archive", exposure_time=10*60, thermal_mo
             "label": "ELT/ANDES w/o coronagraph",
             "color": colors_instru["ANDES"],
             "ls": "-",
-            "lw": 4,
+            "lw": lw0,
             "configs": [
                 ("ANDES", "NO_SP", "MED", None, False, False, name_model, spectrum_contributions),
             ],
         },
         {
             "key": "ANDES_LYOT",
-            "label": "ELT/ANDES w/ LYOT",
+            "label": "ELT/ANDES w/ Lyot",
             "color": colors_instru["ANDES"],
             "ls": "-",
             "marker": "o",
-            "lw": 4,
+            "mfc": "none",
+            "mec": colors_instru["ANDES"],
+            "mew": lw0/2,
+            "lw": lw0,
             "configs": [
                 ("ANDES", "NO_SP", "MED", "LYOT", False, False, name_model, spectrum_contributions),
             ],
@@ -3859,7 +3914,7 @@ def yield_plot_instrus_contrast(table="Archive", exposure_time=10*60, thermal_mo
             "label": "VLT/ERIS",
             "color": colors_instru["ERIS"],
             "ls": "-",
-            "lw": 4,
+            "lw": lw0,
             "configs": [
                 ("ERIS", "NO_SP", "JQ0", None, False, False, name_model, spectrum_contributions),
             ],
@@ -3869,7 +3924,7 @@ def yield_plot_instrus_contrast(table="Archive", exposure_time=10*60, thermal_mo
             "label": "JWST/MIRI/MRS",
             "color": colors_instru["MIRIMRS"],
             "ls": "-",
-            "lw": 4,
+            "lw": lw0,
             "configs": [
                 ("MIRIMRS", "NO_SP", "NO_JQ", None, False, False, name_model_thermal, spectrum_contributions_thermal),
             ],
@@ -3879,7 +3934,7 @@ def yield_plot_instrus_contrast(table="Archive", exposure_time=10*60, thermal_mo
             "label": None,
             "color": colors_instru["MIRIMRS"],
             "ls": "--",
-            "lw": 4,
+            "lw": lw0,
             "configs": [
                 ("MIRIMRS", "NO_SP", "NO_JQ", None, True, False, name_model_thermal, spectrum_contributions_thermal),
             ],
@@ -3889,27 +3944,27 @@ def yield_plot_instrus_contrast(table="Archive", exposure_time=10*60, thermal_mo
             "label": None,
             "color": colors_instru["MIRIMRS"],
             "ls": ":",
-            "lw": 4,
+            "lw": lw0,
             "configs": [
                 ("MIRIMRS", "NO_SP", "NO_JQ", None, True, True, name_model_thermal, spectrum_contributions_thermal),
             ],
         },
-        {
-            "key": "NIRCam",
-            "label": "JWST/NIRCam",
-            "color": colors_instru["NIRCam"],
-            "ls": "-",
-            "lw": 4,
-            "configs": [
-                ("NIRCam", "NO_SP", "NO_JQ", "MASK335R", False, False, name_model, spectrum_contributions),
-            ],
-        },
+        # {
+        #     "key": "NIRCam",
+        #     "label": "JWST/NIRCam",
+        #     "color": colors_instru["NIRCam"],
+        #     "ls": "-",
+        #     "lw": lw0,
+        #     "configs": [
+        #         ("NIRCam", "NO_SP", "NO_JQ", "MASK335R", False, False, name_model, spectrum_contributions),
+        #     ],
+        # },
         {
             "key": "NIRSpec",
             "label": "JWST/NIRSpec/IFU",
             "color": colors_instru["NIRSpec"],
             "ls": "-",
-            "lw": 4,
+            "lw": lw0,
             "configs": [
                 ("NIRSpec", "NO_SP", "NO_JQ", None, False, False, name_model_thermal, spectrum_contributions_thermal),
             ],
@@ -3919,7 +3974,7 @@ def yield_plot_instrus_contrast(table="Archive", exposure_time=10*60, thermal_mo
             "label": None,
             "color": colors_instru["NIRSpec"],
             "ls": "--",
-            "lw": 4,
+            "lw": lw0,
             "configs": [
                 ("NIRSpec", "NO_SP", "NO_JQ", None, True, False, name_model_thermal, spectrum_contributions_thermal),
             ],
@@ -3929,7 +3984,7 @@ def yield_plot_instrus_contrast(table="Archive", exposure_time=10*60, thermal_mo
         #     "label": None,
         #     "color": colors_instru["NIRSpec"],
         #     "ls": ":",
-        #     "lw": 3,
+        #     "lw": lw0,
         #     "configs": [
         #         ("NIRSpec", "NO_SP", "NO_JQ", None, True, True, name_model_thermal, spectrum_contributions_thermal),
         #     ],
@@ -3941,24 +3996,20 @@ def yield_plot_instrus_contrast(table="Archive", exposure_time=10*60, thermal_mo
         filename = get_filename_table(table=table, instru=instru, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, systematics=systematics, PCA=PCA, name_model=model_name)
         return load_planet_table(filename)
 
-    def get_binned_curve(separation, contrast, bins):
-        xbin = np.sqrt(bins[:-1]*bins[1:])
-        y = np.full(len(xbin), np.nan)
-        ylow = np.full(len(xbin), np.nan)
+    def get_binned_curve(separation, contrast, bins, mode):
+        xbin  = np.sqrt(bins[:-1]*bins[1:])
+        y     = np.full(len(xbin), np.nan)
+        ylow  = np.full(len(xbin), np.nan)
         yhigh = np.full(len(xbin), np.nan)
-
         for ibin in range(len(xbin)):
             mask = np.isfinite(separation) & np.isfinite(contrast) & (separation >= bins[ibin]) & (separation < bins[ibin+1]) & (separation > 0) & (contrast > 0)
-
             if np.sum(mask) < (1 if mode == "best" else min_per_bin):
                 continue
-
             if mode == "best":
                 y[ibin] = np.nanmin(contrast[mask])
             else:
                 y[ibin] = np.nanmedian(contrast[mask])
                 ylow[ibin], yhigh[ibin] = np.nanpercentile(contrast[mask], [16, 84])
-
         return xbin, y, ylow, yhigh
 
     def get_planet_contrast(planet_table, instru, contributions):
@@ -3968,36 +4019,46 @@ def yield_plot_instrus_contrast(table="Archive", exposure_time=10*60, thermal_mo
         else:
             star_mag_col   = f"Star{band_contrast}mag"
             planet_mag_col = f"Planet{band_contrast}mag({contributions})"
-
         missing_cols = [col for col in [star_mag_col, planet_mag_col] if col not in planet_table.colnames]
         if missing_cols:
             raise KeyError(f"Missing magnitude columns: {missing_cols}")
-
-        mag_star = np.asarray(planet_table[star_mag_col], dtype=float)
+        mag_star   = np.asarray(planet_table[star_mag_col], dtype=float)
         mag_planet = np.asarray(planet_table[planet_mag_col], dtype=float)
 
         return 10**(-0.4*(mag_planet - mag_star))
 
     # Load tables and compute one contrast value per planet
-    curves = {}
-    planet_table_ref = None
-    instru_ref = None
+    curves            = {}
+    planet_table_ref  = None
+    instru_ref        = None
     contributions_ref = None
 
     for spec in curve_specs:
         configs = spec["configs"]
-        tables = [load_config(config) for config in configs]
-        contrasts = [
-            get_contrast_from_table(
-                planet_table=planet_table,
-                exposure_time=exposure_time,
-                band_quantity=band_quantity,
-                band_contrast=band_quantity,#band_contrast,
-                instru=config[0],
-                spectrum_contributions=config[7],
-            )
-            for planet_table, config in zip(tables, configs)
-        ]
+        tables  = [load_config(config) for config in configs]
+        if spec.get("use_saved_SNR", False):
+            contrasts = [
+                get_contrast_from_saved_SNR(
+                    planet_table=planet_table,
+                    band_contrast=band_contrast,
+                    instru=config[0],
+                    spectrum_contributions="thermal+reflected",#config[7],
+                    SNR_col=SNR_col,
+                )
+                for planet_table, config in zip(tables, configs)
+            ]
+        else:
+            contrasts = [
+                get_contrast_from_table(
+                    planet_table=planet_table,
+                    exposure_time=exposure_time,
+                    band_quantity=band_quantity,
+                    band_contrast=band_quantity,#band_contrast,
+                    instru=config[0],
+                    spectrum_contributions="thermal+reflected",#config[7],
+                )
+                for planet_table, config in zip(tables, configs)
+            ]
 
         names_ref = np.asarray(tables[0]["PlanetName"], dtype=str)
         for planet_table in tables[1:]:
@@ -4010,40 +4071,40 @@ def yield_plot_instrus_contrast(table="Archive", exposure_time=10*60, thermal_mo
         for contrast_config in contrasts[1:]:
             contrast = np.fmin(contrast, contrast_config)
 
-        separation = np.asarray(tables[0]["AngSep"].value if hasattr(tables[0]["AngSep"], "value") else tables[0]["AngSep"], dtype=float)
+        separation          = np.asarray(tables[0]["AngSep"].value if hasattr(tables[0]["AngSep"], "value") else tables[0]["AngSep"], dtype=float)
         curves[spec["key"]] = {"separation": separation, "contrast": contrast, **spec}
 
         if planet_table_ref is None:
-            planet_table_ref = tables[0]
-            instru_ref = configs[0][0]
+            planet_table_ref  = tables[0]
+            instru_ref        = configs[0][0]
             contributions_ref = configs[0][7]
 
     # Common logarithmic separation bins
-    all_sep = np.concatenate([curve["separation"][np.isfinite(curve["separation"]) & (curve["separation"] > 0)] for curve in curves.values()])
+    all_sep          = np.concatenate([curve["separation"][np.isfinite(curve["separation"]) & (curve["separation"] > 0)] for curve in curves.values()])
     sep_min, sep_max = np.nanmin(all_sep), np.nanmax(all_sep)
-    bins = np.logspace(np.log10(sep_min), np.log10(sep_max), nbins+1)
+    bins             = np.logspace(np.log10(sep_min), np.log10(sep_max), nbins+1)
 
     # Figure
     fig, ax = plt.subplots(figsize=(15, 8.5), dpi=300)
 
     # All known planets
     separation_planets = np.asarray(planet_table_ref["AngSep"].value if hasattr(planet_table_ref["AngSep"], "value") else planet_table_ref["AngSep"], dtype=float)
-    planet_contrast = get_planet_contrast(planet_table_ref, instru_ref, contributions_ref)
-    PlanetTeff = np.asarray(planet_table_ref["PlanetTeff"].value if hasattr(planet_table_ref["PlanetTeff"], "value") else planet_table_ref["PlanetTeff"], dtype=float)
-    discovery_method = np.asarray(planet_table_ref["DiscoveryMethod"], dtype=str)
+    planet_contrast    = get_planet_contrast(planet_table_ref, instru_ref, contributions_ref)
+    PlanetTeff         = np.asarray(planet_table_ref["PlanetTeff"].value if hasattr(planet_table_ref["PlanetTeff"], "value") else planet_table_ref["PlanetTeff"], dtype=float)
+    discovery_method   = np.asarray(planet_table_ref["DiscoveryMethod"], dtype=str)
 
-    cmap = plt.get_cmap("plasma")
-    norm = mpl.colors.Normalize(vmin=100, vmax=3000, clip=True)
+    cmap    = plt.get_cmap("plasma")
+    norm    = mpl.colors.Normalize(vmin=200, vmax=3000, clip=True)
     methods = {
-        "Transit": ("v", "Transit"),
+        "Transit":         ("v", "Transit"),
         "Radial Velocity": ("o", "Radial velocity"),
-        "Imaging": ("s", "Direct imaging"),
-        "Other": ("P", "Other"),
+        "Imaging":         ("s", "Direct imaging"),
+        "Other":           ("P", "Other"),
     }
 
     for method, (marker, label) in methods.items():
         method_mask = discovery_method == method if method != "Other" else ~np.isin(discovery_method, ["Transit", "Radial Velocity", "Imaging"])
-        mask = method_mask & np.isfinite(separation_planets) & np.isfinite(planet_contrast) & np.isfinite(PlanetTeff) & (separation_planets > 0) & (planet_contrast > 0) & (PlanetTeff > 0)
+        mask        = method_mask & np.isfinite(separation_planets) & np.isfinite(planet_contrast) & np.isfinite(PlanetTeff) & (separation_planets > 0) & (planet_contrast > 0) & (PlanetTeff > 0)
 
         ax.scatter(
             separation_planets[mask],
@@ -4052,10 +4113,10 @@ def yield_plot_instrus_contrast(table="Archive", exposure_time=10*60, thermal_mo
             cmap=cmap,
             norm=norm,
             marker=marker,
-            s=50,
+            s=100,
             edgecolors="k",
-            linewidths=0.4,
-            alpha=0.1,
+            linewidths=0.3,
+            alpha=0.15,
             zorder=1,
         )
 
@@ -4064,9 +4125,22 @@ def yield_plot_instrus_contrast(table="Archive", exposure_time=10*60, thermal_mo
     instrument_handles = []
 
     for key, curve in curves.items():
-        xbin, y, ylow, yhigh = get_binned_curve(curve["separation"], curve["contrast"], bins)
-        line, = ax.plot(xbin, y, color=curve["color"], ls=curve["ls"], lw=curve["lw"], marker=curve.get("marker", None), ms=11, label=curve["label"] if curve["label"] is not None else "_nolegend_", zorder=5)
-        
+        xbin, y, ylow, yhigh = get_binned_curve(curve["separation"], curve["contrast"], bins, mode)
+        line, = ax.plot(
+                        xbin, y,
+                        color=curve["color"],
+                        ls=curve["ls"],
+                        lw=curve["lw"],
+                        marker=curve.get("marker", None),
+                        ms=21,
+                        markevery=2,
+                        mfc=curve.get("mfc", curve["color"]),
+                        mec=curve.get("mec", curve["color"]),
+                        mew=curve.get("mew", 1.5),
+                        label=curve["label"] if curve["label"] is not None else "_nolegend_",
+                        zorder=5,
+                    )
+                            
         # if mode == "median":
         #     ax.fill_between(xbin, ylow, yhigh, color=curve["color"], alpha=0.15, linewidth=0, zorder=4)
 
@@ -4077,20 +4151,20 @@ def yield_plot_instrus_contrast(table="Archive", exposure_time=10*60, thermal_mo
 
     # Discovery-method legend
     handles_methods = [Line2D([], [], ls="", marker=marker, ms=11, markerfacecolor="white", markeredgecolor="k", color="k", label=label) for marker, label in methods.values()]
-    legend_methods = ax.legend(handles=handles_methods, loc="upper right", fontsize=14, frameon=True, edgecolor="gray", facecolor="white", title="Discovery method", title_fontsize=16, framealpha=1.0)
+    legend_methods = ax.legend(handles=handles_methods, loc="upper right", fontsize=16, frameon=True, edgecolor="gray", facecolor="white", framealpha=1.0)#, title="Discovery method", title_fontsize=16)
     ax.add_artist(legend_methods)
 
     # Instrument legend
-    legend_instrus = ax.legend(handles=instrument_handles, loc="lower left", fontsize=14, frameon=True, edgecolor="gray", facecolor="white", title="Instruments", title_fontsize=16, framealpha=1.0)
+    legend_instrus = ax.legend(handles=instrument_handles, loc="lower left", fontsize=16, frameon=True, edgecolor="gray", facecolor="white", framealpha=1.0)#, title="Instruments", title_fontsize=16)
     ax.add_artist(legend_instrus)
 
     # Configuration/systematics legend
     handles_systematics = [
-        Line2D([], [], color="k", ls="-", lw=3, label="Without systematics"),
-        Line2D([], [], color="k", ls="--", lw=3, label="With systematics"),
-        Line2D([], [], color="k", ls=":", lw=3, label="With systematics + PCA"),
+        Line2D([], [], color="k", ls="-",  lw=3, label="w/o systematics"),
+        Line2D([], [], color="k", ls="--", lw=3, label="w/ systematics"),
+        Line2D([], [], color="k", ls=":",  lw=3, label="w/ systematics + PCA"),
     ]
-    ax.legend(handles=handles_systematics, loc="upper center", fontsize=14, frameon=True, edgecolor="gray", facecolor="white", title="Configuration", title_fontsize=16, framealpha=1.0)
+    ax.legend(handles=handles_systematics, loc="upper center", fontsize=16, frameon=True, edgecolor="gray", facecolor="white", framealpha=1.0)#, title="Configuration", title_fontsize=16)
 
     # Planet-temperature colorbar
     sm = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
@@ -4099,15 +4173,13 @@ def yield_plot_instrus_contrast(table="Archive", exposure_time=10*60, thermal_mo
     cbar.set_label(r"Planet $T_\mathrm{eff}$ [K]", fontsize=19, rotation=270, labelpad=27)
     cbar.ax.tick_params(labelsize=15)
 
-    mode_label = "minimum contrast per separation bin" if mode == "best" else "median contrast and 16th–84th percentiles"
-
     ax.set_xscale("log")
     ax.set_yscale("log")
     ax.set_xlim(1e-1, 1e3)
-    ax.set_ylim(1e-10, 1e-1)
+    ax.set_ylim(1e-9, 1e-2)
     ax.set_xlabel("Angular separation [mas]", fontsize=21)
-    ax.set_ylabel(rf"5$\sigma$ {band_contrast}-band contrast", fontsize=21)
-    ax.set_title(rf"Exoplanet 5$\sigma$ contrast limits in {exposure_time/60:.0f} hr per target" + f"\n{mode_label}", fontsize=23, weight="bold", pad=18)
+    ax.set_ylabel(r"5$\sigma$ contrast", fontsize=21)
+    ax.set_title(rf"Exoplanet {mode} 5σ contrast limits in {exposure_time/60:.0f} hr", fontsize=23, weight="bold", pad=18)
     ax.grid(which="major", linestyle="--", linewidth=0.7, alpha=0.45)
     ax.grid(which="minor", linestyle=":", linewidth=0.4, alpha=0.25)
     ax.tick_params(axis="both", which="major", labelsize=18)
