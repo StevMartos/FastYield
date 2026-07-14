@@ -12,15 +12,7 @@ from fastyield.colormaps import colormap_bandwidth_resolution_with_constant_Nlam
 # set_sim_data_path("/path/to/sim_data")
 
 
-results, fig, ax = yield_plot_instrus_contrast(
-    exposure_time=10*60,
-    thermal_model="auto",
-    reflected_model="auto",
-    band_quantity="INSTRU",
-    band_contrast="H",
-    mode="median",
-    nbins=42,
-)
+yield_plot_instrus_contrast(exposure_time=10*60, thermal_model="auto", reflected_model="auto", band_quantity="INSTRU", band_contrast="H", mode="median", nbins=42)
 
 
 #------------------------------------------------------------------------------#

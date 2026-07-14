@@ -713,7 +713,8 @@ for config_data in config_data_list:
 
 instrus_with_systematics = ["MIRIMRS", "NIRSpec"]
 
-colors_instru = {"HARMONI": "royalblue",
+colors_instru = {"PCS":     "black",
+                 "HARMONI": "royalblue",
                  "ANDES":   "gray",
                  "ERIS":    "crimson",
                  "MIRIMRS": "seagreen",
