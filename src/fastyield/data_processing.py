@@ -241,7 +241,7 @@ def get_d_sim(instru, d, wave, trans, R, Rc, filter_type, model, T, lg, rv, vsin
         Simulated, masked, normalized, and PSD-matched vector to compare against 'd'.
     """
     
-    R_sampling = get_resolution(wavelength=wave, func=np.array)
+    R_sampling = get_resolution(wavelength=wave, func=np.nanmedian)
     
     if verbose:
         print()
@@ -622,7 +622,7 @@ def get_CCF_2D_rv(instru, S_res, wave, trans, R, Rc, filter_type, model, T, lg, 
     NbChannel, NbLine, NbColumn = S_res.shape
     
     if R_sampling is None:
-        R_sampling = get_resolution(wavelength=wave, func=np.array)
+        R_sampling = get_resolution(wavelength=wave, func=np.nanmedian)
     
     # 1) Template generation, if not provided
     if template_wo_shift is None:
@@ -913,7 +913,7 @@ def get_CCF_1D_rv(instru, band, d, d_bkg, wave, trans, R, Rc, filter_type, model
         otherwise 'None'.
     """
     
-    R_sampling = get_resolution(wavelength=wave, func=np.array)
+    R_sampling = get_resolution(wavelength=wave, func=np.nanmedian)
     
     # --- RV grid handling
     if rv_arr is None:
@@ -1683,7 +1683,7 @@ def get_CCF_1D_vsini(instru, d, d_bkg, wave, trans, R, Rc, filter_type, model, T
         otherwise 'None'.
     """
     
-    R_sampling = get_resolution(wavelength=wave, func=np.array)
+    R_sampling = get_resolution(wavelength=wave, func=np.nanmedian)
     
     # --- Vsini grid
     if vsini_arr is None:
@@ -2259,7 +2259,7 @@ def process_parameters_estimation(args):
 
 def parameters_retrieval(instru, band, target_name, d, wave, trans, R, Rc, filter_type, model, T_arr, lg_arr, rv_arr, vsini_arr, T, lg, rv, vsini, epsilon=0.8, fastbroad=True, airmass=2.0, star_spectrum=None, wave_model=None, template=None, degrade_resolution=True, stellar_component=True, trans_Ss=None, pca=None, calc_d_sim=False, renorm_d_sim=True, sigma_l=None, calc_logL=False, method_logL="classic", weight=None, SNR_estimate=False, SNR_CCF=None, force_new_est=False, save=True, fastcurves=False, exposure_time=None, show=True, verbose=True):
         
-    R_sampling = get_resolution(wavelength=wave, func=np.array)
+    R_sampling = get_resolution(wavelength=wave, func=np.nanmedian)
     
     if calc_logL and sigma_l is None:
         raise ValueError("sigma_l must be provided when calc_logL=True.")

@@ -1,9 +1,9 @@
 # import FastYield modules
-from fastyield.config import c, R0_max, config_data_list, T_earth, lg_earth, vrot_earth, drv_earth, airmass_earth, T_sun, lg_sun, vrot_sun, M_earth, M_sun, AU, G, colormaps_path, sim_data_path
+from fastyield.config import c, R0_max, config_data_list, T_earth, lg_earth, vrot_earth, drv_earth, airmass_earth, T_sun, lg_sun, vrot_sun, M_earth, M_sun, AU, G, colormaps_path, sim_data_path, planet_types, planet_types_reduced
 from fastyield.get_specs import load_tell_trans, get_config_data, get_transmission, get_PSF_profile, get_R_instru
 from fastyield.spectrum import get_counts_from_density, load_vega_spectrum, get_wave_K, get_wave_band, get_wavelength_axis_constant_R, filtered_flux, Spectrum, load_star_spectrum, load_planet_spectrum, load_albedo_spectrum, get_spectrum_contribution_name_model, get_thermal_reflected_spectrum
 from fastyield.FastCurves import FastCurves
-from fastyield.FastYield import planet_types, load_planet_table, get_SNR_from_table, build_match_dict, plot_matching_planets
+from fastyield.FastYield import load_planet_table, get_SNR_from_table, build_match_dict, plot_matching_planets
 from fastyield.signal_noise import compute_sigma_base_2_al_spec_fast
 
 # import matplotlib modules
@@ -75,7 +75,8 @@ def colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_plan
     # Global model-bandwidth (with constant dl step, must be evenly spaced in order to create the model spectra, for the rotational broadening with Vsini)
     lmin = 0.4
     if spectrum_contributions == "reflected" or tellurics:
-        lmax = 6 # [µm]
+        lmax = 3
+        #lmax = 6 # [µm]
     else:
         lmax = 12 # [µm]    
     lmin_model = 0.9*lmin                                    # [µm] a bit larger for doppler shifts and to avoid edge effects
@@ -120,10 +121,6 @@ def colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_plan
         trans_tell            = Spectrum(wavelength=wave_tell, flux=trans_tell).interpolate_wavelength(wave_output=wave_instru, renorm=False, fill_value=(trans_tell[0], trans_tell[-1])) 
     else:
         trans_tell = None
-        
-    planet.plot()
-    star.plot()
-    trans_tell.plot()
     
     # Defining arrays
     R_arr       = np.logspace(np.log10(Rc), np.log10(R_model), num=num)
@@ -159,11 +156,11 @@ def colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_plan
     for plot in plots_colormaps:
         plt.figure(figsize=(10, 6), dpi=300)
         plt.yscale('log')
-        plt.xlabel(r"Central wavelength $\lambda_0$ [$\mu$m]", fontsize=14)
-        plt.ylabel("Spectral resolution $R$", fontsize=14)
+        plt.xlabel(r"Central wavelength $\lambda_0$ [$\mu$m]", fontsize=16)
+        plt.ylabel("Spectral resolution $R$",                  fontsize=16)
         plt.ylim(R_arr[0], R_arr[-1])
         plt.xlim(lmin, lmax)
-        plt.tick_params(axis='both', which='major', labelsize=12)
+        plt.tick_params(axis='both', which='major', labelsize=14)
         plt.minorticks_on()
         
         if plot == "SNR":
@@ -187,8 +184,8 @@ def colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_plan
         cbar = plt.colorbar(mesh, ax=ax, pad=0.03, shrink=1)
         cbar.minorticks_on()
         cbar.set_ticks(contour_levels)
-        cbar.ax.tick_params(labelsize=12)
-        cbar.set_label(cbar_label, rotation=270, labelpad=14, fontsize=14)
+        cbar.ax.tick_params(labelsize=14)
+        cbar.set_label(cbar_label, rotation=270, labelpad=16, fontsize=16)
         
         # Title
         if title is None:
@@ -240,7 +237,7 @@ def colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_plan
             for i, l in enumerate(labels):
                 plt.annotate(l, (x_instru[i], 1.2*y_instru[i]), ha='center', fontsize=12, fontweight="bold")
 
-        plt.legend(fontsize=12, loc="lower right", frameon=True, edgecolor="gray", facecolor="whitesmoke")        
+        plt.legend(fontsize=14, loc="lower right", frameon=True, edgecolor="gray", facecolor="whitesmoke")        
         plt.tight_layout()
         
         if save:
@@ -697,16 +694,15 @@ def colormap_bandwidth_Tp(instru, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_s
     
     # for i in range(num):
     #     process_colormap_bandwidth_Tp(i)
-        
     
     # Parallel calculations
     print()
     with Pool(processes=cpu_count(), initializer=_init_cm_ctx, initargs=(_CM_CTX,)) as pool:
         for (i, SNR_1D, lost_signal_1D) in tqdm(pool.imap_unordered(process_colormap_bandwidth_Tp, range(num)), total=num, desc=f"colormap_bandwidth_Tp(instru={instru}, model={model}, Rc={Rc})",):
-            SNR[i, :]         = SNR_1D / np.nanmax(SNR_1D) # Normalizing each row
+            SNR[i, :]         = SNR_1D / np.nanmax(SNR_1D) # Normalizing each row along l0
             lost_signal[i, :] = lost_signal_1D
             l0_opti[i]        = l0_arr[SNR_1D.argmax()]
-    
+        
     # Plots
     for plot in plots_colormaps:
         plt.figure(figsize=(10, 6), dpi=300)
@@ -831,7 +827,7 @@ def process_colormap_bandwidth_Tp(i):
     planet_spectrum = planet_spectrum.doppler_shift(delta_rv)                           # Shifting the spectrum
     planet          = planet_spectrum.interpolate_wavelength(wave_instru, renorm=False) # Interpolating on wave_instru (constant R_model)
     planet.flux     = planet.flux * wave_instru                                         # [J/s/m2/µm] => propto [ph/µm]
-    
+        
     # --- Build a wavelength grid with *constant resolving power* R = res ---
     # For a spectrograph with resolving power R, one resolution element is:
     #   Δλ_res = λ / R
@@ -1157,7 +1153,7 @@ def colormap_bands_ptypes_SNR(mode="multi", Nmax=None, instru="HARMONI", thermal
     planet_types_list = [ptype for ptype, planets in matching_planets.items() if len(planets) > 0]
     planet_types_arr  = np.array(planet_types_list, dtype=object)
     bands             = np.array([band                   for band in config_data["gratings"]])
-    bands_ticks       = np.array([band.replace("_", " ") for band in config_data["gratings"]])
+    bands_ticks       = np.array([band.replace("_", "-") for band in config_data["gratings"]])
 
     # Map each planet name to its row index to avoid repeated calls to get_planet_index
     name_to_index = {str(name): i for i, name in enumerate(planet_table["PlanetName"])}
@@ -1202,8 +1198,10 @@ def colormap_bands_ptypes_SNR(mode="multi", Nmax=None, instru="HARMONI", thermal
     plt.figure(figsize=(10, 8), dpi=300)
     plt.xlabel("Various planetary types", fontsize=16, weight='bold')
     plt.ylabel("Various spectral modes",  fontsize=16, weight='bold')
-    plt.title(f"{instru} relative band-to-band S/N gain\nin {spectrum_contributions} light ({name_model}-model)", fontsize=18, pad=14)
-    plt.tick_params(axis='both', which='major', labelsize=12)
+    plt.title(f"{instru} relative band-to-band S/N gain\nin {spectrum_contributions} light ({name_model}-model)", weight="bold", fontsize=18, pad=18)
+    plt.title(f"ELT/{instru} relative band-to-band S/N gain", weight="bold", fontsize=18, pad=18)
+    plt.tick_params(axis='y', which='major', labelsize=14)
+    plt.tick_params(axis='x', which='major', labelsize=12)
 
     # Heatmap with pcolormesh
     mesh = plt.pcolormesh(planet_types_arr_idx_extended, bands_idx_extended, data_extended, cmap=cmap, shading='auto', vmin=0, vmax=100) 
@@ -1219,7 +1217,7 @@ def colormap_bands_ptypes_SNR(mode="multi", Nmax=None, instru="HARMONI", thermal
     cbar.minorticks_on()
     cbar.set_ticks(contour_levels)
     cbar.ax.tick_params(labelsize=12)
-    cbar.set_label('$GAIN_{S/N}$ [%]', rotation=270, labelpad=14, fontsize=14)
+    cbar.set_label('$GAIN_{S/N}$ [%]', rotation=270, labelpad=16, fontsize=16)
     cbar.ax.text(1.2, 1.05,  'High signal', ha='center', va='bottom', fontsize=14, transform=cbar.ax.transAxes, weight='bold', color='red')
     cbar.ax.text(1.2, -0.05, 'Poor signal', ha='center', va='top',    fontsize=14, transform=cbar.ax.transAxes, weight='bold', color='blue')
 
@@ -1246,31 +1244,28 @@ def colormap_bands_ptypes_SNR(mode="multi", Nmax=None, instru="HARMONI", thermal
 # GAIN_UNCERTAINTIES(Bands vs Planet Types)
 #
 
-def colormap_bands_ptypes_parameters(mode="multi", Nmax=10, instru="HARMONI", thermal_model="auto", reflected_model="auto", exposure_time=10*60, apodizer="NO_SP", strehl="JQ1", coronagraph=None, systematics=False, PCA=False, PCA_mask=False, N_PCA=20, Rc=100, filter_type="gaussian", planet_types=planet_types, save=False):
+def colormap_bands_ptypes_parameters(mode="unique", Nmax=1, instru="HARMONI", thermal_model="auto", reflected_model="auto", exposure_time=10*60, apodizer="NO_SP", strehl="JQ1", coronagraph=None, systematics=False, PCA=False, PCA_mask=False, N_PCA=20, Rc=100, filter_type="gaussian_gast", planet_types=planet_types_reduced, save=False):
     
     def normalize_if_possible(x):
-        x    = np.asarray(x, dtype=float)
-        xmax = np.nanmax(x)
-        return x / xmax if np.isfinite(xmax) and xmax > 0 else x
-    
-    def replace_nonpositive_by_smallest_positive(x):
-        x   = np.asarray(x, dtype=float).copy()
-        pos = np.isfinite(x) & (x > 0)
-        if np.any(pos):
-            xmin    = np.nanmin(x[pos])
-            x[~pos] = xmin
-        else:
-            x[:] = np.nan
-        return x
+        x     = np.asarray(x, dtype=float)
+        out   = np.full_like(x, np.nan)
+        valid = np.isfinite(x) & (x > 0)
+        if np.any(valid):
+            out[valid] = x[valid] / np.nanmax(x[valid])
+        return out
     
     def sigma_to_gain(x):
         x     = np.asarray(x, dtype=float)
-        valid = np.isfinite(x) & (x > 0)
         out   = np.full_like(x, np.nan)
+        valid = np.isfinite(x) & (x > 0)
         if np.any(valid):
-            xmin       = np.nanmin(x[valid])
-            out[valid] = xmin / x[valid]
+            out[valid] = np.nanmin(x[valid]) / x[valid]
         return out
+    
+    def add_to_average(sum_array, count_array, values, itype):
+        valid                      = np.isfinite(values) & (values > 0)
+        sum_array[valid, itype]   += values[valid]
+        count_array[valid, itype] += 1
     
     # Get instru specs
     config_data = get_config_data(instru)
@@ -1278,10 +1273,7 @@ def colormap_bands_ptypes_parameters(mode="multi", Nmax=10, instru="HARMONI", th
         raise KeyError(f"{instru} is not a spectrograph but an {config_data['type']}")
 
     # tellurics (or not)
-    if config_data["base"]=="space":
-        tellurics = False
-    elif config_data["base"]=="ground":
-        tellurics = True
+    tellurics = config_data["base"] == "ground"
         
     # Global model-bandwidth (with constant dl step, must be evenly spaced in order to create the model spectra, for the rotational broadening with Vsini)
     lmin_model = 0.9*config_data["lambda_range"]["lambda_min"] # [µm] a bit larger for doppler shifts and to avoid edge effects
@@ -1334,57 +1326,70 @@ def colormap_bands_ptypes_parameters(mode="multi", Nmax=10, instru="HARMONI", th
             selected_entries.append((idx, ptype))
     
     # Calculating uncertainties
-    sigma_T       = np.zeros((len(bands), len(planet_types_arr)), dtype=float)
-    sigma_lg      = np.zeros((len(bands), len(planet_types_arr)), dtype=float)
-    sigma_vsini   = np.zeros((len(bands), len(planet_types_arr)), dtype=float)
-    sigma_rv      = np.zeros((len(bands), len(planet_types_arr)), dtype=float)           
+    sum_T,     count_T     = np.zeros((len(bands), len(planet_types_arr)), dtype=float), np.zeros((len(bands), len(planet_types_arr)), dtype=int)
+    sum_lg,    count_lg    = np.zeros_like(sum_T), np.zeros_like(count_T)
+    sum_vsini, count_vsini = np.zeros_like(sum_T), np.zeros_like(count_T)
+    sum_rv,    count_rv    = np.zeros_like(sum_T), np.zeros_like(count_T) 
+    show_debug  = False     
     for idx, ptype in tqdm(selected_entries, total=len(selected_entries), desc="Processing planets", unit="planet"):
         
         planet = planet_table[idx]
         itype  = type_to_index[ptype]
+        mag_p  = float(planet[f"PlanetINSTRUmag({instru})({spectrum_contributions})"])
+        mag_s  = float(planet[f"StarINSTRUmag({instru})"])
         
-        planet_spectrum, planet_thermal, planet_reflected, star_spectrum = get_thermal_reflected_spectrum(planet=planet, thermal_model=thermal_model, reflected_model=reflected_model, instru=instru, wave_model=wave_model, wave_K=wave_K, counts_vega_K=counts_vega_K, show=False, in_planet_mag=True)        
-        planet_spectrum.model        = planet_thermal.model # TODO: generalize to reflected models to (with mag(ref) < mag(th))
-        mag_p                        = float(planet[f"PlanetINSTRUmag({instru})({spectrum_contributions})"])
-        mag_s                        = float(planet[f"StarINSTRUmag({instru})"])
-        name_bands, _, uncertainties = FastCurves(instru=instru, calculation="corner plot", systematics=systematics, mag_star=mag_s, band0="instru", exposure_time=exposure_time, mag_planet=mag_p, separation_planet=float(planet["AngSep"].value / 1000), planet_name="None", return_FastYield=False, show_plot=False, verbose=False, planet_spectrum=planet_spectrum, star_spectrum=star_spectrum, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, PCA=PCA, PCA_mask=PCA_mask, N_PCA=N_PCA, Rc=Rc, filter_type=filter_type)
+        # Spectra modelisation
+        planet_spectrum, planet_thermal, planet_reflected, star_spectrum = get_thermal_reflected_spectrum(planet=planet, thermal_model=thermal_model, reflected_model=reflected_model, instru=instru, wave_model=wave_model, wave_K=wave_K, counts_vega_K=counts_vega_K, show=show_debug, in_planet_mag=True)        
         
-        sigma_T_1D     = np.zeros((len(bands)))
-        sigma_lg_1D    = np.zeros((len(bands)))
-        sigma_vsini_1D = np.zeros((len(bands)))
-        sigma_rv_1D    = np.zeros((len(bands)))
-        band_to_idx    = {band_name: k for k, band_name in enumerate(name_bands)}
+        # Choosing the model for the retrieval
+        if spectrum_contributions == "thermal+reflected":
+            mag_th                = float(planet[f"PlanetINSTRUmag({instru})(thermal)"])
+            mag_re                = float(planet[f"PlanetINSTRUmag({instru})(reflected)"])
+            planet_spectrum.model = planet_thermal.model if np.isfinite(mag_th) and np.isfinite(mag_re) and mag_th < mag_re else planet_reflected.model
+        elif spectrum_contributions == "thermal":
+            planet_spectrum.model = planet_thermal.model
+        else:
+            planet_spectrum.model = planet_reflected.model
+        
+        # Uncertainties estimation
+        name_bands, _, uncertainties = FastCurves(show_plot=show_debug, verbose=show_debug, instru=instru, calculation="corner plot", systematics=systematics, mag_star=mag_s, band0="instru", exposure_time=exposure_time, mag_planet=mag_p, separation_planet=float(planet["AngSep"].value / 1000), planet_name="None", return_FastYield=False, planet_spectrum=planet_spectrum, star_spectrum=star_spectrum, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, PCA=PCA, PCA_mask=PCA_mask, N_PCA=N_PCA, Rc=Rc, filter_type=filter_type)
+        
+        sigma_T_1D     = np.full(len(bands), np.nan)
+        sigma_lg_1D    = np.full(len(bands), np.nan)
+        sigma_vsini_1D = np.full(len(bands), np.nan)
+        sigma_rv_1D    = np.full(len(bands), np.nan)
+        band_to_idx = {band_name: k for k, band_name in enumerate(name_bands)}
         for iband, band in enumerate(bands):
+            if band not in band_to_idx:
+                continue
             u                  = uncertainties[band_to_idx[band]]
             sigma_T_1D[iband]  = u[0]
             sigma_lg_1D[iband] = u[1]
             if len(u) == 3:
                 sigma_rv_1D[iband] = u[2]
-            else:
+            elif len(u) >= 4:
                 sigma_vsini_1D[iband] = u[2]
                 sigma_rv_1D[iband]    = u[3]
-        
+                
         sigma_T_1D     = normalize_if_possible(sigma_T_1D)
         sigma_lg_1D    = normalize_if_possible(sigma_lg_1D)
         sigma_vsini_1D = normalize_if_possible(sigma_vsini_1D)
         sigma_rv_1D    = normalize_if_possible(sigma_rv_1D)
         
-        sigma_T[:, itype]     += sigma_T_1D     / len(matching_planets[planet_types_arr[itype]])
-        sigma_lg[:, itype]    += sigma_lg_1D    / len(matching_planets[planet_types_arr[itype]])
-        sigma_vsini[:, itype] += sigma_vsini_1D / len(matching_planets[planet_types_arr[itype]])
-        sigma_rv[:, itype]    += sigma_rv_1D    / len(matching_planets[planet_types_arr[itype]])
+        add_to_average(sum_T, count_T, sigma_T_1D, itype)
+        add_to_average(sum_lg, count_lg, sigma_lg_1D, itype)
+        add_to_average(sum_vsini, count_vsini, sigma_vsini_1D, itype)
+        add_to_average(sum_rv, count_rv, sigma_rv_1D, itype)
 
-    for itype in range(len(planet_types_arr)):
-        sigma_T[:, itype]     = replace_nonpositive_by_smallest_positive(sigma_T[:, itype])
-        sigma_lg[:, itype]    = replace_nonpositive_by_smallest_positive(sigma_lg[:, itype])
-        sigma_vsini[:, itype] = replace_nonpositive_by_smallest_positive(sigma_vsini[:, itype])
-        sigma_rv[:, itype]    = replace_nonpositive_by_smallest_positive(sigma_rv[:, itype])
+    sigma_T     = np.divide(sum_T,     count_T,     out=np.full_like(sum_T,     np.nan), where=count_T     > 0)
+    sigma_lg    = np.divide(sum_lg,    count_lg,    out=np.full_like(sum_lg,    np.nan), where=count_lg    > 0)
+    sigma_vsini = np.divide(sum_vsini, count_vsini, out=np.full_like(sum_vsini, np.nan), where=count_vsini > 0)
+    sigma_rv    = np.divide(sum_rv,    count_rv,    out=np.full_like(sum_rv,    np.nan), where=count_rv    > 0)
     
     gain_sigma_T     = np.zeros_like(sigma_T)
     gain_sigma_lg    = np.zeros_like(sigma_lg)
     gain_sigma_vsini = np.zeros_like(sigma_vsini)
     gain_sigma_rv    = np.zeros_like(sigma_rv)
-    
     for itype in range(len(planet_types_arr)):
         gain_sigma_T[:, itype]     = sigma_to_gain(sigma_T[:, itype])
         gain_sigma_lg[:, itype]    = sigma_to_gain(sigma_lg[:, itype])
@@ -1417,9 +1422,12 @@ def colormap_bands_ptypes_parameters(mode="multi", Nmax=10, instru="HARMONI", th
     
         # Contours 
         planet_types_arr_mesh, bands_mesh = np.meshgrid(planet_types_arr_idx_extended, bands_idx_extended, indexing='xy')
-        contours                          = ax.contour(planet_types_arr_mesh, bands_mesh, data_extended, levels=contour_levels, colors='k', linewidths=1., alpha=0.7)
-        ax.clabel(contours, inline=True, fontsize=10, fmt="%d%%")  # Augmenté pour plus de lisibilité
-        
+        finite_data                       = data_extended[np.isfinite(data_extended)]
+        levels                            = [level for level in contour_levels if len(finite_data) > 0 and np.nanmin(finite_data) <= level <= np.nanmax(finite_data)]
+        if len(levels) > 0:
+            contours = ax.contour(planet_types_arr_mesh, bands_mesh, data_extended, levels=levels, colors="k", linewidths=1.0, alpha=0.7)
+            ax.clabel(contours, inline=True, fontsize=10, fmt="%d%%")
+            
         # Axes et labels améliorés
         ax.set_xlim(-0.5, len(planet_types_arr)-0.5)
         ax.set_xticks(planet_types_arr_idx)
@@ -1448,12 +1456,11 @@ def colormap_bands_ptypes_parameters(mode="multi", Nmax=10, instru="HARMONI", th
     fig.suptitle(f"Error fluctuations for {instru} ({'with' if tellurics else 'without'} tellurics absorption)\nin {spectrum_contributions} light with {thermal_model}+{reflected_model} models", fontsize=28, y=1.05)  # Position du titre remontée    
 
     if save:
-        output_dir  = Path(colormaps_path) / "colormaps_bandwidth_resolution"
+        output_dir = Path(colormaps_path) / "colormaps_bands_planets_parameters"
         output_dir.mkdir(parents=True, exist_ok=True)
-        filename    = f"colormaps_bands_planets_snr/colormap_bands_ptypes_parameters_{instru}_{apodizer}_{strehl}{coronagraph_str}_{suffix}_{name_model}_{mode}"    
-        output_path = output_dir / f"{filename}.png"
-        plt.savefig(output_path, format="png", bbox_inches="tight")
-    
+        filename = f"colormap_bands_ptypes_parameters_{instru}_{apodizer}_{strehl}{coronagraph_str}_{suffix}_{name_model}_{mode}.png"
+        plt.savefig(output_dir / filename, format="png", bbox_inches="tight")
+
     plt.show()
     
     return planet_types_arr, bands, gain_sigma_T, gain_sigma_lg, gain_sigma_vsini, gain_sigma_rv
@@ -2043,7 +2050,7 @@ def colormap_maxsep_phase_inc(instru="HARMONI", band="H", apodizer="NO_SP", stre
     
     # Global context worker
     global _CM_CTX
-    _CM_CTX = dict(SMA_arr=SMA_arr, max_sep_arr=max_sep_arr, phase_arr=phase_arr, inc_arr=inc_arr, g_arr=g_arr, log_PSF_profile_interp=log_PSF_profile_interp, log_fraction_core_interp=log_fraction_core_interp, M_star=M_star, M_planet=M_planet, vrot_star=vrot_star, vrot_planet=vrot_planet, spectrum_contributions=spectrum_contributions, star_spectrum=star_spectrum, star_spectrum_broad_ref=star_spectrum_broad_ref, planet_spectrum=planet_spectrum, albedo_spectrum=albedo_spectrum, wave_model=wave_model, wave_band=wave_band, dwave_band=dwave_band, trans=trans, R_band=R_band, Rc=Rc, filter_type=filter_type)
+    _CM_CTX = dict(SMA_arr=SMA_arr, max_sep_arr=max_sep_arr, phase_arr=phase_arr, inc_arr=inc_arr, g_arr=g_arr, log_PSF_profile_interp=log_PSF_profile_interp, log_fraction_core_interp=log_fraction_core_interp, M_star=M_star, M_planet=M_planet, vrot_star=vrot_star, vrot_planet=vrot_planet, spectrum_contributions=spectrum_contributions, star_spectrum=star_spectrum, star_spectrum_broad_ref=star_spectrum_broad_ref, planet_spectrum=planet_spectrum, albedo_spectrum=albedo_spectrum, wave_model=wave_model, wave_band=wave_band, dwave_band=dwave_band, trans=trans, R_band=R_band, Rc=Rc, filter_type=filter_type, lg_planet=lg_planet, model=model, airmass=airmass, instru=instru)
     
     # Parallel calculations
     print()
@@ -2210,10 +2217,34 @@ def process_colormap_maxsep_phase_inc(k):
         max_sep  = max_sep_arr[i] # [arcsec]
         SMA      = SMA_arr[i]     # [AU]
         
-        # A_B      = 0.3
-        # T_star   = T_sun  # [K]
-        # R_star   = 1
-        # T_planet = T_star * np.sqrt( R_star*R_sun / (2*SMA*AU) ) * (1 - A_B)**(1/4)
+        # # TODO : for old objects
+        # from fastyield.config import R_sun
+        # lg_planet       = _CM_CTX["lg_planet"]
+        # model           = _CM_CTX["model"]
+        # airmass         = _CM_CTX["airmass"]
+        # instru          = _CM_CTX["instru"]
+        # A_B             = 0.3
+        # T_star          = T_sun  # [K]
+        # R_star          = 1
+        # T_planet        = T_star * np.sqrt( R_star*R_sun / (2*SMA*AU) ) * (1 - A_B)**(1/4)
+        # # Getting planet spectrum in [J/s/m2/µm]
+        # if spectrum_contributions=="reflected":
+        #     albedo_spectrum = load_albedo_spectrum(T_planet, lg_planet, model=model, airmass=airmass)
+        #     albedo_spectrum = albedo_spectrum.interpolate_wavelength(wave_model, renorm=False) # Interpolating on wave_model (constant dl)
+        #     planet_spectrum = Spectrum(wavelength=wave_model, flux=albedo_spectrum.flux*star_spectrum_broad_ref.flux, R=np.maximum.reduce([star_spectrum.R, albedo_spectrum.R]), T=albedo_spectrum.T, lg=albedo_spectrum.lg, model=albedo_spectrum.model, rv=0, vsini=0)
+        # elif spectrum_contributions=="thermal":
+        #     planet_spectrum = load_planet_spectrum(T_planet, lg_planet, model, instru=instru)  # [J/s/m2/µm]
+        #     planet_spectrum = planet_spectrum.interpolate_wavelength(wave_model, renorm=False) # Interpolating on wave_model (constant dl)
+        # else:
+        #     raise ValueError("spectrum_contributions must be 'reflected' or 'thermal'")
+        # planet_broad       = planet_spectrum.broad(vsini_planet)                           # [J/µm]
+        # planet_broad.flux *= wave_model
+        # planet_broad       = planet_broad.degrade_resolution(wave_band, renorm=False)         # [ph/µm]
+        # planet_broad.flux  = planet_broad.flux * dwave_band                                             # [ph/µm] => [ph/bin]        
+        # # HF/LF split
+        # planet_HF = planet_broad.copy()
+        # planet_LF = planet_broad.copy()
+        # planet_HF.flux, planet_LF.flux  = filtered_flux(planet_broad.flux, R=R_band, Rc=Rc, filter_type=filter_type) # [ph/bin]
         
         for j in range(len(phase_arr)):
             

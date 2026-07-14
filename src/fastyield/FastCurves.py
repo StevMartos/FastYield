@@ -2,8 +2,8 @@
 from .config import instrus, bands, rad2arcsec, R0_max
 from .get_specs import get_transmission, get_PSF_profile, get_config_data, get_wa, get_band_lims, get_R_instru, get_logit_coronagraphic_profile_interp, get_R_corr_interp, get_bkg_flux_band
 from .utils import airy_profile, get_r_core, power_law_extrapolation
-from .spectrum import filtered_flux, get_mag, get_resolution, get_spectrum_instru, get_spectrum_band, load_star_spectrum, load_planet_spectrum, load_vega_spectrum, get_counts_from_density
-from .signal_noise import get_DIT_RON, get_delta_cos_theta_syst, get_alpha_cos_theta_syst, get_beta, get_fn_MM, get_systematics, compute_sigma_base_2_al_spat_numba, compute_sigma_base_2_al_spec_numba, compute_sigma_base_2_speck_numba, compress_h_for_sigma_base_2, compute_sigma_base_2_al_spec_fast
+from .spectrum import Spectrum, get_wavelength_axis_constant_R, filtered_flux, get_mag, get_resolution, get_spectrum_instru, get_wave_band, get_spectrum_band, load_star_spectrum, load_planet_spectrum, load_vega_spectrum, get_counts_from_density
+from .signal_noise import get_DIT_RON, get_delta_cos_theta_syst, get_alpha_cos_theta_syst, get_beta, get_fn_HF_LF, get_fn_MM, get_systematics, compute_sigma_base_2_al_spat_numba, compute_sigma_base_2_al_spec_numba, compute_sigma_base_2_speck_numba, compress_h_for_sigma_base_2, compute_sigma_base_2_al_spec_fast
 from .data_processing import get_d_sim, parameters_retrieval, plot_CCF_1D_rv
 from .prints_helpers import print_header, print_subheader, print_info, print_metric, print_warning, print_time, sci
 
@@ -33,10 +33,11 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
     """
     See the function "FastCurves" below.
     """
-        
-    warnings.filterwarnings("ignore", message="FigureCanvasAgg is non-interactive*", category=UserWarning)
-    #warnings.filterwarnings('ignore', category=UserWarning, append=True)
-    mpl.rcParams['figure.max_open_warning'] = 0
+    
+    if not return_FastYield:
+        warnings.filterwarnings("ignore", message="FigureCanvasAgg is non-interactive*", category=UserWarning)
+        #warnings.filterwarnings('ignore', category=UserWarning, append=True)
+        mpl.rcParams['figure.max_open_warning'] = 0
     mask_wave   = None
     PCA_verbose = None
     
@@ -134,21 +135,32 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
     # -----------------------------------------------------------------------------------
     # Spectra on instrument bandwidth (intermediate spectra) + magnitudes in [ph/bin/mn] (total ph over the FoV)
     # -----------------------------------------------------------------------------------
-    star_spectrum_instru, star_spectrum_density = get_spectrum_instru(band0=band0_star, R=R_instru, config_data=config_data, mag=mag_star, spectrum=star_spectrum) # [ph/bin/mn] and [J/s/m2/µm]
+    wave_instru  = get_wavelength_axis_constant_R(lmin=0.98*lmin_instru, lmax=1.02*lmax_instru, R=R_instru) # Wavelength array on the instrumental bandwidth with constant sampling resolution
+    dwave_instru = np.gradient(wave_instru) # [µm/bin]
+    
+    star_spectrum_instru, star_spectrum_density = get_spectrum_instru(spectrum=star_spectrum, mag=mag_star, config_data=config_data, band0=band0_star, wave_instru=wave_instru, dwave_instru=dwave_instru) # [ph/bin/mn] and [J/s/m2/µm]
     if mag_planet is not None:
-        planet_spectrum_instru, planet_spectrum_density = get_spectrum_instru(band0=band0_planet, R=R_instru, config_data=config_data, mag=mag_planet, spectrum=planet_spectrum) # [ph/bin/mn] and [J/s/m2/µm]
+        planet_spectrum_instru, planet_spectrum_density = get_spectrum_instru(spectrum=planet_spectrum, mag=mag_planet, config_data=config_data, band0=band0_planet, wave_instru=wave_instru, dwave_instru=dwave_instru) # [ph/bin/mn] and [J/s/m2/µm]
     else:
         if calculation in {"SNR", "corner plot"}:
             raise KeyError(f"Please input 'mag_planet' for the {calculation} calculation !")
         # The planet spectra are not adjusted to the correct magnitude
-        planet_spectrum_instru, planet_spectrum_density = get_spectrum_instru(band0=band0_star, R=R_instru, config_data=config_data, mag=mag_star, spectrum=planet_spectrum) # [ph/bin/mn] and [J/s/m2/µm]
+        planet_spectrum_instru, planet_spectrum_density = get_spectrum_instru(spectrum=planet_spectrum, mag=mag_star, config_data=config_data, band0=band0_star, wave_instru=wave_instru, dwave_instru=dwave_instru) # [ph/bin/mn] and [J/s/m2/µm]
         # For plotting purposes only: normalize planetary density to star density mean level
         planet_spectrum_density.flux *= np.nanmean(star_spectrum_density.flux) / np.nanmean(planet_spectrum_density.flux)
         
     # Wavelength axis
     wave_instru = planet_spectrum_instru.wavelength                           # [µm]
     mask_instru = (wave_instru >= lmin_instru) & (wave_instru <= lmax_instru) # wave_instru is slightly broader than the instrumental range
-
+    
+    # Converting once spectrum_instru from [ph/bin/mn] to [ph/µm/mn]
+    def _to_photon_density(spectrum_instru):
+        flux_density  = spectrum_instru.flux / dwave_instru
+        sigma_density = spectrum_instru.sigma / dwave_instru if spectrum_instru.sigma is not None else None
+        return Spectrum(wavelength=spectrum_instru.wavelength, flux=flux_density, R=spectrum_instru.R, T=spectrum_instru.T, lg=spectrum_instru.lg, model=spectrum_instru.model, rv=spectrum_instru.rv, vsini=spectrum_instru.vsini, sigma=sigma_density, P=spectrum_instru.P, airmass=spectrum_instru.airmass) # [ph/µm/mn]
+    star_spectrum_instru_density   = _to_photon_density(star_spectrum_instru)
+    planet_spectrum_instru_density = _to_photon_density(planet_spectrum_instru)
+    
     # Computing the planet-to-star and star-to-planet flux ratio in [ph/mn] on the instrumental bandwidth to renormalize the signal with (by doing so, it will give a contrast in photons counts and not in energy on this bandwidth, otherwise we would have had to set it to the same received energy) + the contrast is then for all over the instrumental bandwidth
     planet_to_star_ratio = np.nansum(planet_spectrum_instru.flux[mask_instru]) / np.nansum(star_spectrum_instru.flux[mask_instru])
     star_to_planet_ratio = 1 / planet_to_star_ratio
@@ -271,15 +283,16 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
         # -----------------------------------------------------------------------
         # Spectra on the band + magnitudes in [ph/bin/mn] (total ph over the FoV)
         # -----------------------------------------------------------------------
-        star_spectrum_band   = get_spectrum_band(spectrum_instru=star_spectrum_instru,   config_data=config_data, instru=instru, band=band, verbose=verbose) # [ph/bin/mn] (total ph over the FoV)
-        planet_spectrum_band = get_spectrum_band(spectrum_instru=planet_spectrum_instru, config_data=config_data, instru=instru, band=band, verbose=verbose) # [ph/bin/mn] (total ph over the FoV)
-        wave_band            = planet_spectrum_band.wavelength                         # [µm]
-        lmin_band            = config_data['gratings'][band].lmin                      # Lambda min of the considered band [µm]
-        lmax_band            = config_data['gratings'][band].lmax                      # Lambda max of the considered band [µm]
+        iwa, owa             = get_wa(instru=instru, band=band, sep_unit=sep_unit)     # [sep_unit] Inner and Outer Working Angle in 'sep_unit' 
+        wave_band            = get_wave_band(instru=instru, band=band)                 # [µm]
+        dwave_band           = np.gradient(wave_band)                                  # [µm/bin]
+        lmin_band            = config_data['gratings'][band].lmin                      # [µm] Lambda min of the considered band [µm]
+        lmax_band            = config_data['gratings'][band].lmax                      #  [µm]Lambda max of the considered band [µm]
         R_band               = config_data['gratings'][band].R                         # Spectral resolution of the band
         R_nyquist            = get_resolution(wavelength=wave_band, func=np.nanmedian) # Spectral resolution assuming Nyquist sampling (should be R_nyquist ~ R_band)
-        iwa, owa             = get_wa(instru=instru, band=band, sep_unit=sep_unit)     # Inner and Outer Working Angle in 'sep_unit' 
-
+        star_spectrum_band   = get_spectrum_band(spectrum_instru_density=star_spectrum_instru_density,   wave_band=wave_band, dwave_band=dwave_band, R_output=R_band, verbose=verbose) # [ph/bin/mn] (total ph over the FoV)
+        planet_spectrum_band = get_spectrum_band(spectrum_instru_density=planet_spectrum_instru_density, wave_band=wave_band, dwave_band=dwave_band, R_output=R_band, verbose=verbose) # [ph/bin/mn] (total ph over the FoV)
+        
         # Band's magnitudes (computed from densities)
         mag_star_band   = None
         mag_planet_band = None
@@ -329,14 +342,14 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
         Sp       = planet_spectrum_band.flux * DIT # [ph/bin/DIT] (total ph over the FoV)
         trans_Ss = trans * Ss                      # [e-/bin/DIT] (total e- over the FoV)
         
-        # # -----------------------------------------------------------------------------------------------------------
-        # # Fiber-fed IFUs: mean injection correction (e.g. ANDES): the fact that the position of the planet is unknown
-        # # -----------------------------------------------------------------------------------------------------------
-        # if "fiber" in instru_type:
-        #     try:
-        #         fraction_core *= config_data["injection"][band]
-        #     except:
-        #         pass
+        # -----------------------------------------------------------------------------------------------------------
+        # Fiber-fed IFUs: mean injection correction (e.g. ANDES): the fact that the position of the planet is unknown
+        # -----------------------------------------------------------------------------------------------------------
+        if "fiber" in instru_type:
+            try:
+                fraction_core *= config_data["injection"][band]
+            except:
+                pass
         
         # ---------------------------------------------------------------------------------------------------------------------------------------------
         # Corrective factor for fundamental noises (per separation): due to potential dithering (impacting the noise statistics, i.e. covariance, etc.)
@@ -512,9 +525,10 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
         if instru_type in {"fiber_injection_HRS", "slit_HRS"} and separation_planet is not None and separation_planet < iwa and calculation == "SNR":
             signal *= 0
 
-        # If saturation is reached at the planet separation even with the smallest DIT, detection is impossible
-        if DIT_saturation_planet is not None and DIT_saturation_planet < min_DIT and calculation == "SNR":
-            signal *= 0
+        # # TODO: reactivate this ?
+        # # If saturation is reached at the planet separation even with the smallest DIT, detection is impossible
+        # if DIT_saturation_planet is not None and DIT_saturation_planet < min_DIT and calculation == "SNR":
+        #     signal *= 0
 
         # ==================================================
         # Noise estimations in [e-/px/DIT] and [e-/FWHM/DIT]
@@ -572,8 +586,8 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
             # MM effective power fraction of the white noise in the CCF: fn_MM = sigma_fund_MM_2 / sigma_fund_2
             # ---------------------------------------------------------------------------------------------------------------------                
             if post_processing.lower() in {"molecular mapping", "mm"}:
-                #fn_MM, _            = get_fn_HF_LF(N=len(wave_band), R=R_band, Rc=Rc, filter_type=filter_type, empirical=False)
-                fn_MM               = get_fn_MM(template=template_MM, R=R_band, Rc=Rc, filter_type=filter_type)
+                fn_MM, _            = get_fn_HF_LF(N=len(wave_band), R=R_band, Rc=Rc, filter_type=filter_type, empirical=False)
+                #fn_MM               = get_fn_MM(template=template_MM, R=R_band, Rc=Rc, filter_type=filter_type)
                 sigma_fund_prime_2 *= fn_MM
         
         # ------------------------------
@@ -950,12 +964,18 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
                     plot_CCF_1D_rv(instru=instru, band=band, target_name=planet_name, d=d_n, d_bkg=d_bkg, wave=wave_band, trans=trans, R=R_band, Rc=Rc, filter_type=filter_type, model=model_planet, T=T_planet, lg=lg_planet, rv_arr=np.linspace(-1_000, 1_000, 4_000), rv=rv_planet, vsini=vsini_planet, epsilon=0.8, fastbroad=True, airmass=airmass, star_spectrum=star_spectrum, wave_model=wave_model, template_wo_shift=planet_spectrum_instru_tot_wo_shift, degrade_resolution=True, stellar_component=stellar_component, trans_Ss=trans_Ss, pca=pca, cut_fringes=False, Rmin=None, Rmax=None, renorm_d_sim=False, sigma_l=sigma_fund, calc_logL=False, method_logL=None, weight=None, compare_data=False, verbose=False, show=True, smooth_PSD=1, noise=None, rv_star=rv_star, zoom_CCF=True)
                     
                 # Priors
-                N         = 20
-                T_arr     = np.linspace(T_planet-200,           T_planet+200,   N)
-                lg_arr    = np.linspace(lg_planet-0.5,          lg_planet+0.5,  N)
-                vsini_arr = np.linspace(max(vsini_planet-5, 0), vsini_planet+5, N)
-                rv_arr    = np.linspace(rv_planet-10,           rv_planet+10,   N)
-
+                N         = 10
+                T_arr     = np.linspace(T_planet-300,            T_planet+300,    N)
+                lg_arr    = np.linspace(lg_planet-1,             lg_planet+1,     N)
+                vsini_arr = np.linspace(max(vsini_planet-10, 0), vsini_planet+10, N)
+                vsini_arr = np.array([vsini_planet])
+                rv_arr    = np.linspace(rv_planet-20,            rv_planet+20,    N)
+                
+                # T_arr = lg_arr = vsini_arr = rv_arr = None
+                
+                # if "telluric albedo" in model_planet.lower():
+                #     model_planet = "PSG(earth_like)"
+                
                 # Running retrieval and displaying corner plot
                 uncertainties = parameters_retrieval(instru=instru, band=band, target_name=planet_name, d=d, wave=wave_band, trans=trans, R=R_band, Rc=Rc, filter_type=filter_type, model=model_planet, T_arr=T_arr, lg_arr=lg_arr, rv_arr=rv_arr, vsini_arr=vsini_arr, T=T_planet, lg=lg_planet, rv=rv_planet, vsini=vsini_planet, epsilon=0.8, fastbroad=True, airmass=airmass, star_spectrum=star_spectrum, wave_model=wave_model, template=planet_spectrum_instru_tot, degrade_resolution=True, stellar_component=stellar_component, trans_Ss=trans_Ss, pca=pca, calc_d_sim=False, renorm_d_sim=False, sigma_l=sigma_fund, calc_logL=True, method_logL="classic", weight=None, SNR_estimate=False, SNR_CCF=SNR_CCF, force_new_est=True, save=False, fastcurves=True, exposure_time=exposure_time, show=show_plot, verbose=verbose)
                 

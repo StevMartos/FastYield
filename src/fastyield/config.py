@@ -246,21 +246,20 @@ ApodizerInfo = collections.namedtuple("ApodizerInfo", ["transmission"])
 #                        'name':           "HARMONI",                                    # Instrument name
 #                        'telescope_name': "ELT",                                        # Telescope name
 #                        'type':           "IFU",                                        # Instrument type
-#                        'gratings':      {"J":       GratingInfo(1.046, 1.324,  7555),  # Spectral range [µm], resolving power
-#                                          "H":       GratingInfo(1.435, 1.815,  7555),  # Spectral range [µm], resolving power
+#                        'gratings':      {"J":       GratingInfo(1.046, 1.324, 7555),   # Spectral range [µm], resolving power
+#                                          "H":       GratingInfo(1.435, 1.815, 7555),   # Spectral range [µm], resolving power
 #                                          "H_high":  GratingInfo(1.538, 1.678, 17385),  # Spectral range [µm], resolving power
-#                                          "HK":      GratingInfo(1.450, 2.450,  3355),  # Spectral range [µm], resolving power
-#                                          "K":       GratingInfo(1.951, 2.469,  7555),  # Spectral range [µm], resolving power
+#                                          "HK":      GratingInfo(1.450, 2.450, 3355),   # Spectral range [µm], resolving power
+#                                          "K":       GratingInfo(1.951, 2.469, 7555),   # Spectral range [µm], resolving power
 #                                          "K1_high": GratingInfo(2.017, 2.200, 17385),  # Spectral range [µm], resolving power
 #                                          "K2_high": GratingInfo(2.199, 2.400, 17385)}, # Spectral range [µm], resolving power
-#                        'lambda_range':  {"lambda_min": 0.6, "lambda_max": 5.9999},    # Minimum and maximum instrumental wavelength range [µm]
+#                        'lambda_range':  {"lambda_min": 1.046, "lambda_max": 2.469},    # Minimum and maximum instrumental wavelength range [µm]
 #                        'size_core':      3,                                            # Size in pixels of the FWHM  (here: side of the PSF core box)
 #                        'apodizers':     {"NO_SP":   ApodizerInfo(0.84),                # Available apodizers (transmission, IWA [mas])
 #                                          "SP1":     ApodizerInfo(0.45),                # Available apodizers (transmission, IWA [mas])
 #                                          "SP2":     ApodizerInfo(0.35),                # Available apodizers (transmission, IWA [mas])
 #                                          "SP_Prox": ApodizerInfo(0.68)},               # Available apodizers (transmission, IWA [mas])
 #                        'FPMs':          [30, 50, 70, 100],                             # FPM IWA available values in [mas]
-#                        #'FPMs':          [10, 20, 30, 50, 70, 100],                    # FPM IWA available values in [mas]
 #                        #'FPMs':          [30],                                         # FPM IWA available values in [mas]
 #                        'strehls':       ["JQ1"],                                       # Available strehls
 #                        'coronagraphs':  [None],                                        # Available coronagraphs
@@ -291,7 +290,6 @@ config_data_HARMONI = {
                                          "SP2":     ApodizerInfo(0.35),             # Available apodizers (transmission, IWA [mas])
                                          "SP_Prox": ApodizerInfo(0.68)},            # Available apodizers (transmission, IWA [mas])
                        'FPMs':          [30, 50, 70, 100],                          # FPM IWA available values in [mas]
-                       #'FPMs':          [10, 20, 30, 50, 70, 100],                  # FPM IWA available values in [mas]
                        #'FPMs':          [30],                                       # FPM IWA available values in [mas]
                        'strehls':       ["JQ1"],                                    # Available strehls
                        'coronagraphs':  [None],                                     # Available coronagraphs
@@ -306,107 +304,107 @@ config_data_HARMONI = {
                                          "saturation_e": 80_000},                   # Full well capacity [e-] 
                      }
 
-# # Standard version at R = 100_000
-# config_data_ANDES = {
-#                      'name':                       "ANDES",                                          # Instrument name
-#                      'telescope_name':             "ELT",                                            # Telescope name
-#                      'type':                       "IFU_fiber",                                      # Instrument type
-#                      'gratings':                  {"YJH_5mas_100":  GratingInfo(0.95, 1.8, 100000),  # Spectral range [µm], resolving power
-#                                                    "YJH_10mas_100": GratingInfo(0.95, 1.8, 100000),  # Spectral range [µm], resolving power
-#                                                    "YJH_16mas_100": GratingInfo(0.95, 1.8, 100000)}, # Spectral range [µm], resolving power
-#                      'lambda_range':              {"lambda_min": 0.95, "lambda_max": 1.8},           # Minimum and maximum instrumental wavelength range [µm]
-#                      'size_core':                  1,                                                # Size in pixels of the FWHM  (here: 1 fiber on the planet)
-#                      'injection':                 {"YJH_5mas_100":  0.848,                           # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
-#                                                    "YJH_10mas_100": 0.715,                           # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
-#                                                    "YJH_16mas_100": 0.784},                          # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
-#                      'pixel_detector_projection':  3,                                                # Effective number of pixels per spectral channel (here: first guess)
-#                      'apodizers':                 {"NO_SP": ApodizerInfo(1)},                        # Available apodizers
-#                      'strehls':                   ["MED"],                                           # Available strehls
-#                      'coronagraphs':              [None, "LYOT"],                                    # Available coronagraphs
-#                      'pxscale':                   {"YJH_5mas_100":  0.005,                           # Fiber scale [arcsec/fiber] <=> [arcsec/px]
-#                                                    "YJH_10mas_100": 0.010,                           # Fiber scale [arcsec/fiber] <=> [arcsec/px]
-#                                                    "YJH_16mas_100": 0.016},                          # Fiber scale [arcsec/fiber] <=> [arcsec/px]
-#                      'FOV':                        0.144,                                            # Field Of View [arcsec], 16 mas * 9 fibers
-#                      'sep_unit':                   "mas",                                            # Unit for angular separation
-#                      'detector':                  {"RON":          10.0,                             # Read-Out Noise [e-/px/read]
-#                                                    "RON_lim":      1.,                               # Read-Out Noise limit [e-/px/read]
-#                                                    "dark_current": 0.0053,                           # Dark current [e-/px/s]
-#                                                    "minDIT":       1.3/60,                           # Minimum Detector Integration Time [mn]
-#                                                    "maxDIT":       5,                                # Maximum Detector Integration Time [mn]
-#                                                    "saturation_e": 80_000},                          # Full well capacity [e-] 
-#                    }
-
-# With different resolutions: 50_000, 75_000, 100_000, 125_000, 150_000
+# Standard version at R = 100_000
 config_data_ANDES = {
-                     'name':                       "ANDES",                                           # Instrument name
-                     'telescope_name':             "ELT",                                             # Telescope name
-                     'type':                       "IFU_fiber",                                       # Instrument type
-                     'gratings':                  {
-                                                   
-                                                   # "YJH_5mas_50":   GratingInfo(0.95, 1.8, 50_000),   # Spectral range [µm], resolving power
-                                                   # "YJH_5mas_75":   GratingInfo(0.95, 1.8, 75_000),   # Spectral range [µm], resolving power
-                                                   # "YJH_5mas_100":  GratingInfo(0.95, 1.8, 100_000),  # Spectral range [µm], resolving power
-                                                   # "YJH_5mas_125":  GratingInfo(0.95, 1.8, 125_000),  # Spectral range [µm], resolving power
-                                                   # "YJH_5mas_150":  GratingInfo(0.95, 1.8, 150_000),  # Spectral range [µm], resolving power
-                                                   
-                                                   # "YJH_10mas_50":  GratingInfo(0.95, 1.8, 50_000),   # Spectral range [µm], resolving power
-                                                   # "YJH_10mas_75":  GratingInfo(0.95, 1.8, 75_000),   # Spectral range [µm], resolving power
-                                                   # "YJH_10mas_100": GratingInfo(0.95, 1.8, 100_000),  # Spectral range [µm], resolving power
-                                                   # "YJH_10mas_125": GratingInfo(0.95, 1.8, 125_000),  # Spectral range [µm], resolving power
-                                                   # "YJH_10mas_150": GratingInfo(0.95, 1.8, 150_000),  # Spectral range [µm], resolving power
-                                                   
-                                                   "YJH_16mas_50":  GratingInfo(0.95, 1.8, 50_000),   # Spectral range [µm], resolving power
-                                                   "YJH_16mas_75":  GratingInfo(0.95, 1.8, 75_000),   # Spectral range [µm], resolving power
-                                                   "YJH_16mas_100": GratingInfo(0.95, 1.8, 100_000),  # Spectral range [µm], resolving power
-                                                   "YJH_16mas_125": GratingInfo(0.95, 1.8, 125_000),  # Spectral range [µm], resolving power
-                                                   "YJH_16mas_150": GratingInfo(0.95, 1.8, 150_000)
-                                                   
-                                                   }, # Spectral range [µm], resolving power
-                     'lambda_range':              {"lambda_min": 0.95, "lambda_max": 1.8},            # Minimum and maximum instrumental wavelength range [µm]
-                     'size_core':                  1,                                                 # Size in pixels of the FWHM  (here: 1 fiber on the planet)
-                     'injection':                 {"YJH_5mas_50":   0.848,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
-                                                   "YJH_5mas_75":   0.848,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
-                                                   "YJH_5mas_100":  0.848,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
-                                                   "YJH_5mas_125":  0.848,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
-                                                   "YJH_5mas_150":  0.848,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
-                                                   "YJH_10mas_50":  0.715,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
-                                                   "YJH_10mas_75":  0.715,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
-                                                   "YJH_10mas_100": 0.715,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
-                                                   "YJH_10mas_125": 0.715,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
-                                                   "YJH_10mas_150": 0.715,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
-                                                   "YJH_16mas_50":  0.784,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
-                                                   "YJH_16mas_75":  0.784,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
-                                                   "YJH_16mas_100": 0.784,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
-                                                   "YJH_16mas_125": 0.784,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
-                                                   "YJH_16mas_150": 0.784},                           # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
-                     'pixel_detector_projection':  3,                                                 # Effective number of pixels per spectral channel (here: first guess)
-                     'apodizers':                 {"NO_SP": ApodizerInfo(1)},                         # Available apodizers
-                     'strehls':                   ["MED"],                                            # Available strehls
-                     'coronagraphs':              [None, "LYOT"],                                     # Available coronagraphs
-                     'pxscale':                   {"YJH_5mas_50":   0.005,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
-                                                   "YJH_5mas_75":   0.005,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
-                                                   "YJH_5mas_100":  0.005,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
-                                                   "YJH_5mas_125":  0.005,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
-                                                   "YJH_5mas_150":  0.005,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
-                                                   "YJH_10mas_50":  0.010,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
-                                                   "YJH_10mas_75":  0.010,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
-                                                   "YJH_10mas_100": 0.010,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
-                                                   "YJH_10mas_125": 0.010,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
-                                                   "YJH_10mas_150": 0.010,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
-                                                   "YJH_16mas_50":  0.016,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
-                                                   "YJH_16mas_75":  0.016,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
-                                                   "YJH_16mas_100": 0.016,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
-                                                   "YJH_16mas_125": 0.016,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
-                                                   "YJH_16mas_150": 0.016},                           # Fiber scale [arcsec/fiber] <=> [arcsec/px]
-                     'FOV':                        0.144,                                             # Field Of View [arcsec], 16 mas * 9 fibers
-                     'sep_unit':                   "mas",                                             # Unit for angular separation
-                     'detector':                  {"RON":          10.0,                              # Read-Out Noise [e-/px/read]
-                                                   "RON_lim":      1.,                                # Read-Out Noise limit [e-/px/read]
-                                                   "dark_current": 0.0053,                            # Dark current [e-/px/s]
-                                                   "minDIT":       1.3/60,                            # Minimum Detector Integration Time [mn]
-                                                   "maxDIT":       5,                                 # Maximum Detector Integration Time [mn]
-                                                   "saturation_e": 80_000},                           # Full well capacity [e-] 
+                     'name':                       "ANDES",                                          # Instrument name
+                     'telescope_name':             "ELT",                                            # Telescope name
+                     'type':                       "IFU_fiber",                                      # Instrument type
+                     'gratings':                  {"YJH_5mas_100":  GratingInfo(0.95, 1.8, 100000),  # Spectral range [µm], resolving power
+                                                   "YJH_10mas_100": GratingInfo(0.95, 1.8, 100000),  # Spectral range [µm], resolving power
+                                                   "YJH_16mas_100": GratingInfo(0.95, 1.8, 100000)}, # Spectral range [µm], resolving power
+                     'lambda_range':              {"lambda_min": 0.95, "lambda_max": 1.8},           # Minimum and maximum instrumental wavelength range [µm]
+                     'size_core':                  1,                                                # Size in pixels of the FWHM  (here: 1 fiber on the planet)
+                     'injection':                 {"YJH_5mas_100":  0.848,                           # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
+                                                   "YJH_10mas_100": 0.715,                           # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
+                                                   "YJH_16mas_100": 0.784},                          # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
+                     'pixel_detector_projection':  3,                                                # Effective number of pixels per spectral channel (here: first guess)
+                     'apodizers':                 {"NO_SP": ApodizerInfo(1)},                        # Available apodizers
+                     'strehls':                   ["MED"],                                           # Available strehls
+                     'coronagraphs':              [None, "LYOT"],                                    # Available coronagraphs
+                     'pxscale':                   {"YJH_5mas_100":  0.005,                           # Fiber scale [arcsec/fiber] <=> [arcsec/px]
+                                                   "YJH_10mas_100": 0.010,                           # Fiber scale [arcsec/fiber] <=> [arcsec/px]
+                                                   "YJH_16mas_100": 0.016},                          # Fiber scale [arcsec/fiber] <=> [arcsec/px]
+                     'FOV':                        0.144,                                            # Field Of View [arcsec], 16 mas * 9 fibers
+                     'sep_unit':                   "mas",                                            # Unit for angular separation
+                     'detector':                  {"RON":          10.0,                             # Read-Out Noise [e-/px/read]
+                                                   "RON_lim":      1.,                               # Read-Out Noise limit [e-/px/read]
+                                                   "dark_current": 0.0053,                           # Dark current [e-/px/s]
+                                                   "minDIT":       1.3/60,                           # Minimum Detector Integration Time [mn]
+                                                   "maxDIT":       5,                                # Maximum Detector Integration Time [mn]
+                                                   "saturation_e": 80_000},                          # Full well capacity [e-] 
                    }
+
+# # With different resolutions: 50_000, 75_000, 100_000, 125_000, 150_000
+# config_data_ANDES = {
+#                      'name':                       "ANDES",                                           # Instrument name
+#                      'telescope_name':             "ELT",                                             # Telescope name
+#                      'type':                       "IFU_fiber",                                       # Instrument type
+#                      'gratings':                  {
+                                                   
+#                                                    # "YJH_5mas_50":   GratingInfo(0.95, 1.8, 50_000),   # Spectral range [µm], resolving power
+#                                                    # "YJH_5mas_75":   GratingInfo(0.95, 1.8, 75_000),   # Spectral range [µm], resolving power
+#                                                    # "YJH_5mas_100":  GratingInfo(0.95, 1.8, 100_000),  # Spectral range [µm], resolving power
+#                                                    # "YJH_5mas_125":  GratingInfo(0.95, 1.8, 125_000),  # Spectral range [µm], resolving power
+#                                                    # "YJH_5mas_150":  GratingInfo(0.95, 1.8, 150_000),  # Spectral range [µm], resolving power
+                                                   
+#                                                    "YJH_10mas_50":  GratingInfo(0.95, 1.8, 50_000),   # Spectral range [µm], resolving power
+#                                                    "YJH_10mas_75":  GratingInfo(0.95, 1.8, 75_000),   # Spectral range [µm], resolving power
+#                                                    "YJH_10mas_100": GratingInfo(0.95, 1.8, 100_000),  # Spectral range [µm], resolving power
+#                                                    "YJH_10mas_125": GratingInfo(0.95, 1.8, 125_000),  # Spectral range [µm], resolving power
+#                                                    "YJH_10mas_150": GratingInfo(0.95, 1.8, 150_000),  # Spectral range [µm], resolving power
+                                                   
+#                                                    # "YJH_16mas_50":  GratingInfo(0.95, 1.8, 50_000),   # Spectral range [µm], resolving power
+#                                                    # "YJH_16mas_75":  GratingInfo(0.95, 1.8, 75_000),   # Spectral range [µm], resolving power
+#                                                    # "YJH_16mas_100": GratingInfo(0.95, 1.8, 100_000),  # Spectral range [µm], resolving power
+#                                                    # "YJH_16mas_125": GratingInfo(0.95, 1.8, 125_000),  # Spectral range [µm], resolving power
+#                                                    # "YJH_16mas_150": GratingInfo(0.95, 1.8, 150_000)
+                                                   
+#                                                    }, # Spectral range [µm], resolving power
+#                      'lambda_range':              {"lambda_min": 0.95, "lambda_max": 1.8},            # Minimum and maximum instrumental wavelength range [µm]
+#                      'size_core':                  1,                                                 # Size in pixels of the FWHM  (here: 1 fiber on the planet)
+#                      'injection':                 {"YJH_5mas_50":   0.848,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
+#                                                    "YJH_5mas_75":   0.848,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
+#                                                    "YJH_5mas_100":  0.848,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
+#                                                    "YJH_5mas_125":  0.848,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
+#                                                    "YJH_5mas_150":  0.848,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
+#                                                    "YJH_10mas_50":  0.715,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
+#                                                    "YJH_10mas_75":  0.715,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
+#                                                    "YJH_10mas_100": 0.715,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
+#                                                    "YJH_10mas_125": 0.715,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
+#                                                    "YJH_10mas_150": 0.715,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
+#                                                    "YJH_16mas_50":  0.784,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
+#                                                    "YJH_16mas_75":  0.784,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
+#                                                    "YJH_16mas_100": 0.784,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
+#                                                    "YJH_16mas_125": 0.784,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
+#                                                    "YJH_16mas_150": 0.784},                           # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
+#                      'pixel_detector_projection':  3,                                                 # Effective number of pixels per spectral channel (here: first guess)
+#                      'apodizers':                 {"NO_SP": ApodizerInfo(1)},                         # Available apodizers
+#                      'strehls':                   ["MED"],                                            # Available strehls
+#                      'coronagraphs':              [None, "LYOT"],                                     # Available coronagraphs
+#                      'pxscale':                   {"YJH_5mas_50":   0.005,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
+#                                                    "YJH_5mas_75":   0.005,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
+#                                                    "YJH_5mas_100":  0.005,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
+#                                                    "YJH_5mas_125":  0.005,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
+#                                                    "YJH_5mas_150":  0.005,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
+#                                                    "YJH_10mas_50":  0.010,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
+#                                                    "YJH_10mas_75":  0.010,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
+#                                                    "YJH_10mas_100": 0.010,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
+#                                                    "YJH_10mas_125": 0.010,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
+#                                                    "YJH_10mas_150": 0.010,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
+#                                                    "YJH_16mas_50":  0.016,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
+#                                                    "YJH_16mas_75":  0.016,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
+#                                                    "YJH_16mas_100": 0.016,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
+#                                                    "YJH_16mas_125": 0.016,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
+#                                                    "YJH_16mas_150": 0.016},                           # Fiber scale [arcsec/fiber] <=> [arcsec/px]
+#                      'FOV':                        0.144,                                             # Field Of View [arcsec], 16 mas * 9 fibers
+#                      'sep_unit':                   "mas",                                             # Unit for angular separation
+#                      'detector':                  {"RON":          10.0,                              # Read-Out Noise [e-/px/read]
+#                                                    "RON_lim":      1.,                                # Read-Out Noise limit [e-/px/read]
+#                                                    "dark_current": 0.0053,                            # Dark current [e-/px/s]
+#                                                    "minDIT":       1.3/60,                            # Minimum Detector Integration Time [mn]
+#                                                    "maxDIT":       5,                                 # Maximum Detector Integration Time [mn]
+#                                                    "saturation_e": 80_000},                           # Full well capacity [e-] 
+#                    }
 
 #------------------------------------------------------------------------------#
 #                                  VLT:                                        #
