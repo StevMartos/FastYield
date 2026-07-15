@@ -1231,7 +1231,7 @@ def main():
     thermal_model      = "auto"                                # Model for the thermal spectrum of the planet ("auto", "None", "BT-Settl", "Exo-REM", "SONORA", "PICASO", "Saumon", etc.)
     reflected_model    = "auto"                                # Model for the albedo of the planet ("auto", "tellurics", "flat", "PICASO")
     instru_type        = "IFU"                                 # Type of instrument ("IFU" or "imager")
-    post_processing    = "DI"                                  # Post-processing method ("MM" or "DI")
+    post_processing    = "MM"                                  # Post-processing method ("MM" or "DI")
     size_core          = 2                                     # [px/FWHM] Number of pixel per spatial FWHM along 1 direction (size_core >= 2 => Nyquist spatial sampling)
     A_FWHM             = size_core**2                          # Number of pixel per FWHM box area
     Rc                 = 1_00                                  # MM cut-off resolution (Rc~100 is enough to reach ~1e-8 with speckles only, Rc~1000 would allows to go further (more conservative))
@@ -1893,6 +1893,8 @@ def main():
     if instru_type == "IFU":
         params         = [R,                           l0,                                                Nl,                                           WFE,                           IWA,                        trans_instru,                                    100*sigma_m,                                         FoV]                    # params axis
         params_ranges  = [(R.min(), R.max()),          (l0.min(), l0.max()),                              (Nl.min(), Nl.max()),                         (WFE_ref, WFE_ref),            (IWA_ref, IWA_ref),         (trans_instru.min(), trans_instru.max()),        ((100*sigma_m).min(), (100*sigma_m).min()),          (FoV.max(), FoV.max())] # params ranges for marginalization
+        params_ranges  = [(R.min(), R.max()),          (l0.min(), l0.max()),                              (Nl.max(), Nl.max()),                         (WFE_ref, WFE_ref),            (IWA_ref, IWA_ref),         (trans_instru.max(), trans_instru.max()),        ((100*sigma_m).min(), (100*sigma_m).min()),          (FoV.max(), FoV.max())] # params ranges for marginalization
+
         params_priors  = ["log-uniform",               "uniform",                                         "log-uniform",                                "uniform",                     "log-uniform",              "uniform",                                       "log-uniform",                                       "log-uniform"]          # params priors for marginalization
         params_islog   = [True,                        False,                                             True,                                         False,                         True,                       False,                                           True,                                                True]                   # params space (linspace or logspace)
         params_isint   = [True,                        False,                                             True,                                         False,                         False,                      False,                                           False,                                               True]                   # params rounded format

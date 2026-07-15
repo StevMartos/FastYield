@@ -3834,7 +3834,7 @@ def yield_corner_instrus(instru1="HARMONI", instru2="ANDES", band1="INSTRU", ban
 # Yield contrast #
 ##################
 
-def yield_plot_instrus_contrast(table="Archive", exposure_time=10*60, thermal_model="auto", reflected_model="auto", band_quantity="INSTRU", band_contrast="H", mode="best", nbins=18, min_per_bin=3):
+def yield_plot_instrus_contrast(table="Archive", exposure_time=10*60, thermal_model="auto", reflected_model="auto", band_quantity="INSTRU", band_contrast="H", mode="best", percentile=None, nbins=18, min_per_bin=3):
     """
     Plot rebinned 5-sigma contrast limits for several instruments.
 
@@ -4006,10 +4006,13 @@ def yield_plot_instrus_contrast(table="Archive", exposure_time=10*60, thermal_mo
             if np.sum(mask) < (1 if mode == "best" else min_per_bin):
                 continue
             if mode == "best":
-                y[ibin] = np.nanmin(contrast[mask])
-            else:
+                y[ibin] = np.nanpercentile(contrast[mask], 10)
+            elif mode == "median":
                 y[ibin] = np.nanmedian(contrast[mask])
+                y[ibin] = np.nanpercentile(contrast[mask], 50)
                 ylow[ibin], yhigh[ibin] = np.nanpercentile(contrast[mask], [16, 84])
+            elif mode == "percentile":
+                y[ibin] = np.nanpercentile(contrast[mask], percentile)
         return xbin, y, ylow, yhigh
 
     def get_planet_contrast(planet_table, instru, contributions):
@@ -4179,7 +4182,7 @@ def yield_plot_instrus_contrast(table="Archive", exposure_time=10*60, thermal_mo
     ax.set_ylim(1e-9, 1e-2)
     ax.set_xlabel("Angular separation [mas]", fontsize=21)
     ax.set_ylabel(r"5$\sigma$ contrast", fontsize=21)
-    ax.set_title(rf"Exoplanet {mode} 5σ contrast limits in {exposure_time/60:.0f} hr", fontsize=23, weight="bold", pad=18)
+    ax.set_title(rf"Exoplanet {mode} 5σ contrast limits in {exposure_time/60:.0f} hr with molecular mapping", fontsize=23, weight="bold", pad=18)
     ax.grid(which="major", linestyle="--", linewidth=0.7, alpha=0.45)
     ax.grid(which="minor", linestyle=":", linewidth=0.4, alpha=0.25)
     ax.tick_params(axis="both", which="major", labelsize=18)
