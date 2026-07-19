@@ -12,8 +12,6 @@ from fastyield.colormaps import colormap_bandwidth_resolution_with_constant_Nlam
 # set_sim_data_path("/path/to/sim_data")
 
 
-yield_plot_instrus_contrast(exposure_time=10*60, thermal_model="auto", reflected_model="auto", band_quantity="INSTRU", band_contrast="H", mode="best", nbins=42)
-
 
 #------------------------------------------------------------------------------#
 #                       Graphic User Interface (GUI):                          #
@@ -53,7 +51,7 @@ yield_plot_instrus_contrast(exposure_time=10*60, thermal_model="auto", reflected
 
 # yield_plot_bands_texp(table="Archive", instru="HiRISE", thermal_model="auto", reflected_model="auto", systematics=False, PCA=False, fraction=False)
 
-# yield_heatmap_ELT(instru="HARMONI", thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl="JQ1", systematics=False, split_ptypes_by_regime=True, band_regime_plot=None, PCA=False, fraction=False, SNR_thresh=5)
+# instru="HARMONI", thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl="JQ1", systematics=False, split_ptypes_by_regime=True, band_regime_plot=None, PCA=False, fraction=False, SNR_thresh=5)
 # yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl="JQ1", config_mode="best", apodizer="NO_SP", coronagraph=None, band_snr="INSTRU", band_contrast_plot="H", band_regime_plot="H", systematics=False, PCA=False)
 
 # yield_population_plot(table="Archive", instru="ANDES", thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl="MED", config_mode="best", apodizer="NO_SP", coronagraph=None, band_snr="INSTRU", band_contrast_plot="H", band_regime_plot="H", systematics=False, PCA=False)
@@ -61,8 +59,9 @@ yield_plot_instrus_contrast(exposure_time=10*60, thermal_model="auto", reflected
 # yield_hist_instrus_ptypes_ELT(exposure_time=10*60, thermal_model="auto", reflected_model="auto", planet_types=planet_types,         fraction=False, instrus=["HARMONI", "HARMONI+SP_Prox", "ANDES", "ANDES+LYOT"])
 
 # yield_plot_instrus_texp(thermal_model="auto", reflected_model="auto", fraction=False)
-# yield_hist_instrus_ptypes(exposure_time=10*60, thermal_model="auto", reflected_model="auto", planet_types=planet_types_reduced, fraction=False)
+#(exposure_time=10*60, thermal_model="auto", reflected_model="auto", planet_types=planet_types_reduced, fraction=False)
 
+#yield_plot_instrus_contrast(exposure_time=10*60, thermal_model="auto", reflected_model="auto", band_quantity="INSTRU", band_contrast="H", mode="best", nbins=42)
 
 
 
@@ -159,8 +158,8 @@ yield_plot_instrus_contrast(exposure_time=10*60, thermal_model="auto", reflected
 # colormap_bandwidth_Tp(instru="HARMONI", T_star=5000, delta_rv=30, spectrum_contributions="thermal",   model="PSG(earth like)",           Rc=100, filter_type="gaussian", stellar_halo_photon_noise_limited=True)
 
 # colormap_bands_Tp(instru="HARMONI", T_star=6000, delta_rv=30, spectrum_contributions="thermal", model="BT-Settl", Rc=100, filter_type="gaussian", stellar_halo_photon_noise_limited=True)
-# colormap_bands_ptypes_SNR(mode="multi",  instru="HARMONI", thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl="JQ1", systematics=False, PCA=False, planet_types=planet_types)
-# colormap_bands_ptypes_SNR(mode="unique", instru="ANDES", thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl="MED", systematics=False, PCA=False, planet_types=planet_types)
+# mode="multi",  instru="HARMONI", thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl="JQ1", systematics=False, PCA=False, planet_types=planet_types)
+# mode="unique", instru="HARMONI", thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl="JQ1", systematics=False, PCA=False, planet_types=planet_types)
 # colormap_bands_ptypes_SNR(mode="multi",  instru="ANDES",    thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl="MED", systematics=False, PCA=False, planet_types=planet_types)
 # colormap_bands_ptypes_parameters(mode="unique", Nmax=1, instru="HARMONI", thermal_model="auto", reflected_model="auto", exposure_time=10*60, apodizer="SP_Prox", strehl="JQ1", coronagraph=None, systematics=False, PCA=False, PCA_mask=False, N_PCA=20, Rc=100, filter_type="gaussian", planet_types=planet_types_reduced)
 
@@ -168,5 +167,13 @@ yield_plot_instrus_contrast(exposure_time=10*60, thermal_model="auto", reflected
 # colormap_vrot(instru="HARMONI", band="J", T_planet=300, T_star=3000, delta_rv=30, inc=0, spectrum_contributions="reflected", model="tellurics", airmass=2.0, stellar_halo_photon_noise_limited=False)
 
 # colormap_maxsep_phase_inc(instru="HARMONI", band="H", apodizer="NO_SP", strehl="JQ1", coronagraph=None)
+
+
+
+
+
+
+
+
 
 

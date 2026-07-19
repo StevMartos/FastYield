@@ -898,16 +898,22 @@ def plot_matching_planets(matching_planets, exposure_time, mode, planet_types=pl
     ax.yaxis.set_visible(False)
     
     # Generate the table based on the mode
-    if mode == 'unique':
+    if instru is not None:
+        config_str = "Coronagraph" if "ANDES" in instru else "Apodizer"
+    else:
+        config_str = "Config"
+    if mode == "unique":
         matching_planets_df = pd.DataFrame([
-            {"Type":            ptype,
-             "Name":            planet["PlanetName"], 
-             "Mass [M⊕]":      round(planet["PlanetMass"], 2), 
-             "Radius [R⊕]":    round(planet["PlanetRadius"], 2), 
-             "Temperature [K]": int(round(planet["PlanetTeff"])), 
+            {"Type":              ptype,
+             "Name":              planet["PlanetName"],
+             "Mass [M⊕]":        round(planet["PlanetMass"], 2),
+             "Radius [R⊕]":      round(planet["PlanetRadius"], 2),
+             "Temperature [K]":   int(round(planet["PlanetTeff"])),
+             "Band":              str(planet["Band"]).replace("_", "-"),
+             config_str:          str(planet["Config"]).replace("_", " "),
              f"SNR (in {int(round(exposure_time/60))} h)": round(planet["SNR"], 1)}
             for ptype, planets in matching_planets.items() for planet in planets])
-        table = ax.table(cellText=matching_planets_df.values, colLabels=matching_planets_df.columns, cellLoc='center', loc='center')
+        table = ax.table(cellText=matching_planets_df.values, colLabels=matching_planets_df.columns, cellLoc="center", loc="center")
     
     elif mode == 'multi':    
         conditions_df = pd.DataFrame([
@@ -3311,7 +3317,7 @@ def yield_hist_instrus_ptypes(exposure_time=10*60, thermal_model="auto", reflect
     plt.bar(indices - 1.5*bar_width, yield_mirimrs_non_syst, bar_width, edgecolor="black", color=colors_instru["MIRIMRS"], linewidth=linewidth, label="JWST/MIRI/MRS")
     plt.bar(indices - 0.5*bar_width, yield_mirimrs_syst,     bar_width, edgecolor="black", color=colors_instru["MIRIMRS"], linewidth=linewidth, label="JWST/MIRI/MRS (w/ syst)",        hatch='//')
     plt.bar(indices + 0.5*bar_width, yield_mirimrs_syst_pca, bar_width, edgecolor="black", color=colors_instru["MIRIMRS"], linewidth=linewidth, label="JWST/MIRI/MRS (w/ syst+PCA)",    hatch='xx')
-    plt.bar(indices - 2.5*bar_width, yield_eris,             bar_width, edgecolor="black", color=colors_instru["ERIS"],    linewidth=linewidth, label="VLT/ERIS")
+    plt.bar(indices - 2.5*bar_width, yield_eris,             bar_width, edgecolor="black", color=colors_instru["ERIS"],    linewidth=linewidth, label="VLT/ERIS/IFU")
     plt.bar(indices + 1.5*bar_width, yield_nircam,           bar_width, edgecolor="black", color=colors_instru["NIRCam"],  linewidth=linewidth, label="JWST/NIRCam")
     plt.bar(indices + 2.5*bar_width, yield_nirspec_non_syst, bar_width, edgecolor="black", color=colors_instru["NIRSpec"], linewidth=linewidth, label="JWST/NIRSpec/IFU")
     plt.bar(indices + 3.5*bar_width, yield_nirspec_syst,     bar_width, edgecolor="black", color=colors_instru["NIRSpec"], linewidth=linewidth, label="JWST/NIRSpec/IFU (w/ syst)",     hatch='//')
@@ -3861,7 +3867,7 @@ def yield_plot_instrus_contrast(table="Archive", exposure_time=10*60, thermal_mo
     curve_specs = [
         {
             "key": "PCS",
-            "label": "ELT/PCS w/ Lyot",
+            "label": "ELT/PCS-like w/ Lyot",
             "color": colors_instru["PCS"],
             "ls": "-",
             "marker": "o",
@@ -3911,7 +3917,7 @@ def yield_plot_instrus_contrast(table="Archive", exposure_time=10*60, thermal_mo
         },
         {
             "key": "ERIS",
-            "label": "VLT/ERIS",
+            "label": "VLT/ERIS/IFU",
             "color": colors_instru["ERIS"],
             "ls": "-",
             "lw": lw0,
@@ -4999,7 +5005,10 @@ def yield_heatmap_ELT(table="Archive", instru="HARMONI", thermal_model="auto", r
 
         ax.set_title(panel_labels.get(ptype, str(ptype)), fontsize=fontsize+3, pad=fontsize+3, weight="bold")
         ax.set_xticks(np.arange(len(bands_plot)))
-        ax.set_xticklabels([str(value) for value in bands_plot], fontsize=fontsize)
+        if instru == "ANDES":
+            ax.set_xticklabels([str(value).replace("YJH_5mas_", "").replace("YJH_10mas_", "").replace("YJH_16mas_", "")+" 000" for value in bands_plot], fontsize=fontsize, rotation=45)
+        else:
+            ax.set_xticklabels([str(value).replace("_", " ") for value in bands_plot], fontsize=fontsize, rotation=45)
         ax.set_yticks(np.arange(len(config_labels)))
         ax.set_yticklabels([str(value) for value in config_labels], fontsize=fontsize)
         if ipt//ncols == nrows-1:
@@ -5010,7 +5019,7 @@ def yield_heatmap_ELT(table="Archive", instru="HARMONI", thermal_model="auto", r
             ax.set_ylabel(config_axis_name, fontsize=fontsize+5, labelpad=fontsize-3)
         else:
             ax.tick_params(labelleft=False)
-        ax.set_xticks(np.arange(-0.5, len(bands_plot), 1), minor=True)
+        ax.set_xticks(np.arange(-0.5, len(bands_plot), 1),    minor=True)
         ax.set_yticks(np.arange(-0.5, len(config_labels), 1), minor=True)
         ax.grid(which="minor", color="w", linestyle="-", linewidth=0.6, alpha=0.18)
         ax.tick_params(which="minor", bottom=False, left=False)
