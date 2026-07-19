@@ -1123,13 +1123,23 @@ def colormap_bands_ptypes_SNR(mode="multi", Nmax=None, instru="HARMONI", thermal
         suffix = "without_systematics"
     SNR_configs       = []
     SNR_bands_configs = {band: [] for band in config_data["gratings"]}
+    config_names      = []
     ref_names         = None
     for apodizer in config_data["apodizers"]:
         for coronagraph in config_data["coronagraphs"]:
             coronagraph_str = "_" + str(coronagraph) if coronagraph is not None else ""
             filename        = f"{table}_Pull_{instru}_{apodizer}_{strehl}{coronagraph_str}_{suffix}_{name_model}"
-            planet_table    = load_planet_table(f"{filename}.ecsv")
-            current_names   = np.asarray(planet_table["PlanetName"], dtype=str).astype(str)
+            if len(config_data["apodizers"]) > 1 and len(config_data["coronagraphs"]) > 1:
+                config_name = f"{apodizer} + {coronagraph if coronagraph is not None else 'None'}"
+            elif len(config_data["apodizers"]) > 1:
+                config_name = str(apodizer)
+            elif len(config_data["coronagraphs"]) > 1:
+                config_name = str(coronagraph) if coronagraph is not None else "None"
+            else:
+                config_name = str(apodizer) if apodizer is not None else (str(coronagraph) if coronagraph is not None else "None")
+            config_names.append(config_name)
+            planet_table  = load_planet_table(f"{filename}.ecsv")
+            current_names = np.asarray(planet_table["PlanetName"], dtype=str).astype(str)
             if ref_names is None:
                 ref_names = current_names.copy()
             elif len(current_names) != len(ref_names) or np.any(current_names != ref_names):
@@ -1138,11 +1148,44 @@ def colormap_bands_ptypes_SNR(mode="multi", Nmax=None, instru="HARMONI", thermal
             for band in config_data["gratings"]:
                 SNR_bands_configs[band].append(get_SNR_from_table(planet_table=planet_table, exposure_time=exposure_time, band=band))
         
-    # Keeping only the best SNR over the apodizers/coronagraph config
-    planet_table["SNR"] = np.nanmax(np.stack(SNR_configs, axis=0), axis=0)
-    for band in config_data["gratings"]:
-        planet_table[f"SNR_{band}"] = np.nanmax(np.stack(SNR_bands_configs[band], axis=0), axis=0)
-        
+    # Keeping only the best SNR over the apodizer/coronagraph configurations
+    n_planets            = len(planet_table)
+    planet_idx            = np.arange(n_planets)
+    SNR_configs_stack     = np.stack(SNR_configs, axis=0)  # (N_configs, N_planets)
+    finite_configs        = np.isfinite(SNR_configs_stack)
+    valid_configs         = finite_configs.any(axis=0)
+    best_config_idx       = np.argmax(np.where(finite_configs, SNR_configs_stack, -np.inf), axis=0)
+    
+    # Best instrument-wide SNR and corresponding configuration
+    best_SNR = np.full(n_planets, np.nan, dtype=float)
+    best_SNR[valid_configs] = SNR_configs_stack[best_config_idx[valid_configs], planet_idx[valid_configs]]
+    planet_table["SNR"] = best_SNR
+    
+    best_config = np.full(n_planets, "N/A", dtype=object)
+    best_config[valid_configs] = np.asarray(config_names, dtype=object)[best_config_idx[valid_configs]]
+    planet_table["Config"] = np.asarray(best_config, dtype=str)
+    
+    # Cube with shape (N_bands, N_configs, N_planets)
+    SNR_bands_cube = np.stack([
+        np.stack(SNR_bands_configs[band], axis=0)
+        for band in config_data["gratings"]
+    ], axis=0)
+    
+    # Best SNR in each band, independently of the configuration
+    for iband, band in enumerate(config_data["gratings"]):
+        planet_table[f"SNR_{band}"] = np.nanmax(SNR_bands_cube[iband], axis=0)
+    
+    # Best individual band inside the configuration maximizing SNR_INSTRU
+    SNR_bands_best_config = SNR_bands_cube[:, best_config_idx, planet_idx]
+    finite_bands          = np.isfinite(SNR_bands_best_config)
+    valid_bands           = valid_configs & finite_bands.any(axis=0)
+    best_band_idx         = np.argmax(np.where(finite_bands, SNR_bands_best_config, -np.inf), axis=0)
+    
+    best_band = np.full(n_planets, "N/A", dtype=object)
+    bands_arr = np.asarray(list(config_data["gratings"]), dtype=object)
+    best_band[valid_bands] = bands_arr[best_band_idx[valid_bands]]
+    planet_table["Band"] = np.asarray(best_band, dtype=str)
+
     # Find planets based on mode: the classification is performed once inside build_match_dict().
     matching_planets = build_match_dict(planet_table=planet_table, planet_types=planet_types, mode=mode, Nmax=Nmax)
 
@@ -1205,14 +1248,21 @@ def colormap_bands_ptypes_SNR(mode="multi", Nmax=None, instru="HARMONI", thermal
 
     # Heatmap with pcolormesh
     mesh = plt.pcolormesh(planet_types_arr_idx_extended, bands_idx_extended, data_extended, cmap=cmap, shading='auto', vmin=0, vmax=100) 
-    
+        
+    # Horizontal separators between spectral bands
+    ax = plt.gca()
+    ax.hlines(np.arange(len(bands)-1)+0.5, xmin=-0.5, xmax=len(planet_types_arr)-0.5, colors="white", linewidths=1.5, alpha=0.9, zorder=3)
+        
+    # # Vertical separators between planetary types
+    # ax = plt.gca()
+    # ax.vlines(np.arange(len(planet_types_arr)-1)+0.5, ymin=-0.5, ymax=len(bands)-0.5, colors="white", linewidths=1.5, alpha=0.9, zorder=3)
+        
     # Contours
-    planet_types_arr_mesh, bands_mesh = np.meshgrid(planet_types_arr_idx_extended, bands_idx_extended, indexing='xy')
-    cs                                = plt.contour(planet_types_arr_mesh, bands_mesh, data_extended, levels=contour_levels, colors='k', linewidths=0.5, alpha=0.7)
-    plt.clabel(cs, inline=True, fontsize=8, fmt="%d%%")
+    # planet_types_arr_mesh, bands_mesh = np.meshgrid(planet_types_arr_idx_extended, bands_idx_extended, indexing='xy')
+    # cs                                = plt.contour(planet_types_arr_mesh, bands_mesh, data_extended, levels=contour_levels, colors='k', linewidths=0.5, alpha=0.7)
+    # plt.clabel(cs, inline=True, fontsize=8, fmt="%d%%")
 
     # Colorbar
-    ax = plt.gca()
     cbar = plt.colorbar(mesh, ax=ax, pad=0.05, shrink=1)
     cbar.minorticks_on()
     cbar.set_ticks(contour_levels)
