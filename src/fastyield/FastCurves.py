@@ -182,7 +182,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
     # Optional overview plot on the instrument band [J/s/m2/µm]
     # ---------------------------------------------------------
     if show_plot and band_only is None:
-        plt.figure(figsize=(12, 7), dpi=300)
+        plt.figure(figsize=(10, 6), dpi=300)
         plt.yscale("log")
         plt.xlim(wave_instru[0], wave_instru[-1])  
         plt.ylim(min(np.nanmin(planet_spectrum_density.flux), np.nanmin(star_spectrum_density.flux)), max(np.nanmax(planet_spectrum_density.flux), np.nanmax(star_spectrum_density.flux)))
@@ -257,7 +257,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
     # Optional overview plot per band [e-/bin/mn] (total e- over the FoV): plotting the planet spectrum (if SNR calculation) or the star spectrum (if contrast calculation) on each band
     # ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
     if show_plot:
-        fig_band_flux = plt.figure(figsize=(12, 7), dpi=300)
+        fig_band_flux = plt.figure(figsize=(10, 6), dpi=300)
         ax_flux_band  = fig_band_flux.gca()
         ax_flux_band.set_yscale("log")
         ax_flux_band.set_xlabel("Wavelength [µm]", fontsize=14)
@@ -786,7 +786,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
             # ------------------------------------------
             if show_plot and show_contributions:
                 mask_iwa_FPM = separation >= iwa_FPM
-                fig_contrast = plt.figure(figsize=(12, 7), dpi=300)        
+                fig_contrast = plt.figure(figsize=(10, 6), dpi=300)        
                 ax_contrast  = fig_contrast.gca()
                 ax_contrast.grid(which='both', linestyle=':', color='gray', alpha=0.5) 
                 ax_contrast.minorticks_on()
@@ -864,7 +864,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
                         ax_contrast.annotate(f"{planet_name}" if planet_name is not None else "planet", (x_text, y_text), fontsize=12)
                 else:
                     leg_loc = "upper right"
-                ax_contrast.legend(loc=leg_loc, fontsize=12, frameon=True, fancybox=True, shadow=True, borderpad=1)  
+                ax_contrast.legend(loc=leg_loc, fontsize=14, frameon=True, fancybox=True, shadow=True, borderpad=1)  
                 ax_contrast_mag = ax_contrast.twinx()
                 ax_contrast_mag.invert_yaxis()
                 ax_contrast_mag.set_ylabel(r'$\Delta$mag', fontsize=14, labelpad=20, rotation=270)
@@ -1022,7 +1022,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
                 cos_theta_n = alpha*N_DIT*fraction_core / norm_d
             
                 # Plot
-                fig_cos_theta_est = plt.figure(dpi=300, figsize=(12, 7))
+                fig_cos_theta_est = plt.figure(dpi=300, figsize=(10, 6))
                 ax_cos_theta_est  = fig_cos_theta_est.gca()
                 ax_cos_theta_est.plot(separation, cos_theta_est, 'k')
                 ax_cos_theta_est.set_ylabel(r"cos $\theta_{\rm est}$", fontsize=14)
@@ -1051,7 +1051,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
             t_syst = DIT * R_corr * A_FWHM * ( sigma_halo_prime_2 + sigma_RON_2 + sigma_DC_2 + sigma_bkg_prime_2 ) / sigma_syst_prime_2 # [mn]
             if post_processing.lower() in {"molecular mapping", "mm"}:
                 t_syst *= fn_MM
-            fig_t_syst    = plt.figure(figsize=(12, 7), dpi=300)
+            fig_t_syst    = plt.figure(figsize=(10, 6), dpi=300)
             ax_fig_t_syst = fig_t_syst.gca()
             ax_fig_t_syst.plot(separation, t_syst, c="crimson", ls="-", label="$t_{syst}$")
             ax_fig_t_syst.set_ylabel('$t_{syst}$ [mn]', fontsize = 14)
@@ -1157,7 +1157,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
 
             if show_plot:
                 mask_iwa_FPM     = separation >= iwa_FPM
-                fig_sigma_m_syst = plt.figure(figsize=(12, 7), dpi=300)
+                fig_sigma_m_syst = plt.figure(figsize=(10, 6), dpi=300)
                 ax_sigma_m_syst  = fig_sigma_m_syst.gca()
                 ax_sigma_m_syst.grid(which='both', linestyle=':', color='gray', alpha=0.5)        
                 ax_sigma_m_syst.set_xlim(0, separation[-1])
@@ -1191,7 +1191,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
             sigma_m_speck     = sigma_speck_prime / np.sqrt(sigma_base_2_DI)
             
             if show_plot:
-                fig_sigma_m_peckles = plt.figure(figsize=(12, 7), dpi=300)
+                fig_sigma_m_peckles = plt.figure(figsize=(10, 6), dpi=300)
                 ax_sigma_m_peckles  = fig_sigma_m_peckles.gca()
                 ax_sigma_m_peckles.grid(which='both', linestyle=':', color='gray', alpha=0.5)        
                 ax_sigma_m_peckles.set_xlim(0, separation[-1])
@@ -1265,7 +1265,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
                 eta           = gaussian_filter1d(eta_interp, sigma=sigma_bins) 
                 eta[eta <= 0] = np.nanmin(eta[eta > 0])
                 
-                # plt.figure(dpi=300, figsize=(12, 7))
+                # plt.figure(dpi=300, figsize=(10, 6))
                 # plt.title(f"{telescope_name}/{instru} with {apodizer}-apodizer in {band}-band", fontsize=14)
                 # plt.xlabel("separation [mas]", fontsize=12)
                 # plt.ylabel("eta = H_speck_ref / H_ref")
@@ -1280,7 +1280,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
                 # plt.show()
                 
                 # H_speck_ref = eta * H_ref 
-                # plt.figure(dpi=300, figsize=(12, 7))
+                # plt.figure(dpi=300, figsize=(10, 6))
                 # plt.xlim(separation[0], separation[-1])
                 # plt.title(f"{telescope_name}/{instru} with {apodizer}-apodizer in {band}-band", fontsize=14)
                 # plt.xlabel("separation [mas]", fontsize=12)
@@ -1303,7 +1303,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
             sigma_phi_speck = 1e3*np.nanmean(wave_band) / (2*np.pi) * sigma_phi_speck
             
             if show_plot:
-                fig_sigma_phi_speck = plt.figure(figsize=(12, 7), dpi=300)
+                fig_sigma_phi_speck = plt.figure(figsize=(10, 6), dpi=300)
                 ax_sigma_phi_speck  = fig_sigma_phi_speck.gca()
                 ax_sigma_phi_speck.grid(which='both', linestyle=':', color='gray', alpha=0.5)        
                 ax_sigma_phi_speck.set_xlim(0, separation[-1])
@@ -1346,7 +1346,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
     # 5σ contrast
     # ---------------------------------------
     if calculation == "contrast" and show_plot and band_only is None:
-        fig_contrast = plt.figure(figsize=(12, 7), dpi=300)        
+        fig_contrast = plt.figure(figsize=(10, 6), dpi=300)        
         ax_contrast  = fig_contrast.gca()
         ax_contrast.grid(which='both', linestyle=':', color='gray', alpha=0.5)        
         ax_contrast.minorticks_on()
@@ -1457,7 +1457,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
             print()
             print_info(f"MAX S/N (at {separation_planet:.1f} {sep_unit}) = {SNR_max_planet:.1f} for {band_SNR_max.replace('_', ' ')}.")
         
-        fig_SNR = plt.figure(figsize=(12, 7), dpi=300) 
+        fig_SNR = plt.figure(figsize=(10, 6), dpi=300) 
         ax_SNR  = fig_SNR.gca()
         ax_SNR.grid(which='both', linestyle=':', color='gray', alpha=0.5)     
         ax_SNR.set_xlim(0, max(np.max(arr) for arr in separation_bands))
