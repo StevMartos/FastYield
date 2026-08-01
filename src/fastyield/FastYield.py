@@ -2509,11 +2509,11 @@ def planet_table_classification(planet_table=None):
     mask_vhot = np.array(1500 <= planet_table["PlanetTeff"].value) & np.array(planet_table["PlanetTeff"].value < 2000) 
     mask_uhot = np.array(2000 <= planet_table["PlanetTeff"].value)
     
-    plt.figure(figsize=(10, 6), dpi=300)
+    plt.figure(figsize=(9, 5), dpi=300)
     plt.xscale('log')
     plt.yscale('log')
-    plt.xlabel(r"Mass $M_\oplus$", fontsize=16)
-    plt.ylabel(r"Radius $R_\oplus$", fontsize=16)
+    plt.xlabel(r"Mass $M_\oplus$",   fontsize=18)
+    plt.ylabel(r"Radius $R_\oplus$", fontsize=18)
     #plt.title(f"FastYield classification: {len(planet_table)} known exoplanets", fontsize=16)
     plt.xlim(np.nanmin(mass[mass!=0]), np.nanmax(mass[mass!=0]))
     plt.ylim(np.nanmin(radius[radius!=0]), np.nanmax(radius[radius!=0]))
@@ -2550,7 +2550,7 @@ def planet_table_classification(planet_table=None):
     
     plt.minorticks_on()
     plt.tick_params(axis='both', labelsize=14)
-    plt.xlim(None, 1e4)
+    plt.xlim(1e-1, 1e4)
     plt.grid(which="major", linestyle="--", linewidth=0.7, alpha=0.45)
     plt.grid(which="minor", linestyle=":",  linewidth=0.4, alpha=0.25)
     
@@ -2599,7 +2599,7 @@ def planet_table_classification(planet_table=None):
                 bounds.append({"name": name, "m1": m1, "m2": m2, "r1": r1, "r2": r2})
         return bounds
     
-    def draw_grey_highlight(ax, bounds, face_alpha=0.10, edge_alpha=0.9, edge_lw=1.5, label_fs=12):
+    def draw_grey_highlight(ax, bounds, face_alpha=0.10, edge_alpha=0.9, edge_lw=1.5, label_fs=14):
         """Surligne en gris (au-dessus de tout)."""
         for b in bounds:
             rect = Rectangle((b["m1"], b["r1"]),
@@ -2611,16 +2611,17 @@ def planet_table_classification(planet_table=None):
             ax.add_patch(rect)
     
             # centre géométrique (axes log)
-            cx = np.sqrt(b["m1"]*b["m2"])
-            cy = np.sqrt(b["r1"]*b["r2"])
-            ax.text(cx, cy, b["name"],
+            cx   = np.sqrt(b["m1"]*b["m2"])
+            cy   = np.sqrt(b["r1"]*b["r2"])
+            text = b["name"].replace('-', '\n')
+            ax.text(cx, cy, text,
                     ha="center", va="center",
-                    fontsize=label_fs, color="black",
-                    zorder=1e6+1, alpha=0.9,
-                    path_effects=[pe.withStroke(linewidth=2.5, foreground="white", alpha=0.8)])
-    
+                    fontsize=label_fs, color="black", weight="bold",
+                    zorder=1e6+1, alpha=1.0,
+                    path_effects=[pe.withStroke(linewidth=2.5, foreground="white", alpha=0.8)],
+                    )
     bounds = build_type_bounds(planet_types, ax)
-    draw_grey_highlight(ax, bounds, face_alpha=0.08, edge_alpha=0.85, edge_lw=1.2, label_fs=12)
+    draw_grey_highlight(ax, bounds, face_alpha=0.08, edge_alpha=0.85, edge_lw=1.2, label_fs=13)
     plt.draw()
     plt.tight_layout()
     plt.show()

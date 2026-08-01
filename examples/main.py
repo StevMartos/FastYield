@@ -17,7 +17,7 @@ from fastyield.colormaps import colormap_bandwidth_resolution_with_constant_Nlam
 #                       Graphic User Interface (GUI):                          #
 #------------------------------------------------------------------------------#
 
-FastYield_interface()
+# FastYield_interface()
 
 
 
@@ -25,7 +25,7 @@ FastYield_interface()
 #                                FastYield plots:                              #
 #------------------------------------------------------------------------------#
 
-# planet_table_classification()
+planet_table_classification()
 # planet_table_classification_histogram()
 # planet_table_statistics()
 
