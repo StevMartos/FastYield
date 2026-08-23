@@ -58,11 +58,11 @@ def get_wave_K():
 
 @lru_cache(maxsize=64)
 def get_wave_model(lmin, lmax, R):
-    lmin_model       = 0.98*lmin                                   # [µm]
-    lmax_model       = 1.02*lmax                                   # [µm] (a bit larger than the instrumental bandwidth to avoid edge effects)    
-    R_model          = min(R, R0_max)                              # Fixing the upper limit of resolution in order to speeds up the calculation (it also need to be high enough for instruments with very high resolution)
-    dl_model         = lmin_model / (2*R_model)                    # [µm/bin] Nyquist sampling of a spectrum with max resolving power R_model: 2 samples per resolution element at lmin_model
-    wave_model       = np.arange(lmin_model, lmax_model, dl_model) # [µm] Model wavelength axis (with constant dl step)
+    lmin_model = 0.98*lmin                                   # [µm]
+    lmax_model = 1.02*lmax                                   # [µm] (a bit larger than the instrumental bandwidth to avoid edge effects)    
+    R_model    = min(R, R0_max)                              # Fixing the upper limit of resolution in order to speeds up the calculation (it also need to be high enough for instruments with very high resolution)
+    dl_model   = lmin_model / (2*R_model)                    # [µm/bin] Nyquist sampling of a spectrum with max resolving power R_model: 2 samples per resolution element at lmin_model
+    wave_model = np.arange(lmin_model, lmax_model, dl_model) # [µm] Model wavelength axis (with constant dl step)
     return wave_model    
 
 
@@ -3083,7 +3083,7 @@ def get_spectrum_instru(spectrum, mag, config_data, band0=None, R_instru=None, w
             lmin_band0, lmax_band0 = get_band_lims(band=band0_name) # [µm]
         except Exception:
             raise KeyError(f"{band0} is not a recognized band. Choose among: {bands} or 'instru' for the full instrument range.")
-        wave_band0, counts_vega_band0 = get_vega_counts_on_band(float(lmin_band0), float(lmax_band0), float(R0_min)) # [µm], [ph/s/m2]
+        wave_band0, counts_vega_band0 = get_vega_counts_on_band(lmin=lmin_band0, lmax=lmax_band0, R=R0_min) # [µm], [ph/s/m2]
 
     # Compute the multiplicative factor that imposes the input Vega magnitude
     spectrum_band0 = spectrum.interpolate_wavelength(wave_band0, renorm=False) # [J/s/m2/µm]

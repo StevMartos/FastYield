@@ -1,5 +1,5 @@
 # import FastYield modules
-from .config import instrus, bands, rad2arcsec, R0_max
+from .config import instrus, bands, rad2arcsec
 from .get_specs import get_transmission, get_PSF_profile, get_config_data, get_wa, get_band_lims, get_R_instru, get_logit_coronagraphic_profile_interp, get_R_corr_interp, get_bkg_flux_band
 from .utils import airy_profile, get_r_core, power_law_extrapolation
 from .spectrum import Spectrum, get_wavelength_axis_constant_R, filtered_flux, get_mag, get_resolution, get_spectrum_instru, get_wave_band, get_spectrum_band, load_star_spectrum, load_planet_spectrum, load_vega_spectrum, get_counts_from_density
@@ -120,13 +120,9 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
     vsini_planet = planet_spectrum.vsini # [km/s]
     lmin_instru  = config_data["lambda_range"]["lambda_min"] # [µm]
     lmax_instru  = config_data["lambda_range"]["lambda_max"] # [µm]
-    R_planet     = np.nanmedian(planet_spectrum.R[(planet_spectrum.wavelength >= lmin_instru) & (planet_spectrum.wavelength <= lmax_instru)]) # Planet's model resolution
-    R_star       = np.nanmedian(star_spectrum.R[(star_spectrum.wavelength     >= lmin_instru) & (star_spectrum.wavelength   <= lmax_instru)]) # Star's model resolution
-    R_instru     = get_R_instru(instru=instru) # Max instrument resolution (factor 2 to be sure to not loose spectral information)
-    R_instru     = max(R_instru, R_star, R_planet)
-    R_instru     = min(R_instru, R0_max)
-    lmin_instru  = config_data["lambda_range"]["lambda_min"]
-    lmax_instru  = config_data["lambda_range"]["lambda_max"]
+    R_instru     = get_R_instru(instru=instru, spectra=[star_spectrum, planet_spectrum]) # [no unit]
+    lmin_instru  = config_data["lambda_range"]["lambda_min"] # [µm]
+    lmax_instru  = config_data["lambda_range"]["lambda_max"] # [µm]
     
     # Incoming separation is in arcsec; if instrument expects mas, convert once.
     if sep_unit == "mas" and separation_planet is not None:
@@ -226,6 +222,8 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
             print_metric("Number of principal components", "N_PCA", f"{N_PCA}", "")
         
         print()
+        R_planet = np.nanmedian(planet_spectrum.R[(planet_spectrum.wavelength >= lmin_instru) & (planet_spectrum.wavelength <= lmax_instru)]) # Planet's model resolution
+        R_star   = np.nanmedian(star_spectrum.R[(star_spectrum.wavelength     >= lmin_instru) & (star_spectrum.wavelength   <= lmax_instru)]) # Star's model resolution
         print_subheader("Planetary spectrum:")
         print_metric("Model family",                  "model_planet", f"{model_planet}",            "")
         print_metric("Model spectral resolution",     "R_planet",     f"{round(R_planet, -3):.0f}", "")

@@ -18,6 +18,8 @@ from matplotlib.patches import Rectangle
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes, mark_inset
 from matplotlib.font_manager import FontProperties
 from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
+from matplotlib.collections import PolyCollection
+from matplotlib.colors import Normalize, LogNorm
 
 # import numpy modules
 import numpy as np
@@ -95,7 +97,6 @@ def tau_to_transmission(tau):
     """
     tau = np.asarray(tau, dtype=float)
     return np.exp(-np.clip(tau, 0.0, 700.0))
-
 
 
 
@@ -924,7 +925,138 @@ def register_PSF_profile(instru, profile, fraction_core, band, strehl, apodizer,
 
 
 
-def fitting_PSF(instru, data, wave, pxscale, model="gaussian", Y0=None, X0=None, sigfactor=5, debug=False):
+def _fitting_PSF_hex(instru, data, wave, pxscale, model="gaussian", Y0=None, X0=None, FWHM0=None, debug=False, x_fiber=None, y_fiber=None):
+    """Fit an analytical PSF model directly on irregular ANDES fiber centers.
+
+    Contrary to the regular-grid branch of ''fitting_PSF'', x/y coordinates and
+    returned centroid/FWHM values are in the physical angular unit of ''x_fiber'' /
+    ''y_fiber'' (typically mas). For spectral fiber data ''(NbChannel, NbSpaxel)'',
+    each channel is first normalized spatially and a median spatial profile is fit.
+    """
+    from scipy.optimize import least_squares
+
+    data    = np.asarray(data, dtype=float)
+    x_fiber = np.asarray(x_fiber, dtype=float)
+    y_fiber = np.asarray(y_fiber, dtype=float)
+    if x_fiber.ndim != 1 or y_fiber.ndim != 1 or x_fiber.shape != y_fiber.shape:
+        raise ValueError("'x_fiber' and 'y_fiber' must be 1D arrays with the same shape.")
+
+    if data.ndim == 2:
+        if data.shape[1] != len(x_fiber):
+            raise ValueError(f"For ANDES, 2D data must have shape (NbChannel, NbSpaxel={len(x_fiber)}). Got {data.shape}.")
+        spatial_norm = np.nansum(data, axis=1)
+        data_norm    = np.divide(data, spatial_norm[:, None], out=np.full_like(data, np.nan), where=np.isfinite(spatial_norm[:, None]) & (spatial_norm[:, None] != 0))
+        values       = np.nanmedian(data_norm, axis=0)
+    elif data.ndim == 1:
+        if data.shape[0] != len(x_fiber):
+            raise ValueError(f"For ANDES, 1D data must have length NbSpaxel={len(x_fiber)}. Got {data.shape}.")
+        values = data.copy()
+    else:
+        raise ValueError(f"ANDES irregular PSF fitting expects (NbSpaxel,) or (NbChannel, NbSpaxel). Got {data.shape}.")
+
+    valid = np.isfinite(x_fiber) & np.isfinite(y_fiber) & np.isfinite(values)
+    if np.count_nonzero(valid) < 5:
+        return np.nan, np.nan, np.nan, np.nan
+    x, y, z = x_fiber[valid], y_fiber[valid], values[valid]
+
+    config_data = get_config_data(instru)
+    sep_unit    = config_data["sep_unit"]
+    D           = config_data["telescope"]["diameter"]
+    if wave is None:
+        lambda0 = 0.5*(config_data["lambda_range"]["lambda_min"] + config_data["lambda_range"]["lambda_max"]) * 1e-6
+    else:
+        lambda0 = np.nanmedian(wave) * 1e-6
+    if FWHM0 is None:
+        FWHM0 = lambda0 / D * rad2arcsec
+        if sep_unit == "mas":
+            FWHM0 *= 1e3
+        fixed_FWHM = False
+    else:
+        fixed_FWHM = True
+
+    imax  = np.nanargmax(z)
+    x00   = x[imax] if X0 is None else float(X0)
+    y00   = y[imax] if Y0 is None else float(Y0)
+    z0    = np.nanmedian(z)
+    amp0  = max(np.nanmax(z) - z0, np.nanstd(z), np.finfo(float).eps)
+    span  = max(np.ptp(x), np.ptp(y), 4*pxscale)
+    if fixed_FWHM:
+        fmin = FWHM0 - 0.1 * pxscale
+        fmax = FWHM0 + 0.1 * pxscale
+    else:
+        fmin  = max(0.1*pxscale, np.finfo(float).eps)
+        fmax  = max(span, 4*FWHM0)
+    amax  = max(10*amp0, 10*np.nanmax(np.abs(z)), 1.)
+    zspan = max(np.ptp(z), np.nanstd(z), np.finfo(float).eps)
+
+    if model == "gaussian":
+        p0 = np.array([amp0, x00, y00, FWHM0, FWHM0, z0])
+        lo = np.array([0.,   np.nanmin(x)-pxscale, np.nanmin(y)-pxscale, fmin, fmin, np.nanmin(z)-5*zspan])
+        hi = np.array([amax, np.nanmax(x)+pxscale, np.nanmax(y)+pxscale, fmax, fmax, np.nanmax(z)+5*zspan])
+        def func(p):
+            A, xc, yc, fx, fy, b = p
+            return b + A*np.exp(-4*np.log(2)*(((x-xc)/fx)**2 + ((y-yc)/fy)**2))
+    elif model == "moffat":
+        p0 = np.array([amp0, x00, y00, FWHM0, 2.5, z0])
+        lo = np.array([0.,   np.nanmin(x)-pxscale, np.nanmin(y)-pxscale, fmin, 1.02, np.nanmin(z)-5*zspan])
+        hi = np.array([amax, np.nanmax(x)+pxscale, np.nanmax(y)+pxscale, fmax, 20.,  np.nanmax(z)+5*zspan])
+        def func(p):
+            A, xc, yc, fwhm, beta, b = p
+            alpha = fwhm / (2*np.sqrt(2**(1/beta)-1))
+            return b + A*(1 + ((x-xc)**2 + (y-yc)**2)/alpha**2)**(-beta)
+    elif model == "airy_disk":
+        p0 = np.array([amp0, x00, y00, FWHM0, z0])
+        lo = np.array([0.,   np.nanmin(x)-pxscale, np.nanmin(y)-pxscale, fmin, np.nanmin(z)-5*zspan])
+        hi = np.array([amax, np.nanmax(x)+pxscale, np.nanmax(y)+pxscale, fmax, np.nanmax(z)+5*zspan])
+        def func(p):
+            A, xc, yc, fwhm, b = p
+            r      = np.hypot(x-xc, y-yc)
+            r_zero = fwhm / 0.84366596
+            u      = 3.8317059702075125 * r / r_zero
+            airy   = np.ones_like(u)
+            nz     = np.abs(u) > 1e-12
+            airy[nz] = (2*j1(u[nz])/u[nz])**2
+            return b + A*airy
+    else:
+        raise ValueError("model must be 'gaussian', 'moffat', or 'airy_disk'.")
+
+    scale = max(np.nanstd(z), np.finfo(float).eps)
+    result = least_squares(lambda p: (func(p)-z)/scale, p0, bounds=(lo, hi), loss="soft_l1")
+    pfit   = result.x
+    if model == "gaussian":
+        _, x0, y0, fwhm_x, fwhm_y, _ = pfit
+    else:
+        _, x0, y0, fwhm, *_ = pfit
+        fwhm_x = fwhm_y = fwhm
+
+    if debug:
+        radius_fit = 0.5*np.nanmean([fwhm_x, fwhm_y])
+        fig, ax    = plt.subplots(1, 2, figsize=(12, 5), dpi=200)
+        im         = plot_hex_map(x_fiber=x_fiber, y_fiber=y_fiber, data_1D=values, pxscale=pxscale, ax=ax[0], cmap="inferno")
+        cbar       = fig.colorbar(im, ax=ax[0])
+        cbar.set_label("Data", rotation=270, fontsize=14, labelpad=15)
+        model_values        = np.full_like(values, np.nan, dtype=float)
+        model_values[valid] = func(pfit)
+        im                  = plot_hex_map(x_fiber=x_fiber, y_fiber=y_fiber, data_1D=model_values, pxscale=pxscale, ax=ax[1], cmap="inferno")
+        cbar                = fig.colorbar(im, ax=ax[1])
+        cbar.set_label("Fit", rotation=270, fontsize=14, labelpad=15)
+        for a in ax:
+            circle = plt.Circle((x0, y0), radius_fit, edgecolor='deepskyblue', fill=False, linewidth=2, zorder=3)
+            a.add_patch(circle)
+            a.plot(x0, y0, marker='o', color='deepskyblue', markersize=3, zorder=4)
+        ax[0].set_title("ANDES fiber data", fontsize=16)
+        ax[1].set_title(f"{model.replace('_', ' ')} fit", fontsize=16)
+        ax[0].set_xlabel(f"x offset [{sep_unit}]", fontsize=14)
+        ax[0].set_ylabel(f"y offset [{sep_unit}]", fontsize=14)
+        ax[1].set_xlabel(f"x offset [{sep_unit}]", fontsize=14)
+        ax[1].set_ylabel(f"y offset [{sep_unit}]", fontsize=14)
+        plt.tight_layout()
+        plt.show()
+
+    return y0, x0, fwhm_y, fwhm_x
+
+
+def fitting_PSF(instru, data, wave, pxscale, model="gaussian", Y0=None, X0=None, FWHM0=None, sigfactor=5, debug=False, x_fiber=None, y_fiber=None):
     """
     Fit the PSF centroid and FWHM for 2D or 3D data using a specified PSF model.
 
@@ -962,6 +1094,11 @@ def fitting_PSF(instru, data, wave, pxscale, model="gaussian", Y0=None, X0=None,
         Estimated FWHM along the x-axis.
     """
     
+    if x_fiber is not None or y_fiber is not None:
+        if x_fiber is None or y_fiber is None:
+            raise ValueError("For irregular ANDES fitting, both 'x_fiber' and 'y_fiber' must be provided.")
+        return _fitting_PSF_hex(instru=instru, data=data, wave=wave, pxscale=pxscale, model=model, Y0=Y0, X0=X0, FWHM0=FWHM0, debug=debug, x_fiber=x_fiber, y_fiber=y_fiber)
+
     import vip_hci as vip
     
     config_data = get_config_data(instru)
@@ -974,11 +1111,12 @@ def fitting_PSF(instru, data, wave, pxscale, model="gaussian", Y0=None, X0=None,
         lmin = wave[0]
         lmax = wave[-1]
     lambda0  = (lmin + lmax) / 2 * 1e-6  # wavelength in m
-    FWHM_ang = lambda0 / D * rad2arcsec  # FWHM [arcsec]
-    if sep_unit == "mas":
-        FWHM_ang = FWHM_ang * 1000  # FWHM [mas]
-    FWHM_px = FWHM_ang / pxscale  # FWHM [pixels]
-    dpx     = int(round(FWHM_px)) + 1
+    if FWHM0 is None:
+        FWHM0 = lambda0 / D * rad2arcsec  # FWHM [arcsec]
+        if sep_unit == "mas":
+            FWHM0 = FWHM0 * 1000  # FWHM [mas]
+    FWHM0_px = FWHM0 / pxscale  # FWHM [px]
+    dpx      = int(round(FWHM0_px)) + 1
     
     if len(data.shape) == 2:
         NbLine, NbColumn = data.shape
@@ -995,17 +1133,17 @@ def fitting_PSF(instru, data, wave, pxscale, model="gaussian", Y0=None, X0=None,
         img_cropped = img[ymin:ymax, xmin:xmax]
         if np.any(np.isfinite(img_cropped)):
             if model == "gaussian":
-                results = vip.var.fit_2d.fit_2dgaussian(img_cropped, fwhmx=FWHM_px, fwhmy=FWHM_px, sigfactor=sigfactor, threshold=True if sigfactor is not None else False, full_output=True, debug=debug)
+                results = vip.var.fit_2d.fit_2dgaussian(img_cropped, fwhmx=FWHM0_px, fwhmy=FWHM0_px, sigfactor=sigfactor, threshold=True if sigfactor is not None else False, full_output=True, debug=debug)
                 fwhm_y     = results["fwhm_y"][0]
                 fwhm_x     = results["fwhm_x"][0]
                 fwhm_y_err = results["fwhm_y_err"][0]
                 fwhm_x_err = results["fwhm_x_err"][0]
             elif model == "airy_disk":
-                results = vip.var.fit_2d.fit_2dairydisk(img_cropped, fwhm=FWHM_px, sigfactor=sigfactor, threshold=True if sigfactor is not None else False, full_output=True, debug=debug)
+                results = vip.var.fit_2d.fit_2dairydisk(img_cropped, fwhm=FWHM0_px, sigfactor=sigfactor, threshold=True if sigfactor is not None else False, full_output=True, debug=debug)
                 fwhm_x     = fwhm_y     = results["fwhm"][0]
                 fwhm_x_err = fwhm_y_err = results["fwhm_err"][0]
             elif model == "moffat":
-                results = vip.var.fit_2d.fit_2dmoffat(img_cropped, fwhm=FWHM_px, sigfactor=sigfactor, threshold=True if sigfactor is not None else False, full_output=True, debug=debug)
+                results = vip.var.fit_2d.fit_2dmoffat(img_cropped, fwhm=FWHM0_px, sigfactor=sigfactor, threshold=True if sigfactor is not None else False, full_output=True, debug=debug)
                 fwhm_x     = fwhm_y     = results["fwhm"][0]
                 fwhm_x_err = fwhm_y_err = results["fwhm_err"][0]
             y0_err  = results["centroid_y_err"][0]
@@ -1039,17 +1177,17 @@ def fitting_PSF(instru, data, wave, pxscale, model="gaussian", Y0=None, X0=None,
             img_cropped = img[ymin:ymax, xmin:xmax]
             if not (img_cropped==0).all() and not (img_cropped==np.nan).all():
                 if model == "gaussian":
-                    results = vip.var.fit_2d.fit_2dgaussian(img_cropped, fwhmx=FWHM_px, fwhmy=FWHM_px, sigfactor=sigfactor, threshold=True if sigfactor is not None else False, full_output=True, debug=(i==NbChannel//2) and debug)
+                    results = vip.var.fit_2d.fit_2dgaussian(img_cropped, fwhmx=FWHM0_px, fwhmy=FWHM0_px, sigfactor=sigfactor, threshold=True if sigfactor is not None else False, full_output=True, debug=(i==NbChannel//2) and debug)
                     fwhm_y[i]     = results["fwhm_y"][0]
                     fwhm_x[i]     = results["fwhm_x"][0]
                     fwhm_y_err[i] = results["fwhm_y_err"][0]
                     fwhm_x_err[i] = results["fwhm_x_err"][0]
                 elif model == "airy_disk":
-                    results = vip.var.fit_2d.fit_2dairydisk(img_cropped, fwhm=FWHM_px, sigfactor=sigfactor, threshold=True if sigfactor is not None else False, full_output=True, debug=(i==NbChannel//2) and debug)
+                    results = vip.var.fit_2d.fit_2dairydisk(img_cropped, fwhm=FWHM0_px, sigfactor=sigfactor, threshold=True if sigfactor is not None else False, full_output=True, debug=(i==NbChannel//2) and debug)
                     fwhm_y[i]     = fwhm_x[i]     = results["fwhm"][0]
                     fwhm_y_err[i] = fwhm_x_err[i] = results["fwhm_err"][0]
                 elif model == "moffat":
-                    results = vip.var.fit_2d.fit_2dmoffat(img_cropped, fwhm=FWHM_px, sigfactor=sigfactor, threshold=True if sigfactor is not None else False, full_output=True, debug=(i==NbChannel//2) and debug)
+                    results = vip.var.fit_2d.fit_2dmoffat(img_cropped, fwhm=FWHM0_px, sigfactor=sigfactor, threshold=True if sigfactor is not None else False, full_output=True, debug=(i==NbChannel//2) and debug)
                     fwhm_y[i]     = fwhm_x[i]     = results["fwhm"][0]
                     fwhm_y_err[i] = fwhm_x_err[i] = results["fwhm_err"][0]
                 y0_err[i]  = results["centroid_y_err"][0]
@@ -1355,16 +1493,6 @@ def shift_fft(image, shift_vals, pad=True):
 
 #################### Spectral processing/analysis functions ###################
 
-def air2vacuum(wavelength):
-    """
-    Convert wavelength from air to vacuum (wavelength in µm)
-    """
-    s = 1e4 / (wavelength * 1e4) # wavelength in Angstrom
-    n =  1 + 0.00008336624212083 + 0.02408926869968 / (130.1065924522 - s**2) + 0.0001599740894897 / (38.92568793293 - s**2)
-    return wavelength * n
-
-
-
 def gaussian_lowpass_nanaware(y, sigma, eps: float = 1e-12, mode: str = "reflect", truncate: float = 4.0):
     """
     NaN-aware Gaussian low-pass filtering (1D).
@@ -1419,7 +1547,124 @@ def gaussian_lowpass_nanaware(y, sigma, eps: float = 1e-12, mode: str = "reflect
 
 
 
-def PCA_subtraction(S_res, N_PCA, y0=None, x0=None, size_core=None, PCA_annular=False, PCA_mask=False, scree_plot=False, PCA_plots=False, PCA_plots_PDF=False, path_PDF=None, wave=None, R=None, pxscale=None, sep_unit="arcsec"):
+def _PCA_subtraction_hex(S_res, N_PCA, x_fiber, y_fiber, idx_planet=None, size_core=1, PCA_annular=False, PCA_mask=False, scree_plot=False, PCA_plots=False, PCA_plots_PDF=False, path_PDF=None, wave=None, R=None, pxscale=None, sep_unit="mas"):
+    """PCA subtraction for native ANDES data shaped (NbChannel, NbSpaxel)."""
+    S_res = np.asarray(S_res, dtype=float)
+    x_fiber = np.asarray(x_fiber, dtype=float)
+    y_fiber = np.asarray(y_fiber, dtype=float)
+    if S_res.ndim != 2 or S_res.shape[1] != len(x_fiber) or x_fiber.shape != y_fiber.shape:
+        raise ValueError("ANDES PCA expects S_res=(NbChannel,NbSpaxel) and matching 1D x_fiber/y_fiber arrays.")
+    if N_PCA == 0:
+        return np.copy(S_res), None
+
+    NbChannel, NbSpaxel = S_res.shape
+    d           = np.hypot(x_fiber[:, None]-x_fiber[None, :], y_fiber[:, None]-y_fiber[None, :])
+    d[d == 0]   = np.nan
+    fiber_pitch = np.nanmedian(np.nanmin(d, axis=1))
+    fit_mask    = np.isfinite(S_res).any(axis=0)
+
+    if idx_planet is not None:
+        if PCA_annular:
+            sep_planet = np.hypot(x_fiber[idx_planet], y_fiber[idx_planet])
+            width      = max(size_core if size_core is not None else 1, 1)*fiber_pitch
+            fit_mask  &= np.abs(np.hypot(x_fiber, y_fiber)-sep_planet) <= width
+        if PCA_mask:
+            radius     = 2*max(size_core if size_core is not None else 1, 1)*fiber_pitch
+            fit_mask  &= np.hypot(x_fiber-x_fiber[idx_planet], y_fiber-y_fiber[idx_planet]) > radius
+
+    X_fit = S_res[:, fit_mask].T
+    if X_fit.shape[0] < 2:
+        raise ValueError("Too few valid ANDES fibers remain to fit the PCA.")
+    N_valid  = np.sum(np.isfinite(X_fit), axis=0)
+    col_mean = np.divide(np.nansum(X_fit, axis=0), N_valid, out=np.zeros(NbChannel), where=N_valid > 0)    
+    inds = ~np.isfinite(X_fit)
+    if np.any(inds):
+        X_fit[inds] = np.take(col_mean, np.where(inds)[1])
+
+    N_PCA_eff = min(int(N_PCA), X_fit.shape[0]-1, NbChannel)
+    if N_PCA_eff < 1:
+        return np.copy(S_res), None
+    if N_PCA_eff != N_PCA:
+        print(f"WARNING: N_PCA={N_PCA} is too large for {X_fit.shape[0]} valid ANDES fibers; using N_PCA={N_PCA_eff}.")
+    pca = PCA(n_components=N_PCA_eff)
+    pca.fit(X_fit)
+
+    nan_mask = ~np.isfinite(S_res)
+    X_all    = S_res.T.copy()
+    inds     = ~np.isfinite(X_all)
+    if np.any(inds):
+        X_all[inds] = np.take(col_mean, np.where(inds)[1])
+    X_model  = pca.inverse_transform(pca.transform(X_all))
+    S_res_sub = (X_all-X_model).T
+    S_res_sub[nan_mask] = np.nan
+
+    if PCA_plots:
+        from .spectrum import get_psd
+        Nk      = min(N_PCA_eff, 5)
+        cmap    = plt.get_cmap("rainbow", Nk)
+        fig, ax = plt.subplots(Nk, 3, figsize=(16, Nk*3), sharex='col', squeeze=False, layout="constrained", gridspec_kw={'wspace': 0.05, 'hspace': 0}, dpi=300)
+        fig.suptitle(rf"PCA modes and spatial correlation maps — first {Nk} components", fontsize=22, fontweight="bold", y=1.05)
+        ax[0, 0].set_title("PCA spectral component",  fontsize=16, fontweight="bold", pad=12)
+        ax[0, 1].set_title("Power spectral density",  fontsize=16, fontweight="bold", pad=12)
+        ax[0, 2].set_title("Spatial correlation map", fontsize=16, fontweight="bold", pad=12)
+        for k in range(Nk):
+            pca_comp = pca.components_[k]
+            ax[k, 0].plot(wave, pca_comp, c=cmap(k), label=f"$n_k$ = {k+1}")
+            ax[k, 0].legend(fontsize=14, loc="upper center")
+            if k == Nk-1:
+                ax[k, 0].set_xlim(wave[0], wave[-1]) ; ax[k, 0].set_xlabel("Wavelength [µm]", fontsize=14)
+            ax[k, 0].set_ylabel("Modulation (normalized)", fontsize=14) ; ax[k, 0].grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+            res, psd = get_psd(wave, pca_comp, R=R, smooth=0)
+            ax[k, 1].plot(res, psd, c=cmap(k))
+            if k == Nk-1:
+                ax[k, 1].set_xlim(1, R) ; ax[k, 1].set_ylim(1e-10, 1) ; ax[k, 1].set_xlabel("Resolution", fontsize=14) ; ax[k, 1].set_xscale('log') ; ax[k, 1].set_yscale('log')
+            ax[k, 1].set_ylabel("PSD", fontsize=14) ; ax[k, 1].grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+            norm       = np.sqrt(np.nansum(S_res**2, axis=0))
+            numerator  = np.nansum(S_res*pca_comp[:, None], axis=0)
+            corr       = np.divide(numerator, norm, out=np.full(NbSpaxel, np.nan), where=np.isfinite(norm) & (norm > 0))
+            cax        = plot_hex_map(x_fiber=x_fiber, y_fiber=y_fiber, data_1D=corr, pxscale=pxscale, ax=ax[k, 2], cmap="coolwarm", vmin=-1, vmax=1, log=False, linewidth=0.5)
+            cbar       = fig.colorbar(cax, ax=ax[k, 2], orientation='vertical', shrink=0.8)
+            cbar.set_label("Correlation", fontsize=14, labelpad=20, rotation=270)
+            if k == Nk-1: ax[k, 2].set_xlabel(f'x offset [{sep_unit}]', fontsize=14)
+            ax[k, 2].set_ylabel(f'y offset [{sep_unit}]', fontsize=14)
+        plt.show()
+
+    if PCA_plots_PDF and path_PDF is not None:
+        from .spectrum import get_psd
+        pdf      = PdfPages(path_PDF)
+        cmap_pdf = get_cmap("Spectral", N_PCA_eff)
+        norm     = np.sqrt(np.nansum(S_res**2, axis=0))
+        for k in tqdm(range(N_PCA_eff), desc="Saving PCA components in PDF"):
+            pca_comp = pca.components_[k]
+            fig, ax  = plt.subplots(1, 3, figsize=(16, 3), dpi=100)
+            ax[0].plot(wave, pca_comp, c=cmap_pdf(k), label=f"$n_k$ = {k+1}") ; ax[0].legend(fontsize=14, loc="upper center") ; ax[0].set_xlabel("Wavelength [µm]") ; ax[0].set_ylabel("modulation (normalized)") ; ax[0].grid(True)
+            res, psd = get_psd(wave, pca_comp, R=R, smooth=0)
+            ax[1].plot(res, psd, c=cmap_pdf(k)) ; ax[1].set_xscale('log') ; ax[1].set_yscale('log') ; ax[1].set_xlabel("Resolution") ; ax[1].set_ylabel("PSD") ; ax[1].grid(True)
+            numerator = np.nansum(S_res*pca_comp[:, None], axis=0)
+            corr      = np.divide(numerator, norm, out=np.full(NbSpaxel, np.nan), where=np.isfinite(norm) & (norm > 0))
+            cax       = plot_hex_map(x_fiber=x_fiber, y_fiber=y_fiber, data_1D=corr, pxscale=pxscale, ax=ax[2], cmap="coolwarm", vmin=-1, vmax=1, log=False, linewidth=0.5)
+            fig.colorbar(cax, ax=ax[2], orientation='vertical', shrink=0.8).set_label("Correlation")
+            pdf.savefig(fig, bbox_inches='tight') ; plt.close(fig)
+        pdf.close() ; print(f"PCA PDF saved in {path_PDF}")
+
+    if scree_plot and N_PCA_eff > 1:
+        eigenvalues = pca.explained_variance_
+        plt.figure(figsize=(10, 6), dpi=300)
+        plt.plot(np.arange(1, len(eigenvalues)+1), eigenvalues, marker='o', linestyle='-', c="gray")
+        plt.xlabel('Principal Components', fontsize=14)
+        plt.ylabel('Eigenvalues (variance explained)', fontsize=14)
+        plt.title('Scree Plot', fontsize=16, fontweight="bold")
+        plt.yscale('log')
+        plt.xlim(1, N_PCA_eff)
+        plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+        plt.minorticks_on()
+        plt.tight_layout()
+        plt.show()
+
+    return S_res_sub, pca
+
+
+def PCA_subtraction(S_res, N_PCA, y0=None, x0=None, size_core=None, PCA_annular=False, PCA_mask=False, scree_plot=False, PCA_plots=False, PCA_plots_PDF=False, path_PDF=None, wave=None, R=None, pxscale=None, sep_unit="arcsec", x_fiber=None, y_fiber=None, idx_planet=None):
     """
     Perform PCA subtraction on the input data cube.
 
@@ -1468,6 +1713,13 @@ def PCA_subtraction(S_res, N_PCA, y0=None, x0=None, size_core=None, PCA_annular=
         The fitted PCA object if N_PCA is not 0; otherwise, None.
     """
     
+    if np.ndim(S_res) == 2:
+        if x_fiber is None or y_fiber is None:
+            raise ValueError("For 2D fiber data, PCA_subtraction requires 'x_fiber' and 'y_fiber'.")
+        return _PCA_subtraction_hex(S_res=S_res, N_PCA=N_PCA, x_fiber=x_fiber, y_fiber=y_fiber, idx_planet=idx_planet, size_core=size_core, PCA_annular=PCA_annular, PCA_mask=PCA_mask, scree_plot=scree_plot, PCA_plots=PCA_plots, PCA_plots_PDF=PCA_plots_PDF, path_PDF=path_PDF, wave=wave, R=R, pxscale=pxscale, sep_unit=sep_unit)
+    if np.ndim(S_res) != 3:
+        raise ValueError(f"'S_res' must be 2D ANDES fiber data or a 3D regular cube. Got {np.shape(S_res)}.")
+
     if N_PCA != 0:
         NbChannel, NbLine, NbColumn = S_res.shape             # Retrieve the shape of the data cube
         pca                         = PCA(n_components=N_PCA) # Creating PCA object
@@ -1724,8 +1976,9 @@ def cut_spectral_frequencies(input_flux, R, Rmin, Rmax, filter_type='empirical',
                 sigma = 1000
             filter_response = gaussian_filter1d(1 - peak, sigma=sigma)
             # Sauvegarde du profil trouvé
-            empirical_filter_response = np.zeros((2, len(filter_response)))
-            empirical_filter_response[0] = res_values ; empirical_filter_response[1] = filter_response
+            empirical_filter_response    = np.zeros((2, len(filter_response)))
+            empirical_filter_response[0] = res_values
+            empirical_filter_response[1] = filter_response
             fits.writeto(f"utils/empirical_filter_response/{target_name}_{R}_{Rmin}_{Rmax}_empirical_filter_response.fits", empirical_filter_response, overwrite=True)
             plt.figure(dpi=300)
             plt.plot(np.fft.fftshift(res_values), np.fft.fftshift(psd_values), label="PSD des données")
@@ -1816,7 +2069,7 @@ def keep_true_chunks(mask_bool, N):
 
 ########################### Q-Q plot functions ################################
     
-def qqplot_CCF(CCF_map, sep_lim, sep_unit, pxscale, band, target_name):
+def qqplot_CCF(CCF_map, sep_lim, sep_unit, pxscale, band, target_name, x_fiber=None, y_fiber=None):
     """
     Q–Q plot of CCF samples split by separation (inner vs outer annulus).
 
@@ -1842,13 +2095,29 @@ def qqplot_CCF(CCF_map, sep_lim, sep_unit, pxscale, band, target_name):
     target_name : str
         Target name for the plot title.
     """
-    NbLine, NbColumn = CCF_map.shape
-    map1 = CCF_map * annular_mask(0, int(round(sep_lim/pxscale)), size=(NbLine, NbColumn))
-    map1 = map1[np.isfinite(map1)]                     # Filtrage nan
-    map1 = (map1 - np.nanmean(map1)) / np.nanstd(map1) # Centered normal law (mu=0, std=1)
-    map2 = CCF_map * annular_mask(int(round(sep_lim/pxscale))+1, max(NbLine//2, NbColumn//2), size=(NbLine, NbColumn))
-    map2 = map2[np.isfinite(map2)]                     # Filtrage nan
-    map2 = (map2 - np.nanmean(map2)) / np.nanstd(map2) # Centered normal law (mu=0, std=1)
+    CCF_map = np.asarray(CCF_map, dtype=float)
+    if CCF_map.ndim == 1:
+        if x_fiber is None or y_fiber is None:
+            raise ValueError("For 1D ANDES CCF vectors, qqplot_CCF requires 'x_fiber' and 'y_fiber'.")
+        x_fiber = np.asarray(x_fiber, dtype=float) ; y_fiber = np.asarray(y_fiber, dtype=float)
+        if len(CCF_map) != len(x_fiber) or x_fiber.shape != y_fiber.shape:
+            raise ValueError("CCF_map, x_fiber and y_fiber must describe the same number of fibers.")
+        separation = np.hypot(x_fiber, y_fiber)
+        map1       = CCF_map[(separation <= sep_lim) & np.isfinite(CCF_map)]
+        map2       = CCF_map[(separation >  sep_lim) & np.isfinite(CCF_map)]
+    elif CCF_map.ndim == 2:
+        NbLine, NbColumn = CCF_map.shape
+        map1 = CCF_map * annular_mask(0, int(round(sep_lim/pxscale)), size=(NbLine, NbColumn))
+        map1 = map1[np.isfinite(map1)]
+        map2 = CCF_map * annular_mask(int(round(sep_lim/pxscale))+1, max(NbLine//2, NbColumn//2), size=(NbLine, NbColumn))
+        map2 = map2[np.isfinite(map2)]
+    else:
+        raise ValueError(f"CCF_map must be a 1D fiber vector or 2D image. Got {CCF_map.shape}.")
+    if len(map1) < 2 or len(map2) < 2 or np.nanstd(map1) == 0 or np.nanstd(map2) == 0:
+        print("WARNING: Q-Q plot skipped: not enough non-degenerate CCF samples in both separation regions.")
+        return
+    map1 = (map1 - np.nanmean(map1)) / np.nanstd(map1)
+    map2 = (map2 - np.nanmean(map2)) / np.nanstd(map2)
     # PLOT
     plt.figure(dpi=300, figsize=(6, 6))
     ax = plt.gca()    
@@ -1868,7 +2137,7 @@ def qqplot_CCF(CCF_map, sep_lim, sep_unit, pxscale, band, target_name):
 
   
   
-def qqplot2_fiber(CCF_signal, CCF_bkgd, band, target_name):
+def qqplot_fiber(CCF_signal, CCF_bkgd, band, target_name):
     """
     Q–Q plots comparing signal CCF distribution to a set of background CCF maps.
 
@@ -2425,8 +2694,141 @@ def plot_jwst_data(instru, band, target_name, planet_name, S, CCF_SNR, pxscale, 
 # Plotting helper for ELT simulated data
 # -------------------------------------------------------------------------
 
-def plot_elt_data(instru, band, target_name, planet_name, S, CCF_SNR, pxscale, FOV, sep_unit, size_core, y0, x0, y_star, x_star, y_planet, x_planet, radius, RA_offset, DEC_offset, band0, mag_star, exposure_time, calculation, SNR, T_planet, rv_planet, model, apodizer, zoom_CCF_2D, factor_max_PSF=None, vmin_PSF=None, title_prefix="", title_suffix=""):
+# For ANDES particular case
+def plot_hex_map(x_fiber, y_fiber, data_1D, pxscale, ax=None, cmap="inferno", vmin=None, vmax=None, log=False, edgecolor="k", linewidth=1):
     
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(6, 6), dpi=200)
+
+    # pxscale face à face
+    radius = pxscale / np.sqrt(3)
+    # # pxscale sommet à sommet
+    # radius = pxscale / 2
+
+    finite = np.isfinite(data_1D)
+    if log:
+        valid = finite & (data_1D > 0)
+        if not np.any(valid):
+            raise ValueError("log=True requires at least one strictly positive value")
+        vmin = np.nanmin(data_1D[valid]) if vmin is None else vmin
+        vmax = np.nanmax(data_1D[valid]) if vmax is None else vmax
+        norm = LogNorm(vmin=vmin, vmax=vmax)
+    else:
+        norm = Normalize(vmin=vmin, vmax=vmax)
+
+    theta    = np.arange(6) * np.pi/3
+    vertices = [np.column_stack((x + radius*np.cos(theta), y + radius*np.sin(theta))) for x, y in zip(x_fiber, y_fiber)]
+    im       = PolyCollection(vertices, array=data_1D, cmap=cmap, norm=norm, edgecolors=edgecolor, linewidths=linewidth)
+    ax.add_collection(im)
+    ax.set_xlim(np.nanmin(x_fiber) - radius, np.nanmax(x_fiber) + radius)
+    ax.set_ylim(np.nanmin(y_fiber) - radius, np.nanmax(y_fiber) + radius)
+    ax.set_aspect("equal")
+    return im
+
+
+
+def _plot_elt_data_hex(instru, band, target_name, planet_name, S, CCF_SNR, pxscale, FOV, sep_unit, size_core, y_star, x_star, y_planet, x_planet, radius, RA_offset, DEC_offset, band0, mag_star, exposure_time, calculation, SNR, T_planet, rv_planet, model, apodizer, factor_max_PSF=None, vmin_PSF=None, title_prefix="", title_suffix="", x_fiber=None, y_fiber=None, idx_planet=None, x_pos=None, y_pos=None):
+    """ANDES counterpart of plot_elt_data for native irregular fiber sampling."""
+    S         = np.asarray(S, dtype=float)
+    CCF_SNR   = np.asarray(CCF_SNR, dtype=float)
+    x_fiber   = np.asarray(x_fiber, dtype=float)
+    y_fiber   = np.asarray(y_fiber, dtype=float)
+    if S.ndim != 2 or S.shape[1] != len(x_fiber) or CCF_SNR.ndim != 1 or len(CCF_SNR) != len(x_fiber):
+        raise ValueError("ANDES plot_elt_data expects S=(NbChannel,NbSpaxel), CCF_SNR=(NbSpaxel,) and matching fiber positions.")
+
+    x_map = x_fiber-x_star
+    y_map = y_fiber-y_star
+    if x_planet is not None and y_planet is not None:
+        xp, yp     = x_planet-x_star, y_planet-y_star
+        sep_planet = np.hypot(xp, yp)
+        print("\nEstimated planet projected offset:")
+        print(f"  Delta y    = {yp:+.3f} {sep_unit}")
+        print(f"  Delta x    = {xp:+.3f} {sep_unit}")
+        print(f"  Separation = {sep_planet:.3f} {sep_unit}")
+        sign_loc_planet = np.sign(yp) if yp != 0 else +1
+        sign_loc_star   = -sign_loc_planet
+    else:
+        xp = yp = None
+        sign_loc_star = +1
+
+    # --- Plot PSF ---
+    PSF = np.nanmedian(np.nan_to_num(S), axis=0)
+    PSF[PSF == 0] = np.nan
+    if np.nanmin(PSF) < 0: PSF += np.abs(np.nanmin(PSF))
+    max_PSF = np.nanmax(PSF)
+    if factor_max_PSF is not None: max_PSF *= factor_max_PSF
+    PSF /= max_PSF
+
+    PSF_cmap = "inferno"
+    fig, ax  = plt.subplots(figsize=(8, 8), dpi=300)
+    im       = plot_hex_map(x_fiber=x_map, y_fiber=y_map, data_1D=PSF, pxscale=pxscale, ax=ax, cmap=PSF_cmap, vmin=vmin_PSF, vmax=1, log=True)
+    ax.set_title(title_prefix+f'ELT/{instru} PSF of {target_name} data on {band}-band'+title_suffix, fontsize=18, fontweight="bold", pad=15)
+    ax.set_xlabel(rf'$\Delta$RA  [{sep_unit}]', fontsize=16) ; ax.set_ylabel(rf'$\Delta$Dec [{sep_unit}]', fontsize=16)
+    ax.tick_params(which='both', top=True, right=True, labelsize=12) ; ax.minorticks_on() ; ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.4)
+    ax.plot(0, 0, marker='*', color='gold', markersize=18, zorder=4)
+    ax.text(0, 1*sign_loc_star*pxscale, f"{target_name}", color='gold', fontsize=12, weight='bold', ha='center', va='bottom', zorder=100, bbox=dict(facecolor='black', edgecolor='none', boxstyle='round,pad=0.3', alpha=0.4))
+    if xp is not None and yp is not None:
+        planet_text = planet_name if planet_name is not None else "Planet"
+        circle      = plt.Circle((xp, yp), radius, edgecolor='deepskyblue', fill=False, linewidth=2, zorder=3)
+        ax.add_patch(circle) ; ax.plot(xp, yp, marker='o', color='deepskyblue', markersize=3, zorder=4)
+        if x_pos is not None and y_pos is not None:
+            ax.plot(x_pos-x_star, y_pos-y_star, marker='X', color='black', markersize=7, zorder=5)
+        elif RA_offset is not None and DEC_offset is not None:
+            ax.plot(RA_offset, DEC_offset, marker='X', color='black', markersize=7, zorder=4)
+        ax.text(xp, yp+1*sign_loc_planet*pxscale, planet_text, color='deepskyblue', fontsize=12, weight='bold', ha='center', va='top', zorder=100, bbox=dict(facecolor='black', edgecolor='none', boxstyle='round,pad=0.3', alpha=0.4))
+    cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    cbar.set_label('$S$ (in raw contrast)', fontsize=16, rotation=270, labelpad=16)
+    cbar.ax.tick_params(labelsize=12)
+    cbar.ax.minorticks_on()
+    ax.set_xlim(+FOV/2, -FOV/2)
+    ax.set_ylim(-FOV/2, +FOV/2)
+    add_north_east_arrows(ax, loc=(0.95, 0.05), length=0.10, color="white", fontsize=13, lw=2.4, mutation_scale=14)
+    param_box = f"Band: {band}"
+    if apodizer not in {None, "NO_SP"}:
+        param_box += f"  |  Apodizer: {apodizer.replace('_', ' ')}"
+    param_box += f"\n{band0}={round(mag_star, 1):.1f}  |  $t_{{exp}}$={exposure_time/60:.0f} hr"
+    ax.text(0.02, 0.98, param_box, transform=ax.transAxes, ha='left', va='top', fontsize=12, color='white', bbox=dict(facecolor='black', edgecolor='white', linewidth=0.6, alpha=0.35, boxstyle='round,pad=0.3'))
+    plt.show()
+
+    # --- Plot CCF ---
+    CCF_thr  = 5
+    CCF_cmap = "coolwarm"
+    fig, ax  = plt.subplots(figsize=(8, 8), dpi=300)
+    im       = plot_hex_map(x_fiber=x_map, y_fiber=y_map, data_1D=CCF_SNR, pxscale=pxscale, ax=ax, cmap=CCF_cmap, vmin=-CCF_thr, vmax=CCF_thr, log=False)
+    ax.set_title(title_prefix+f'ELT/{instru} CCF of {planet_name if planet_name is not None else target_name} on {band}-band'+title_suffix, fontsize=18, fontweight="bold", pad=15)
+    ax.set_xlabel(rf'$\Delta$RA  [{sep_unit}]', fontsize=16)
+    ax.set_ylabel(rf'$\Delta$Dec [{sep_unit}]', fontsize=16)
+    ax.tick_params(which='both', top=True, right=True, labelsize=12)
+    ax.minorticks_on()
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.4)
+    ax.plot(0, 0, marker='*', color='gold', markersize=18, zorder=4)
+    ax.text(0, 1*sign_loc_star*pxscale, f"{target_name}", color='gold', fontsize=12, weight='bold', ha='center', va='bottom', zorder=100, bbox=dict(facecolor='black', edgecolor='none', boxstyle='round,pad=0.3', alpha=0.4))
+    if xp is not None and yp is not None:
+        planet_text = planet_name if planet_name is not None else "Planet"
+        if calculation == "SNR" and SNR is not None: planet_text += f"\nS/N={SNR:.1f}"
+        circle = plt.Circle((xp, yp), radius, edgecolor='deepskyblue', fill=False, linewidth=2, zorder=3)
+        ax.add_patch(circle)
+        ax.plot(xp, yp, marker='o', color='deepskyblue', markersize=3, zorder=4)
+        if x_pos is not None and y_pos is not None:
+            ax.plot(x_pos-x_star, y_pos-y_star, marker='X', color='black', markersize=7, zorder=5)
+        elif RA_offset is not None and DEC_offset is not None:
+            ax.plot(RA_offset, DEC_offset, marker='X', color='black', markersize=7, zorder=4)
+        ax.text(xp, yp+1*sign_loc_planet*pxscale, planet_text, color='deepskyblue', fontsize=12, weight='bold', ha='center', va='top', zorder=100, bbox=dict(facecolor='black', edgecolor='none', boxstyle='round,pad=0.3', alpha=0.4))
+    cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04) ; cbar.set_label('CCF [S/N]', fontsize=16, rotation=270, labelpad=25) ; cbar.ax.tick_params(labelsize=12) ; cbar.set_ticks(np.linspace(-CCF_thr, CCF_thr, 11)) ; cbar.ax.minorticks_on()
+    ax.set_xlim(+FOV/2, -FOV/2) ; ax.set_ylim(-FOV/2, +FOV/2)
+    add_north_east_arrows(ax, loc=(0.95, 0.05), length=0.10, color="white", fontsize=13, lw=2.4, mutation_scale=14)
+    param_box = (rf'$T_{{p}}$={int(round(T_planet))} K  |  RV={round(rv_planet)} km/s' + '\n' + f'Band: {band}  |  Model: {model}')
+    ax.text(0.02, 0.98, param_box, transform=ax.transAxes, ha='left', va='top', fontsize=12, color='white', bbox=dict(facecolor='black', edgecolor='white', linewidth=0.6, alpha=0.35, boxstyle='round,pad=0.3'))
+    plt.show()
+
+
+def plot_elt_data(instru, band, target_name, planet_name, S, CCF_SNR, pxscale, FOV, sep_unit, size_core, y0, x0, y_star, x_star, y_planet, x_planet, radius, RA_offset, DEC_offset, band0, mag_star, exposure_time, calculation, SNR, T_planet, rv_planet, model, apodizer, zoom_CCF_2D, factor_max_PSF=None, vmin_PSF=None, title_prefix="", title_suffix="", x_fiber=None, y_fiber=None, idx_planet=None, x_pos=None, y_pos=None):
+    
+    if x_fiber is not None or y_fiber is not None:
+        if x_fiber is None or y_fiber is None:
+            raise ValueError("For ANDES plotting, both 'x_fiber' and 'y_fiber' must be provided.")
+        return _plot_elt_data_hex(instru=instru, band=band, target_name=target_name, planet_name=planet_name, S=S, CCF_SNR=CCF_SNR, pxscale=pxscale, FOV=FOV, sep_unit=sep_unit, size_core=size_core, y_star=y_star, x_star=x_star, y_planet=y_planet, x_planet=x_planet, radius=radius, RA_offset=RA_offset, DEC_offset=DEC_offset, band0=band0, mag_star=mag_star, exposure_time=exposure_time, calculation=calculation, SNR=SNR, T_planet=T_planet, rv_planet=rv_planet, model=model, apodizer=apodizer, factor_max_PSF=factor_max_PSF, vmin_PSF=vmin_PSF, title_prefix=title_prefix, title_suffix=title_suffix, x_fiber=x_fiber, y_fiber=y_fiber, idx_planet=idx_planet, x_pos=x_pos, y_pos=y_pos)
+
     NbChannel, NbLine, NbColumn = S.shape
     
     # Build display extent centered on the fitted star.
@@ -2588,8 +2990,6 @@ def plot_elt_data(instru, band, target_name, planet_name, S, CCF_SNR, pxscale, F
     param_box = (rf'$T_{{p}}$={int(round(T_planet))} K  |  RV={round(rv_planet)} km/s' + '\n' + f'Band: {band}  |  Model: {model}')
     ax.text(0.02, 0.98, param_box, transform=ax.transAxes, ha='left', va='top', fontsize=12, color='white', bbox=dict(facecolor='black', edgecolor='white', linewidth=0.6, alpha=0.35, boxstyle='round,pad=0.3'))
     plt.show()
-
-
 
 
 
@@ -3192,8 +3592,6 @@ def extract_vipa_data(path_data, instru, target_name, band, gain, label_fiber, d
 
 
 ###########################################################################################
-
-
 
 def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, Rc, filter_type, order_by_order, outliers, sigma_outliers, only_high_pass=False, cut_fringes=False, Rmin=None, Rmax=None, use_weight=True, mask_nan_values=False, keep_only_good=False, wave_input=None, reference_fibers=True, crop_tell_orders=False, shift_star_corr=False, verbose=True): # OPENING DATA AND DEGRADATING THE RESOLUTION (if wanted)
     from fastyield.spectrum import Spectrum, filtered_flux, interpolate_flux_with_error, get_resolution, get_wavelength_axis_constant_dl
@@ -5116,8 +5514,6 @@ def add_if_necessary(array, value):
 
 
 
-
-
 def plot_bkg_skycalc(filename):
     
     # Lecture du fond de ciel
@@ -5154,8 +5550,6 @@ def plot_bkg_skycalc(filename):
     plt.legend(loc='upper left', fontsize=12, frameon=True)
     plt.tight_layout()
     plt.show()
-    
-    
     
     hdr = fits.getheader(filename)
     
