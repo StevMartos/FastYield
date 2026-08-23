@@ -43,6 +43,37 @@ dtype = np.float32
 # Data spectra modelisations
 # -------------------------------------------------------------------------
 
+def get_mask_dpx_rv(wave, rv_arr, verbose):
+    # #dlambda = 10 * wave/R
+    # dlambda = wave * 1000*np.nanmax(np.abs((rv_arr))) / c
+    # dwave   = np.gradient(wave)
+    # dpx_rv  = int(np.ceil(np.nanmedian(np.abs(dlambda / dwave))))
+    # if verbose:
+    #     print(f"\nRV padding for logL computation: dpx_rv = {dpx_rv} bins")
+    # if 2*dpx_rv >= len(wave):
+    #     raise ValueError("RV padding removes the full spectrum. Check rv_arr or wavelength sampling.")
+    # mask_dpx_rv = np.ones(len(wave), dtype=bool)
+    # if dpx_rv > 0:
+    #     mask_dpx_rv[:dpx_rv]  = False
+    #     mask_dpx_rv[-dpx_rv:] = False
+        
+    
+    dlambda = wave[:, None] * 1000*rv_arr / c
+    dwave   = np.nanmean(np.gradient(wave))
+    dpx_rv  = int(np.ceil(np.nanmax(np.abs(dlambda / dwave))))
+    if verbose:
+        print(f"\nRV padding for logL computation: dpx_rv = {dpx_rv} bins")
+    if 2*dpx_rv >= len(wave):
+        raise ValueError("RV padding removes the full spectrum. Check rv_arr or wavelength sampling.")
+    mask_dpx_rv = np.ones(len(wave), dtype=bool)
+    if dpx_rv > 0:
+        mask_dpx_rv[:dpx_rv]  = False
+        mask_dpx_rv[-dpx_rv:] = False
+    
+    return mask_dpx_rv
+
+
+
 def get_valid_mask(data, template, weight=None):
     # Creating mask
     valid = (data !=0 ) & np.isfinite(data) & np.isfinite(template)
@@ -348,8 +379,8 @@ def get_S_res(wave, S, Rc, filter_type, trans_Ss=None, outliers=False, sigma_out
     ----------
     wave : (NbChannel,) array_like
         Wavelength grid (µm).
-    S : ndarray, shape (NbChannel, NbLine, NbColumn)
-        Data cube (can contain NaNs).
+    S : ndarray, shape (NbChannel, NbSpaxel) or (NbChannel, NbLine, NbColumn)
+        Fiber data or data cube (can contain NaNs).
     Rc : float or None
         Cut-off resolving power. If None, no spectral filter is applied (LF=raw).
     filter_type : {"gaussian","gaussian_bis","step","smoothstep","savitzky_golay"}
@@ -381,6 +412,12 @@ def get_S_res(wave, S, Rc, filter_type, trans_Ss=None, outliers=False, sigma_out
             return d / norm
         return d * np.nan
     
+    input_2D = np.ndim(S) == 2
+    if input_2D:
+        S = S[:, :, None]
+    elif np.ndim(S) != 3:
+        raise ValueError(f"'S' must have shape (NbChannel, NbSpaxel) or (NbChannel, NbLine, NbColumn). Got {np.shape(S)}.")
+
     if R_sampling is None:
         R_sampling = get_resolution(wavelength=wave, func=np.nanmedian)
     
@@ -494,6 +531,10 @@ def get_S_res(wave, S, Rc, filter_type, trans_Ss=None, outliers=False, sigma_out
         flat /= norms
         S_res = flat.reshape(NbChannel, NbLine, NbColumn)
 
+    if input_2D:
+        S_res = S_res[:, :, 0]
+        M     = M[:, :, 0]
+
     return S_res, M
 
 
@@ -562,8 +603,8 @@ def get_CCF_2D_rv(instru, S_res, wave, trans, R, Rc, filter_type, model, T, lg, 
     ----------
     instru : str
         Instrument name, passed to the template generator if needed.
-    S_res : ndarray, shape (NbChannel, NbLine, NbColumn)
-        Residual cube after stellar filtering.
+    S_res : ndarray, shape (NbChannel, NbSpaxel) or (NbChannel, NbLine, NbColumn)
+        Residual fiber data or cube after stellar filtering.
     wave : ndarray, shape (NbChannel,)
         Wavelength grid [µm].
     trans : ndarray, shape (NbChannel,)
@@ -619,6 +660,12 @@ def get_CCF_2D_rv(instru, S_res, wave, trans, R, Rc, filter_type, model, T, lg, 
         If rv_arr has multiple values: RV grid used for the CCF.
     """
     
+    input_2D = np.ndim(S_res) == 2
+    if input_2D:
+        S_res = S_res[:, :, None]
+    elif np.ndim(S_res) != 3:
+        raise ValueError(f"'S_res' must have shape (NbChannel, NbSpaxel) or (NbChannel, NbLine, NbColumn). Got {np.shape(S_res)}.")
+
     NbChannel, NbLine, NbColumn = S_res.shape
     
     if R_sampling is None:
@@ -687,8 +734,10 @@ def get_CCF_2D_rv(instru, S_res, wave, trans, R, Rc, filter_type, model, T, lg, 
     
     # 8) Compute CCF maps using the shared optimized routine
     CCF = compute_CCF_2D(S_res=S_res, t=Tmat_valid, dtype=dtype)
+    if input_2D:
+        CCF = CCF[..., 0]
     
-    # If rv_arr was scalar, return a 2D map and the normalized template used
+    # If rv_arr was scalar, return a spatial map/vector and the normalized template used
     if scalar_rv:
         return CCF[0], Tmat_valid[0]
     else:
@@ -999,18 +1048,7 @@ def get_CCF_1D_rv(instru, band, d, d_bkg, wave, trans, R, Rc, filter_type, model
     
     # Keeping same mask across RV for logL computationsNone
     if calc_logL:
-        dlambda = 10 * wave/R
-        #dlambda = wave * 1000*np.nanmax(np.abs((rv_arr))) / c
-        dwave   = np.gradient(wave)
-        dpx_rv  = int(np.ceil(np.nanmedian(np.abs(dlambda / dwave))))
-        if verbose:
-            print(f"\nRV padding for logL computation: dpx_rv = {dpx_rv} bins")
-        if 2*dpx_rv >= len(wave):
-            raise ValueError("RV padding removes the full spectrum. Check rv_arr or wavelength sampling.")
-        mask_dpx_rv = np.ones(len(wave), dtype=bool)
-        if dpx_rv > 0:
-            mask_dpx_rv[:dpx_rv]  = False
-            mask_dpx_rv[-dpx_rv:] = False
+        mask_dpx_rv = get_mask_dpx_rv(wave=wave, rv_arr=rv_arr, verbose=verbose)
     else:
         mask_dpx_rv = None
     
@@ -1307,10 +1345,10 @@ def plot_CCF_1D_rv(instru, band, target_name, d, d_bkg, wave, trans, R, Rc, filt
     
     # Compute the radial velocity and cross-correlation functions for the data and background
     rv_arr, CCF, corr, CCF_bkg, corr_auto, logL, sigma_CCF = get_CCF_1D_rv(instru=instru, band=band, d=d, d_bkg=d_bkg, wave=wave, trans=trans, R=R, Rc=Rc, filter_type=filter_type, model=model, T=T, lg=lg, rv_arr=rv_arr, rv=rv, vsini=vsini, epsilon=epsilon, fastbroad=fastbroad, airmass=airmass, star_spectrum=star_spectrum, wave_model=wave_model, template_wo_shift=template_wo_shift, degrade_resolution=degrade_resolution, stellar_component=stellar_component, trans_Ss=trans_Ss, pca=pca, cut_fringes=cut_fringes, Rmin=Rmin, Rmax=Rmax, target_name=target_name, renorm_d_sim=renorm_d_sim, sigma_l=sigma_l, calc_logL=calc_logL, method_logL=method_logL, weight=weight, compare_data=compare_data, verbose=verbose, show=show, smooth_PSD=smooth_PSD, noise=noise)
-
+        
     # RV prior
     if rv is None:
-        if calc_logL:
+        if calc_logL and sigma_l is not None:
             rv = rv_arr[np.nanargmax(logL)]
         else:
             rv = rv_arr[np.nanargmax(CCF)]
@@ -1320,7 +1358,7 @@ def plot_CCF_1D_rv(instru, band, target_name, d, d_bkg, wave, trans, R, Rc, filt
         raise ValueError(f"RV prior contains too few points: {np.count_nonzero(mask_prior)}. Increase prior_width or use a finer rv_arr grid.")
     
     # Estimating RV
-    if calc_logL:
+    if calc_logL and sigma_l is not None:
         P                                            = np.exp(logL[mask_prior] - np.nanmax(logL[mask_prior]))
         dv                                           = np.gradient(rv_arr[mask_prior])
         norm                                         = np.nansum(P * dv)
@@ -1441,7 +1479,7 @@ def plot_CCF_1D_rv(instru, band, target_name, d, d_bkg, wave, trans, R, Rc, filt
             print(f"  CCF: max S/N ({max_SNR:.1f}) and correlation ({np.nanmax(corr[mask_prior]):.4f}) for rv = {rv_arr[mask_prior][np.nanargmax(SNR[mask_prior])]:.3f} km/s")
             
         # Plot log-likelihood (if required)
-        if calc_logL:
+        if calc_logL and sigma_l is not None:
             rv_lo, rv_hi = bounds_1sigma[0]
             rv_min       = max(rv_arr[mask_prior][0],  rv-5*sigma_rv)
             rv_max       = min(rv_arr[mask_prior][-1], rv+5*sigma_rv)
@@ -2353,15 +2391,7 @@ def parameters_retrieval(instru, band, target_name, d, wave, trans, R, Rc, filte
         
         #  ---------- Keeping same mask across RV for logL computations (if needed)
         if calc_logL:
-            dlambda = wave[:, None] * 1000*rv_arr / c
-            dwave   = np.nanmean(np.gradient(wave))
-            dpx_rv  = int(np.ceil(np.nanmax(np.abs(dlambda / dwave))))
-            if 2*dpx_rv >= len(wave):
-                raise ValueError("RV padding removes the full spectrum. Check rv_arr or wavelength sampling.")
-            mask_dpx_rv = np.ones(len(wave), dtype=bool)
-            if dpx_rv > 0:
-                mask_dpx_rv[:dpx_rv]  = False
-                mask_dpx_rv[-dpx_rv:] = False
+            mask_dpx_rv = get_mask_dpx_rv(wave=wave, rv_arr=rv_arr, verbose=verbose)
         else:
             mask_dpx_rv = None
             

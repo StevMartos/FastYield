@@ -147,35 +147,61 @@ def get_config_data(instru):
 
 
 
-@lru_cache(maxsize=64)
-def get_R_instru(instru):
+def get_R_instru(instru, spectra=None):
     """
-    Compute a conservative upper bound on the instrument spectral resolving power.
-            R_instru = 2 * max(R_grating)
-    The factor 2 is an intentional margin to avoid undersampling in subsequent
-     spectral resampling/interpolation steps.
-    
+    Compute the spectral resolving power required to sample an instrument
+    and, optionally, a set of model spectra without losing spectral information.
+
+    The instrumental resolving power is first estimated as twice the maximum
+    resolving power of its gratings. If model spectra are provided, their median
+    resolving power over the instrument wavelength range is also considered.
+    The largest value is finally capped at R0_max.
+
     Parameters
     ----------
     instru : str
-        Instrument's name. 
-    
+        Instrument name.
+    spectra : Spectrum or iterable of Spectrum, optional
+        Model spectrum or spectra whose native resolving power must be preserved.
+
     Returns
     -------
     R_instru : float
-        Conservative maximum resolving power.
+        Required resolving power, capped at R0_max.
     """
     config_data = get_config_data(instru=instru)
-    R_instru    = 2*np.nanmax([config_data["gratings"][band].R for band in config_data["gratings"]])
-    #R_instru    = min(R_instru, R0_max) # Fixing the upper limit of resolution in order to speeds up the calculation (it also need to be high enough for instruments with very high resolution)
-    R_instru    = max(min(R_instru, R0_max), 100_000) # Fixing the upper limit of resolution in order to speeds up the calculation (it also need to be high enough for instruments with very high resolution), and lower limit to avoid bias
-    return R_instru
+
+    # Instrumental resolution, with a factor 2 to avoid losing spectral information
+    R_instru = 2*np.nanmax([config_data["gratings"][band].R for band in config_data["gratings"]])
+
+    # Upgrade to the native resolution of the input spectra over the instrument range
+    if spectra is not None:
+        spectra                  = [spectra] if not isinstance(spectra, (list, tuple)) else spectra
+        lmin_instru, lmax_instru = get_instru_lims(instru=instru) # [µm]
+        for spectrum in spectra:
+            mask = (spectrum.wavelength >= lmin_instru) & (spectrum.wavelength <= lmax_instru)
+            if np.any(mask):
+                R_spectrum = np.nanmedian(spectrum.R[mask])
+                if np.isfinite(R_spectrum):
+                    R_instru = max(R_instru, R_spectrum)
+
+    return min(R_instru, R0_max)
+
+
+
+@lru_cache(maxsize=64)
+def get_instru_lims(instru):
+    config_data = get_config_data(instru=instru)
+    lmin_instru = config_data["lambda_range"]["lambda_min"] # [µm]
+    lmax_instru = config_data["lambda_range"]["lambda_max"] # [µm]
+    return lmin_instru, lmax_instru
 
 
 
 @lru_cache(maxsize=64)
 def get_band_lims(band):
     return lmin_bands[band], lmax_bands[band]
+
 
 
 
