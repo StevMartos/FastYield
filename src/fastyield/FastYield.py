@@ -5220,7 +5220,22 @@ def yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto
                     ax.scatter(x[mask], y[mask], c=colors[label], marker=markers[group], s=ss_detected if detected_label else ss_nondetected, edgecolors="k" if detected_label else "none", linewidths=0.75 if detected_label else 0.0, alpha=alphas[label], zorder=3 if detected_label else 1)
         setup_axes(ax, xlabel, ylabel, xlim, ylim, title)
     
-    def make_two_panel(title, plot_func, valid_obs_plot=None, valid_phys_plot=None, subtitle=None):
+    def plot_fraction_panel(ax, x, y, valid, xlabel, ylabel, xlim, ylim, title, space):
+        edges_x = np.logspace(np.log10(xlim[0]), np.log10(xlim[1]), int(round(bins_per_decade_x * np.log10(xlim[1] / xlim[0]))) + 1)
+        edges_y = np.logspace(np.log10(ylim[0]), np.log10(ylim[1]), int(round(bins_per_decade_y * np.log10(ylim[1] / ylim[0]))) + 1)
+        N_tot, _, _ = np.histogram2d(x[valid],            y[valid],            bins=[edges_x, edges_y])
+        N_det, _, _ = np.histogram2d(x[valid & detected], y[valid & detected], bins=[edges_x, edges_y])
+        keep        = N_tot >= max(min_planets_per_bin, 1)
+        frac        = np.where(keep, N_det / np.where(keep, N_tot, 1), np.nan)
+        mesh        = ax.pcolormesh(edges_x, edges_y, np.ma.masked_invalid(frac.T), cmap=cmap_frac, norm=norm_frac, edgecolors="0.6", linewidth=0.5, zorder=1)
+        for ix, iy in zip(*np.nonzero(keep)):
+            xc, yc = np.sqrt(edges_x[ix] * edges_x[ix+1]), np.sqrt(edges_y[iy] * edges_y[iy+1])
+            ax.text(xc, yc, f"{100*frac[ix, iy]:.0f}%\n{int(N_det[ix, iy])}/{int(N_tot[ix, iy])}", ha="center", va="center", fontsize=fontsize-8, color="w" if frac[ix, iy] < 0.6 else "k", zorder=3)
+        setup_axes(ax, xlabel, ylabel, xlim, ylim, title)
+        ax.grid(False)
+        return mesh
+
+    def make_two_panel(title, plot_func, valid_obs_plot=None, valid_phys_plot=None, subtitle=None, legends=True):
         valid_obs_plot  = valid_obs if valid_obs_plot is None else valid_obs_plot
         valid_phys_plot = valid_phys if valid_phys_plot is None else valid_phys_plot
         fig, axes       = plt.subplots(1, 2, figsize=(22, 10), dpi=dpi)
@@ -5229,9 +5244,10 @@ def yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto
         if np.isfinite(DL_mas):
             axes[0].axvline(DL_mas, color="k", linestyle="--", linewidth=2.5, zorder=4)
             axes[0].annotate("Diffraction limit", xy=(DL_mas, 0.8), xycoords=axes[0].get_xaxis_transform(), xytext=(8, 0), textcoords="offset points", rotation=270, ha="left", va="center", fontsize=fontsize, fontweight="bold", color="k", bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.75, "pad": 2}, zorder=5)
-        add_detection_legend(axes[0], loc="lower left")
-        add_detection_method_legend(axes[0], loc="lower right")
-        add_ptype_legend(axes[1], loc="lower right")
+        if legends:
+            add_detection_legend(axes[0], loc="lower left")
+            add_detection_method_legend(axes[0], loc="lower right")
+            add_ptype_legend(axes[1], loc="lower right")
         fig.suptitle(title, fontsize=fontsize+5, weight="bold", y=0.98)
         if subtitle is not None:
             fig.text(0.5, 0.905, subtitle, ha="center", va="center", fontsize=fontsize+2, fontweight="normal")
@@ -5401,6 +5417,21 @@ def yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto
     handles_light         = [Line2D([], [], ls="", marker="o", ms=11, markerfacecolor=light_colors["Detected, thermal-dominated"], markeredgecolor="k", color=light_colors["Detected, thermal-dominated"], label="Thermal"), Line2D([], [], ls="", marker="o", ms=11, markerfacecolor=light_colors["Detected, reflected-dominated"], markeredgecolor="k", color=light_colors["Detected, reflected-dominated"], label="Reflected")]
     axes_light[1].add_artist(axes_light[1].legend(handles=handles_light, fontsize=fontsize-2, loc="center right", frameon=True, edgecolor="gray", facecolor="white", title=f"Planet-light regime ({band_regime_plot})", title_fontsize=fontsize))
     save_and_show(fig_light, f"ELT_{instru}_thermal_reflected_{table}_{band_regime_plot}band.png")
+
+    # 5) Detection fraction per bin (log grid), in observational and physical spaces
+    bins_per_decade_x   = 1 # bins per decade along x
+    bins_per_decade_y   = 1 # bins per decade along y
+    min_planets_per_bin = 1 # bins with fewer planets are left blank
+    cmap_frac           = plt.get_cmap("viridis").copy()
+    cmap_frac.set_bad("white")
+    norm_frac           = mpl.colors.Normalize(vmin=0, vmax=1)
+    fig_frac, axes_frac = make_two_panel(title=f"ELT/{instru} detection fraction in {exposure_time/60:.0f} hr per target", subtitle=f"{N_det:.0f}/{N_total:.0f} detections", plot_func=plot_fraction_panel, legends=False)
+    sm                  = mpl.cm.ScalarMappable(norm=norm_frac, cmap=cmap_frac)
+    sm.set_array([])
+    cbar = fig_frac.colorbar(sm, ax=axes_frac, pad=0.03, fraction=0.03)
+    cbar.set_label("Fraction of detected planets", fontsize=fontsize+2, rotation=270, labelpad=30)
+    cbar.ax.tick_params(labelsize=fontsize-2)
+    save_and_show(fig_frac, f"ELT_{instru}_detection_fraction_{table}_{band_contrast_plot}band.png")
 
 
 
