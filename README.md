@@ -137,7 +137,7 @@ This directory contains the instrumental data, simulation data, and spectral lib
 
 The `sim_data/` directory can be downloaded here:
 
-[Download the sim_data directory](https://filesender.renater.fr/?s=download&token=0cf88b8d-45e3-410f-a3d0-b598b2d8bc00)
+[Download the sim_data directory](https://filesender.renater.fr/?s=download&token=82647e85-07a6-4d88-ab13-1b1051adc9ca)
 
 After downloading and extracting the archive, you should have a directory named:
 

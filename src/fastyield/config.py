@@ -9,6 +9,8 @@ import collections
 import os
 from pathlib import Path
 
+dpi_fig = 300
+
 
 
 # -------------------------------------------------------------------------
