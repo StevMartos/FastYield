@@ -587,34 +587,50 @@ def interpolate_flux_with_error(wave, flux, sigma, weight, wave_new):
 
 
 @njit
-def reflect_index(i, n):
-    """Reflect index i for 'reflect' mode (like scipy.ndimage)."""
-    if n <= 1:
-        return 0
-    period = 2 * n
-    m = i % period
-    if m >= n:
-        m = period - m - 1
-    return m
+def boundary_index(i, n, mode):
+    if mode == "wrap":
+        return i % n
+    elif mode == "nearest":
+        return min(max(i, 0), n-1)
+    elif mode == "reflect":
+        if n <= 1:
+            return 0
+        period = 2*n
+        j      = i % period
+        return period-j-1 if j >= n else j
+    elif mode == "mirror":
+        if n <= 1:
+            return 0
+        period = 2*(n-1)
+        j      = i % period
+        return period-j if j >= n else j
+    elif mode == "constant":
+        return i if 0 <= i < n else -1
+    else:
+        raise ValueError("mode must be 'reflect', 'constant', 'nearest', 'mirror' or 'wrap'.")
 
 @njit
-def gaussian_filter1d_variable(y, sigma, truncate=4.0):
+def gaussian_filter1d_variable(y, sigma, truncate=4.0, mode="reflect", cval=0.0):
     """
-    Gaussian smoothing with spatially varying sigma and reflect boundary mode.
+    Gaussian smoothing with spatially varying sigma.
 
     Parameters
     ----------
-    y: (N,) array
+    y : (N,) array
         1D input array.
-    sigma: (N,) array
+    sigma : (N,) array
         Per-sample Gaussian sigma in pixel units.
-    truncate: float
+    truncate : float
         Defines kernel size as truncate * sigma[i].
+    mode : {"reflect", "constant", "nearest", "mirror", "wrap"}
+        Boundary condition.
+    cval : float
+        Value used outside the array when mode="constant".
 
     Returns
     -------
-    y_smooth: (N,) array
-        Smoothed array, mimicking scipy.ndimage.gaussian_filter1d (if sigma is constant).
+    y_smooth : (N,) array
+        Smoothed array.
     """
     n        = y.shape[0]
     y_smooth = np.empty_like(y)
@@ -623,16 +639,17 @@ def gaussian_filter1d_variable(y, sigma, truncate=4.0):
         if s <= 0.0 or not np.isfinite(s):
             y_smooth[i] = y[i]
             continue
-        r    = int(np.ceil(truncate * s))
+        r    = int(np.ceil(truncate*s))
         wsum = 0.0
         acc  = 0.0
-        for offset in range(-r, r + 1):
-            j     = reflect_index(i + offset, n)
+        for offset in range(-r, r+1):
+            j     = boundary_index(i+offset, n, mode)
             dx    = offset
-            w     = np.exp(-0.5 * (dx / s) ** 2)
+            w     = np.exp(-0.5*(dx/s)**2)
+            value = cval if j == -1 else y[j]
             wsum += w
-            acc  += w * y[j]
-        y_smooth[i] = acc / wsum if wsum > 0.0 else y[i]
+            acc  += w*value
+        y_smooth[i] = acc/wsum if wsum > 0.0 else y[i]
     return y_smooth
 
 
@@ -798,7 +815,7 @@ def sigma_to_Rc(R, sigma):
 
 
 
-def _gaussian_filter_axis0(flux_filled, valid_filled, sigma):
+def _gaussian_filter_axis0(flux_filled, valid_filled, sigma, mode="reflect"):
     """
     Apply gaussian_filter1d independently along axis=0.
 
@@ -813,7 +830,7 @@ def _gaussian_filter_axis0(flux_filled, valid_filled, sigma):
     if flux_filled.ndim == 1:
         flux_LF = np.full_like(flux_filled, np.nan, dtype=float)
         if np.any(valid_filled):
-            flux_LF[valid_filled] = gaussian_filter1d(flux_filled[valid_filled], sigma=sigma)
+            flux_LF[valid_filled] = gaussian_filter1d(flux_filled[valid_filled], sigma=sigma, mode=mode)
         return flux_LF
 
     # Multidimensional case: flatten all non-spectral dimensions
@@ -837,13 +854,13 @@ def _gaussian_filter_axis0(flux_filled, valid_filled, sigma):
         if cols.size == 0:
             continue
         block                   = flux_2d[i0:i1, :][:, cols]
-        flux_LF_2d[i0:i1, cols] = gaussian_filter1d(block, sigma=sigma, axis=0)
+        flux_LF_2d[i0:i1, cols] = gaussian_filter1d(block, sigma=sigma, axis=0, mode=mode)
 
     return flux_LF_2d.reshape(shape)
 
 
 
-def filtered_flux(flux, R, Rc, filter_type="gaussian", show=False):
+def filtered_flux(flux, R, Rc, filter_type="gaussian", mode="reflect", show=False):
     """
     Split an input flux into high-pass and low-pass components using a cut-off
     spectral resolution 'Rc'.
@@ -870,6 +887,8 @@ def filtered_flux(flux, R, Rc, filter_type="gaussian", show=False):
         and the high-pass component is identically zero.
     filter_type : {'gaussian', 'gaussian_variable', 'gaussian_fast', 'gaussian_true', 'step', 'smoothstep', 'savitzky_golay'}, optional
         Filtering method.
+    mode : {"reflect", "constant", "nearest", "mirror", "wrap"}, optional
+        Boundary condition used by Gaussian filtering.
     show : bool, optional
         If True, plot original, low-pass, and high-pass components. Only supported
         for 1D inputs.
@@ -905,7 +924,7 @@ def filtered_flux(flux, R, Rc, filter_type="gaussian", show=False):
 
             # Ultra-fast case: no NaN at all
             if np.all(np.isfinite(flux)):
-                flux_LF = gaussian_filter1d(flux, sigma=sigma)
+                flux_LF = gaussian_filter1d(flux, sigma=sigma, mode=mode)
                 return flux - flux_LF, flux_LF
 
             # Fast NaN-aware 1D case: same behavior as the generic path,
@@ -916,7 +935,7 @@ def filtered_flux(flux, R, Rc, filter_type="gaussian", show=False):
 
             flux_LF = np.full_like(flux, np.nan, dtype=float)
             if np.any(valid_filled):
-                flux_LF[valid_filled] = gaussian_filter1d(flux_filled[valid_filled], sigma=sigma)
+                flux_LF[valid_filled] = gaussian_filter1d(flux_filled[valid_filled], sigma=sigma, mode=mode)
 
             flux_LF[~valid] = np.nan
             return flux - flux_LF, flux_LF
@@ -942,7 +961,7 @@ def filtered_flux(flux, R, Rc, filter_type="gaussian", show=False):
     # Multidimensional-safe Gaussian filtering
     # ---------------------------------------------------------------------
     if filter_type == "gaussian":
-        flux_LF = _gaussian_filter_axis0(flux_filled=flux_filled, valid_filled=valid_filled, sigma=sigma)
+        flux_LF = _gaussian_filter_axis0(flux_filled=flux_filled, valid_filled=valid_filled, sigma=sigma, mode=mode)
 
     # ---------------------------------------------------------------------
     # Other filters: keep the historical 1D behavior only
@@ -956,7 +975,7 @@ def filtered_flux(flux, R, Rc, filter_type="gaussian", show=False):
         # Same as 'gaussian' but with varying Rc (sigma)
         if filter_type == "gaussian_variable":
             sigma_valid   = sigma_filled[valid_filled]
-            flux_valid_LF = gaussian_filter1d_variable(flux_valid, sigma=sigma_valid)
+            flux_valid_LF = gaussian_filter1d_variable(flux_valid, sigma=sigma_valid, mode=mode)
 
         # Savitzky-Golay filter
         elif filter_type == "savitzky_golay":
@@ -1790,12 +1809,12 @@ class Spectrum:
                 flux_filled  = fill_nan_linear(wave_input, flux_input) # NaN gaps are filled with linear interpolation
                 valid_filled = np.isfinite(flux_filled)                # NaN edges can remain   
                 if filter_type == "gaussian":
-                    flux_input[valid_filled] = gaussian_filter1d(flux_filled[valid_filled], sigma=sigma_kernel)
+                    flux_input[valid_filled] = gaussian_filter1d(flux_filled[valid_filled], sigma=sigma_kernel, mode="reflect")
                 elif filter_type == "gaussian_variable":
                     valid_kernel = valid_overlap & np.isfinite(sigma_kernel)
                     if np.count_nonzero(valid_kernel) >= 2:
                         sigma_kernel_input = np.interp(wave_input[valid_filled], wave_output[valid_kernel], sigma_kernel[valid_kernel], left=np.nan, right=np.nan)
-                        flux_input[valid_filled] = gaussian_filter1d_variable(flux_filled[valid_filled], sigma=sigma_kernel_input)
+                        flux_input[valid_filled] = gaussian_filter1d_variable(flux_filled[valid_filled], sigma=sigma_kernel_input, mode="reflect")
                     else:
                         flux_input[valid_filled] = flux_filled[valid_filled]
                 else:
@@ -2177,47 +2196,36 @@ class Spectrum:
         """
         Compute the power spectral density (PSD) of the flux array.
         """
-    
         # For the Fourier axis, use the sampling resolution, not necessarily self.R.
         # self.R may describe the propagated LSF/effective resolution, whereas the
         # FFT frequency axis is set by the wavelength sampling.
         R_sampling = get_resolution(wavelength=self.wavelength, func=np.nanmedian)
-    
-        signal = np.asarray(self.flux, dtype=float)
-        signal = signal - np.nanmean(signal)
-    
+        signal     = np.asarray(self.flux, dtype=float)
+        signal     = signal - np.nanmean(signal)
         if np.isnan(signal).any():
             signal = signal[np.isfinite(signal)]
             print_warning("WARNING (get_psd): NaN values inside self.flux...")
-    
         N = signal.size
         if N < 2:
             raise ValueError("Signal too short for PSD computation.")
-    
         if one_sided:
             ffreq = np.fft.rfftfreq(N)
             res   = ffreq * 2 * R_sampling
-    
-            TF  = np.fft.rfft(signal)
-            PSD = np.abs(TF)**2 / N
-    
+            TF    = np.fft.rfft(signal)
+            PSD   = np.abs(TF)**2 / N
             if N % 2 == 0:
                 if PSD.size > 2:
                     PSD[1:-1] *= 2
             else:
                 if PSD.size > 1:
                     PSD[1:] *= 2
-    
         else:
             ffreq = np.fft.fftfreq(N)
             res   = ffreq * 2 * R_sampling
-    
-            TF  = np.fft.fft(signal)
-            PSD = np.abs(TF)**2 / N
-    
+            TF    = np.fft.fft(signal)
+            PSD   = np.abs(TF)**2 / N
         if smooth > 0:
             PSD = gaussian_filter1d(PSD, sigma=smooth)
-    
         return res, PSD
 
 
@@ -2245,7 +2253,7 @@ def get_psd(wave, flux, R=None, smooth=0):
         PSD axis.
     """
     if wave is None and R is None:
-        raise KeyError("'wave' and 'R' are None...")
+        raise KeyError("'wave' and 'R' are both None...")
     valid = np.isfinite(flux)
     if wave is not None:
         wave = wave[valid]
@@ -2291,7 +2299,7 @@ def get_model_grid(model, instru=None, mol_broadening="air"):
     # Planets / substellar
     # ---------------------
     if model == "BT-Settl":
-        T_grid  = np.concatenate([[200, 220, 240, 250, 260, 280, 300, 320, 340, 360, 380, 400, 450], np.arange(500, 900, 50), np.arange(900, 3100, 100)])
+        T_grid  = np.concatenate([[200, 260, 300, 400], np.arange(500, 3100, 100)])
         lg_grid = np.arange(3.0, 5.5, 0.5)
         
     elif "PICASO" in model:

@@ -2398,6 +2398,10 @@ def colormap_MM_DI_R_Tp(lmin=1, lmax=2.5, Rmin=1_000, Rmax=100_000, Tmin=200, Tm
     global _CM_CTX
     _CM_CTX = dict(T_arr=T_arr, lg_planet=lg_planet, delta_rv=delta_rv, vsini_planet=vsini_planet, airmass=airmass, trans_tell=trans_tell, spectrum_contributions=spectrum_contributions, model=model, star_spectrum=star_spectrum, wave_model=wave_model, wave_instru=wave_instru, R_arr=R_arr, Rc=Rc, filter_type=filter_type, wave_R=wave_R, dwave_R=dwave_R, star_R_HF=star_R_HF, star_R_LF=star_R_LF, trans_tell_R=trans_tell_R)
     
+    # Showing spectra 
+    process_colormap_MM_DI_R_Tp(i=np.argmin(np.abs(T_arr-500)), show=True)
+    process_colormap_MM_DI_R_Tp(i=len(T_arr)-1,                 show=True)    
+    
     # Parallel calculations
     with Pool(processes=cpu_count(), initializer=_init_cm_ctx, initargs=(_CM_CTX,)) as pool:
         for (i, residual_signal_1D) in tqdm(pool.imap(process_colormap_MM_DI_R_Tp, [(i) for i in range(num)]), total=num, desc=f"rocess_colormap_MM_DI_R_Tp(lmin={lmin}, lmax={lmax}, Rmin={Rmin}, Rmax={Rmax}, Tmin={Tmin}, Tmax={Tmax}, model={model})"):
@@ -2437,7 +2441,7 @@ def colormap_MM_DI_R_Tp(lmin=1, lmax=2.5, Rmin=1_000, Rmax=100_000, Tmin=200, Tm
         title_text = (f"Molecular mapping residual signal fluctuations ({tell}) \n in {spectrum_contributions} light ({model}-model), $T_*$={T_star}K, "r"$\Delta$rv="f"{delta_rv}km/s")    
     else:
         title_text = title
-    plt.title(title_text, fontsize=20, weight="bold", pad=14)
+    #plt.title(title_text, fontsize=20, weight="bold", pad=14)
     
     plt.tight_layout()
     if save:
@@ -2452,7 +2456,7 @@ def colormap_MM_DI_R_Tp(lmin=1, lmax=2.5, Rmin=1_000, Rmax=100_000, Tmin=200, Tm
         
     return R_arr, T_arr, residual_signal
 
-def process_colormap_MM_DI_R_Tp(i):
+def process_colormap_MM_DI_R_Tp(i, show=False):
     T_arr                  = _CM_CTX["T_arr"]
     lg_planet              = _CM_CTX["lg_planet"]
     delta_rv               = _CM_CTX["delta_rv"]
@@ -2494,6 +2498,9 @@ def process_colormap_MM_DI_R_Tp(i):
     residual_signal_1D = np.zeros((len(R_arr)))
     for j, R in enumerate(R_arr):
         
+        if show and j != 0 and j != len(R_arr)-1:
+            continue
+        
         # Degrading the spectra on wave
         planet_R = planet.degrade_resolution(wave_R[j], renorm=False).flux
         planet_R = planet_R * dwave_R[j] # propto [ph/µm] => [ph/bin]
@@ -2512,13 +2519,25 @@ def process_colormap_MM_DI_R_Tp(i):
         planet_HF, planet_LF = filtered_flux(planet_R, R=R, Rc=Rc, filter_type=filter_type)
         
         # S/N and signal loss calculations
-        template = trans*planet_HF 
-        template = template / np.sqrt(np.nansum(template**2))
-        alpha    = np.nansum(trans*planet_HF * template)
-        beta     = np.nansum(trans*star_R_HF[j]*planet_LF/star_R_LF[j] * template)
+        template_HF = trans*planet_HF 
+        template_HF = template_HF / np.sqrt(np.nansum(template_HF**2))
+        alpha       = np.nansum(trans*planet_HF * template_HF)
+        beta        = np.nansum(trans*star_R_HF[j]*planet_LF/star_R_LF[j] * template_HF)
 
         # Lost signal calculations
         residual_signal_1D[j] = (alpha - beta) / delta
+        
+        if show and (j==0 or j==len(R_arr)-1):
+            plt.figure(dpi=300)
+            plt.plot(wave_R[j], planet_R / dwave_R[j] / np.nanmax(planet_R / dwave_R[j]))
+            plt.yscale('log')
+            plt.xlim(wave_R[j][0], wave_R[j][-1])
+            plt.xlabel("Wavelength [µm]")
+            plt.ylabel("Flux [normalized]")
+            plt.ylim(1e-3, 1)
+            plt.show()
+        
+        
     
     return i, residual_signal_1D
 
