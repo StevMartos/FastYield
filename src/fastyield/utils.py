@@ -648,7 +648,7 @@ def box_convolution(data, size_core, mode="sum", nan_policy="ignore"):
 
 
 
-def annular_mask(r_in, r_ext, size, value=np.nan):
+def annular_mask(r_in, r_ext, size, x0=None, y0=None, value=np.nan):
     """
     Creates a 2D annular mask with value inside the annulus [r_in, r_ext],
     and 'value' elsewhere.
@@ -672,7 +672,8 @@ def annular_mask(r_in, r_ext, size, value=np.nan):
     if r_ext < r_in:
         raise ValueError("'r_ext' must be greater than 'r_in'.")
     NbLine, NbColumn = size
-    y0, x0 = NbLine // 2, NbColumn // 2
+    if x0 is None or y0 is None:    
+        y0, x0 = NbLine // 2, NbColumn // 2
     Y, X   = np.ogrid[:NbLine, :NbColumn]
     r2     = (Y - y0)**2 + (X - x0)**2
     mask   = np.full((NbLine, NbColumn), value, dtype=float)
@@ -761,18 +762,18 @@ def crop(data, Y0=None, X0=None, R_crop=None, return_center=False):
         raise ValueError("'data' must be 2D or 3D.")
 
     if Y0 is None or X0 is None:
-        A = np.nanmedian(np.nan_to_num(data), axis=0) if data.ndim == 3 else np.nan_to_num(data)
+        A      = np.nanmedian(np.nan_to_num(data), axis=0) if data.ndim == 3 else np.nan_to_num(data)
         Y0, X0 = np.unravel_index(np.nanargmax(A), A.shape)
 
     NbLine, NbColumn = data.shape[-2], data.shape[-1]
 
     if R_crop is None:
-        R_crop = int(max(NbLine - Y0, NbColumn - X0, Y0, X0))
+        R_crop = int(max(NbLine - Y0, NbColumn - X0, Y0, X0)) - 1
 
     data_slice, data_crop_slice = _compute_crop_slices(Y0, X0, R_crop, NbLine, NbColumn)
 
     if data.ndim == 3:
-        data_crop = np.full((data.shape[0], 2 * R_crop + 1, 2 * R_crop + 1), np.nan, dtype=float)
+        data_crop = np.full((data.shape[0], 2*R_crop+1, 2*R_crop+1), np.nan, dtype=float)
         data_crop[:, data_crop_slice[0], data_crop_slice[1]] = data[:, data_slice[0], data_slice[1]]
     else:
         data_crop = np.full((2 * R_crop + 1, 2 * R_crop + 1), np.nan, dtype=float)
@@ -876,7 +877,7 @@ def compute_PSF_profile(PSF, pxscale, size_core, aperture_correction):
     N       = int(round(np.sqrt((NbLine/2)**2+(NbColumn/2)**2)))
     profile = np.zeros((2, N))
     for r in range(N):
-        r_int         = max(1, r - 1) if r > 1 else r
+        r_int         = max(0, r - 1)
         r_ext         = r
         profile[0, r] = (r_int + r_ext)/2 * pxscale
         amask         = annular_mask(r_int, r_ext, size=(NbLine, NbColumn)) == 1
@@ -3569,14 +3570,13 @@ def extract_vipa_data(path_data, instru, target_name, band, gain, label_fiber, d
     
     # Sigma propagation sanity check
     if verbose:
-        print()
+        print("\nSanity check of the simulated noise realisation:")
         print(f"sigma(noise)    / sigma    = {100*np.nanstd(noise) / np.sqrt(np.nanmean(sigma**2)):.1f} %")
         print(f"sigma_HF(noise) / sigma_HF = {100*np.nanstd(noise_HF) / np.sqrt(np.nanmean(sigma_HF**2)):.1f} %")
         if extract_full_sequence:
-            sigma_seq_emp                           = mad_std(np.nan_to_num(flux_seq), axis=0, ignore_nan=True)
-            sigma_seq_emp[sigma_seq_emp == 0]       = np.nan
-            sigma_seq_HF_emp                        = mad_std(np.nan_to_num(signal_seq_HF), axis=0, ignore_nan=True)
-            sigma_seq_HF_emp[sigma_seq_HF_emp == 0] = np.nan
+            sigma_seq_emp    = mad_std(flux_seq,      axis=0, ignore_nan=True)
+            sigma_seq_HF_emp = mad_std(signal_seq_HF, axis=0, ignore_nan=True)
+            print("\nSanity check of the estimated noise levels:")
             print(f"sigma(seq.)     / sigma    = {100*np.sqrt(np.nanmean(sigma_seq**2))*np.sqrt(header['NDIT']) / np.sqrt(np.nanmean(sigma**2)):.1f} %")
             print(f"sigma_HF(seq.)  / sigma_HF = {100*np.sqrt(np.nanmean(sigma_seq_HF**2))*np.sqrt(header['NDIT']) / np.sqrt(np.nanmean(sigma_HF**2)):.1f} %")
             print(f"seq. sanity check          = {100*np.sqrt(np.nanmean(sigma_seq_emp**2)) / np.sqrt(np.nanmean(sigma_seq**2)):.1f} %")
@@ -5359,8 +5359,8 @@ def shape_out_same_or_larger_fov(shape_in, pxscale_in, pxscale_out):
     Output odd shape that guarantees FoV_out >= FoV_in.
     """
     ny_in, nx_in = shape_in
-    ny_out = ceil_odd(ny_in * pxscale_in / pxscale_out)
-    nx_out = ceil_odd(nx_in * pxscale_in / pxscale_out)
+    ny_out       = ceil_odd(ny_in * pxscale_in / pxscale_out)
+    nx_out       = ceil_odd(nx_in * pxscale_in / pxscale_out)
     return ny_out, nx_out
 
 
@@ -5372,23 +5372,18 @@ def _overlap_fraction_matrix(n_in, dx_in, n_out, dx_out):
     """
     edges_in  = (np.arange(n_in + 1)  - n_in  / 2) * dx_in
     edges_out = (np.arange(n_out + 1) - n_out / 2) * dx_out
-
-    M = np.zeros((n_out, n_in), dtype=float)
-
+    M         = np.zeros((n_out, n_in), dtype=float)
     j0 = 0
     for i in range(n_out):
         a, b = edges_out[i], edges_out[i + 1]
-
         while j0 < n_in and edges_in[j0 + 1] <= a:
             j0 += 1
-
         j = j0
         while j < n_in and edges_in[j] < b:
             overlap = min(b, edges_in[j + 1]) - max(a, edges_in[j])
             if overlap > 0:
                 M[i, j] = overlap / dx_in
             j += 1
-
     return M
 
 
@@ -5414,24 +5409,19 @@ def rebin_flux_conserving(data, pxscale_in, pxscale_out, shape_out=None):
         Rebinned array with conserved flux over the overlapping FoV.
     """
     data = np.asarray(data, dtype=float)
-
     if data.ndim not in (2, 3):
         raise ValueError("data must be 2D or 3D")
     if pxscale_in <= 0 or pxscale_out <= 0:
         raise ValueError("pxscale_in and pxscale_out must be > 0")
-
     ny_in, nx_in = data.shape[-2], data.shape[-1]
-
     if shape_out is None:
         ny_out, nx_out = shape_out_same_or_larger_fov(shape_in=(ny_in, nx_in), pxscale_in=pxscale_in, pxscale_out=pxscale_out)
     else:
         ny_out, nx_out = map(int, shape_out)
-        if ny_out % 2 == 0 or nx_out % 2 == 0:
-            raise ValueError("shape_out should be odd in both dimensions.")
-
+        # if ny_out % 2 == 0 or nx_out % 2 == 0:
+        #     raise ValueError("shape_out should be odd in both dimensions.")
     Fy = _overlap_fraction_matrix(ny_in, pxscale_in, ny_out, pxscale_out)
     Fx = _overlap_fraction_matrix(nx_in, pxscale_in, nx_out, pxscale_out)
-
     if data.ndim == 2:
         return Fy @ data @ Fx.T
     else:

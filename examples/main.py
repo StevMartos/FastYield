@@ -17,8 +17,7 @@ from fastyield.colormaps import colormap_bandwidth_resolution_with_constant_Nlam
 #                       Graphic User Interface (GUI):                          #
 #------------------------------------------------------------------------------#
 
-FastYield_interface()
-
+# FastYield_interface()
 
 
 #------------------------------------------------------------------------------#
@@ -28,6 +27,10 @@ FastYield_interface()
 # planet_table_classification()
 # planet_table_classification_histogram()
 # planet_table_statistics()
+# yield_population_plot(table="Archive", instru=None, DL_mas=7,    DL_text="ELT", show_golden_sample=False, show_det_regions=False, show_ptype_regions=True, show_VLT_DL=True)
+# yield_population_plot(table="Archive", instru=None, DL_mas=7,    DL_text="ELT", show_golden_sample=False, show_det_regions=True,  show_ptype_regions=True, show_VLT_DL=True)
+# yield_population_plot(table="Archive", instru=None, DL_mas=7,    DL_text="ELT", show_golden_sample=True,  show_det_regions=True,  show_ptype_regions=True, show_VLT_DL=True)
+
 
 # yield_plot_instrus_texp(thermal_model="auto", reflected_model="auto", fraction=False)
 # yield_plot_bands_texp(table="Archive", instru="HARMONI", thermal_model="auto", reflected_model="auto", systematics=False, PCA=False, fraction=False)
@@ -54,14 +57,14 @@ FastYield_interface()
 # instru="HARMONI", thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl="JQ1", systematics=False, split_ptypes_by_regime=True, band_regime_plot=None, PCA=False, fraction=False, SNR_thresh=5)
 # yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl="JQ1", config_mode="best", apodizer="NO_SP", coronagraph=None, band_snr="INSTRU", band_contrast_plot="H", band_regime_plot="H", systematics=False, PCA=False)
 
-# yield_population_plot(table="Archive", instru="ANDES", thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl="MED", config_mode="best", apodizer="NO_SP", coronagraph=None, band_snr="INSTRU", band_contrast_plot="H", band_regime_plot="H", systematics=False, PCA=False)
+yield_population_plot(table="Archive", instru="ANDES", thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl="MED", config_mode="best", apodizer="NO_SP", coronagraph=None, band_snr="INSTRU", band_contrast_plot="H", band_regime_plot="H", systematics=False, PCA=False)
 # yield_heatmap_ELT(instru="ANDES", thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl="MED", systematics=False, split_ptypes_by_regime=True, band_regime_plot=None, PCA=False, fraction=False, SNR_thresh=5)
 # yield_hist_instrus_ptypes_ELT(exposure_time=10*60, thermal_model="auto", reflected_model="auto", planet_types=planet_types,         fraction=False, instrus=["HARMONI", "HARMONI+SP_Prox", "ANDES", "ANDES+LYOT"])
 
 # yield_plot_instrus_texp(thermal_model="auto", reflected_model="auto", fraction=False)
-#(exposure_time=10*60, thermal_model="auto", reflected_model="auto", planet_types=planet_types_reduced, fraction=False)
+# yield_plot_instrus_texp(exposure_time=10*60, thermal_model="auto", reflected_model="auto", planet_types=planet_types_reduced, fraction=False)
 
-#yield_plot_instrus_contrast(exposure_time=10*60, thermal_model="auto", reflected_model="auto", band_quantity="INSTRU", band_contrast="H", mode="best", nbins=42)
+# yield_plot_instrus_contrast(exposure_time=10*60, thermal_model="auto", reflected_model="auto", band_quantity="INSTRU", band_contrast="H", mode="best", nbins=42)
 
 
 
