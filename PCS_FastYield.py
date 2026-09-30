@@ -1222,29 +1222,27 @@ def main():
     sim_dir.mkdir(parents=True, exist_ok=True)
 
     # IFU instrument concept (global)
-    # instrument_concept = {
-    #     'instru_type': 'IFU',
-    #     'postproc': 'MM',         # MM or DI
-    #     'R_min': Rc,              # [dimensionlesss] spectral resolution
-    #     'R_max': 200_000,
-    #     'l0_min': 0.6,            # [µm] central wavelengt
-    #     'l0_max': 2.5,
-    #     'Nl_min': 100,            # [bins] number of spectral channel
-    #     'Nl_max': 200_000,
-    #     'FoV_min': 0,             # [mas] angular separation
-    #     'FoV_max': 1_000,
-    #     'tr_min': 0.001,          # [dimensionlesss] instrument transmission
-    #     'tr_max': 0.5,
-    #     'σ_m_min': 1e-7,          # [dimensionlesss]
-    #     'σ_m_max': 1e-1
-    # }
+    instrument_concept = {
+        'instru_type': 'IFU',
+        'postproc': 'MM',         # MM or DI
+        'R_min': 100,             # [dimensionlesss] spectral resolution
+        'R_max': 200_000,
+        'l0_min': 0.6,            # [µm] central wavelengt
+        'l0_max': 2.5,
+        'Nl_min': 100,            # [bins] number of spectral channel
+        'Nl_max': 200_000,
+        'FoV_min': 0,             # [mas] angular separation
+        'FoV_max': 1_000,
+        'tr_min': 0.001,          # [dimensionlesss] instrument transmission
+        'tr_max': 0.5,
+        'σ_m_min': 1e-7,          # [dimensionlesss]
+        'σ_m_max': 1e-1
+    }
 
     # imager instrument concept (global)
     # instrument_concept = {
     #     'instru_type': 'IFU',
     #     'postproc': 'MM',         # MM or DI
-    #     'R_min': Rc,              # [dimensionlesss] spectral resolution
-    #     'R_max': 200_000,
     #     'l0_min': 0.6,            # [µm] central wavelengt
     #     'l0_max': 2.5,
     #     'Dl_min': 0.01,           # [µm] bandwidth
@@ -1259,22 +1257,22 @@ def main():
 
     # instrument concept A: High-res VIS IFU
     # (V)RI, R = 10**5, FoV ~100 mas
-    instrument_concept = {
-        'instru_type': 'IFU',
-        'postproc': 'MM',
-        'R_min': 50_000,
-        'R_max': 200_000,
-        'l0_min': 0.5,
-        'l0_max': 0.8,
-        'Nl_min': 100,
-        'Nl_max': 200_000,
-        'FoV_min': 0,
-        'FoV_max': 100*2,
-        'tr_min': 0.001,
-        'tr_max': 0.5,
-        'σ_m_min': 1e-7,
-        'σ_m_max': 1e-1
-    }
+    # instrument_concept = {
+    #     'instru_type': 'IFU',
+    #     'postproc': 'MM',
+    #     'R_min': 50_000,
+    #     'R_max': 200_000,
+    #     'l0_min': 0.5,
+    #     'l0_max': 0.8,
+    #     'Nl_min': 100,
+    #     'Nl_max': 200_000,
+    #     'FoV_min': 0,
+    #     'FoV_max': 100*2,
+    #     'tr_min': 0.001,
+    #     'tr_max': 0.5,
+    #     'σ_m_min': 1e-7,
+    #     'σ_m_max': 1e-1
+    # }
 
 
     # --- General parameters for the simulation ---
@@ -1294,15 +1292,17 @@ def main():
     filter_type        = "gaussian"                            # MM filter type
     table_type         = "Archive"                             # "Archive": for all known exoplanets | "Simulated": TODO
 
-    # --- WFE and IWA ref values ---
-    WFE_ref = 50.026   # [nm RMS]
-    IWA_ref = 33.4 / 2 # [mas]
 
     # --- Separation range ---
     sep_min = 0     # [mas]
     sep_max = 1_000 # [mas] max separation of the raw PSF data
 
     # --- Post-AO wavefront error and IWA ---
+
+    # reference values
+    WFE_ref = 50.026     # [nm RMS]
+    IWA_ref = 33.4 / 2   # [mas]
+
     # Fixed values
     # Post-AO wavefront error
     WFE_min          = WFE_ref        # [nm]
@@ -1311,13 +1311,13 @@ def main():
     IWA_min          = IWA_ref        # [mas]
     IWA_max          = IWA_ref        # [mas]
 
-    # Vary WFE and IWA (but huge files will be created!!)
+    # Vary WFE and IWA (HUGE files will be created!!)
     # Post-AO wavefront error
-    WFE_min          = 10             # [nm]
-    WFE_max          = 200            # [nm]
-    # Coronagraph inner working angle radius
-    IWA_min          = 1              # [mas]
-    IWA_max          = 100            # [mas]
+    # WFE_min          = 10             # [nm]
+    # WFE_max          = 200            # [nm]
+    # # Coronagraph inner working angle radius
+    # IWA_min          = 1              # [mas]
+    # IWA_max          = 100            # [mas]
 
     # --- IFU parameters space to explore ---
     if instru_type == "IFU":
