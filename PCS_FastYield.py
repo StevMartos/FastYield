@@ -1094,9 +1094,8 @@ def reduce_hcube(hcube, dims_to_keep, params, params_ranges, params_priors, para
     params_names  = list(params_names)
     params_ranges = list(params_ranges)
     params_priors = list(params_priors)
-
-    nparam   = len(params)
-    hcube_red = hcube.copy()
+    nparam        = len(params)
+    hcube_red     = hcube.copy()
 
     if len(params_names) != nparam:
         raise ValueError("params and params_names must have the same length.")
@@ -1124,12 +1123,10 @@ def reduce_hcube(hcube, dims_to_keep, params, params_ranges, params_priors, para
                 print(f"  - Keeping       {params_names[idim]:<20} axis")
 
     for idim in sorted(dims_to_reduce, reverse=True):
-
         axis       = params[idim]
         pmin, pmax = params_ranges[idim]
         prior      = params_priors[idim]
         name       = params_names[idim]
-
         if pmin > pmax:
             raise ValueError(f"For parameter '{name}', pmin must be <= pmax.")
         if pmin < axis[0] or pmax > axis[-1]:
@@ -1232,7 +1229,7 @@ def main():
     #     'Nl_min': 100,            # [bins] number of spectral channel
     #     'Nl_max': 200_000,
     #     'FoV_min': 1,             # [mas] Field Of View
-    #     'FoV_max': 1_000,
+    #     'FoV_max': 2_000,
     #     'tr_min': 0.001,          # [dimensionlesss] instrument transmission
     #     'tr_max': 0.5,
     #     'σ_m_min': 1e-7,          # [dimensionlesss] level of residual systematics
@@ -1248,7 +1245,7 @@ def main():
         'Dl_min': 0.01,           # [µm] bandwidth
         'Dl_max': 0.2,
         'FoV_min': 1,             # [mas] Field Of View
-        'FoV_max': 1_000,
+        'FoV_max': 2_000,
         'tr_min': 0.001,          # [dimensionlesss] instrument transmission
         'tr_max': 0.5,
         'σ_m_min': 1e-3,          # [dimensionlesss] level of residual speckles
@@ -2472,7 +2469,7 @@ def main():
         idx_spec       = next((idx for idx, name in enumerate(params_names) if "R" in name), None)
         spec_axis_name = "Resolution"
     else:
-        spec_plot      = [1e-2, 5e-2, 1e-1, 5e-1, 1e0]
+        spec_plot      = [0.1, 0.3, 1.0, 3.0, 10.0]
         idx_spec       = next((idx for idx, name in enumerate(params_names) if "sigma_m" in name), None)
         spec_axis_name = r"Speckle residuals $\sigma_m$ [%]"
 
