@@ -107,14 +107,14 @@ def get_mask_earth(planet_table):
     R_min,   R_max     = 0, 2   # [R_earth]
     M_min,   M_max     = 0, 10  # [M_earth]
     Teff_min, Teff_max = 0, 500 # [K]
-    
+
     R          = planet_table["PlanetRadius"].value        # R_earth
     M          = planet_table["PlanetMass"].value          # M_earth
     Teff       = planet_table["PlanetTeff"].value          # K
     n          = len(planet_table)
     mask_earth = np.ones(n, dtype=bool)
     print("Filtering Earth-Like planets")
-    
+
     # Radius & mass & Teff
     before      = int(mask_earth.sum())
     mask_earth &= np.isfinite(R) & (R >= R_min) & (R <= R_max)
@@ -125,12 +125,12 @@ def get_mask_earth(planet_table):
     mask_earth &= np.isfinite(M) & (M >= M_min) & (M <= M_max)
     after       = int(mask_earth.sum())
     print(f" After mass filtering:        {after} / {n} (-{before - after})")
-    
+
     before      = int(mask_earth.sum())
     mask_earth &= np.isfinite(Teff) & (Teff >= Teff_min) & (Teff <= Teff_max)
     after       = int(mask_earth.sum())
     print(f" After temperature filtering: {after} / {n} (-{before - after})")
-    
+
     return mask_earth 
 
 
@@ -177,7 +177,7 @@ def inject_dace_values(planet_table):
             q = q.to(pt_unit)
         # Negative convention
         if pt_colname[0] == "-":
-            q = q*(-1) 
+            q = q*(-1)
         # Decide where to write
         dc_valid = get_valid_mask(q)
         # Perform assignment
@@ -305,7 +305,7 @@ def _IKV(planet_table, planet_name, value, unit, quantity, obj, uncertainty=None
     elif "distance" in quantity_lower:
         colname = "Distance"
     elif "sma" in quantity_lower:
-        colname = "SMA"  
+        colname = "SMA"
     if "colname" not in locals():
         raise ValueError(f"Unsupported quantity/object combination: quantity={quantity!r}, obj={obj!r}")
 
@@ -426,7 +426,7 @@ def inject_known_values(planet_table):
     _IKV(planet_table, planet_name="2MASS J22501512+2325342 b",    value=14.89, unit=mag_unit, quantity="Kmag", obj="planet", uncertainty=0.10)  # https://arxiv.org/html/2402.09067v1
     _IKV(planet_table, planet_name="G 196-3 b",                    value=14.86, unit=mag_unit, quantity="Kmag", obj="planet", uncertainty=0.10)  # https://arxiv.org/pdf/1103.1880
     _IKV(planet_table, planet_name="TWA 7 b",                      value=32.91, unit=mag_unit, quantity="Kmag", obj="planet", uncertainty=0.19)  # https://www.nature.com/articles/s41586-025-09150-4 get_mag_from_mag(T=316, lg=2.817, model="BT-Settl", mag_input=20.54, band0_input="F1140C", band0_output="K")
-    _IKV(planet_table, planet_name="HD 143811 AB b",               value=19.27, unit=mag_unit, quantity="Kmag", obj="planet", uncertainty=0.26)  # https://arxiv.org/html/2509.06729v1?utm.com (get_mag_from_mag(T=1042, lg=3.8873, model="BT-Settl", mag_input=19.82, band0_input="H", band0_output="K") + get_mag_from_mag(T=1042, lg=3.8873, model="BT-Settl", mag_input=16.56, band0_input="L", band0_output="K"))/2    
+    _IKV(planet_table, planet_name="HD 143811 AB b",               value=19.27, unit=mag_unit, quantity="Kmag", obj="planet", uncertainty=0.26)  # https://arxiv.org/html/2509.06729v1?utm.com (get_mag_from_mag(T=1042, lg=3.8873, model="BT-Settl", mag_input=19.82, band0_input="H", band0_output="K") + get_mag_from_mag(T=1042, lg=3.8873, model="BT-Settl", mag_input=16.56, band0_input="L", band0_output="K"))/2
     _IKV(planet_table, planet_name="2MASS J03590986+2009361 b",    value=14.45, unit=mag_unit, quantity="Kmag", obj="planet", uncertainty=0.35)  # https://arxiv.org/pdf/1907.06767 get_mag_from_mag(T=2369, lg=4.576, model="BT-Settl", mag_input=13.89, band0_input="[3.6]", band0_output="K")
     _IKV(planet_table, planet_name="2MASS J21252752-8138278 b",    value=13.00, unit=mag_unit, quantity="Kmag", obj="planet", uncertainty=0.25)  # https://arxiv.org/pdf/2501.07976 get_mag_from_mag(T=1616, lg=4.3857, model="BT-Settl", mag_input=15.5, band0_input="J", band0_output="K")
     _IKV(planet_table, planet_name="HIP 77900 b",                  value=15.58, unit=mag_unit, quantity="Kmag", obj="planet", uncertainty=0.75)  # https://arxiv.org/pdf/2102.04385 get_mag_from_mag(T=2507, lg=4.65, model="BT-Settl", mag_input=19.6, band0_input="G", band0_output="K")
@@ -617,7 +617,7 @@ def get_evolutionary_model(planet_table):
 
     Sonora Bobcat: Marley et al. (2021, Astrophysical Journal, Volume 920, Issue 2, id.85.)
     https://zenodo.org/records/5063476
-    
+
     Required columns in 'planet_table':
       - PlanetMass  [unit convertible to u.M_jup]
       - StarAge     [unit convertible to u.Gyr]
@@ -876,7 +876,7 @@ def plot_matching_planets(matching_planets, exposure_time, mode, planet_types=pl
     instru : str or None
         Optional instrument label for the figure title.
     """
-        
+
     def _format_range(criteria, key):
         min_key = f"{key}_min"
         max_key = f"{key}_max"
@@ -915,7 +915,7 @@ def plot_matching_planets(matching_planets, exposure_time, mode, planet_types=pl
             for ptype, planets in matching_planets.items() for planet in planets])
         table = ax.table(cellText=matching_planets_df.values, colLabels=matching_planets_df.columns, cellLoc="center", loc="center")
 
-    elif mode == 'multi':    
+    elif mode == 'multi':
         conditions_df = pd.DataFrame([
             {"Type":            ptype,
              "Mass [M⊕]":      _format_range(criteria, "mass"),
@@ -1169,7 +1169,7 @@ def process_magnitudes(idx):
     # Planet row
     planet = planet_table[idx]
 
-    # Computing models on wave_model    
+    # Computing models on wave_model
     planet_spectrum, planet_thermal, planet_reflected, star_spectrum = get_thermal_reflected_spectrum(planet=planet, thermal_model="auto", reflected_model="auto", instru=None, wave_model=wave_model, wave_K=wave_K, counts_vega_K=counts_vega_K, show=False, in_planet_mag=True)
 
     # Computing the magnitudes
@@ -1218,7 +1218,7 @@ def get_planet_table_magnitudes(planet_table):
     -------
     planet_table : astropy.table.QTable
         The input table with magnitudes filled in.
-    """  
+    """
 
     # --- 1) Wavelength grids and Vega spectrum ---
 
@@ -1255,7 +1255,7 @@ def get_planet_table_magnitudes(planet_table):
 
     # Magnitude estimations
     print()
-    with Pool(processes=cpu_count()//2) as pool: 
+    with Pool(processes=cpu_count()//2) as pool:
         for (idx, mags) in tqdm(pool.imap(process_magnitudes, [(idx) for idx in range(len(planet_table))]), total=len(planet_table), desc="(14) Estimating all magnitudes"):
             for instru in instrus:
                 planet_table[idx][f"StarINSTRUmag({instru})"]                      = mags[f"StarINSTRUmag({instru})"]
@@ -1511,7 +1511,7 @@ def get_archive_table(seed=None):
     performance studies, but some derived values should not be interpreted as
     precise planetary or stellar measurements.
     """
-    
+
     time1 = time.time()
     rng   = np.random.default_rng(seed=seed) # Fixing the seed (if required, i.e. seed is not None)
 
@@ -1654,9 +1654,9 @@ def get_archive_table(seed=None):
             planet_table[f'Star{band}mag']                  = np.full(len(planet_table), np.nan) * u.dimensionless_unscaled
         planet_table[f'Planet{band}mag(thermal+reflected)'] = np.full(len(planet_table), np.nan) * u.dimensionless_unscaled
         planet_table[f'Planet{band}mag(thermal)']           = np.full(len(planet_table), np.nan) * u.dimensionless_unscaled
-        planet_table[f'Planet{band}mag(reflected)']         = np.full(len(planet_table), np.nan) * u.dimensionless_unscaled    
-    planet_table["+DeltaPlanetKmag(thermal+reflected)"] = np.full(len(planet_table), np.nan) * u.dimensionless_unscaled    
-    planet_table["-DeltaPlanetKmag(thermal+reflected)"] = np.full(len(planet_table), np.nan) * u.dimensionless_unscaled    
+        planet_table[f'Planet{band}mag(reflected)']         = np.full(len(planet_table), np.nan) * u.dimensionless_unscaled
+    planet_table["+DeltaPlanetKmag(thermal+reflected)"] = np.full(len(planet_table), np.nan) * u.dimensionless_unscaled
+    planet_table["-DeltaPlanetKmag(thermal+reflected)"] = np.full(len(planet_table), np.nan) * u.dimensionless_unscaled
     planet_table["PlanetKmag(thermal+reflected)Ref"]    = np.full(len(planet_table), "", dtype="<U32")
 
     # Also injecting known missing values
@@ -1729,7 +1729,7 @@ def get_archive_table(seed=None):
 
     # -----------------------------------------------------------------------------
     # 4) Assumptions and computations for geometry and kinematics
-    # -----------------------------------------------------------------------------    
+    # -----------------------------------------------------------------------------
 
     # Phase [rad] (Photometric/geometric convention: phi=0 => inferior conjunction, phi=pi/2 => quadrature 'redshift', phi=pi => superior conjunction and phi=3pi/2 => quadrature 'blueshift')
     phi0                  = np.pi / 2
@@ -1746,9 +1746,9 @@ def get_archive_table(seed=None):
     e_invalid                      = get_invalid_mask(planet_table["Ecc"])
     planet_table["Ecc"][e_invalid] = e0 * u.dimensionless_unscaled
 
-    # Argument of periastron [°]    
+    # Argument of periastron [°]
     omega_invalid                          = get_invalid_mask(planet_table["ArgPeri"])
-    planet_table["ArgPeri"][omega_invalid] = rng.uniform(0, 360, omega_invalid.sum()) * u.deg    
+    planet_table["ArgPeri"][omega_invalid] = rng.uniform(0, 360, omega_invalid.sum()) * u.deg
 
     # Retrieving usefull parameters
     a     = planet_table["SMA"]                                        # [AU]
@@ -1862,7 +1862,7 @@ def get_archive_table(seed=None):
     planet_table["PlanetVrot"][planet_table["PlanetVrot"] < 0 * u.km / u.s] = 0 * u.km / u.s
 
     planet_table["PlanetVsini"] = planet_table["PlanetVrot"] * planet_table["sini"]
-    
+
     print("\n(5b) Filling planet Vrot and PlanetVsini according to adopted priors (for all planets)")
 
 
@@ -2231,7 +2231,7 @@ def process_SNR(idx):
 
     # Instrumental magnitudes
     mask_instru    = masks[instru]
-    weights_instru = weights[instru]    
+    weights_instru = weights[instru]
     mags[f"StarINSTRUmag({instru})"] = get_mag_from_weights(density_obs=star_spectrum.flux[mask_instru], weights=weights_instru, counts_vega=counts_vega[instru])
     if "thermal" in spectrum_contributions:
         mags[f"PlanetINSTRUmag({instru})(thermal)"] = get_mag_from_weights(density_obs=planet_thermal.flux[mask_instru], weights=weights_instru, counts_vega=counts_vega[instru])
@@ -2363,7 +2363,7 @@ def get_planet_table_SNR(instru, table="Archive", thermal_model="None", reflecte
 
     # --- 5) Init global context for workers ---
     global _SNR_CTX
-    _SNR_CTX = dict(planet_table=planet_table, instru=instru, thermal_model=thermal_model, reflected_model=reflected_model, spectrum_contributions=spectrum_contributions, wave_model=wave_model, wave_K=wave_K, counts_vega=counts_vega, counts_vega_K=counts_vega_K, band0=band0, exposure_time=exposure_time, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, Rc=Rc, filter_type=filter_type, background=background, systematics=systematics, PCA=PCA, N_PCA=N_PCA, masks=masks, weights=weights, bands_valid=bands_valid)    
+    _SNR_CTX = dict(planet_table=planet_table, instru=instru, thermal_model=thermal_model, reflected_model=reflected_model, spectrum_contributions=spectrum_contributions, wave_model=wave_model, wave_K=wave_K, counts_vega=counts_vega, counts_vega_K=counts_vega_K, band0=band0, exposure_time=exposure_time, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, Rc=Rc, filter_type=filter_type, background=background, systematics=systematics, PCA=PCA, N_PCA=N_PCA, masks=masks, weights=weights, bands_valid=bands_valid)
 
     # Function to enter the estimations in the planet_table
     def set_planet_table_values(planet_table, idx, mags, name_band, signal_planet, sigma_fund_planet, sigma_syst_planet, DIT_band):
@@ -3149,16 +3149,16 @@ def yield_plot_bands_texp(table="Archive", instru="HARMONI", thermal_model="auto
     else:
         plt.title(f"{instru} re-detections statistics with {int(np.max(NbPlanet))} known planets above for {strehl} strehl", fontsize=18, weight='bold')
     plt.tick_params(axis='both', labelsize=14)
-    plt.legend(fontsize=16, loc="upper left", frameon=True, fancybox=True, edgecolor="gray", facecolor="whitesmoke", title="Bands", title_fontsize=18)    
-    if len(modes) > 1: 
+    plt.legend(fontsize=16, loc="upper left", frameon=True, fancybox=True, edgecolor="gray", facecolor="whitesmoke", title="Bands", title_fontsize=18)
+    if len(modes) > 1:
         ax = plt.gca()
         ax_legend = ax.twinx()
         for im, mode in enumerate(modes):
             ax_legend.plot([], [], c="k", ls=ls_modes[im], label=str(mode).replace("_", " ").replace("None", "w/o coronagraph"), lw=3)
         if instru=="HARMONI":
-            ax_legend.legend(fontsize=16, loc="upper center", frameon=True, fancybox=True, edgecolor="gray", facecolor="whitesmoke", title="Apodizers", title_fontsize=18)    
+            ax_legend.legend(fontsize=16, loc="upper center", frameon=True, fancybox=True, edgecolor="gray", facecolor="whitesmoke", title="Apodizers", title_fontsize=18)
         elif instru=="ANDES":
-            ax_legend.legend(fontsize=16, loc="upper center", frameon=True, fancybox=True, edgecolor="gray", facecolor="whitesmoke", title="Coronagraphs", title_fontsize=18)    
+            ax_legend.legend(fontsize=16, loc="upper center", frameon=True, fancybox=True, edgecolor="gray", facecolor="whitesmoke", title="Coronagraphs", title_fontsize=18)
         ax_legend.tick_params(axis='y', colors='w') # Masking ticks
     plt.tight_layout()
     plt.show()
@@ -3213,7 +3213,7 @@ def yield_hist_instrus_ptypes(exposure_time=10*60, thermal_model="auto", reflect
     planet_types_array     = np.array(list(planet_types.keys()))
     yield_harmoni          = np.zeros(len(planet_types_array))
     yield_andes            = np.zeros(len(planet_types_array))
-    yield_eris             = np.zeros(len(planet_types_array)) 
+    yield_eris             = np.zeros(len(planet_types_array))
     yield_mirimrs_non_syst = np.zeros(len(planet_types_array))
     yield_mirimrs_syst     = np.zeros(len(planet_types_array))
     yield_mirimrs_syst_pca = np.zeros(len(planet_types_array))
@@ -3230,7 +3230,7 @@ def yield_hist_instrus_ptypes(exposure_time=10*60, thermal_model="auto", reflect
 
     for i in range(len(planet_types_array)):
         ptype = planet_types_array[i]
-        
+
         N_harmoni[i] = len(mp_harmoni[ptype])
         N_andes[i]   = len(mp_andes[ptype])
         N_eris[i]    = len(mp_eris[ptype])
@@ -3444,7 +3444,7 @@ def yield_corner_instru(instru="HARMONI", exposure_time=6*60, thermal_model="BT-
     ndim          = 6 # Mp, Rp, Tp, a, d, sep
 
     # WORKING ANGLE
-    iwa, owa = get_wa(instru=instru, sep_unit="mas")    
+    iwa, owa = get_wa(instru=instru, sep_unit="mas")
 
     # MODELS NAME
     spectrum_contributions, name_model = get_spectrum_contribution_name_model(thermal_model, reflected_model)
@@ -3467,7 +3467,7 @@ def yield_corner_instru(instru="HARMONI", exposure_time=6*60, thermal_model="BT-
         data          = data_raw,
         bins          = 20,
         labels        = [r"$log(\frac{M_p}{M_{\oplus}})$", r"$log(\frac{R_p}{R_{\oplus}})$", r"$T \, [\mathrm{K}]$", r"$log(\frac{SMA}{AU})$", r"$log(\frac{d}{pc})$", r"$log(\frac{sep}{mas})$"],
-        quantiles     = [0.16, 0.5, 0.84],   # below -+1 sigma 
+        quantiles     = [0.16, 0.5, 0.84],   # below -+1 sigma
         levels        = [0.68, 0.95, 0.997], # 1, 2 and 3 sigma contour
         show_titles   = True,
         title_kwargs  = {"fontsize": 14, "pad": 10},
@@ -3761,7 +3761,7 @@ def yield_corner_instrus(instru1="HARMONI", instru2="ANDES", band1="INSTRU", ban
         axes[i, i].set_xlim(corner_ranges[i])
         axes[i, i].set_ylim(diag_ylims_raw[i])
 
-    # Earth points    
+    # Earth points
     for i in range(ndim):
         if earth_values[i] is not None:
             ax = axes[i, i]
@@ -4178,13 +4178,13 @@ def yield_contrast_instru(instru="ANDES", exposure_time=6*60, thermal_model="BT-
     config_data = get_config_data(instru)
 
     # WORKING ANGLE
-    iwa, owa = get_wa(instru=instru)    
+    iwa, owa = get_wa(instru=instru)
 
     # Specs of the instru
     lmin = config_data["lambda_range"]["lambda_min"]
     lmax = config_data["lambda_range"]["lambda_max"]
     R = 0.
-    N = len(config_data["gratings"]) 
+    N = len(config_data["gratings"])
     for b in config_data["gratings"]:
         R += config_data["gratings"][b].R/N # mean resolution
 
@@ -4202,7 +4202,7 @@ def yield_contrast_instru(instru="ANDES", exposure_time=6*60, thermal_model="BT-
     SNR          = get_SNR_from_table(planet_table=planet_table, exposure_time=exposure_time, band=band)
     planet_table = planet_table[SNR > SNR_thresh]
     SNR          = SNR[SNR > SNR_thresh]
-    
+
     x = np.array(planet_table["AngSep"].value) # sep axis [mas]
     if config_data["sep_unit"]=="arcsec":
         x = x/1000
@@ -4267,7 +4267,7 @@ def yield_contrast_instru(instru="ANDES", exposure_time=6*60, thermal_model="BT-
     ax2 = ax1.twinx()
     ax2.invert_yaxis()
     ax2.set_ylabel(r'$\Delta$mag', fontsize=14, labelpad=18, rotation=270)
-    ax2.tick_params(axis='y')   
+    ax2.tick_params(axis='y')
     ymin, ymax = ax1.get_ylim()
     ax2.set_ylim(-2.5*np.log10(ymin), -2.5*np.log10(ymax))
     ax2.minorticks_on()
@@ -4280,7 +4280,7 @@ def yield_contrast_instru(instru="ANDES", exposure_time=6*60, thermal_model="BT-
 
 ##########
 # Others #
-##########   
+##########
 
 def Vrot_plots(dpi=dpi_fig):
     planet_table = load_planet_table("Archive_Pull_For_FastYield.ecsv")
@@ -4356,7 +4356,7 @@ def process_contrast(args):
     sep_max                = _CONTRAST_CTX["sep_max"]
     spectrum_contributions = _CONTRAST_CTX["spectrum_contributions"]
 
-    # Computing models on wave_model    
+    # Computing models on wave_model
     planet_spectrum, planet_thermal, planet_reflected, star_spectrum = get_thermal_reflected_spectrum(planet=planet, thermal_model=thermal_model, reflected_model=reflected_model, instru=instru, wave_model=wave_model, wave_K=wave_K, counts_vega_K=counts_vega_K, show=False)
 
     # Recalculates the magnitude in case the thermal model is no longer BT-Settl or the reflected model is no longer PICASO (the mag changes with regards to the raw archive table with the estimated magnitudes)
@@ -4455,7 +4455,7 @@ def get_planet_table_contrast(instru, planet_table, exposure_time, thermal_model
 
         # --- 6) Init global context for workers ---
         global _CONTRAST_CTX
-        _CONTRAST_CTX = dict(instru=instru, config_data=config_data, thermal_model=thermal_model, reflected_model=reflected_model, wave_model=wave_model, wave_K=wave_K, counts_vega=counts_vega, counts_vega_K=counts_vega_K, band0=band0, exposure_time=exposure_time, Rc=Rc, filter_type=filter_type, systematics=systematics, PCA=PCA, N_PCA=N_PCA, masks=masks, sep_max=sep_max, spectrum_contributions=spectrum_contributions)    
+        _CONTRAST_CTX = dict(instru=instru, config_data=config_data, thermal_model=thermal_model, reflected_model=reflected_model, wave_model=wave_model, wave_K=wave_K, counts_vega=counts_vega, counts_vega_K=counts_vega_K, band0=band0, exposure_time=exposure_time, Rc=Rc, filter_type=filter_type, systematics=systematics, PCA=PCA, N_PCA=N_PCA, masks=masks, sep_max=sep_max, spectrum_contributions=spectrum_contributions)
 
         # --- 7) Run contrast---
         with Pool(processes=cpu_count()//2) as pool: # Utilisation de multiprocessing pour paralléliser les combinaisons i, j
@@ -4484,7 +4484,7 @@ def yield_contrast_ELT_earthlike(thermal_model="BT-Settl", reflected_model="tell
     # --- Archive table of known exoplanets
     planet_table = load_planet_table("Archive_Pull_For_FastYield.ecsv")
 
-    # --- Ranges "Earth-like" 
+    # --- Ranges "Earth-like"
     R_min, R_max       = 0, 2     # [R_earth]
     M_min, M_max       = 0, 10    # [M_earth]
     Teff_min, Teff_max = 0, 500   # [K]
