@@ -1222,38 +1222,38 @@ def main():
     sim_dir.mkdir(parents=True, exist_ok=True)
 
     # IFU instrument concept (global)
-    instrument_concept = {
-        'instru_type': 'IFU',
-        'postproc': 'MM',         # MM or DI
-        'R_min': 100,             # [dimensionlesss] spectral resolution
-        'R_max': 200_000,
-        'l0_min': 0.6,            # [µm] central wavelengt
-        'l0_max': 2.5,
-        'Nl_min': 100,            # [bins] number of spectral channel
-        'Nl_max': 200_000,
-        'FoV_min': 0,             # [mas] angular separation
-        'FoV_max': 1_000,
-        'tr_min': 0.001,          # [dimensionlesss] instrument transmission
-        'tr_max': 0.5,
-        'σ_m_min': 1e-7,          # [dimensionlesss]
-        'σ_m_max': 1e-1
-    }
-
-    # imager instrument concept (global)
     # instrument_concept = {
     #     'instru_type': 'IFU',
     #     'postproc': 'MM',         # MM or DI
-    #     'l0_min': 0.6,            # [µm] central wavelengt
+    #     'R_min': 100,             # [dimensionlesss] spectral resolution
+    #     'R_max': 200_000,
+    #     'l0_min': 0.6,            # [µm] central wavelength
     #     'l0_max': 2.5,
-    #     'Dl_min': 0.01,           # [µm] bandwidth
-    #     'Dl_max': 0.2,
-    #     'FoV_min': 0,             # [mas] angular separation
+    #     'Nl_min': 100,            # [bins] number of spectral channel
+    #     'Nl_max': 200_000,
+    #     'FoV_min': 1,             # [mas] Field Of View
     #     'FoV_max': 1_000,
     #     'tr_min': 0.001,          # [dimensionlesss] instrument transmission
     #     'tr_max': 0.5,
-    #     'σ_m_min': 1e-3,          # [dimensionlesss]
+    #     'σ_m_min': 1e-7,          # [dimensionlesss] level of residual systematics
     #     'σ_m_max': 1e-1
     # }
+
+    # imager instrument concept (global)
+    instrument_concept = {
+        'instru_type': 'imager',
+        'postproc': 'DI',         # MM or DI
+        'l0_min': 0.6,            # [µm] central wavelength
+        'l0_max': 2.5,
+        'Dl_min': 0.01,           # [µm] bandwidth
+        'Dl_max': 0.2,
+        'FoV_min': 1,             # [mas] Field Of View
+        'FoV_max': 1_000,
+        'tr_min': 0.001,          # [dimensionlesss] instrument transmission
+        'tr_max': 0.5,
+        'σ_m_min': 1e-3,          # [dimensionlesss] level of residual speckles
+        'σ_m_max': 1e-1
+    }
 
     # instrument concept A: High-res VIS IFU
     # (V)RI, R = 10**5, FoV ~100 mas
@@ -1266,7 +1266,7 @@ def main():
     #     'l0_max': 0.8,
     #     'Nl_min': 100,
     #     'Nl_max': 200_000,
-    #     'FoV_min': 0,
+    #     'FoV_min': 1,
     #     'FoV_max': 100*2,
     #     'tr_min': 0.001,
     #     'tr_max': 0.5,

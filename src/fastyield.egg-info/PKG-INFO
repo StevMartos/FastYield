@@ -65,7 +65,7 @@ For more details, see:
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="FastYield_
 example.png">
-    <img alt="FastYield Example" src="FastYield_example.png">
+    <img alt="FastYield Example" src="FastYield_GUI.png">
   </picture>
 </p>
 
@@ -178,7 +178,7 @@ This directory contains the instrumental data, simulation data, and spectral lib
 
 The `sim_data/` directory can be downloaded here:
 
-[Download the sim_data directory](https://filesender.renater.fr/?s=download&token=ba9b7218-adf5-45a7-90e1-07be64e18c28)
+[Download the sim_data directory](https://filesender.renater.fr/?s=download&token=82647e85-07a6-4d88-ab13-1b1051adc9ca)
 
 After downloading and extracting the archive, you should have a directory named:
 
