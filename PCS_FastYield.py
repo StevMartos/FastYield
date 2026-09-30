@@ -1221,6 +1221,62 @@ def main():
     psf_dir    = instru_dir / "PSF_simulations"
     sim_dir.mkdir(parents=True, exist_ok=True)
 
+    # IFU instrument concept (global)
+    # instrument_concept = {
+    #     'instru_type': 'IFU',
+    #     'postproc': 'MM',         # MM or DI
+    #     'R_min': Rc,              # [dimensionlesss] spectral resolution
+    #     'R_max': 200_000,
+    #     'l0_min': 0.6,            # [µm] central wavelengt
+    #     'l0_max': 2.5,
+    #     'Nl_min': 100,            # [bins] number of spectral channel
+    #     'Nl_max': 200_000,
+    #     'FoV_min': 0,             # [mas] angular separation
+    #     'FoV_max': 1_000,
+    #     'tr_min': 0.001,          # [dimensionlesss] instrument transmission
+    #     'tr_max': 0.5,
+    #     'σ_m_min': 1e-7,          # [dimensionlesss]
+    #     'σ_m_max': 1e-1
+    # }
+
+    # imager instrument concept (global)
+    # instrument_concept = {
+    #     'instru_type': 'IFU',
+    #     'postproc': 'MM',         # MM or DI
+    #     'R_min': Rc,              # [dimensionlesss] spectral resolution
+    #     'R_max': 200_000,
+    #     'l0_min': 0.6,            # [µm] central wavelengt
+    #     'l0_max': 2.5,
+    #     'Dl_min': 0.01,           # [µm] bandwidth
+    #     'Dl_max': 0.2,
+    #     'FoV_min': 0,             # [mas] angular separation
+    #     'FoV_max': 1_000,
+    #     'tr_min': 0.001,          # [dimensionlesss] instrument transmission
+    #     'tr_max': 0.5,
+    #     'σ_m_min': 1e-3,          # [dimensionlesss]
+    #     'σ_m_max': 1e-1
+    # }
+
+    # instrument concept A: High-res VIS IFU
+    # (V)RI, R = 10**5, FoV ~100 mas
+    instrument_concept = {
+        'instru_type': 'IFU',
+        'postproc': 'MM',
+        'R_min': 50_000,
+        'R_max': 200_000,
+        'l0_min': 0.5,
+        'l0_max': 0.8,
+        'Nl_min': 100,
+        'Nl_max': 200_000,
+        'FoV_min': 0,
+        'FoV_max': 100*2,
+        'tr_min': 0.001,
+        'tr_max': 0.5,
+        'σ_m_min': 1e-7,
+        'σ_m_max': 1e-1
+    }
+
+
     # --- General parameters for the simulation ---
     coronagraph        = "LYOT"                                # Coronagraph config
     apodizer           = "NO_SP"                               # Shaped pupil mask (NO_SP => no mask)
@@ -1230,8 +1286,8 @@ def main():
     force_new_calc     = False                                 # Forcing new simulations calculations
     thermal_model      = "auto"                                # Model for the thermal spectrum of the planet ("auto", "None", "BT-Settl", "Exo-REM", "SONORA", "PICASO", "Saumon", etc.)
     reflected_model    = "auto"                                # Model for the albedo of the planet ("auto", "tellurics", "flat", "PICASO")
-    instru_type        = "imager"                                 # Type of instrument ("IFU" or "imager")
-    post_processing    = "DI"                                  # Post-processing method ("MM" or "DI")
+    instru_type        = instrument_concept['instru_type']     # Type of instrument ("IFU" or "imager")
+    post_processing    = instrument_concept['postproc']        # Post-processing method ("MM" or "DI")
     size_core          = 2                                     # [px/FWHM] Number of pixel per spatial FWHM along 1 direction (size_core >= 2 => Nyquist spatial sampling)
     A_FWHM             = size_core**2                          # Number of pixel per FWHM box area
     Rc                 = 1_00                                  # MM cut-off resolution (Rc~100 is enough to reach ~1e-8 with speckles only, Rc~1000 would allows to go further (more conservative))
@@ -1246,49 +1302,50 @@ def main():
     sep_min = 0     # [mas]
     sep_max = 1_000 # [mas] max separation of the raw PSF data
 
+    # --- Post-AO wavefront error and IWA ---
+    # Fixed values
+    # Post-AO wavefront error
+    WFE_min          = WFE_ref        # [nm]
+    WFE_max          = WFE_ref        # [nm]
+    # Coronagraph inner working angle
+    IWA_min          = IWA_ref        # [mas]
+    IWA_max          = IWA_ref        # [mas]
+
+    # Vary WFE and IWA (but huge files will be created!!)
+    # Post-AO wavefront error
+    WFE_min          = 10             # [nm]
+    WFE_max          = 200            # [nm]
+    # Coronagraph inner working angle radius
+    IWA_min          = 1              # [mas]
+    IWA_max          = 100            # [mas]
+
     # --- IFU parameters space to explore ---
     if instru_type == "IFU":
         # Size of the parameters space to explore (N**Ndim)
         N                = 10             # [dims]
         # Spectral resolution (for each R, it is assumed to be constant along the whole wavelength range)
-        R_min            = Rc          # [dimensionless]
-        R_max            = 200_000        # [dimensionless]
+        R_min            = instrument_concept['R_min']        # [dimensionless]
+        R_max            = instrument_concept['R_max']        # [dimensionless]
         # Bandwidth central wavelength (for each l0, the bandwidth is given by lmin,lmax = l0 +- dl*Nl/2, where dl depends on R and l0)
-        l0_min           = 0.6            # [µm]
-        l0_max           = 2.5            # [µm]
-        # Number of spectral channel (number of effective bins sampling the data along the spectral dimension)
-        Nl_min           = 1_00           # [bins]
-        Nl_max           = 200_000        # [bins]
-
-        # Post-AO wavefront error
-        WFE_min          = 10             # [nm]
-        WFE_max          = 200            # [nm]
-        # Coronagraph inner working angle radius
-        IWA_min          = 1              # [mas]
-        IWA_max          = 100            # [mas]
-
-        # # TODO: Fixed post-AO wavefront error and IWA (comment this passage to vary WFE and IWA, but huge files will be created)
-        # # Post-AO wavefront error
-        # WFE_min          = WFE_ref        # [nm]
-        # WFE_max          = WFE_ref        # [nm]
-        # # Coronagraph inner working angle
-        # IWA_min          = IWA_ref        # [mas]
-        # IWA_max          = IWA_ref        # [mas]
-
+        l0_min           = instrument_concept['l0_min']       # [µm]
+        l0_max           = instrument_concept['l0_max']       # [µm]
+        # Number of spectral channels (number of effective bins sampling the data along the spectral dimension)
+        Nl_min           = instrument_concept['Nl_min']       # [bins]
+        Nl_max           = instrument_concept['Nl_max']       # [bins]
         # Instrumental transmission (without telescope transmission)
-        trans_instru_min = 0.001           # [e-/ph]
-        trans_instru_max = 0.5           # [e-/ph]
+        trans_instru_min = instrument_concept['tr_min']       # [e-/ph]
+        trans_instru_max = instrument_concept['tr_max']       # [e-/ph]
         # Effective residual halo modulation level:
         # For IFU: sigma_m is the effective fractional modulation of the final integrated stellar halo per spectral bin.
         # In practice, sigma_syst_base_2 stores the projected halo-squared term for one DIT,
         # already including throughput, PSF, FWHM integration, and DIT scaling.
         # The total systematic variance over the full exposure is then:
         # sigma_syst_tot^2 = sigma_m^2 * sigma_syst_base_2*N_DIT^2
-        sigma_m_min      = 1e-7           # [dimensionless]
-        sigma_m_max      = 1e-1           # [dimensionless]
+        sigma_m_min      = instrument_concept['σ_m_min']      # [dimensionless]
+        sigma_m_max      = instrument_concept['σ_m_max']      # [dimensionless]
         # Field of View
-        FoV_min          = 10             # [mas]
-        FoV_max          = 2*sep_max      # [mas]
+        FoV_min          = instrument_concept['FoV_min']      # [mas]
+        FoV_max          = instrument_concept['FoV_max']      # [mas]
         # Axis
         R                = np.logspace(np.log10(R_min),       np.log10(R_max),       N) # i dim
         l0               = np.linspace(l0_min,                l0_max,                N) # j dim
@@ -1328,38 +1385,23 @@ def main():
         # Size of the parameters space to explore (N**Ndim)
         N                = 10             # [dims]
         # Bandwidth central wavelength (for each l0, the bandwidth is given by lmin,lmax = l0 +- Dl/2)
-        l0_min           = 0.6            # [µm]
-        l0_max           = 2.5            # [µm]
+        l0_min           = instrument_concept['l0_min']       # [µm]
+        l0_max           = instrument_concept['l0_max']       # [µm]
         # Bandwidth width
-        Dl_min           = 0.01           # [µm]
-        Dl_max           = 0.2            # [µm]
-        # Post-AO wavefront error
-        WFE_min          = 10             # [nm]
-        WFE_max          = 200            # [nm]
-        # Coronagraph inner working angle radius
-        IWA_min          = 1              # [mas]
-        IWA_max          = 100            # [mas]
-
-        # # TODO: Fixed post-AO wavefront error and IWA (comment this passage to vary WFE and IWA, but huge files will be created)
-        # # Post-AO wavefront error
-        # WFE_min          = WFE_ref        # [nm]
-        # WFE_max          = WFE_ref        # [nm]
-        # # Coronagraph inner working angle
-        # IWA_min          = IWA_ref        # [mas]
-        # IWA_max          = IWA_ref        # [mas]
-
+        Dl_min           = instrument_concept['Dl_min']       # [µm]
+        Dl_max           = instrument_concept['Dl_max']       # [µm]
         # Instrumental transmission (without telescope transmission)
-        trans_instru_min = 0.001           # [e-/ph]
-        trans_instru_max = 0.5           # [e-/ph]
+        trans_instru_min = instrument_concept['tr_min']       # [e-/ph]
+        trans_instru_max = instrument_concept['tr_max']       # [e-/ph]
         # Effective residual halo modulation level:
         # For Imager: sigma_m is the effective fractional modulation of the final integrated stellar halo integrated over the full exposure time, the FWHM and the considered band.
         # The total systematic variance over the full exposure is then:
         # sigma_syst_tot^2 = sigma_m^2 * halo_2*N_DIT^2
-        sigma_m_min      = 1e-7       # [dimensionless]
-        sigma_m_max      = 1e-1       # [dimensionless]
+        sigma_m_min      = instrument_concept['σ_m_min']      # [dimensionless]
+        sigma_m_max      = instrument_concept['σ_m_max']      # [dimensionless]
         # Field of View
-        FoV_min          = 10         # [mas]
-        FoV_max          = 2*sep_max  # [mas]
+        FoV_min          = instrument_concept['FoV_min']      # [mas]
+        FoV_max          = instrument_concept['FoV_max']      # [mas]
         # Axis
         l0               = np.linspace(l0_min,                l0_max,                N) # j dim
         Dl               = np.linspace(Dl_min,                Dl_max,                N) # k dim
