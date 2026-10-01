@@ -5426,7 +5426,7 @@ def yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto
     N_det          = int(np.sum(detected))
 
     # 1) Detected population
-    fig_pop, axes_pop = make_two_panel(title=f"ELT/{instru} detected population in {exposure_time/60:.0f} hr per target", subtitle=f"{N_det:.0f}/{N_total:.0f} detections", plot_func=plot_population_panel)
+    fig_pop, axes_pop = make_two_panel(title=f"ELT/{instru} detected population in {exposure_time/60:.0f} hr per target", subtitle=f"{N_det:.0f}/{N_total:.0f} detections ({N_det/N_total*100:.1f}%)", plot_func=plot_population_panel)
     sm                = mpl.cm.ScalarMappable(norm=norm_teff, cmap=cmap_teff)
     sm.set_array([])
     cbar = fig_pop.colorbar(sm, ax=axes_pop, pad=0.03, fraction=0.03)
@@ -5435,7 +5435,7 @@ def yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto
     save_and_show(fig_pop, f"ELT_{instru}_detected_population_{table}_{band_contrast_plot}band.png")
 
     # 2) Detected population colored by planet temperature
-    fig_planet_teff, axes_planet_teff = make_two_panel(title=f"ELT/{instru} detected population in {exposure_time/60:.0f} hr per target", subtitle=f"{N_det:.0f}/{N_total:.0f} detections", plot_func=plot_population_planet_teff_panel, valid_obs_plot=valid_obs_planet_teff, valid_phys_plot=valid_phys_planet_teff)
+    fig_planet_teff, axes_planet_teff = make_two_panel(title=f"ELT/{instru} detected population in {exposure_time/60:.0f} hr per target", subtitle=f"{N_det:.0f}/{N_total:.0f} detections ({N_det/N_total*100:.1f}%)", plot_func=plot_population_planet_teff_panel, valid_obs_plot=valid_obs_planet_teff, valid_phys_plot=valid_phys_planet_teff)
     sm = mpl.cm.ScalarMappable(norm=norm_planet_teff, cmap=cmap_planet_teff)
     sm.set_array([])
     cbar = fig_planet_teff.colorbar(sm, ax=axes_planet_teff, pad=0.03, fraction=0.03)
@@ -5450,7 +5450,7 @@ def yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto
         noise_colors = {"Stellar halo": "tab:orange", "Background": "tab:blue", "Read noise": "tab:purple", "Dark current": "tab:green", "Speckles": "tab:red", "Residuals": "tab:red", "Systematics": "tab:red", "Fundamental noise": "tab:orange", "Unknown": "0.50"}
         noise_labels = [label for label in noise_order if np.any(noise_class == label)]
         noise_alphas              = {label: 0.20 if label == "Non-detected" else alpha_detected for label in noise_labels}
-        fig_noise, axes_noise     = make_two_panel(title=f"ELT/{instru} dominant noise regime in {exposure_time/60:.0f} hr per target", subtitle=f"{N_det:.0f}/{N_total:.0f} detections", plot_func=lambda ax, x, y, valid, xlabel, ylabel, xlim, ylim, title, space: plot_class_panel(ax, x, y, valid, noise_class, noise_labels, noise_colors, noise_alphas, xlabel, ylabel, xlim, ylim, title, space))
+        fig_noise, axes_noise     = make_two_panel(title=f"ELT/{instru} dominant noise regime in {exposure_time/60:.0f} hr per target", subtitle=f"{N_det:.0f}/{N_total:.0f} detections ({N_det/N_total*100:.1f}%)", plot_func=lambda ax, x, y, valid, xlabel, ylabel, xlim, ylim, title, space: plot_class_panel(ax, x, y, valid, noise_class, noise_labels, noise_colors, noise_alphas, xlabel, ylabel, xlim, ylim, title, space))
         handles_noise             = [Line2D([], [], ls="", marker="o", ms=11, markerfacecolor=noise_colors[lab], markeredgecolor="k", color=noise_colors[lab], label=lab) for lab in noise_labels if lab != "Non-detected"]
         axes_noise[1].add_artist(axes_noise[1].legend(handles=handles_noise, fontsize=fontsize-2, loc="center right", frameon=True, edgecolor="gray", facecolor="white", title="Dominant noise", title_fontsize=fontsize))
         save_and_show(fig_noise, f"ELT_{instru}_dominant_noise_{table}_{band_contrast_plot}band.png")
@@ -5459,7 +5459,7 @@ def yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto
     light_labels = ["Thermal", "Reflected"] + (["Unclassified"] if np.any(light_class == "Unclassified") else [])
     light_colors = {"Thermal": "C3", "Reflected": "C0", "Unclassified": "0.50"}
     light_alphas          = {"Non-detected": 0.20, "Detected, thermal-dominated": alpha_detected, "Detected, reflected-dominated": alpha_detected, "Detected, unclassified": alpha_detected}
-    fig_light, axes_light = make_two_panel(title=f"ELT/{instru} thermal/reflected complementarity in {exposure_time/60:.0f} hr", subtitle=f"{N_det:.0f}/{N_total:.0f} detections", plot_func=lambda ax, x, y, valid, xlabel, ylabel, xlim, ylim, title, space: plot_class_panel(ax, x, y, valid, light_class, light_labels, light_colors, light_alphas, xlabel, ylabel, xlim, ylim, title, space))
+    fig_light, axes_light = make_two_panel(title=f"ELT/{instru} thermal/reflected complementarity in {exposure_time/60:.0f} hr", subtitle=f"{N_det:.0f}/{N_total:.0f} detections ({N_det/N_total*100:.1f}%)", plot_func=lambda ax, x, y, valid, xlabel, ylabel, xlim, ylim, title, space: plot_class_panel(ax, x, y, valid, light_class, light_labels, light_colors, light_alphas, xlabel, ylabel, xlim, ylim, title, space))
     handles_light         = [Line2D([], [], ls="", marker="o", ms=11, markerfacecolor=light_colors["Thermal"], markeredgecolor="k", color=light_colors["Thermal"], label="Thermal"),  Line2D([], [], ls="", marker="o", ms=11, markerfacecolor=light_colors["Reflected"], markeredgecolor="k", color=light_colors["Reflected"], label="Reflected")]
     axes_light[1].add_artist(axes_light[1].legend(handles=handles_light, fontsize=fontsize-2, loc="center right", frameon=True, edgecolor="gray", facecolor="white", title=f"Planet-light regime ({band_regime_plot})", title_fontsize=fontsize))
     save_and_show(fig_light, f"ELT_{instru}_thermal_reflected_{table}_{band_regime_plot}band.png")
@@ -5471,7 +5471,7 @@ def yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto
     cmap_frac           = plt.get_cmap("inferno").copy()
     cmap_frac.set_bad("white")
     norm_frac           = mpl.colors.Normalize(vmin=0, vmax=1)
-    fig_frac, axes_frac = make_two_panel(title=f"ELT/{instru} detection fraction in {exposure_time/60:.0f} hr per target", subtitle=f"{N_det:.0f}/{N_total:.0f} detections", plot_func=plot_fraction_panel, legends=False)
+    fig_frac, axes_frac = make_two_panel(title=f"ELT/{instru} detection fraction in {exposure_time/60:.0f} hr per target", subtitle=f"{N_det:.0f}/{N_total:.0f} detections ({N_det/N_total*100:.1f}%)", plot_func=plot_fraction_panel, legends=False)
     sm                  = mpl.cm.ScalarMappable(norm=norm_frac, cmap=cmap_frac)
     sm.set_array([])
     cbar = fig_frac.colorbar(sm, ax=axes_frac, pad=0.03, fraction=0.03)
