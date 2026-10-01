@@ -5045,7 +5045,6 @@ def yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto
 
     if instru == "PCS":
         obs_xlim      = (1e-2, 1e3)
-        obs_xlim      = (1e-2, 1e6)
     else:
         obs_xlim      = (1e-2, 1e6)
     obs_ylim          = (1e-10, 1e-1)
@@ -5162,8 +5161,9 @@ def yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto
             Line2D([], [], ls="", marker="o", ms=13, markerfacecolor="0.65", markeredgecolor="none", alpha=0.35, color="0.65", label="Non-detected"),
             Line2D([], [], ls="", marker="o", ms=13, markerfacecolor="0.65", markeredgecolor="k", markeredgewidth=1.5, alpha=alpha_detected, color="0.65", label="Detected"),
         ]
-        ax.add_artist(ax.legend(handles=handles, fontsize=fontsize-2, loc=loc, frameon=True, edgecolor="gray", facecolor="white"))
-
+        leg = ax.add_artist(ax.legend(handles=handles, fontsize=fontsize-2, loc=loc, frameon=True, edgecolor="gray", facecolor="white"))
+        leg.set_zorder(100_000)
+        
     def add_detection_method_regions(ax):
         for method in detection_methods_regions:
             mask = masks_detection_method[method] & np.isfinite(AngSep) & np.isfinite(contrast) & (AngSep > 0) & (contrast > 0)
@@ -5288,7 +5288,7 @@ def yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto
         add_golden_sample(axes[1], SMA,    PlanetMass, valid_phys_plot, space="phys")
         if legends:
             if instru is not None:
-                add_detection_legend(axes[0], loc="lower left")
+                add_detection_legend(axes[0],    loc="lower left")
             add_detection_method_legend(axes[1], loc="lower right")
         if instru is not None:
             fig.suptitle(title, fontsize=fontsize+5, weight="bold", y=0.98)
@@ -5446,8 +5446,8 @@ def yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto
     # 3) Dominant noise regime
     if instru is not None:
         noise_class  = dominant_noise.copy()
-        noise_order  = ["Stellar halo", "Background", "Read noise", "Dark current", "Residuals", "Systematics", "Fundamental noise", "Unknown"]
-        noise_colors = {"Stellar halo": "tab:orange", "Background": "tab:blue", "Read noise": "tab:purple", "Dark current": "tab:green", "Residuals": "tab:red", "Systematics": "tab:red", "Fundamental noise": "tab:orange", "Unknown": "0.50"}
+        noise_order  = ["Stellar halo",               "Background",             "Read noise",               "Dark current",              "Speckles",            "Residuals",            "Systematics",            "Fundamental noise",               "Unknown"]
+        noise_colors = {"Stellar halo": "tab:orange", "Background": "tab:blue", "Read noise": "tab:purple", "Dark current": "tab:green", "Speckles": "tab:red", "Residuals": "tab:red", "Systematics": "tab:red", "Fundamental noise": "tab:orange", "Unknown": "0.50"}        
         noise_labels = [label for label in noise_order if np.any(noise_class == label)]
         noise_alphas              = {label: 0.20 if label == "Non-detected" else alpha_detected for label in noise_labels}
         fig_noise, axes_noise     = make_two_panel(title=f"ELT/{instru} dominant noise regime in {exposure_time/60:.0f} hr per target", subtitle=f"{N_det:.0f}/{N_total:.0f} detections", plot_func=lambda ax, x, y, valid, xlabel, ylabel, xlim, ylim, title, space: plot_class_panel(ax, x, y, valid, noise_class, noise_labels, noise_colors, noise_alphas, xlabel, ylabel, xlim, ylim, title, space))
