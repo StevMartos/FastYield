@@ -103,7 +103,7 @@ def get_mask_planet_type(planet_table, planet_type):
 def get_mask_earth(planet_table):
     """Get a mask with the Earth-like planets"""
 
-    # --- Ranges "Earth-like" 
+    # --- Ranges "Earth-like"
     R_min,   R_max     = 0, 2   # [R_earth]
     M_min,   M_max     = 0, 10  # [M_earth]
     Teff_min, Teff_max = 0, 500 # [K]
@@ -131,7 +131,7 @@ def get_mask_earth(planet_table):
     after       = int(mask_earth.sum())
     print(f" After temperature filtering: {after} / {n} (-{before - after})")
 
-    return mask_earth 
+    return mask_earth
 
 
 
@@ -2070,7 +2070,7 @@ def get_archive_table(seed=None):
 
     # Flagging planets without atmosphere
     rocky_planets                                = get_mask_planet_type(planet_table, planet_type="earth")
-    no_atmosphere                                = rocky_planets & (no_retention | blown_atmosphere) 
+    no_atmosphere                                = rocky_planets & (no_retention | blown_atmosphere)
     planet_table["HasAtmosphere"][no_atmosphere] = False
 
     print("\n(12) Flagging rocky planets without atmosphere:")
@@ -2223,7 +2223,7 @@ def process_SNR(idx):
     # Planet row
     planet = planet_table[idx]
 
-    # Computing models on wave_model    
+    # Computing models on wave_model
     planet_spectrum, planet_thermal, planet_reflected, star_spectrum = get_thermal_reflected_spectrum(planet=planet, thermal_model=thermal_model, reflected_model=reflected_model, instru=None, wave_model=wave_model, wave_K=wave_K, counts_vega_K=counts_vega_K, show=False, in_planet_mag=True)
 
     # Re-computing the magnitudes (in case the models is different from the original table)
@@ -2475,10 +2475,10 @@ def planet_table_classification(planet_table=None, dpi=dpi_fig):
     mask_ot = (~mask_im) & (~mask_rv) & (~mask_tr)
 
     mask_cold = np.array(planet_table["PlanetTeff"].value < 250)
-    mask_temp = np.array(250 <= planet_table["PlanetTeff"].value) & np.array(planet_table["PlanetTeff"].value < 500) 
-    mask_warm = np.array(500 <= planet_table["PlanetTeff"].value) & np.array(planet_table["PlanetTeff"].value < 1000) 
-    mask_hot  = np.array(1000 <= planet_table["PlanetTeff"].value) & np.array(planet_table["PlanetTeff"].value < 1500) 
-    mask_vhot = np.array(1500 <= planet_table["PlanetTeff"].value) & np.array(planet_table["PlanetTeff"].value < 2000) 
+    mask_temp = np.array(250 <= planet_table["PlanetTeff"].value) & np.array(planet_table["PlanetTeff"].value < 500)
+    mask_warm = np.array(500 <= planet_table["PlanetTeff"].value) & np.array(planet_table["PlanetTeff"].value < 1000)
+    mask_hot  = np.array(1000 <= planet_table["PlanetTeff"].value) & np.array(planet_table["PlanetTeff"].value < 1500)
+    mask_vhot = np.array(1500 <= planet_table["PlanetTeff"].value) & np.array(planet_table["PlanetTeff"].value < 2000)
     mask_uhot = np.array(2000 <= planet_table["PlanetTeff"].value)
 
     plt.figure(figsize=(9, 5), dpi=dpi)
@@ -2537,7 +2537,7 @@ def planet_table_classification(planet_table=None, dpi=dpi_fig):
     legend_temp = [mlines.Line2D([0], [0], marker='o', linestyle='', markersize=8, label=lbl, markerfacecolor=col, markeredgecolor='none') for lbl, col in temp_colors_merged.items()]
     leg1 = ax.legend(handles=legend_temp, title="Temperature bands", loc='lower right', frameon=True, fontsize=12, title_fontsize=14)
     ax.add_artist(leg1)
-    legend_methods = [mlines.Line2D([], [], marker='s', linestyle='', markersize=8, markerfacecolor='black', markeredgecolor='black', label='Imaging'), 
+    legend_methods = [mlines.Line2D([], [], marker='s', linestyle='', markersize=8, markerfacecolor='black', markeredgecolor='black', label='Imaging'),
                       mlines.Line2D([], [], marker='o', linestyle='', markersize=8, markerfacecolor='black', markeredgecolor='black', label='Radial Velocity'),
                       mlines.Line2D([], [], marker='v', linestyle='', markersize=8, markerfacecolor='black', markeredgecolor='black', label='Transit'),
                       mlines.Line2D([], [], marker='P', linestyle='', markersize=8, markerfacecolor='black', markeredgecolor='black', label='Other')]
@@ -2932,7 +2932,7 @@ def planet_table_statistics(planet_table=None):
         data           = data,
         bins           = 30,
         labels         = [r"$log(\frac{M_p}{M_{\oplus}})$", r"$log(\frac{R_p}{R_{\oplus}})$", r"$T \, [\mathrm{K}]$", r"$log(\frac{SMA}{AU})$", r"$log(\frac{d}{pc})$"],
-        quantiles      = [0.16, 0.5, 0.84], # below -+1 sigma 
+        quantiles      = [0.16, 0.5, 0.84], # below -+1 sigma
         levels         = [0.68, 0.95, 0.997], # 1, 2 and 3 sigma contour
         show_titles    = True,
         title_kwargs   = {"fontsize": 14, "pad": 10},
@@ -2986,8 +2986,8 @@ def yield_plot_instrus_texp(thermal_model="auto", reflected_model="auto", fracti
     exposure_time = np.logspace(np.log10(0.1), np.log10(1000), 100)
     yield_harmoni          = np.zeros(len(exposure_time))
     yield_andes            = np.zeros(len(exposure_time))
-    yield_eris             = np.zeros(len(exposure_time)) 
-    yield_hirise           = np.zeros(len(exposure_time)) 
+    yield_eris             = np.zeros(len(exposure_time))
+    yield_hirise           = np.zeros(len(exposure_time))
     yield_mirimrs_non_syst = np.zeros(len(exposure_time))
     yield_mirimrs_syst     = np.zeros(len(exposure_time))
     yield_mirimrs_syst_pca = np.zeros(len(exposure_time))
@@ -3040,7 +3040,7 @@ def yield_plot_instrus_texp(thermal_model="auto", reflected_model="auto", fracti
     plt.plot(exposure_time, yield_harmoni,          lw=lw, c=colors_instru["HARMONI"], label="ELT/HARMONI")
     plt.plot(exposure_time, yield_andes,            lw=lw, c=colors_instru["ANDES"],   label="ELT/ANDES")
     plt.plot(exposure_time, yield_eris,             lw=lw, c=colors_instru["ERIS"],    label="VLT/ERIS")
-    #plt.plot(exposure_time, yield_hirise,           lw=lw, c=colors_instru["HiRISE"],  label="VLT/HiRISE")    
+    #plt.plot(exposure_time, yield_hirise,           lw=lw, c=colors_instru["HiRISE"],  label="VLT/HiRISE")
     plt.plot(exposure_time, yield_mirimrs_non_syst, lw=lw, c=colors_instru["MIRIMRS"], label="JWST/MIRI/MRS")
     plt.plot(exposure_time, yield_mirimrs_syst,     lw=lw, c=colors_instru["MIRIMRS"], ls='--')
     plt.plot(exposure_time, yield_mirimrs_syst_pca, lw=lw, c=colors_instru["MIRIMRS"], ls=':')
@@ -3061,7 +3061,7 @@ def yield_plot_instrus_texp(thermal_model="auto", reflected_model="auto", fracti
     plt.xlim(exposure_time[0], exposure_time[-1])
     plt.title('Known exoplanets detection yield', fontsize=22, weight='bold', pad=22)
     plt.tick_params(axis='both', labelsize=18)
-    plt.legend(fontsize=16, ncols=2, loc="upper left", frameon=True, fancybox=True, edgecolor="gray", facecolor="whitesmoke", title="Instruments", title_fontsize=18)    
+    plt.legend(fontsize=16, ncols=2, loc="upper left", frameon=True, fancybox=True, edgecolor="gray", facecolor="whitesmoke", title="Instruments", title_fontsize=18)
     ax        = plt.gca()
     ax_legend = ax.twinx()
     ax_legend.plot([], [], 'k-',  label='Without Systematics',    linewidth=lw)
@@ -3504,7 +3504,7 @@ def yield_corner_instru(instru="HARMONI", exposure_time=6*60, thermal_model="BT-
         data           = data,
         fig            = figure,
         bins           = 20,
-        quantiles      = [0.5], # below -+1 sigma 
+        quantiles      = [0.5], # below -+1 sigma
         levels         = [0.68, 0.95, 0.997], # 1, 2 and 3 sigma contour
         show_titles    = False,
         top_ticks      = False,
@@ -5032,7 +5032,7 @@ def yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto
     """
 
     golden_sample  = ["Proxima Cen b", "Wolf 1061 b", "GJ 682 b"]#, "GJ 273 b", "Ross 128 b"]
-    golden_offsets = {"obs":  {"Proxima Cen b": (100, 50),  "GJ 273 b": (25, -45), "Wolf 1061 b": (-50, 50), "GJ 682 b": (40, -80), "Ross 128 b": (25, 45)}, 
+    golden_offsets = {"obs":  {"Proxima Cen b": (100, 50),  "GJ 273 b": (25, -45), "Wolf 1061 b": (-50, 50), "GJ 682 b": (40, -80), "Ross 128 b": (25, 45)},
                       "phys": {"Proxima Cen b": (100, 30), "GJ 273 b": (55, 20),  "Wolf 1061 b": (-30, 80), "GJ 682 b": (50, 40),  "Ross 128 b": (35, 55)}}
 
     detection_method_region_text_positions = {"Transit": (None, 1e-5), "Radial Velocity": (None, 5e-10), "Imaging": (None, None)}
@@ -5055,7 +5055,7 @@ def yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto
     alpha_detected    = 0.5 if instru is None else 0.9
     alpha_nondetected = 0.05
     fontsize          = 22
-    dpi               = 300
+    dpi               = dpi_fig
 
     # Optional mode using already-computed FastYield results
     precomputed = instru is not None and (planet_table is not None or SNR_plot is not None or dominant_noise is not None)
@@ -5090,7 +5090,7 @@ def yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto
         else:
             raise ValueError("config_mode must be 'fixed' or 'max'.")
 
-    ptypes_plot         = ["Jupiter", "Saturn", "Neptune", "Earth"]    
+    ptypes_plot         = ["Jupiter", "Saturn", "Neptune", "Earth"]
     ptype_region_colors = {"Earth": "tab:green", "Neptune": "tab:blue", "Saturn": "tab:orange", "Jupiter": "tab:red"}
     ptype_region_labels = {"Earth": "Earth-like", "Neptune": "Neptune-like", "Saturn": "Saturn-like", "Jupiter": "Jupiter-like"}
 
@@ -5163,7 +5163,7 @@ def yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto
         ]
         leg = ax.add_artist(ax.legend(handles=handles, fontsize=fontsize-2, loc=loc, frameon=True, edgecolor="gray", facecolor="white"))
         leg.set_zorder(100_000)
-        
+
     def add_detection_method_regions(ax):
         for method in detection_methods_regions:
             mask = masks_detection_method[method] & np.isfinite(AngSep) & np.isfinite(contrast) & (AngSep > 0) & (contrast > 0)
@@ -5447,7 +5447,7 @@ def yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto
     if instru is not None:
         noise_class  = dominant_noise.copy()
         noise_order  = ["Stellar halo",               "Background",             "Read noise",               "Dark current",              "Speckles",            "Residuals",            "Systematics",            "Fundamental noise",               "Unknown"]
-        noise_colors = {"Stellar halo": "tab:orange", "Background": "tab:blue", "Read noise": "tab:purple", "Dark current": "tab:green", "Speckles": "tab:red", "Residuals": "tab:red", "Systematics": "tab:red", "Fundamental noise": "tab:orange", "Unknown": "0.50"}        
+        noise_colors = {"Stellar halo": "tab:orange", "Background": "tab:blue", "Read noise": "tab:purple", "Dark current": "tab:green", "Speckles": "tab:red", "Residuals": "tab:red", "Systematics": "tab:red", "Fundamental noise": "tab:orange", "Unknown": "0.50"}
         noise_labels = [label for label in noise_order if np.any(noise_class == label)]
         noise_alphas              = {label: 0.20 if label == "Non-detected" else alpha_detected for label in noise_labels}
         fig_noise, axes_noise     = make_two_panel(title=f"ELT/{instru} dominant noise regime in {exposure_time/60:.0f} hr per target", subtitle=f"{N_det:.0f}/{N_total:.0f} detections", plot_func=lambda ax, x, y, valid, xlabel, ylabel, xlim, ylim, title, space: plot_class_panel(ax, x, y, valid, noise_class, noise_labels, noise_colors, noise_alphas, xlabel, ylabel, xlim, ylim, title, space))
