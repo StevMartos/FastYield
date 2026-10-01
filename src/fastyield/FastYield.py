@@ -944,7 +944,7 @@ def plot_matching_planets(matching_planets, exposure_time, mode, planet_types=pl
         table.auto_set_column_width([i for i in range(len(matching_planets_df.columns))])
     elif mode == 'multi':
         table.auto_set_column_width([i for i in range(len(conditions_df.columns))])
-    plt.show()
+    plt.show(block=False)
 
 
 
@@ -2596,7 +2596,7 @@ def planet_table_classification(planet_table=None, dpi=dpi_fig):
     draw_grey_highlight(ax, bounds, face_alpha=0.08, edge_alpha=0.85, edge_lw=1.2, label_fs=13)
     plt.draw()
     plt.tight_layout()
-    plt.show()
+    plt.show(block=False)
 
 
 
@@ -2908,7 +2908,7 @@ def planet_table_classification_histogram(planet_table=None, dpi=dpi_fig):
 
     # Final layout
     fig.subplots_adjust(left=0.27, right=0.97, top=0.93, bottom=0.06, wspace=0.02)
-    plt.show()
+    plt.show(block=False)
 
 
 
@@ -2955,7 +2955,7 @@ def planet_table_statistics(planet_table=None):
         ax.xaxis.get_offset_text().set_fontsize(tick_labelsize)
         ax.yaxis.get_offset_text().set_fontsize(tick_labelsize)
     figure.set_dpi(300)
-    plt.show()
+    plt.show(block=False)
 
 
 
@@ -3070,7 +3070,7 @@ def yield_plot_instrus_texp(thermal_model="auto", reflected_model="auto", fracti
     ax_legend.legend(fontsize=16, loc="lower right", frameon=True, fancybox=True, edgecolor="gray", facecolor="whitesmoke", title="Systematic assumption", title_fontsize=18)
     ax_legend.tick_params(axis='y', colors='w')  # Masking ticks
     plt.tight_layout()
-    plt.show()
+    plt.show(block=False)
 
 
 
@@ -3161,7 +3161,7 @@ def yield_plot_bands_texp(table="Archive", instru="HARMONI", thermal_model="auto
             ax_legend.legend(fontsize=16, loc="upper center", frameon=True, fancybox=True, edgecolor="gray", facecolor="whitesmoke", title="Coronagraphs", title_fontsize=18)
         ax_legend.tick_params(axis='y', colors='w') # Masking ticks
     plt.tight_layout()
-    plt.show()
+    plt.show(block=False)
 
 
 
@@ -3310,7 +3310,7 @@ def yield_hist_instrus_ptypes(exposure_time=10*60, thermal_model="auto", reflect
     plt.grid(which="minor", linestyle=":",  linewidth=0.4, alpha=0.25, zorder=-10)
     plt.legend(title="Instruments", title_fontsize=16, fontsize=14, loc="upper left", frameon=True, edgecolor="gray", facecolor="whitesmoke", ncol=2)
     plt.tight_layout()
-    plt.show()
+    plt.show(block=False)
 
 
 
@@ -3431,7 +3431,7 @@ def yield_hist_instrus_ptypes_ELT(exposure_time=10*60, thermal_model="auto", ref
     plt.grid(which="minor", linestyle=":",  linewidth=0.4, alpha=0.25, zorder=-10)
     plt.legend(title="Instruments", title_fontsize=16, fontsize=14, loc="upper center", frameon=True, edgecolor="gray", facecolor="whitesmoke", ncol=2)
     plt.tight_layout()
-    plt.show()
+    plt.show(block=False)
 
 
 
@@ -3519,7 +3519,7 @@ def yield_corner_instru(instru="HARMONI", exposure_time=6*60, thermal_model="BT-
 
     figure.suptitle(f"{instru} re-detections statistics with {len(planet_table)} / {len(planet_table_raw)} detections between {round(iwa)} and {round(owa)} mas\nfor {round(exposure_time/60)} hours per target (with {spectrum_contributions} light with {name_model})", fontsize=18, y=1.05, fontweight="bold")
     plt.gcf().set_dpi(300)
-    plt.show()
+    plt.show(block=False)
 
 
 
@@ -3803,7 +3803,7 @@ def yield_corner_instrus(instru1="HARMONI", instru2="ANDES", band1="INSTRU", ban
     figure.suptitle(title, fontsize=fontsize_suptitle, fontweight="bold", x=0.63, y=0.93)
 
     plt.gcf().set_dpi(300)
-    plt.show()
+    plt.show(block=False)
 
 
 
@@ -4168,7 +4168,7 @@ def yield_plot_instrus_contrast(table="Archive", exposure_time=10*60, thermal_mo
     ax.tick_params(axis="both", which="minor", labelsize=18)
 
     fig.tight_layout()
-    plt.show()
+    plt.show(block=False)
 
     return results, fig, ax
 
@@ -4274,7 +4274,7 @@ def yield_contrast_instru(instru="ANDES", exposure_time=6*60, thermal_model="BT-
 
     # Show
     plt.tight_layout()
-    plt.show()
+    plt.show(block=False)
 
 
 
@@ -4303,7 +4303,7 @@ def Vrot_plots(dpi=dpi_fig):
     plt.grid(which="minor", linestyle=":",  linewidth=0.4, alpha=0.25, zorder=-10)
     plt.minorticks_on()
     plt.tight_layout()
-    plt.show()
+    plt.show(block=False)
 
     st_mask = np.logical_not(get_invalid_mask(planet_table["StarTeff"]))
     plt.figure(dpi=dpi)
@@ -4321,7 +4321,7 @@ def Vrot_plots(dpi=dpi_fig):
     plt.grid(which="minor", linestyle=":",  linewidth=0.4, alpha=0.25, zorder=-10)
     plt.minorticks_on()
     plt.tight_layout()
-    plt.show()
+    plt.show(block=False)
 
 
 
@@ -4689,7 +4689,7 @@ def yield_contrast_ELT_earthlike(thermal_model="BT-Settl", reflected_model="tell
     txt.set_path_effects([pe.withStroke(linewidth=lw, foreground="white")])
 
     plt.tight_layout()
-    plt.show()
+    plt.show(block=False)
 
 
 
@@ -4847,7 +4847,7 @@ def yield_contrast_ELT_earthlike(thermal_model="BT-Settl", reflected_model="tell
     txt.set_path_effects([pe.withStroke(linewidth=lw, foreground="white")])
 
     plt.tight_layout()
-    plt.show()
+    plt.show(block=False)
 
 
 
@@ -5014,7 +5014,7 @@ def yield_heatmap_ELT(table="Archive", instru="HARMONI", thermal_model="auto", r
         save_dir.mkdir(parents=True, exist_ok=True)
         filename = f"ELT_{instru}_yield_heatmap.png" if filename is None else filename
         fig.savefig(save_dir/filename, bbox_inches="tight", dpi=dpi)
-    plt.show()
+    plt.show(block=False)
     return fig, axes
 
 
@@ -5300,7 +5300,7 @@ def yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto
     def save_and_show(fig, filename):
         if save_dir is not None:
             fig.savefig(save_dir / filename, bbox_inches="tight", dpi=dpi)
-        plt.show()
+        plt.show(block=False)
 
     # Load tables and compute SNR, unless quantities were already computed
     if instru is None:
