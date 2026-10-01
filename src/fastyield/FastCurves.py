@@ -33,7 +33,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
     """
     See the function "FastCurves" below.
     """
-    
+        
     if not return_FastYield:
         warnings.filterwarnings("ignore", message="FigureCanvasAgg is non-interactive*", category=UserWarning)
         #warnings.filterwarnings('ignore', category=UserWarning, append=True)
@@ -393,7 +393,9 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
                         sigma_syst_prime_2, separation_syst, Mp, M_pca, wave_data, pca, PCA_verbose = get_systematics(config_data=config_data, band=band, tellurics=tellurics, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, R_band=R_band, Rc=Rc, filter_type=filter_type, star_spectrum_instru=star_spectrum_instru, planet_spectrum_instru=planet_spectrum_instru, stellar_component=stellar_component, wave_band=wave_band, size_core=size_core, PCA=PCA, PCA_mask=PCA_mask, N_PCA=N_PCA, mag_planet=mag_planet, separation_planet=separation_planet, mag_star=mag_star, exposure_time=exposure_time, target_name=planet_name)
                         
                         # Interpolation + extrapolation (if needed) on the current separation axis
-                        sigma_syst_prime = np.exp(interp1d(separation_syst, np.log(np.sqrt(sigma_syst_prime_2)), bounds_error=False, fill_value="extrapolate")(separation))
+                        log_sigma_syst_prime = np.log(np.sqrt(sigma_syst_prime_2))
+                        valid                = np.isfinite(log_sigma_syst_prime)
+                        sigma_syst_prime     = np.exp(interp1d(separation_syst[valid], log_sigma_syst_prime[valid], bounds_error=False, fill_value="extrapolate")(separation))
                         if separation[-1] > separation_syst[-1]: # Systematic profile extrapolation
                             slope                       = hdr_PSF["slope"]
                             mask_tail                   = separation >= separation_syst[-1]

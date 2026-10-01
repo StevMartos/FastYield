@@ -1073,42 +1073,41 @@ def get_systematics(config_data, band, tellurics, apodizer, strehl, coronagraph,
     # --------------------------------------------------------
     # 5) Build radial profile of systematic noise from the CCF
     # --------------------------------------------------------
-    max_r = int(round(np.sqrt((NbLine/2)**2 + (NbColumn/2)**2)))
     
-    r_arr = np.arange(max_r)
-    r_int = np.where(r_arr > 1, r_arr - 1, r_arr)
-    r_ext = np.where(r_arr == 0, r_arr + 1, r_arr)
+    # Maximum radius allowed by the FoV
+    max_r      = int(np.floor((FOV / 2) / pxscale)) + 1
+    r_arr      = np.arange(max_r)
+    r_int      = np.where(r_arr > 1, r_arr - 1, r_arr)
+    r_ext      = np.where(r_arr == 0, r_arr + 1, r_arr)
+    separation = (r_int + r_ext) / 2 * pxscale  # [sep_unit]
     
-    separation = (r_int + r_ext) / 2 * pxscale # [sep_unit]
+    # Keep only annuli whose central separation is inside FOV/2
+    mask_fov   = separation <= FOV / 2
+    r_int      = r_int[mask_fov]
+    r_ext      = r_ext[mask_fov]
+    separation = separation[mask_fov]
     
-    Y, X = np.indices((NbLine, NbColumn))
-    r2   = ((Y - y_center)**2 + (X - x_center)**2).ravel()
-    
-    ccf    = np.asarray(CCF_wo_planet, dtype=float).ravel()
-    valid  = np.isfinite(ccf)
-    r2_v   = r2[valid]
-    ccf_v  = ccf[valid]
-    
+    Y, X  = np.indices((NbLine, NbColumn))
+    r2    = ((Y - y_center)**2 + (X - x_center)**2).ravel()
+    ccf   = np.asarray(CCF_wo_planet, dtype=float).ravel()
+    valid = np.isfinite(ccf)
+    r2_v  = r2[valid]
+    ccf_v = ccf[valid]
     order = np.argsort(r2_v)
     r2_s  = r2_v[order]
     ccf_s = ccf_v[order]
-    
-    cs1 = np.concatenate(([0.0], np.cumsum(ccf_s)))
-    cs2 = np.concatenate(([0.0], np.cumsum(ccf_s**2)))
-    
+    cs1   = np.concatenate(([0.0], np.cumsum(ccf_s)))
+    cs2   = np.concatenate(([0.0], np.cumsum(ccf_s**2)))
     left  = np.searchsorted(r2_s, r_int**2, side="left")
     right = np.searchsorted(r2_s, r_ext**2, side="right")
-    
     count = right - left
     sum1  = cs1[right] - cs1[left]
     sum2  = cs2[right] - cs2[left]
-    
-    mean = np.divide(sum1, count, out=np.full(max_r, np.nan), where=(count > 0))        
-    var = np.divide(sum2, count, out=np.full(max_r, np.nan), where=(count > 1)) - mean**2
-    var = np.where(count > 1, np.maximum(var, 0.0), np.nan)
-    
-    sigma_syst_prime_2 = var # [e-/FWHM/mn]**2
-    
+    mean  = np.divide(sum1, count, out=np.full(len(separation), np.nan), where=(count > 0))
+    var   = np.divide(sum2, count, out=np.full(len(separation), np.nan), where=(count > 1)) - mean**2
+    var   = np.where(count > 1, np.maximum(var, 0.0), np.nan)
+    sigma_syst_prime_2 = var  # [e-/FWHM/mn]**2
+
     # -----------------------
     # 6) Mp (planet modulation proxy on FWHM box): mean within FWHM box around the star core, normalized by star flux
     # -----------------------
