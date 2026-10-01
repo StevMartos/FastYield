@@ -1240,39 +1240,39 @@ def main():
     # }
 
     # imager instrument concept (global)
-    instrument_concept = {
-        'instru_type': 'imager',
-        'postproc': 'DI',         # MM or DI
-        'l0_min': 0.6,            # [µm] central wavelength
-        'l0_max': 2.5,
-        'Dl_min': 0.01,           # [µm] bandwidth
-        'Dl_max': 0.2,
-        'FoV_min': 1,             # [mas] Field Of View
-        'FoV_max': 1_000,
-        'tr_min': 0.001,          # [dimensionlesss] instrument transmission
-        'tr_max': 0.5,
-        'σ_m_min': 1e-3,          # [dimensionlesss] level of residual speckles
-        'σ_m_max': 1e-1
-    }
+    # instrument_concept = {
+    #     'instru_type': 'imager',
+    #     'postproc': 'DI',         # MM or DI
+    #     'l0_min': 0.6,            # [µm] central wavelength
+    #     'l0_max': 2.5,
+    #     'Dl_min': 0.01,           # [µm] bandwidth
+    #     'Dl_max': 0.2,
+    #     'FoV_min': 1,             # [mas] Field Of View
+    #     'FoV_max': 1_000,
+    #     'tr_min': 0.001,          # [dimensionlesss] instrument transmission
+    #     'tr_max': 0.5,
+    #     'σ_m_min': 1e-3,          # [dimensionlesss] level of residual speckles
+    #     'σ_m_max': 1e-1
+    # }
 
     # instrument concept A: High-res VIS IFU
     # (V)RI, R = 10**5, FoV ~100 mas
-    # instrument_concept = {
-    #     'instru_type': 'IFU',
-    #     'postproc': 'MM',
-    #     'R_min': 50_000,
-    #     'R_max': 200_000,
-    #     'l0_min': 0.5,
-    #     'l0_max': 0.8,
-    #     'Nl_min': 100,
-    #     'Nl_max': 200_000,
-    #     'FoV_min': 1,
-    #     'FoV_max': 100*2,
-    #     'tr_min': 0.001,
-    #     'tr_max': 0.5,
-    #     'σ_m_min': 1e-7,
-    #     'σ_m_max': 1e-1
-    # }
+    instrument_concept = {
+        'instru_type': 'IFU',
+        'postproc': 'MM',
+        'R_min': 50_000,
+        'R_max': 200_000,
+        'l0_min': 0.6,
+        'l0_max': 0.8,
+        'Nl_min': 100,
+        'Nl_max': 200_000,
+        'FoV_min': 1,
+        'FoV_max': 100*2,
+        'tr_min': 0.001,
+        'tr_max': 0.5,
+        'σ_m_min': 1e-7,
+        'σ_m_max': 1e-1
+    }
 
 
     # --- General parameters for the simulation ---
