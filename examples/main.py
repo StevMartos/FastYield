@@ -17,7 +17,7 @@ from fastyield.colormaps import colormap_bandwidth_resolution_with_constant_Nlam
 #                       Graphic User Interface (GUI):                          #
 #------------------------------------------------------------------------------#
 
-# FastYield_interface()
+FastYield_interface()
 
 
 #------------------------------------------------------------------------------#
@@ -57,7 +57,7 @@ from fastyield.colormaps import colormap_bandwidth_resolution_with_constant_Nlam
 # instru="HARMONI", thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl="JQ1", systematics=False, split_ptypes_by_regime=True, band_regime_plot=None, PCA=False, fraction=False, SNR_thresh=5)
 # yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl="JQ1", config_mode="best", apodizer="NO_SP", coronagraph=None, band_snr="INSTRU", band_contrast_plot="H", band_regime_plot="H", systematics=False, PCA=False)
 
-yield_population_plot(table="Archive", instru="ANDES", thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl="MED", config_mode="best", apodizer="NO_SP", coronagraph=None, band_snr="INSTRU", band_contrast_plot="H", band_regime_plot="H", systematics=False, PCA=False)
+# yield_population_plot(table="Archive", instru="ANDES", thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl="MED", config_mode="best", apodizer="NO_SP", coronagraph=None, band_snr="INSTRU", band_contrast_plot="H", band_regime_plot="H", systematics=False, PCA=False)
 # yield_heatmap_ELT(instru="ANDES", thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl="MED", systematics=False, split_ptypes_by_regime=True, band_regime_plot=None, PCA=False, fraction=False, SNR_thresh=5)
 # yield_hist_instrus_ptypes_ELT(exposure_time=10*60, thermal_model="auto", reflected_model="auto", planet_types=planet_types,         fraction=False, instrus=["HARMONI", "HARMONI+SP_Prox", "ANDES", "ANDES+LYOT"])
 
