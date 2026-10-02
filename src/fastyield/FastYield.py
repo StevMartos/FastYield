@@ -23,6 +23,7 @@ from matplotlib.colors import LogNorm
 from matplotlib.patches import Rectangle, Patch
 import matplotlib.patheffects as pe
 from matplotlib.cm import ScalarMappable
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 # import numpy modules
 import numpy as np
@@ -5266,6 +5267,29 @@ def yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto
             ax.text(xc, yc, f"{100*frac[ix, iy]:.0f}%\n{int(N_det[ix, iy])}/{int(N_tot[ix, iy])}", ha="center", va="center", fontsize=fontsize-8, color="w" if frac[ix, iy] < 0.6 else "k", zorder=3)
         setup_axes(ax, xlabel, ylabel, xlim, ylim, title)
         ax.grid(False)
+
+        # Marginal histograms of detected planets along both axes
+        divider = make_axes_locatable(ax)
+        ax_top  = divider.append_axes("top",   size="18%", pad=0.08, sharex=ax)
+        ax_right = divider.append_axes("right", size="18%", pad=0.08, sharey=ax)
+        hist_x_det = N_det.sum(axis=1)
+        hist_y_det = N_det.sum(axis=0)
+        ax_top.stairs(np.maximum(hist_x_det, 0.9), edges_x, baseline=0.9, fill=True, color=cmap_frac(0.6), edgecolor="k", linewidth=1)
+        ax_right.stairs(np.maximum(hist_y_det, 0.9), edges_y, baseline=0.9, orientation="horizontal", fill=True, color=cmap_frac(0.6), edgecolor="k", linewidth=1)
+        ax.set_title("")
+        ax_top.set_title(title, fontsize=fontsize+2, weight="bold", pad=10)
+        for a in (ax_top, ax_right):
+            a.grid(which="major", linestyle="--", linewidth=0.7, alpha=0.45, zorder=-10)
+            a.tick_params(axis="both", which="major", labelsize=fontsize-4, length=4)
+            a.tick_params(axis="both", which="minor", labelbottom=False, labelleft=False)
+        ax_top.tick_params(axis="x", labelbottom=False)
+        ax_right.tick_params(axis="y", labelleft=False)
+        ax_top.set_ylabel("N", fontsize=fontsize)
+        ax_right.set_xlabel("N", fontsize=fontsize)
+        ax_top.set_yscale("log")
+        ax_top.set_ylim(0.9, max(hist_x_det.max(), 1) * 1.5)
+        ax_right.set_xscale("log")
+        ax_right.set_xlim(0.9, max(hist_y_det.max(), 1) * 1.5)
         return mesh
 
     def make_two_panel(title, plot_func, valid_obs_plot=None, valid_phys_plot=None, subtitle=None, legends=True):
