@@ -37,8 +37,7 @@ from tqdm import tqdm
 from sklearn.decomposition import PCA
 import statsmodels.api as sm
 from pathlib import Path
- 
-
+import warnings
 
 
 
@@ -1740,7 +1739,9 @@ def PCA_subtraction(S_res, N_PCA, y0=None, x0=None, size_core=None, PCA_annular=
         
         # Reshape the cube to 2D (pixels x channels) and replace NaNs with the mean value of their spectral channel
         S_res_wo_planet = np.reshape(S_res_wo_planet, (NbChannel, NbColumn * NbLine)).T        
-        col_mean        = np.nanmean(S_res_wo_planet, axis=0)        
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            col_mean = np.nanmean(S_res_wo_planet, axis=0)
         bad_cols        = ~np.isfinite(col_mean)   # True si NaN/inf
         if np.any(bad_cols):
             col_mean[bad_cols] = 0.0
