@@ -2323,36 +2323,36 @@ def extract_jwst_data(instru, target_name, band, crop_band=True, outliers=False,
         # Unknown instrument
         else:
             raise KeyError(f"Unknown instrument {instru}")
-    f = fits.open(file)
-    
-    # Retrieving header values
-    hdr0 = f[0].header
-    hdr1 = f[1].header
-    # MIRI/MRS
-    if instru=="MIRIMRS" :
-        # Files already per band
-        if "sim" in target_name.lower() or "shortmediumlong" not in file: # MIRISIM are already per band
-            exposure_time = f[0].header['EFFEXPTM']/60 # [mn]
-        # Files per channel
-        else:
-            target_name   = hdr0['TARGNAME']
-            exposure_time = f[0].header['EFFEXPTM']/3/60 # [mn]
-    # NIRSpec/IFU
-    elif instru == "NIRSpec":
-        target_name   = hdr0['TARGNAME']
-        exposure_time = f[0].header['EFFEXPTM']/60 # [mn]
-    DIT        = f[0].header['EFFINTTM']/60 # [mn]
-    pxscale    = hdr1['CDELT1']*3600        # [arcsec/px]
-    pxscale_Sr = hdr1['PIXAR_SR']           # [Sr/px]
-    dwave      = hdr1['CDELT3']             # [µm/bin]
 
-    # Wavelength axis
-    wave = (np.arange(hdr1['NAXIS3']) + hdr1['CRPIX3'] - 1) * hdr1['CDELT3'] + hdr1['CRVAL3'] # [µm]
-    R    = get_resolution(wavelength=wave, func=np.nanmedian)
+    with fits.open(file) as f:    
+        # Retrieving header values
+        hdr0 = f[0].header
+        hdr1 = f[1].header
+        # MIRI/MRS
+        if instru=="MIRIMRS" :
+            # Files already per band
+            if "sim" in target_name.lower() or "shortmediumlong" not in file: # MIRISIM are already per band
+                exposure_time = f[0].header['EFFEXPTM']/60 # [mn]
+            # Files per channel
+            else:
+                target_name   = hdr0['TARGNAME']
+                exposure_time = f[0].header['EFFEXPTM']/3/60 # [mn]
+        # NIRSpec/IFU
+        elif instru == "NIRSpec":
+            target_name   = hdr0['TARGNAME']
+            exposure_time = f[0].header['EFFEXPTM']/60 # [mn]
+        DIT        = f[0].header['EFFINTTM']/60 # [mn]
+        pxscale    = hdr1['CDELT1']*3600        # [arcsec/px]
+        pxscale_Sr = hdr1['PIXAR_SR']           # [Sr/px]
+        dwave      = hdr1['CDELT3']             # [µm/bin]
     
-    # Retrieving data
-    cube = f[1].data # [MJy/Sr]
-    err  = f[2].data # [MJy/Sr]
+        # Wavelength axis
+        wave = (np.arange(hdr1['NAXIS3']) + hdr1['CRPIX3'] - 1) * hdr1['CDELT3'] + hdr1['CRVAL3'] # [µm]
+        R    = get_resolution(wavelength=wave, func=np.nanmedian)
+        
+        # Retrieving data
+        cube = f[1].data # [MJy/Sr]
+        err  = f[2].data # [MJy/Sr]
     
     # Centering the max (if needed)
     if crop_cube:
