@@ -2454,7 +2454,11 @@ def extract_jwst_data(instru, target_name, band, crop_band=True, outliers=False,
     
         for key, fmt in fields:
             try:
-                print(f" {key:<13}: {fmt.format(hdr0[key])}")
+                if key == "DATE-OBS":
+                    print(f" {key:<13}: {fmt.format(hdr0[key])} [yyyy-mm-dd]")
+                else:
+                    print(f" {key:<13}: {fmt.format(hdr0[key])}")
+                
             except KeyError:
                 pass
     
