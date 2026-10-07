@@ -5020,7 +5020,7 @@ def yield_heatmap_ELT(table="Archive", instru="HARMONI", thermal_model="auto", r
 
 
 
-def yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl="JQ1", config_mode="best", apodizer="NO_SP", coronagraph=None, band_snr="INSTRU", band_contrast_plot="INSTRU", band_regime_plot="INSTRU", systematics=False, PCA=False, planet_table=None, SNR_plot=None, dominant_noise=None, SNR_thr=None, save_dir=None, DL_mas=None, DL_text="Diffraction limit", show_golden_sample=True, show_det_regions=True, show_ptype_regions=True, show_VLT_DL=False):
+def yield_population_plot(table="Archive", instru="HARMONI", instru_type=None, post_processing=None, thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl="JQ1", config_mode="best", apodizer="NO_SP", coronagraph=None, band_snr="INSTRU", band_contrast_plot="INSTRU", band_regime_plot="INSTRU", systematics=False, PCA=False, planet_table=None, SNR_plot=None, dominant_noise=None, SNR_thr=None, save_dir=None, DL_mas=None, DL_text="Diffraction limit", show_golden_sample=True, show_det_regions=True, show_ptype_regions=True, show_VLT_DL=False):
     """
     Plot in one call:
       1) detected population,
@@ -5044,10 +5044,15 @@ def yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto
         band_contrast_plot = "H" if band_contrast_plot == "INSTRU" else band_contrast_plot
         band_regime_plot   = "H" if band_regime_plot   == "INSTRU" else band_regime_plot
 
-    if instru == "PCS":
-        obs_xlim      = (1e-2, 1e3)
+    if instru_type is not None and post_processing is not None:
+        type_and_pp = f'_{instru_type}_{post_processing}'
     else:
-        obs_xlim      = (1e-2, 1e6)
+        type_and_pp = ''
+
+    if instru == "PCS":
+        obs_xlim      = (1, 1e3)
+    else:
+        obs_xlim      = (1, 1e6)
     obs_ylim          = (1e-10, 1e-1)
     phys_xlim         = (5e-3, 1e3) # [SMA]
     phys_ylim         = (5e-1, 1e4) # [M_earth]
@@ -5157,6 +5162,11 @@ def yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto
         handles = [Line2D([], [], ls="", marker=marker_detection_methods[method], ms=13, markerfacecolor="white", markeredgecolor="k", markeredgewidth=1.5, color="k", label=label_detection_methods[method]) for method in detection_methods_plot]
         ax.add_artist(ax.legend(handles=handles, fontsize=fontsize-2, loc=loc, frameon=True, edgecolor="gray", facecolor="white", title="Discovery method", title_fontsize=fontsize))
 
+    def add_light_regime_legend(ax, loc="lower right"):
+        groups, _, markers = get_regime_marker_groups()
+        handles = [Line2D([], [], ls="", marker=markers[label], ms=13, markerfacecolor="white", markeredgecolor="k", markeredgewidth=1.5, color="k", label=label) for label in groups]
+        ax.add_artist(ax.legend(handles=handles, fontsize=fontsize-2, loc=loc, frameon=True, edgecolor="gray", facecolor="white", title=f"Planet-light regime ({band_regime_plot})", title_fontsize=fontsize))
+
     def add_detection_legend(ax, loc="lower left"):
         handles = [
             Line2D([], [], ls="", marker="o", ms=13, markerfacecolor="0.65", markeredgecolor="none", alpha=0.35, color="0.65", label="Non-detected"),
@@ -5214,6 +5224,11 @@ def yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto
 
     def get_marker_groups():
         return detection_methods_plot, masks_detection_method, marker_detection_methods
+
+    def get_regime_marker_groups():
+        groups = [label for label in ["Thermal", "Reflected", "Unclassified"] if np.any(light_class == label)]
+        masks  = {label: light_class == label for label in groups}
+        return groups, masks, marker_light_regimes
 
     def plot_population_panel(ax, x, y, valid, xlabel, ylabel, xlim, ylim, title, space):
         groups, masks, markers = get_marker_groups()
@@ -5292,7 +5307,7 @@ def yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto
         ax_right.set_xlim(0.9, max(hist_y_det.max(), 1) * 1.5)
         return mesh
 
-    def make_two_panel(title, plot_func, valid_obs_plot=None, valid_phys_plot=None, subtitle=None, legends=True):
+    def make_two_panel(title, plot_func, valid_obs_plot=None, valid_phys_plot=None, subtitle=None, legends=True, marker_legend="method"):
         valid_obs_plot  = valid_obs if valid_obs_plot is None else valid_obs_plot
         valid_phys_plot = valid_phys if valid_phys_plot is None else valid_phys_plot
         fig, axes       = plt.subplots(1, 2, figsize=(22, 10) if instru is not None else (21, 9), dpi=dpi)
@@ -5313,7 +5328,10 @@ def yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto
         if legends:
             if instru is not None:
                 add_detection_legend(axes[0],    loc="lower left")
-            add_detection_method_legend(axes[1], loc="lower right")
+            if marker_legend == "regime":
+                add_light_regime_legend(axes[1], loc="lower right")
+            else:
+                add_detection_method_legend(axes[1], loc="lower right")
         if instru is not None:
             fig.suptitle(title, fontsize=fontsize+5, weight="bold", y=0.98)
             if subtitle is not None:
@@ -5456,7 +5474,7 @@ def yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto
     cbar = fig_pop.colorbar(sm, ax=axes_pop, pad=0.03, fraction=0.03)
     cbar.set_label(r"Star $T_\mathrm{eff}$ [K]", fontsize=fontsize+2, rotation=270, labelpad=30)
     cbar.ax.tick_params(labelsize=fontsize-2)
-    save_and_show(fig_pop, f"ELT_{instru}_detected_population_{table}_{band_contrast_plot}band.png")
+    save_and_show(fig_pop, f"ELT_{instru}{type_and_pp}_detected_population_{table}_{band_contrast_plot}band.png")
 
     # 2) Detected population colored by planet temperature
     fig_planet_teff, axes_planet_teff = make_two_panel(title=f"ELT/{instru} detected population in {exposure_time/60:.0f} hr per target", subtitle=f"{N_det:.0f}/{N_total:.0f} detections ({N_det/N_total*100:.1f}%)", plot_func=plot_population_planet_teff_panel, valid_obs_plot=valid_obs_planet_teff, valid_phys_plot=valid_phys_planet_teff)
@@ -5465,7 +5483,7 @@ def yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto
     cbar = fig_planet_teff.colorbar(sm, ax=axes_planet_teff, pad=0.03, fraction=0.03)
     cbar.set_label(r"Planet $T_\mathrm{eff}$ [K]", fontsize=fontsize+2, rotation=270, labelpad=30)
     cbar.ax.tick_params(labelsize=fontsize-2)
-    save_and_show(fig_planet_teff, f"ELT_{instru}_detected_population_planet_teff_{table}_{band_contrast_plot}band.png")
+    save_and_show(fig_planet_teff, f"ELT_{instru}{type_and_pp}_detected_population_planet_teff_{table}_{band_contrast_plot}band.png")
 
     # 3) Dominant noise regime
     if instru is not None:
@@ -5477,16 +5495,16 @@ def yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto
         fig_noise, axes_noise     = make_two_panel(title=f"ELT/{instru} dominant noise regime in {exposure_time/60:.0f} hr per target", subtitle=f"{N_det:.0f}/{N_total:.0f} detections ({N_det/N_total*100:.1f}%)", plot_func=lambda ax, x, y, valid, xlabel, ylabel, xlim, ylim, title, space: plot_class_panel(ax, x, y, valid, noise_class, noise_labels, noise_colors, noise_alphas, xlabel, ylabel, xlim, ylim, title, space))
         handles_noise             = [Line2D([], [], ls="", marker="o", ms=11, markerfacecolor=noise_colors[lab], markeredgecolor="k", color=noise_colors[lab], label=lab) for lab in noise_labels if lab != "Non-detected"]
         axes_noise[1].add_artist(axes_noise[1].legend(handles=handles_noise, fontsize=fontsize-2, loc="center right", frameon=True, edgecolor="gray", facecolor="white", title="Dominant noise", title_fontsize=fontsize))
-        save_and_show(fig_noise, f"ELT_{instru}_dominant_noise_{table}_{band_contrast_plot}band.png")
+        save_and_show(fig_noise, f"ELT_{instru}{type_and_pp}_dominant_noise_{table}_{band_contrast_plot}band.png")
 
     # 4) Thermal/reflected complementarity
     light_labels = ["Thermal", "Reflected"] + (["Unclassified"] if np.any(light_class == "Unclassified") else [])
     light_colors = {"Thermal": "C3", "Reflected": "C0", "Unclassified": "0.50"}
-    light_alphas          = {"Non-detected": 0.20, "Detected, thermal-dominated": alpha_detected, "Detected, reflected-dominated": alpha_detected, "Detected, unclassified": alpha_detected}
+    light_alphas = {"Non-detected": 0.20, "Detected, thermal-dominated": alpha_detected, "Detected, reflected-dominated": alpha_detected, "Detected, unclassified": alpha_detected}
     fig_light, axes_light = make_two_panel(title=f"ELT/{instru} thermal/reflected complementarity in {exposure_time/60:.0f} hr", subtitle=f"{N_det:.0f}/{N_total:.0f} detections ({N_det/N_total*100:.1f}%)", plot_func=lambda ax, x, y, valid, xlabel, ylabel, xlim, ylim, title, space: plot_class_panel(ax, x, y, valid, light_class, light_labels, light_colors, light_alphas, xlabel, ylabel, xlim, ylim, title, space))
     handles_light         = [Line2D([], [], ls="", marker="o", ms=11, markerfacecolor=light_colors["Thermal"], markeredgecolor="k", color=light_colors["Thermal"], label="Thermal"),  Line2D([], [], ls="", marker="o", ms=11, markerfacecolor=light_colors["Reflected"], markeredgecolor="k", color=light_colors["Reflected"], label="Reflected")]
     axes_light[1].add_artist(axes_light[1].legend(handles=handles_light, fontsize=fontsize-2, loc="center right", frameon=True, edgecolor="gray", facecolor="white", title=f"Planet-light regime ({band_regime_plot})", title_fontsize=fontsize))
-    save_and_show(fig_light, f"ELT_{instru}_thermal_reflected_{table}_{band_regime_plot}band.png")
+    save_and_show(fig_light, f"ELT_{instru}{type_and_pp}_thermal_reflected_{table}_{band_regime_plot}band.png")
 
     # 5) Detection fraction per bin (log grid), in observational and physical spaces
     bins_per_decade_x   = 1 # bins per decade along x
@@ -5501,7 +5519,7 @@ def yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto
     cbar = fig_frac.colorbar(sm, ax=axes_frac, pad=0.03, fraction=0.03)
     cbar.set_label("Fraction of detected planets", fontsize=fontsize+2, rotation=270, labelpad=30)
     cbar.ax.tick_params(labelsize=fontsize-2)
-    save_and_show(fig_frac, f"ELT_{instru}_detection_fraction_{table}_{band_contrast_plot}band.png")
+    save_and_show(fig_frac, f"ELT_{instru}{type_and_pp}_detection_fraction_{table}_{band_contrast_plot}band.png")
 
     # 6) Population colored by final SNR
     if instru is not None:
@@ -5512,8 +5530,10 @@ def yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto
             cmap_snr = plt.get_cmap("rainbow")
             norm_snr = mpl.colors.LogNorm(vmin=SNR_min, vmax=SNR_max, clip=True)
 
+            marker_light_regimes = {"Thermal": "o", "Reflected": "D", "Unclassified": "X"}
+
             def plot_snr_panel(ax, x, y, valid, xlabel, ylabel, xlim, ylim, title, space):
-                groups, masks, markers = get_marker_groups()
+                groups, masks, markers = get_regime_marker_groups()
                 for group in groups:
                     mask = valid & not_detected & masks[group]
                     if np.any(mask):
@@ -5526,7 +5546,7 @@ def yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto
                     ax.scatter(x[idx], y[idx], c=SNR_plot[idx], cmap=cmap_snr, norm=norm_snr, marker=markers[group], s=ss_detected, edgecolors="k", linewidths=0.75, alpha=alpha_detected, zorder=3)
                 setup_axes(ax, xlabel, ylabel, xlim, ylim, title)
 
-            fig_snr, axes_snr = make_two_panel(title=f"ELT/{instru} final SNR in {exposure_time/60:.0f} hr per target", subtitle=f"{N_det:.0f}/{N_total:.0f} detections ({N_det/N_total*100:.1f}%)", plot_func=plot_snr_panel)
+            fig_snr, axes_snr = make_two_panel(title=f"ELT/{instru} final SNR in {exposure_time/60:.0f} hr per target", subtitle=f"{N_det:.0f}/{N_total:.0f} detections ({N_det/N_total*100:.1f}%)", plot_func=plot_snr_panel, marker_legend="regime")
             sm   = mpl.cm.ScalarMappable(norm=norm_snr, cmap=cmap_snr)
             sm.set_array([])
             cbar = fig_snr.colorbar(sm, ax=axes_snr, pad=0.03, fraction=0.03, extend="max")
@@ -5534,4 +5554,4 @@ def yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto
             cbar.ax.tick_params(labelsize=fontsize-2)
             if SNR_min <= SNR_thr <= SNR_max:
                 cbar.ax.axhline(SNR_thr, color="k", linestyle="--", linewidth=2.5)
-            save_and_show(fig_snr, f"ELT_{instru}_SNR_{table}_{band_contrast_plot}band.png")
+            save_and_show(fig_snr, f"ELT_{instru}{type_and_pp}_SNR_{table}_{band_contrast_plot}band.png")
