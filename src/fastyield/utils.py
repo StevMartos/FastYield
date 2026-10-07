@@ -10,7 +10,11 @@ from astropy.time import Time
 # import matplotlib modules
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
-from matplotlib.cm import get_cmap
+try:
+    from matplotlib.cm import get_cmap
+except ImportError:
+    # from matplotlib 3.12?
+    from matplotlib.pyplot import get_cmap
 from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib as mpl
 import matplotlib.patheffects as pe
@@ -49,9 +53,9 @@ def linear_interpolate(y1, y2, x1, x2, x):
 
     Parameters
     ----------
-    y1, y2 
+    y1, y2
         Function values at x1 and x2.
-    x1, x2 
+    x1, x2
         Abscissae. Must satisfy x2 != x1.
     x  or array_like
         Target abscissa(e).
@@ -348,7 +352,7 @@ def get_logL(flux_observed, flux_model, sigma_l, method="classic"): # see https:
     -----
     - Non-finite samples are masked out.
     - A small epsilon is added where needed to avoid division by zero.
-    """    
+    """
     f = np.asarray(flux_observed, dtype=float)
     t = np.asarray(flux_model,    dtype=float)
     s = np.asarray(sigma_l,       dtype=float)
@@ -365,7 +369,7 @@ def get_logL(flux_observed, flux_model, sigma_l, method="classic"): # see https:
 
     N   = len(f)
     eps = 1e-32
-    
+
     if method == "classic":  # true Gaussian log-likelihood with optimal scale R
         tt   = np.sum(w * t * t)
         ft   = np.sum(w * f * t)
@@ -534,7 +538,7 @@ def get_r_core(separation, profile, level=0.5):
     Return the radius r such that profile(r)/max(profile)=level (linear interpolation).
     Falls back to max(separation) if the crossing is not found.
     """
-    
+
     I0 = profile / np.nanmax(profile)  # peak = 1
 
     ok  = np.isfinite(I0)
@@ -654,9 +658,9 @@ def annular_mask(r_in, r_ext, size, x0=None, y0=None, value=np.nan):
 
     Parameters
     ----------
-    r_in 
+    r_in
         Inner radius of the annulus (in pixels).
-    r_ext 
+    r_ext
         Outer radius of the annulus (in pixels).
     size : tuple of int
         (NbLine, NbColumn) shape of the output mask.
@@ -671,7 +675,7 @@ def annular_mask(r_in, r_ext, size, x0=None, y0=None, value=np.nan):
     if r_ext < r_in:
         raise ValueError("'r_ext' must be greater than 'r_in'.")
     NbLine, NbColumn = size
-    if x0 is None or y0 is None:    
+    if x0 is None or y0 is None:
         y0, x0 = NbLine // 2, NbColumn // 2
     Y, X   = np.ogrid[:NbLine, :NbColumn]
     r2     = (Y - y0)**2 + (X - x0)**2
@@ -780,7 +784,7 @@ def crop(data, Y0=None, X0=None, R_crop=None, return_center=False):
 
     return (data_crop, int(Y0), int(X0)) if return_center else data_crop
 
-    
+
 
 def crop_both(data1, data2, Y0=None, X0=None, R_crop=None, return_center=False):
     """
@@ -882,11 +886,11 @@ def compute_PSF_profile(PSF, pxscale, size_core, aperture_correction):
         amask         = annular_mask(r_int, r_ext, size=(NbLine, NbColumn)) == 1
         profile[1, r] = np.nanmean(PSF[amask])
     profile[1, :] = profile[1, :] / pxscale**2
-    
-    # # Sanity check 
+
+    # # Sanity check
     # if np.any(profile[1]==0) or np.any(~np.isfinite(profile[1])):
     #     raise ValueError("Invalid values inside 'profile[1]'")
-        
+
     return profile, fraction_core
 
 
@@ -913,9 +917,9 @@ def register_PSF_profile(instru, profile, fraction_core, band, strehl, apodizer,
     """
     hdr       = fits.Header()
     hdr["FC"] = (fraction_core, "Core flux fraction")
-    
+
     sim_data_path = get_sim_data_path()
-    
+
     if coronagraph is None:
         psf_file = f"{sim_data_path}/PSF/PSF_{instru}/PSF_{band}_{strehl}_{apodizer}.fits"
     else:
@@ -1068,7 +1072,7 @@ def fitting_PSF(instru, data, wave, pxscale, model="gaussian", Y0=None, X0=None,
         PSF image or spectral cube with shape (NbLine, NbColumn) or (NbChannel, NbLine, NbColumn).
     wave : 1D ndarray or None
         Wavelength array in microns. Required for 3D cubes for plotting.
-    pxscale 
+    pxscale
         Pixel scale in arcsec or mas/pixel.
     model : str, optional
         PSF model to use: 'gaussian', 'moffat', or 'airy_disk'.
@@ -1084,23 +1088,23 @@ def fitting_PSF(instru, data, wave, pxscale, model="gaussian", Y0=None, X0=None,
 
     Returns
     -------
-    y_center 
+    y_center
         Estimated y-coordinate of the PSF center.
-    x_center 
+    x_center
         Estimated x-coordinate of the PSF center.
-    fwhm_y 
+    fwhm_y
         Estimated FWHM along the y-axis.
-    fwhm_x 
+    fwhm_x
         Estimated FWHM along the x-axis.
     """
-    
+
     if x_fiber is not None or y_fiber is not None:
         if x_fiber is None or y_fiber is None:
             raise ValueError("For irregular ANDES fitting, both 'x_fiber' and 'y_fiber' must be provided.")
         return _fitting_PSF_hex(instru=instru, data=data, wave=wave, pxscale=pxscale, model=model, Y0=Y0, X0=X0, FWHM0=FWHM0, debug=debug, x_fiber=x_fiber, y_fiber=y_fiber)
 
     import vip_hci as vip
-    
+
     config_data = get_config_data(instru)
     sep_unit    = config_data["sep_unit"]
     D           = config_data["telescope"]["diameter"]  # diameter  in m
@@ -1117,7 +1121,7 @@ def fitting_PSF(instru, data, wave, pxscale, model="gaussian", Y0=None, X0=None,
             FWHM0 = FWHM0 * 1000  # FWHM [mas]
     FWHM0_px = FWHM0 / pxscale  # FWHM [px]
     dpx      = int(round(FWHM0_px)) + 1
-    
+
     if len(data.shape) == 2:
         NbLine, NbColumn = data.shape
         if Y0 is None or X0 is None: # First guess
@@ -1152,7 +1156,7 @@ def fitting_PSF(instru, data, wave, pxscale, model="gaussian", Y0=None, X0=None,
             centroid_x = results["centroid_x"][0]
             y0 = centroid_y + ymin
             x0 = centroid_x + xmin
-    
+
     elif len(data.shape) == 3:
         NbChannel, NbLine, NbColumn = data.shape
         if Y0 is None or X0 is None: # First guess
@@ -1196,11 +1200,11 @@ def fitting_PSF(instru, data, wave, pxscale, model="gaussian", Y0=None, X0=None,
                 centroid_x = results["centroid_x"][0]
                 y0[i] = centroid_y + ymin
                 x0[i] = centroid_x + xmin
-            
-        if wave is not None:        
+
+        if wave is not None:
             y_center, x_center = (NbLine-1)/2, (NbColumn-1)/2
             plt.figure(figsize=(14, 7), dpi=300)
-            plt.suptitle(f"PSF fitting with {model.replace('_', ' ')} model", fontsize=22, fontweight="bold", color="#333")                
+            plt.suptitle(f"PSF fitting with {model.replace('_', ' ')} model", fontsize=22, fontweight="bold", color="#333")
             plt.subplot(1, 2, 1)
             plt.axhline(0, color="k", linestyle="--")
             plt.fill_between(wave, y0-y_center - y0_err, y0-y_center + y0_err, color="crimson", alpha=0.3)
@@ -1235,19 +1239,19 @@ def fitting_PSF(instru, data, wave, pxscale, model="gaussian", Y0=None, X0=None,
                 ax2 = ax1.twinx()
                 ax2.set_ylabel(f"PSF FWHM [{sep_unit}]", fontsize=16, labelpad=20, rotation=270)
                 ax2.tick_params(axis='y')
-                ax2.minorticks_on() 
+                ax2.minorticks_on()
                 ymin, ymax = ax1.get_ylim()
-                ax2.set_ylim(pxscale*ymin, pxscale*ymax)    
+                ax2.set_ylim(pxscale*ymin, pxscale*ymax)
             plt.tight_layout(rect=[0, 0.03, 1, 0.95])
             plt.show()
-            
+
     return y0, x0, fwhm_y, fwhm_x
 
 
 
 def align_HC_bench_psf(cube_desat, cube, model="airy_disk", dpx=5, wave=None, pxscale=None, sigfactor=5):
     """
-    Align each slice of the HC bench cubes. 
+    Align each slice of the HC bench cubes.
     """
     import vip_hci as vip
     NbChannel, NbLine, NbColumn = cube_desat.shape
@@ -1297,9 +1301,9 @@ def align_HC_bench_psf(cube_desat, cube, model="airy_disk", dpx=5, wave=None, px
     aligned_cube             = fill_invalid_by_nearest(aligned_cube)
     aligned_cube_desat       = fill_invalid_by_nearest(aligned_cube_desat)
     # Plot
-    if wave is not None:   
+    if wave is not None:
         plt.figure(figsize=(14, 7), dpi=300)
-        plt.suptitle(f"PSF fitting with {model.replace('_', ' ')} model", fontsize=22, fontweight="bold", color="#333")                
+        plt.suptitle(f"PSF fitting with {model.replace('_', ' ')} model", fontsize=22, fontweight="bold", color="#333")
         plt.subplot(1, 2, 1)
         plt.axhline(0, color="k", linestyle="--")
         plt.fill_between(wave, y0-np.nanmean(y0) - y0_err, y0-np.nanmean(y0) + y0_err, color="crimson", alpha=0.3)
@@ -1334,12 +1338,12 @@ def align_HC_bench_psf(cube_desat, cube, model="airy_disk", dpx=5, wave=None, px
             ax2 = ax1.twinx()
             ax2.set_ylabel("PSF FWHM [mas]", fontsize=16, labelpad=20, rotation=270)
             ax2.tick_params(axis='y')
-            ax2.minorticks_on() 
+            ax2.minorticks_on()
             ymin, ymax = ax1.get_ylim()
-            ax2.set_ylim(pxscale*ymin, pxscale*ymax)    
+            ax2.set_ylim(pxscale*ymin, pxscale*ymax)
         plt.tight_layout(rect=[0, 0.03, 1, 0.95])
         plt.show()
-        
+
     return aligned_cube_desat, aligned_cube
 
 
@@ -1455,8 +1459,8 @@ def shift_fft(image, shift_vals, pad=True):
     """
     Perform a subpixel shift of an image using FFT-based phase translation.
 
-    This method is highly accurate and preserves both the total flux and 
-    the spatial structure of the image (e.g., PSF). Zero-padding is applied 
+    This method is highly accurate and preserves both the total flux and
+    the spatial structure of the image (e.g., PSF). Zero-padding is applied
     by default to avoid wrap-around artifacts from the FFT.
 
     Parameters
@@ -1466,8 +1470,8 @@ def shift_fft(image, shift_vals, pad=True):
     shift_vals : tuple of float (dy, dx)
         Subpixel shift to apply along the (y, x) axes.
     pad : bool, optional (default=True)
-        If True, zero-padding is applied before the shift to prevent 
-        periodic boundary artifacts. The result is cropped back to 
+        If True, zero-padding is applied before the shift to prevent
+        periodic boundary artifacts. The result is cropped back to
         the original image size.
 
     Returns
@@ -1576,7 +1580,7 @@ def _PCA_subtraction_hex(S_res, N_PCA, x_fiber, y_fiber, idx_planet=None, size_c
     if X_fit.shape[0] < 2:
         raise ValueError("Too few valid ANDES fibers remain to fit the PCA.")
     N_valid  = np.sum(np.isfinite(X_fit), axis=0)
-    col_mean = np.divide(np.nansum(X_fit, axis=0), N_valid, out=np.zeros(NbChannel), where=N_valid > 0)    
+    col_mean = np.divide(np.nansum(X_fit, axis=0), N_valid, out=np.zeros(NbChannel), where=N_valid > 0)
     inds = ~np.isfinite(X_fit)
     if np.any(inds):
         X_fit[inds] = np.take(col_mean, np.where(inds)[1])
@@ -1669,9 +1673,9 @@ def PCA_subtraction(S_res, N_PCA, y0=None, x0=None, size_core=None, PCA_annular=
     Perform PCA subtraction on the input data cube.
 
     This function applies Principal Component Analysis (PCA) to subtract signal
-    components from the input data cube (S_res). Optionally, it masks out regions 
-    around a specified planet location before performing the PCA. It can also display 
-    plots for the first few PCA components interactively, and if a file path is provided, 
+    components from the input data cube (S_res). Optionally, it masks out regions
+    around a specified planet location before performing the PCA. It can also display
+    plots for the first few PCA components interactively, and if a file path is provided,
     it saves plots of all PCA components to a PDF (one per page).
 
     Parameters
@@ -1712,7 +1716,7 @@ def PCA_subtraction(S_res, N_PCA, y0=None, x0=None, size_core=None, PCA_annular=
     pca : PCA object or None
         The fitted PCA object if N_PCA is not 0; otherwise, None.
     """
-    
+
     if np.ndim(S_res) == 2:
         if x_fiber is None or y_fiber is None:
             raise ValueError("For 2D fiber data, PCA_subtraction requires 'x_fiber' and 'y_fiber'.")
@@ -1724,7 +1728,7 @@ def PCA_subtraction(S_res, N_PCA, y0=None, x0=None, size_core=None, PCA_annular=
         NbChannel, NbLine, NbColumn = S_res.shape             # Retrieve the shape of the data cube
         pca                         = PCA(n_components=N_PCA) # Creating PCA object
         S_res_wo_planet             = np.copy(S_res)          # Create a copy of the input data for masking purposes
-        
+
         # If planet coordinates are provided, apply the masks if specified
         if y0 is not None and x0 is not None:
             if PCA_annular:
@@ -1736,9 +1740,9 @@ def PCA_subtraction(S_res, N_PCA, y0=None, x0=None, size_core=None, PCA_annular=
                 # Apply a circular mask around the planet location
                 planet_mask                        = circular_mask(y0, x0, r=2*size_core, size=(NbLine, NbColumn))
                 S_res_wo_planet[:, planet_mask==1] = np.nan
-        
+
         # Reshape the cube to 2D (pixels x channels) and replace NaNs with the mean value of their spectral channel
-        S_res_wo_planet = np.reshape(S_res_wo_planet, (NbChannel, NbColumn * NbLine)).T        
+        S_res_wo_planet = np.reshape(S_res_wo_planet, (NbChannel, NbColumn * NbLine)).T
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=RuntimeWarning)
             col_mean = np.nanmean(S_res_wo_planet, axis=0)
@@ -1747,27 +1751,27 @@ def PCA_subtraction(S_res, N_PCA, y0=None, x0=None, size_core=None, PCA_annular=
             col_mean[bad_cols] = 0.0
         inds = np.isnan(S_res_wo_planet)
         if inds.any():
-            S_res_wo_planet[inds] = np.take(col_mean, np.where(inds)[1])        
+            S_res_wo_planet[inds] = np.take(col_mean, np.where(inds)[1])
         S_res_wo_planet = np.nan_to_num(S_res_wo_planet)
 
         # Fit the PCA on the masked data
         pca.fit(S_res_wo_planet)
-        
+
         # Prepare the data for subtraction (reshape and replace NaNs)
         nan_mask            = np.isnan(S_res)
         S_res_sub           = np.reshape(np.copy(S_res), (NbChannel, NbColumn * NbLine)).transpose()
         inds_sub            = np.where(np.isnan(S_res_sub))
         S_res_sub[inds_sub] = np.take(col_mean, inds_sub[1])
-        
+
         # Transform and inverse transform to obtain the PCA model reconstruction
         X = pca.transform(S_res_sub)
         X = pca.inverse_transform(X)
-        
+
         # Subtract the PCA reconstruction from the original data
         S_res_sub           = (S_res_sub - X).transpose()
         S_res_sub           = np.reshape(S_res_sub, (NbChannel, NbLine, NbColumn))
         S_res_sub[nan_mask] = np.nan
-        
+
         # ---------------------------
         # PCA plots
         # ---------------------------
@@ -1785,7 +1789,7 @@ def PCA_subtraction(S_res, N_PCA, y0=None, x0=None, size_core=None, PCA_annular=
             for k in range(Nk):
                 # Retrieve the k-th PCA component
                 pca_comp = pca.components_[k]
-                
+
                 # First column: PCA component curve
                 ax[k, 0].plot(wave, pca_comp, c=cmap(k), label=f"$n_k$ = {k+1}")
                 ax[k, 0].legend(fontsize=14, loc="upper center")
@@ -1795,7 +1799,7 @@ def PCA_subtraction(S_res, N_PCA, y0=None, x0=None, size_core=None, PCA_annular=
                 ax[k, 0].set_ylabel("Modulation (normalized)", fontsize=14)
                 ax[k, 0].grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
                 ax[k, 0].minorticks_on()
-                
+
                 # Second column: Plot the Power Spectral Density (PSD)
                 res, psd = get_psd(wave, pca_comp, R=R, smooth=0)
                 ax[k, 1].plot(res, psd, c=cmap(k))
@@ -1825,7 +1829,7 @@ def PCA_subtraction(S_res, N_PCA, y0=None, x0=None, size_core=None, PCA_annular=
                 ax[k, 2].minorticks_on()
 
             plt.show()
-        
+
         # ---------------------------
         # Save PCA component plots to a PDF
         # ---------------------------
@@ -1836,9 +1840,9 @@ def PCA_subtraction(S_res, N_PCA, y0=None, x0=None, size_core=None, PCA_annular=
             cmap_pdf = get_cmap("Spectral", N)
             for k in tqdm(range(N), desc="Saving PCA components in PDF"):
                 pca_comp = pca.components_[k]
-                
+
                 fig, ax = plt.subplots(1, 3, figsize=(16, 3), dpi=100)
-                
+
                 # First column: PCA component curve
                 ax[0].plot(wave, pca_comp, c=cmap_pdf(k), label=f"$n_k$ = {k+1}")
                 ax[0].legend(fontsize=14, loc="upper center")
@@ -1846,7 +1850,7 @@ def PCA_subtraction(S_res, N_PCA, y0=None, x0=None, size_core=None, PCA_annular=
                 ax[0].set_xlabel("Wavelength [µm]", fontsize=14)
                 ax[0].set_ylabel("modulation (normalized)", fontsize=14)
                 ax[0].grid(True)
-                
+
                 # Second column: PSD plot
                 res, psd = get_psd(wave, pca_comp, R=R, smooth=0)
                 ax[1].plot(res, psd, c=cmap_pdf(k))
@@ -1856,7 +1860,7 @@ def PCA_subtraction(S_res, N_PCA, y0=None, x0=None, size_core=None, PCA_annular=
                 ax[1].set_yscale('log')
                 ax[1].set_ylabel("PSD", fontsize=14)
                 ax[1].grid(True)
-                
+
                 # Third column: correlation map
                 numerator = np.nansum(S_res * pca_comp[:, None, None], axis=0)
                 denom = np.sqrt(np.nansum(S_res ** 2, axis=0))
@@ -1869,10 +1873,10 @@ def PCA_subtraction(S_res, N_PCA, y0=None, x0=None, size_core=None, PCA_annular=
                 ax[2].set_xlabel(f'x offset [{sep_unit}]', fontsize=14)
                 ax[2].set_ylabel(f'y offset [{sep_unit}]', fontsize=14)
                 ax[2].grid(True)
-                
+
                 pdf.savefig(fig, bbox_inches='tight')
                 plt.close(fig)
-                
+
             pdf.close()
             print(f"PCA PDF saved in {path_PDF}")
 
@@ -1909,11 +1913,11 @@ def PCA_subtraction(S_res, N_PCA, y0=None, x0=None, size_core=None, PCA_annular=
             plt.minorticks_on()
             plt.tight_layout()
             plt.show()
-            
+
     elif N_PCA == 0:
         S_res_sub = np.copy(S_res)
         pca       = None
-        
+
     return S_res_sub, pca
 
 
@@ -1949,7 +1953,7 @@ def cut_spectral_frequencies(input_flux, R, Rmin, Rmax, filter_type='empirical',
         step_filter = np.ones_like(res_values)
         step_filter[(Rmax > np.abs(res_values)) & (np.abs(res_values) > Rmin)] = 0
         filter_response = step_filter
-    elif filter_type == 'empirical': 
+    elif filter_type == 'empirical':
         try : # Opening existing filter response profile
             if force_new_calc:
                 raise ValueError("force_new_calc = True")
@@ -2070,7 +2074,7 @@ def keep_true_chunks(mask_bool, N):
 
 
 ########################### Q-Q plot functions ################################
-    
+
 def qqplot_CCF(CCF_map, sep_lim, sep_unit, pxscale, band, target_name, x_fiber=None, y_fiber=None):
     """
     Q–Q plot of CCF samples split by separation (inner vs outer annulus).
@@ -2122,10 +2126,10 @@ def qqplot_CCF(CCF_map, sep_lim, sep_unit, pxscale, band, target_name, x_fiber=N
     map2 = (map2 - np.nanmean(map2)) / np.nanstd(map2)
     # PLOT
     plt.figure(dpi=300, figsize=(6, 6))
-    ax = plt.gca()    
+    ax = plt.gca()
     sm.qqplot(map1, line=None, ax=ax, marker='o', markerfacecolor='royalblue', markeredgecolor='royalblue', alpha=0.6, label=f'sep < {sep_lim} {sep_unit}', lw=1)
-    sm.qqplot(map2, line=None, ax=ax, marker='o', markerfacecolor='crimson',   markeredgecolor='crimson',   alpha=0.6, label=f'sep > {sep_lim} {sep_unit}', lw=1)    
-    sm.qqline(ax=ax, line='45', fmt='k--', lw=2)    
+    sm.qqplot(map2, line=None, ax=ax, marker='o', markerfacecolor='crimson',   markeredgecolor='crimson',   alpha=0.6, label=f'sep > {sep_lim} {sep_unit}', lw=1)
+    sm.qqline(ax=ax, line='45', fmt='k--', lw=2)
     plt.title(f"Q-Q plot of the CCF of {target_name} on {band}", fontsize=16, fontweight="bold")
     plt.xlabel("Theoretical quantiles", fontsize=14)
     plt.ylabel("Sample quantiles", fontsize=14)
@@ -2137,8 +2141,8 @@ def qqplot_CCF(CCF_map, sep_lim, sep_unit, pxscale, band, target_name, x_fiber=N
     plt.tight_layout()
     plt.show()
 
-  
-  
+
+
 def qqplot_fiber(CCF_signal, CCF_bkgd, band, target_name):
     """
     Q–Q plots comparing signal CCF distribution to a set of background CCF maps.
@@ -2248,10 +2252,10 @@ def extract_jwst_data(instru, target_name, band, crop_band=True, outliers=False,
     -------
     cube : ndarray of shape (n_wave, ny, nx)
         Science cube after preprocessing. The output unit is:
-        
+
         - photons per pixel if ''crop_band=False'',
         - electrons per pixel if ''crop_band=True''.
-        
+
         Empty slices at the spectral edges are removed, and zero-valued pixels
         are replaced by ''NaN''.
     wave : ndarray of shape (n_wave,)
@@ -2268,7 +2272,7 @@ def extract_jwst_data(instru, target_name, band, crop_band=True, outliers=False,
         Effective total exposure time in minutes.
     DIT : float
         Effective integration time per exposure in minutes.
-    
+
     Notes
     -----
     - The wavelength axis is reconstructed from the FITS header using::
@@ -2310,7 +2314,7 @@ def extract_jwst_data(instru, target_name, band, crop_band=True, outliers=False,
     # Opening file
     if file is None:
         # MIRI/MRS
-        if instru=="MIRIMRS" : 
+        if instru=="MIRIMRS" :
             # Simulations data
             if "sim" in target_name.lower():
                 file = f"/home/martoss/Documents/PhD/work/MAIN/data/MIRIMRS/MIRISim/{target_name}_{band}_s3d.fits"
@@ -2324,7 +2328,7 @@ def extract_jwst_data(instru, target_name, band, crop_band=True, outliers=False,
         else:
             raise KeyError(f"Unknown instrument {instru}")
 
-    with fits.open(file) as f:    
+    with fits.open(file) as f:
         # Retrieving header values
         hdr0 = f[0].header
         hdr1 = f[1].header
@@ -2345,22 +2349,22 @@ def extract_jwst_data(instru, target_name, band, crop_band=True, outliers=False,
         pxscale    = hdr1['CDELT1']*3600        # [arcsec/px]
         pxscale_Sr = hdr1['PIXAR_SR']           # [Sr/px]
         dwave      = hdr1['CDELT3']             # [µm/bin]
-    
+
         # Wavelength axis
         wave = (np.arange(hdr1['NAXIS3']) + hdr1['CRPIX3'] - 1) * hdr1['CDELT3'] + hdr1['CRVAL3'] # [µm]
         R    = get_resolution(wavelength=wave, func=np.nanmedian)
-        
+
         # Retrieving data
         cube = f[1].data # [MJy/Sr]
         err  = f[2].data # [MJy/Sr]
-    
+
     # Centering the max (if needed)
     if crop_cube:
         cube, err = crop_both(cube, err, X0=X0, Y0=Y0, R_crop=R_crop)
-    
+
     # Data shapes
     NbChannel, NbLine, NbColumn = cube.shape
-    
+
     # Converting data in total [ph/px]
     cube *= pxscale_Sr*1e6                    # [MJy/Sr]       => [Jy/px]
     cube *= 1e-26                             # [Jy/px]        => [J/s/m²/Hz/px]
@@ -2369,7 +2373,7 @@ def extract_jwst_data(instru, target_name, band, crop_band=True, outliers=False,
     cube *= wave[:, None, None]*1e-6/(h*c)    # [J/s/m²/px]    => [ph/s/m²/px]
     cube *= area                              # [ph/s/m²/px]   => [ph/s/px]
     cube *= exposure_time*60                  # [ph/s/m²/px]   => [ph/px]
-    
+
     err *= pxscale_Sr*1e6                    # [MJy/Sr]       => [Jy/px]
     err *= 1e-26                             # [Jy/px]        => [J/s/m²/Hz/px]
     err *= c/((wave[:, None, None]*1e-6)**2) # [J/s/m²/Hz/px] => [J/s/m²/m/px]
@@ -2377,9 +2381,9 @@ def extract_jwst_data(instru, target_name, band, crop_band=True, outliers=False,
     err *= wave[:, None, None]*1e-6/(h*c)    # [J/s/m²/px]    => [ph/s/m²/px]
     err *= area                              # [ph/s/m²/px]   => [ph/s/px]
     err *= exposure_time*60                  # [ph/s/m²/px]   => [ph/px]
-    
+
     # Cropping to the considered band and converting in [e-/px] (if needed)
-    if crop_band: 
+    if crop_band:
         lmin      = config_data['gratings'][band].lmin
         lmax      = config_data['gratings'][band].lmax
         band_mask = (wave >= lmin) & (wave <= lmax)
@@ -2395,16 +2399,16 @@ def extract_jwst_data(instru, target_name, band, crop_band=True, outliers=False,
         trans = 1
 
     # Cropping first and last empty slices
-    valid_slices = np.array([np.any(np.isfinite(cube[i]) & (cube[i] != 0)) for i in range(NbChannel)]) # Identify valid slices (not all zeros or NaNs)    
+    valid_slices = np.array([np.any(np.isfinite(cube[i]) & (cube[i] != 0)) for i in range(NbChannel)]) # Identify valid slices (not all zeros or NaNs)
     start        = np.argmax(valid_slices)  # first True -> first valid slice
     end          = len(valid_slices) - np.argmax(valid_slices[::-1])  # last True + 1 -> last valid slice
     wave         = wave[start:end] # Crop only the empty slices at the beginning and the end
     cube         = cube[start:end]
     err          = err[start:end]
     if crop_band:
-        trans = trans[start:end]    
+        trans = trans[start:end]
     NbChannel = cube.shape[0] # Update the number of channels
-    
+
     # Flagging outliers (if needed)
     cube[cube==0] = np.nan
     err[err==0]   = np.nan
@@ -2426,18 +2430,18 @@ def extract_jwst_data(instru, target_name, band, crop_band=True, outliers=False,
             # plt.plot(wave[~mask], CUBE_HF[~mask])
             # plt.axhline(-sigma_outliers*sig, c="k")
             # plt.axhline(+sigma_outliers*sig, c="k")
-            # plt.show()        
+            # plt.show()
             CUBE[:, k][mask] = np.nan
             ERR[:, k][mask]  = np.nan
         cube = CUBE.reshape(NbChannel, NbLine, NbColumn)
         err  = ERR.reshape(NbChannel,   NbLine, NbColumn)
-    
+
     # Printing (if needed)
     if verbose:
         print("\n" + "\033[4m" + f"{band.replace('_', ' ')}-BAND (from {round(wave.min(), 2)} to {round(wave.max(), 2)} µm with R={R:.0f}):" + "\033[0m")
         print(f" Pixel scale  : {pxscale:.2f} arcsec/px")
-        print(f" Exposure time: {exposure_time:.1f} mn (with DIT of {DIT*60:.1f} s)") 
-    
+        print(f" Exposure time: {exposure_time:.1f} mn (with DIT of {DIT*60:.1f} s)")
+
         fields = [
             ("TITLE", "{}"),
             ("CATEGORY", "{}"),
@@ -2452,28 +2456,28 @@ def extract_jwst_data(instru, target_name, band, crop_band=True, outliers=False,
             ("TARG_DEC", "{:.2f}"),
             ("PATTTYPE", "{}"),
         ]
-    
+
         for key, fmt in fields:
             try:
                 if key == "DATE-OBS":
                     print(f" {key:<13}: {fmt.format(hdr0[key])} [yyyy-mm-dd]")
                 else:
                     print(f" {key:<13}: {fmt.format(hdr0[key])}")
-                
+
             except KeyError:
                 pass
-    
+
         # Barycentric wavelength reference information from SCI header
         try:
             print(f" {'VELOSYS':<13}: {hdr1['VELOSYS'] / 1e3:.3f} km/s")
         except KeyError:
             pass
-    
+
         try:
             print(f" {'SPECSYS':<13}: {hdr1['SPECSYS']}")
         except KeyError:
             pass
-    
+
     return cube, wave, pxscale, err, trans, exposure_time, DIT
 
 
@@ -2554,12 +2558,12 @@ def add_north_east_arrows(ax, loc=(0.88, 0.12), length=0.10, color="white", font
 
 
 def plot_jwst_data(instru, band, target_name, planet_name, S, CCF_SNR, pxscale, FOV, sep_unit, size_core, y0, x0, y_star, x_star, y_planet, x_planet, radius, RA_offset, DEC_offset, band0, mag_star, exposure_time, calculation, SNR, T_planet, rv_planet, model, zoom_CCF_2D):
-    
+
     NbChannel, NbLine, NbColumn = S.shape
-    
+
     # Build display extent centered on the fitted star, in true sky coordinates.
     extent = get_sky_extent(NbLine=NbLine, NbColumn=NbColumn, y_ref=y_star, x_ref=x_star, pxscale=pxscale)
-    
+
     # Planet position in sky coordinates.
     if x_planet is not None and y_planet is not None:
         x_pos, y_pos = pixel_to_sky_offset(y=y_planet, x=x_planet, y_ref=y_star, x_ref=x_star, pxscale=pxscale)
@@ -2571,8 +2575,8 @@ def plot_jwst_data(instru, band, target_name, planet_name, S, CCF_SNR, pxscale, 
         sign_loc_planet = np.sign(y_pos)
         sign_loc_star   = -sign_loc_planet
     else:
-       sign_loc_star = +1 
-    
+       sign_loc_star = +1
+
     # --- Plot PSF ---
     PSF      = np.nanmedian(np.nan_to_num(S), axis=0)
     PSF     /= np.nanmax(PSF)
@@ -2587,7 +2591,7 @@ def plot_jwst_data(instru, band, target_name, planet_name, S, CCF_SNR, pxscale, 
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.4)
     ax.tick_params(labelsize=12)
     ax.plot(0, 0, marker='*', color='gold', markersize=18, zorder=4)
-    ax.text(0, sign_loc_star*size_core*pxscale, f"{target_name}", color='gold', fontsize=12, weight='bold', ha='center', va='bottom', zorder=100, bbox=dict(facecolor='black', edgecolor='none', boxstyle='round,pad=0.3', alpha=0.4))        
+    ax.text(0, sign_loc_star*size_core*pxscale, f"{target_name}", color='gold', fontsize=12, weight='bold', ha='center', va='bottom', zorder=100, bbox=dict(facecolor='black', edgecolor='none', boxstyle='round,pad=0.3', alpha=0.4))
     if y0 is not None and x0 is not None :
         planet_text = planet_name if planet_name is not None else "Planet"
         circle      = plt.Circle((x_pos, y_pos), radius, edgecolor='deepskyblue', fill=False, linewidth=2, zorder=3 )
@@ -2631,9 +2635,9 @@ def plot_jwst_data(instru, band, target_name, planet_name, S, CCF_SNR, pxscale, 
     ax.text(0.02, 0.98, param_box, transform=ax.transAxes, ha='left', va='top', fontsize=12, color='white', bbox=dict(facecolor='black', edgecolor='white', linewidth=0.6, alpha=0.35, boxstyle='round,pad=0.3'))
     plt.tight_layout()
     plt.show()
-    
+
     # --- Plot CCF ---
-    CCF_thr  = 5 
+    CCF_thr  = 5
     CCF_cmap = "coolwarm"
     fig, ax  = plt.subplots(figsize=(8, 8), dpi=300)
     im       = ax.imshow(CCF_SNR, extent=extent, origin="lower", zorder=2, cmap=CCF_cmap, vmin=-CCF_thr, vmax=CCF_thr, interpolation='nearest')
@@ -2643,9 +2647,9 @@ def plot_jwst_data(instru, band, target_name, planet_name, S, CCF_SNR, pxscale, 
     ax.tick_params(which='both', top=True, right=True)
     ax.minorticks_on()
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.4)
-    ax.tick_params(labelsize=12)      
+    ax.tick_params(labelsize=12)
     ax.plot(0, 0, marker='*', color='gold', markersize=18, zorder=4)
-    ax.text(0, sign_loc_star*size_core*pxscale, f"{target_name}", color='gold', fontsize=12, weight='bold', ha='center', va='bottom', zorder=100, bbox=dict(facecolor='black', edgecolor='none', boxstyle='round,pad=0.3', alpha=0.4))        
+    ax.text(0, sign_loc_star*size_core*pxscale, f"{target_name}", color='gold', fontsize=12, weight='bold', ha='center', va='bottom', zorder=100, bbox=dict(facecolor='black', edgecolor='none', boxstyle='round,pad=0.3', alpha=0.4))
     if y0 is not None and x0 is not None :
         planet_text = planet_name if planet_name is not None else "Planet"
         if calculation == "SNR":
@@ -2702,7 +2706,7 @@ def plot_jwst_data(instru, band, target_name, planet_name, S, CCF_SNR, pxscale, 
 
 # For ANDES particular case
 def plot_hex_map(x_fiber, y_fiber, data_1D, pxscale, ax=None, cmap="inferno", vmin=None, vmax=None, log=False, edgecolor="k", linewidth=1):
-    
+
     if ax is None:
         fig, ax = plt.subplots(figsize=(6, 6), dpi=200)
 
@@ -2829,17 +2833,17 @@ def _plot_elt_data_hex(instru, band, target_name, planet_name, S, CCF_SNR, pxsca
 
 
 def plot_elt_data(instru, band, target_name, planet_name, S, CCF_SNR, pxscale, FOV, sep_unit, size_core, y0, x0, y_star, x_star, y_planet, x_planet, radius, RA_offset, DEC_offset, band0, mag_star, exposure_time, calculation, SNR, T_planet, rv_planet, model, apodizer, zoom_CCF_2D, factor_max_PSF=None, vmin_PSF=None, title_prefix="", title_suffix="", x_fiber=None, y_fiber=None, idx_planet=None, x_pos=None, y_pos=None):
-    
+
     if x_fiber is not None or y_fiber is not None:
         if x_fiber is None or y_fiber is None:
             raise ValueError("For ANDES plotting, both 'x_fiber' and 'y_fiber' must be provided.")
         return _plot_elt_data_hex(instru=instru, band=band, target_name=target_name, planet_name=planet_name, S=S, CCF_SNR=CCF_SNR, pxscale=pxscale, FOV=FOV, sep_unit=sep_unit, size_core=size_core, y_star=y_star, x_star=x_star, y_planet=y_planet, x_planet=x_planet, radius=radius, RA_offset=RA_offset, DEC_offset=DEC_offset, band0=band0, mag_star=mag_star, exposure_time=exposure_time, calculation=calculation, SNR=SNR, T_planet=T_planet, rv_planet=rv_planet, model=model, apodizer=apodizer, factor_max_PSF=factor_max_PSF, vmin_PSF=vmin_PSF, title_prefix=title_prefix, title_suffix=title_suffix, x_fiber=x_fiber, y_fiber=y_fiber, idx_planet=idx_planet, x_pos=x_pos, y_pos=y_pos)
 
     NbChannel, NbLine, NbColumn = S.shape
-    
+
     # Build display extent centered on the fitted star.
     extent = get_sky_extent(NbLine=NbLine, NbColumn=NbColumn, y_ref=y_star, x_ref=x_star, pxscale=pxscale)
-    
+
     # Planet position in the same coordinate system.
     if x_planet is not None and y_planet is not None:
         x_pos, y_pos = pixel_to_sky_offset(y=y_planet, x=x_planet, y_ref=y_star, x_ref=x_star, pxscale=pxscale)
@@ -2850,7 +2854,7 @@ def plot_elt_data(instru, band, target_name, planet_name, S, CCF_SNR, pxscale, F
         print(f"  Separation = {sep_planet:.3f} {sep_unit}")
         sign_loc_planet = np.sign(y_pos) if y_pos != 0 else +1
         sign_loc_star   = -sign_loc_planet
-        
+
         if np.sign(y_pos)==1 and np.sign(x_pos)==-1:
             loc_zoom       = "upper left"
             loc1_zoom      = 1
@@ -2866,18 +2870,18 @@ def plot_elt_data(instru, band, target_name, planet_name, S, CCF_SNR, pxscale, F
         x_pos         = None
         y_pos         = None
         sign_loc_star = +1
-            
+
     # --- Plot PSF ---
     PSF           = np.nanmedian(np.nan_to_num(S), axis=0)
     PSF[PSF == 0] = np.nan
     if np.nanmin(PSF) < 0:
         PSF += np.abs(np.nanmin(PSF))
-        
+
     max_PSF = np.nanmax(PSF)
     if factor_max_PSF is not None:
         max_PSF *= factor_max_PSF
     PSF /= max_PSF
-    
+
     PSF_cmap = "inferno"
     fig, ax  = plt.subplots(figsize=(8, 8), dpi=300)
     im       = ax.imshow(PSF, extent=extent, origin="lower", zorder=2, norm=mpl.colors.LogNorm(vmin=vmin_PSF, vmax=1), cmap=PSF_cmap)
@@ -2934,7 +2938,7 @@ def plot_elt_data(instru, band, target_name, planet_name, S, CCF_SNR, pxscale, F
     param_box = (f"Band: {band}  |  Apodizer: {apodizer.replace('_', ' ')}\n{band0}={round(mag_star, 1):.1f}  |  $t_{{exp}}$={exposure_time/60:.0f} hr")
     ax.text(0.02, 0.98, param_box, transform=ax.transAxes, ha='left', va='top', fontsize=12, color='white', bbox=dict(facecolor='black', edgecolor='white', linewidth=0.6, alpha=0.35, boxstyle='round,pad=0.3'))
     plt.show()
-    
+
     # --- Plot CCF ---
     CCF_thr  = 5
     CCF_cmap = "coolwarm"
@@ -3076,7 +3080,7 @@ def compute_filter_variance_factor(N, R_sampling, Rc, filter_type, Rc_init, filt
       can occur near the edges.
     """
     from fastyield.spectrum import _fft_filter_response
-    
+
     R_sampling = None if R_sampling is None else np.nanmedian(R_sampling)
     Rc_init    = None if Rc_init    is None else np.nanmedian(Rc_init)
     Rc_noise   = None if Rc_noise   is None else np.nanmedian(Rc_noise)
@@ -3097,14 +3101,14 @@ def compute_filter_variance_factor(N, R_sampling, Rc, filter_type, Rc_init, filt
     # 3) Optional convolution broadening
     if Rc_conv is not None and filter_conv_type is not None:
         TF_noise = TF_noise * _fft_filter_response(N=N, R=R_sampling, Rc=Rc_conv, filter_type=filter_conv_type)[1]
-    
+
     # Frequency response of the considered filtering
     H_HF, H_LF = _fft_filter_response(N=N, R=R_sampling, Rc=Rc, filter_type=filter_type)
-    
+
     POWER = np.nansum( np.abs(TF_noise)**2 )
     fn_LF = np.nansum( np.abs(TF_noise*H_LF)**2 ) / POWER
     fn_HF = np.nansum( np.abs(TF_noise*H_HF)**2 ) / POWER
-    
+
     return fn_HF, fn_LF
 
 
@@ -3168,7 +3172,7 @@ def compute_rebin_variance_factor(lamHR, maskHR, lamLR, dlam, R_sampling, Rc_ini
     When no filters are applied, C is a delta and fn = 1 for all bins.
     """
     from .spectrum import _fft_filter_response
-    
+
     R_sampling = None if R_sampling is None else np.nanmedian(R_sampling)
     Rc_init    = None if Rc_init    is None else np.nanmedian(Rc_init)
     Rc_noise   = None if Rc_noise   is None else np.nanmedian(Rc_noise)
@@ -3221,7 +3225,7 @@ def compute_rebin_variance_factor(lamHR, maskHR, lamLR, dlam, R_sampling, Rc_ini
 
 def extract_vipa_data(path_data, instru, target_name, band, gain, label_fiber, degrade_data=True, outliers=False, sigma_outliers=5, use_weight=True, mask_nan_values=False, filter_noise=False, extract_full_sequence=False, R_target=80_000, Rc=100, filter_type="gaussian", verbose=True):
     from fastyield.spectrum import Spectrum, filtered_flux, get_resolution, get_wavelength_axis_constant_dl
-    
+
     def _mask(arr, mask):
         if arr is None:
             return None
@@ -3243,14 +3247,14 @@ def extract_vipa_data(path_data, instru, target_name, band, gain, label_fiber, d
         if sigma_seq.ndim == 2:
             return sigma_seq * np.sqrt(variance_factor)[None, :]
         raise ValueError(f"sigma_seq must be 1D or 2D, got shape {sigma_seq.shape}.")
-    
-    
+
+
     filename = Path(path_data) / f"VIPA_Final_Spectrum_{target_name}_band_{band}_gain_{gain}_fiber_{label_fiber}.fits"
     with fits.open(filename) as hdul:
 
         # Header
         header = hdul[0].header.copy()
-    
+
         # Spectrum table
         spec          = hdul["SPECTRUM"].data
         wave0         = np.asarray(spec["WAVELENGTH"],       dtype=float) * 1e-3  # [nm] => [µm]
@@ -3260,7 +3264,7 @@ def extract_vipa_data(path_data, instru, target_name, band, gain, label_fiber, d
         weight0       = np.asarray(spec["WEIGHT"],           dtype=float)
         trans0        = np.asarray(spec["TRANSMISSION"],     dtype=float)
         sigma_trans0  = np.asarray(spec["TRANSMISSION_ERR"], dtype=float)
-    
+
         # Optional full DIT sequence
         NDIT       = header["NDIT"]
         flux_seq0  = None
@@ -3284,7 +3288,7 @@ def extract_vipa_data(path_data, instru, target_name, band, gain, label_fiber, d
                     raise ValueError(f"2D SIGMA_SEQ has shape {sigma_seq0.shape}, but FLUX_SEQ has shape {flux_seq0.shape}.")
             else:
                 raise ValueError(f"SIGMA_SEQ must be 1D or 2D, got shape {sigma_seq0.shape}.")
-        
+
         # Time sequence and RV axis
         time_jd = None
         RV_obs  = None
@@ -3308,15 +3312,15 @@ def extract_vipa_data(path_data, instru, target_name, band, gain, label_fiber, d
                 cor_bar = np.asarray(time_seq["COR_BAR"], dtype=float)
                 if np.all(np.isnan(cor_bar)):
                     cor_bar = None
-    
+
     # Estimating R_sampling
     R_sampling0 = get_resolution(wavelength=wave0, func=np.array)
-    
-    
+
+
     # Prints
     if verbose:
         line = "─" * 78
-    
+
         def _print_value(label, value, fmt="", unit="", sigma=None, sigma_fmt=None):
             if value is None:
                 return
@@ -3328,7 +3332,7 @@ def extract_vipa_data(path_data, instru, target_name, band, gain, label_fiber, d
                 if sigma_fmt is None:
                     sigma_fmt = fmt
                 print(f"   {label:<28}: {value:{fmt}} ± {sigma:{sigma_fmt}}{unit}")
-        
+
         def _print_header(key, label, fmt="", unit="", scale=1.0, sigma_key=None, sigma_fmt=None, sigma_scale=1.0):
             if key in header:
                 value = header[key] * scale if isinstance(header[key], (float, int, np.floating, np.integer)) else header[key]
@@ -3338,7 +3342,7 @@ def extract_vipa_data(path_data, instru, target_name, band, gain, label_fiber, d
                     if sigma_header is not None and (not isinstance(sigma_header, (float, int, np.floating, np.integer)) or np.isfinite(sigma_header)):
                         sigma = sigma_header * sigma_scale if isinstance(sigma_header, (float, int, np.floating, np.integer)) else sigma_header
                 _print_value(label, value, fmt=fmt, unit=unit, sigma=sigma, sigma_fmt=sigma_fmt)
-                
+
         print(f"\n\033[1m\033[4mVIPA extracted spectrum: {target_name} ({band}-band, fiber {label_fiber})\033[0m")
         print(line)
         print(" Observation")
@@ -3387,15 +3391,15 @@ def extract_vipa_data(path_data, instru, target_name, band, gain, label_fiber, d
         _print_value("Use weight", str(use_weight), ">10")
         _print_value("Mask NaN values", str(mask_nan_values), ">10")
         print(line)
-    
-    
+
+
     # Initial missing values
     nan_values0  = ~np.isfinite(flux0)
     nan_values0 |= ~np.isfinite(trans0)
     if extract_full_sequence:
         nan_values0 |= np.any(~np.isfinite(flux_seq0), axis=0)
-    
-    
+
+
     # (first) OUTLIERS FILTERING (if wanted)
     if outliers:
         NbNaN0       = nan_values0.sum()
@@ -3420,15 +3424,15 @@ def extract_vipa_data(path_data, instru, target_name, band, gain, label_fiber, d
         if extract_full_sequence:
             flux_seq0  = _mask(flux_seq0,  nan_values0)
             sigma_seq0 = _mask(sigma_seq0, nan_values0)
-    
-    
+
+
     # Realistic noise realisation (for residual comparison purposes)
-    noise0  = np.random.normal(0, sigma0, len(wave0)) # white noise at sigma0    
+    noise0  = np.random.normal(0, sigma0, len(wave0)) # white noise at sigma0
     Rc_init = R0
     noise0  = filtered_flux(noise0, R=R_sampling0, Rc=Rc_init, filter_type=filter_type)[1] # the noise is not entirely white.. (low pass filter at Rc_init)
     noise0  = noise0 * np.sqrt(np.nanmean(sigma0**2)) / np.nanstd(noise0)
-    
-    
+
+
     # Low-pass (if wanted): every "signal" above R0 is filtered and is assumed to be noise
     if filter_noise:
         Rc_noise = R0
@@ -3444,28 +3448,28 @@ def extract_vipa_data(path_data, instru, target_name, band, gain, label_fiber, d
             sigma_seq0 = _scale_sigma(sigma_seq0, fn_LF)
     else:
         Rc_noise = None
-    
-    
+
+
     # Artificially degrating the data to an arbitrary resolution R (if wanted)
     if degrade_data:
-        
+
         # Nyquist sampled wavelength axis
-        wave  = get_wavelength_axis_constant_dl(lmin=header["LMIN"]*1e-3, lmax=header["LMAX"]*1e-3, R=R_target)        
+        wave  = get_wavelength_axis_constant_dl(lmin=header["LMIN"]*1e-3, lmax=header["LMAX"]*1e-3, R=R_target)
         dwave = np.gradient(wave)
-        
+
         # New sampling resolution
         R_sampling = get_resolution(wavelength=wave, func=np.array)
 
         # Interpolating weight
         nan_values = interp1d(wave0, nan_values0, bounds_error=False, fill_value=np.nan)(wave) != 0
-        
+
         # Degrading data
         bin_type        = "mean" # "mean" or "overlap"
         Spectrum_flux   = Spectrum(wavelength=wave0, flux=flux0,   sigma=sigma0,       R=R0).degrade_resolution(wave_output=wave, R_output=R_target, filter_type=filter_type, bin_type=bin_type)
         Spectrum_trans  = Spectrum(wavelength=wave0, flux=trans0,  sigma=sigma_trans0, R=R0).degrade_resolution(wave_output=wave, R_output=R_target, filter_type=filter_type, bin_type=bin_type)
         Spectrum_weight = Spectrum(wavelength=wave0, flux=weight0, sigma=None,         R=R0).degrade_resolution(wave_output=wave, R_output=R_target, filter_type=filter_type, bin_type=bin_type)
         Spectrum_noise  = Spectrum(wavelength=wave0, flux=noise0,  sigma=None,         R=R0).degrade_resolution(wave_output=wave, R_output=R_target, filter_type=filter_type, bin_type=bin_type)
-        
+
         # Retrieving data from Spectrum classes
         flux        = Spectrum_flux.flux
         sigma       = Spectrum_flux.sigma
@@ -3474,7 +3478,7 @@ def extract_vipa_data(path_data, instru, target_name, band, gain, label_fiber, d
         sigma_trans = Spectrum_trans.sigma
         weight      = Spectrum_weight.flux
         noise       = Spectrum_noise.flux
-        
+
         # Assuming constant sigma: estimating the power fraction of noise that would be filtered by the convolution
         q                             = np.nanmedian(R_sampling0) / np.nanmedian(R_sampling) # = dl_output / dl_input
         sigma_bin                     = np.sqrt(np.maximum(q**2 - 1.0, 0.0) / 12.0)          # [input px]
@@ -3485,7 +3489,7 @@ def extract_vipa_data(path_data, instru, target_name, band, gain, label_fiber, d
         fn_LF                         = compute_filter_variance_factor(N=len(wave0), R_sampling=R_sampling0, Rc=Rc_conv, filter_type=filter_type, Rc_init=Rc_init, filter_init_type=filter_type, Rc_noise=Rc_noise, filter_noise_type=filter_type, Rc_conv=None, filter_conv_type=None)[1]
         sigma                         = _scale_sigma(sigma,       fn_LF)
         sigma_trans                   = _scale_sigma(sigma_trans, fn_LF)
-        
+
         # Rebinning does not propagate correctly the sigmas since it assumses i.d.d noise:
         fn_rebin    = compute_rebin_variance_factor(lamHR=wave0, maskHR=~nan_values0, lamLR=wave, dlam=dwave, R_sampling=R_sampling0, Rc_init=Rc_init, filter_init_type=filter_type, Rc_noise=Rc_noise, filter_noise_type=filter_type, Rc_conv=Rc_conv, filter_conv_type=filter_type)
         sigma       = _scale_sigma(sigma,       fn_rebin)
@@ -3493,7 +3497,7 @@ def extract_vipa_data(path_data, instru, target_name, band, gain, label_fiber, d
 
         # Degrading full sequence, if requested
         if extract_full_sequence:
-            flux_seq  = np.asarray([Spectrum(wavelength=wave0, flux=flux_seq0[idit], sigma=None, R=R0).degrade_resolution(wave_output=wave, R_output=R_target, filter_type=filter_type, bin_type=bin_type).flux for idit in range(NDIT)], dtype=float)        
+            flux_seq  = np.asarray([Spectrum(wavelength=wave0, flux=flux_seq0[idit], sigma=None, R=R0).degrade_resolution(wave_output=wave, R_output=R_target, filter_type=filter_type, bin_type=bin_type).flux for idit in range(NDIT)], dtype=float)
             sigma_seq = Spectrum(wavelength=wave0, flux=np.zeros_like(sigma_seq0), sigma=sigma_seq0, R=R0).degrade_resolution(wave_output=wave, R_output=R_target, filter_type=filter_type, bin_type=bin_type).sigma
             sigma_seq = _scale_sigma(sigma_seq, fn_LF*fn_rebin)
         else:
@@ -3514,16 +3518,16 @@ def extract_vipa_data(path_data, instru, target_name, band, gain, label_fiber, d
         sigma_trans = sigma_trans0
         flux_seq    = flux_seq0  if extract_full_sequence else None
         sigma_seq   = sigma_seq0 if extract_full_sequence else None
-    
-    
+
+
     # MM-like post-processing
     signal_HF = trans * filtered_flux(flux/trans,  R=R_sampling, Rc=Rc, filter_type=filter_type)[0]
-    noise_HF  = trans * filtered_flux(noise/trans, R=R_sampling, Rc=Rc, filter_type=filter_type)[0]        
-    
+    noise_HF  = trans * filtered_flux(noise/trans, R=R_sampling, Rc=Rc, filter_type=filter_type)[0]
+
     # Assuming constant sigma: estimating the power fraction of noise that would be filtered
     fn_HF    = compute_filter_variance_factor(N=len(wave), R_sampling=R_sampling, Rc=Rc, filter_type=filter_type, Rc_init=Rc_init, filter_init_type=filter_type, Rc_noise=Rc_noise, filter_noise_type=filter_type, Rc_conv=Rc_conv, filter_conv_type=filter_type)[0]
     sigma_HF = _scale_sigma(sigma, fn_HF)
-    
+
     # Post-processing full sequence, if requested
     if extract_full_sequence:
         signal_seq_HF = np.asarray([trans * filtered_flux(flux=flux_seq[idit] / trans, R=R_sampling, Rc=Rc, filter_type=filter_type)[0] for idit in range(NDIT)], dtype=float)
@@ -3531,8 +3535,8 @@ def extract_vipa_data(path_data, instru, target_name, band, gain, label_fiber, d
     else:
         signal_seq_HF = None
         sigma_seq_HF  = None
-    
-    
+
+
     # (final) OUTLIERS FILTERING (if wanted)
     if outliers:
         NbNaN       = nan_values.sum()
@@ -3549,7 +3553,7 @@ def extract_vipa_data(path_data, instru, target_name, band, gain, label_fiber, d
                 nan_values   |= sigma_clip(np.ma.masked_invalid(flux_HF_DIT),   sigma=sigma_outliers).mask
                 nan_values   |= sigma_clip(np.ma.masked_invalid(signal_HF_DIT), sigma=sigma_outliers).mask
         print(f"{nan_values.sum() - NbNaN} outliers found...")
-    
+
     # Removing the flagged NaN values
     if mask_nan_values:
         flux        = _mask(flux,        nan_values)
@@ -3571,8 +3575,8 @@ def extract_vipa_data(path_data, instru, target_name, band, gain, label_fiber, d
         weight = weight / np.nanmax(weight)
     else:
         weight = None
-    
-    
+
+
     # Sigma propagation sanity check
     if verbose:
         print("\nSanity check of the simulated noise realisation:")
@@ -3586,12 +3590,12 @@ def extract_vipa_data(path_data, instru, target_name, band, gain, label_fiber, d
             print(f"sigma_HF(seq.)  / sigma_HF = {100*np.sqrt(np.nanmean(sigma_seq_HF**2))*np.sqrt(header['NDIT']) / np.sqrt(np.nanmean(sigma_HF**2)):.1f} %")
             print(f"seq. sanity check          = {100*np.sqrt(np.nanmean(sigma_seq_emp**2)) / np.sqrt(np.nanmean(sigma_seq**2)):.1f} %")
             print(f"HF seq. sanity check       = {100*np.sqrt(np.nanmean(sigma_seq_HF_emp**2)) / np.sqrt(np.nanmean(sigma_seq_HF**2)):.1f} %")
-            
-    
+
+
     # Filters dictionnary
     filters = dict(Rc_init=Rc_init, filter_init_type_init=filter_type, Rc_noise=Rc_noise, filter_noise_type_init=filter_type, Rc_conv=Rc_conv, filter_conv_type_init=filter_type)
-    
-    
+
+
     return wave, flux, sigma, noise, signal_HF, sigma_HF, noise_HF, weight, trans, sigma_trans, flux_seq, sigma_seq, signal_seq_HF, sigma_seq_HF, filters, R, header, time_jd, RV_obs, RV_bar, cor_bar
 
 
@@ -3607,40 +3611,40 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
         arr = arr.copy()
         arr[mask] = np.nan
         return arr
-    
+
     # Hard-coded values
     noffsets = 1
     nrefs    = 3
     R0       = 140_000
     if degrade_resolution and R_target > R0:
         raise KeyError(f"The input resolution R_target ({R_target}) can not be greater than the instrumental resolution ({R0}).")
-    
+
     # Opening data
     filename = f"data/HiRISE/{target_name}.fits"
-    
+
     def _hdr_get(hdr, *keys, default=None):
         """Return the first available FITS header value among several possible keys."""
         for key in keys:
             if key in hdr:
                 return hdr[key]
         return default
-    
+
     def _hdr_half_range(hdr, key_start, key_end):
         """Return half the start/end variation if both header keywords exist."""
         if key_start in hdr and key_end in hdr:
             return np.abs(hdr[key_start] - hdr[key_end]) / 2
         return None
-    
+
     def _hdr_product(hdr, key1, key2):
         """Return the product of two header values if both exist."""
         if key1 in hdr and key2 in hdr:
             return hdr[key1] * hdr[key2]
         return None
-    
+
     def _cols(data):
         """Return a case-insensitive dictionary {lowercase_column_name: true_column_name}."""
         return {name.lower(): name for name in data.names}
-    
+
     def _get_col(data, *names, default=None, required=True, dtype=float):
         """Return a FITS table column using several possible names."""
         cols = _cols(data)
@@ -3650,12 +3654,12 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
         if required:
             raise KeyError(f"None of the columns {names} found. Available columns are: {data.names}")
         return default
-    
+
     def _has_hdu(hdul, extname):
         """Case-insensitive test for an extension name."""
         extname = extname.upper()
         return any(hdu.name.upper() == extname for hdu in hdul)
-    
+
     def _get_hdu_data(hdul, extname):
         """Return HDU data using a case-insensitive extension name."""
         extname = extname.upper()
@@ -3663,12 +3667,12 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
             if hdu.name.upper() == extname:
                 return hdu.data
         raise KeyError(f"Extension '{extname}' not found. Available extensions are: {[hdu.name for hdu in hdul]}")
-    
+
     with fits.open(filename) as hdul:
-        
+
         # Header
         hdr = hdul[0].header.copy()
-        
+
         # Observation metadata
         tn                = target_name.split('_20')[0].replace('_', ' ')
         mjd_comp          = _hdr_get(hdr, "HIERARCH COMP MJD MEAN", "HIERARCH COMP MJD-OBS MEAN")
@@ -3689,21 +3693,21 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
         vsini_star_err    = _hdr_get(hdr, "HIERARCH STAR VSINI ERR")
         t_exp_comp        = _hdr_product(hdr, "HIERARCH COMP DIT", "HIERARCH COMP NEXP")
         t_exp_star        = _hdr_product(hdr, "HIERARCH STAR DIT", "HIERARCH STAR NEXP")
-        
+
         # Detect file format
         new_format = _has_hdu(hdul, "WAVE") and _has_hdu(hdul, "RESPONSE,OFFSET0")
         old_format = _has_hdu(hdul, "OFFSET0")
-        
+
         if not new_format and not old_format:
             raise KeyError(f"Unknown HiRISE FITS format for {filename}. Available extensions are: {[hdu.name for hdu in hdul]}")
-        
+
         # Spectral tables
         bkg_flux0 = []
-        
+
         for ioff in range(noffsets):
-            
+
             if new_format:
-                
+
                 # Wavelength table
                 wave_table = _get_hdu_data(hdul, "WAVE")
                 if "recalibrated" in _cols(wave_table):
@@ -3717,43 +3721,43 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
                     wave0 = _get_col(wave_table, "pipeline") * 1e-3                     # [nm] => [µm], raw CRIRES wavelength solution
                 else:
                     raise KeyError(f"No valid wavelength column found in {filename}. Available columns are: {wave_table.names}")
-                
+
                 # Response data
                 data_response = _get_hdu_data(hdul, f"RESPONSE,OFFSET{ioff}")
                 trans0        = _get_col(data_response, "response")                     # no unit
                 trans_model0  = _get_col(data_response, "response_model", default=np.copy(trans0), required=False) # no unit
-                
+
                 # Star data
                 data_star       = _get_hdu_data(hdul, f"STAR,OFFSET{ioff},SCI")
                 star_flux0      = _get_col(data_star, "signal")                         # [e-]
                 star_weight0    = _get_col(data_star, "weight", default=np.ones_like(star_flux0), required=False) # no unit
                 star_sigma_tot0 = _get_col(data_star, "noise")                          # [e-]
                 star_sigma_bkg0 = _get_col(data_star, "noise_background", default=np.copy(star_sigma_tot0), required=False) # [e-]
-                
+
                 # Reference fibers from star sequence
                 if reference_fibers:
                     for iref in range(nrefs):
                         data_star_ref = _get_hdu_data(hdul, f"STAR,OFFSET{ioff},REF{iref}")
                         bkg_flux0.append(_get_col(data_star_ref, "signal"))             # [e-]
-                
+
                 # Companion data
                 data_planet       = _get_hdu_data(hdul, f"COMP,OFFSET{ioff},SCI")
                 planet_flux0      = _get_col(data_planet, "signal")                     # [e-]
                 planet_weight0    = _get_col(data_planet, "weight", default=np.ones_like(planet_flux0), required=False) # no unit
                 planet_sigma_tot0 = _get_col(data_planet, "noise")                      # [e-]
                 planet_sigma_bkg0 = _get_col(data_planet, "noise_background", default=np.copy(planet_sigma_tot0), required=False) # [e-]
-                
+
                 # Reference fibers from companion sequence
                 if reference_fibers:
                     for iref in range(nrefs):
                         data_planet_ref = _get_hdu_data(hdul, f"COMP,OFFSET{ioff},REF{iref}")
                         bkg_flux0.append(_get_col(data_planet_ref, "signal"))           # [e-]
-            
+
             else:
-                
+
                 # Old compact offset table
                 data_offset = _get_hdu_data(hdul, f"OFFSET{ioff}")
-                
+
                 # Wavelength table
                 if "wave_recal" in _cols(data_offset):
                     wave0 = _get_col(data_offset, "wave_recal") * 1e-3                  # [nm] => [µm], recalibrated, observer frame
@@ -3765,37 +3769,37 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
                     wave0 = _get_col(data_offset, "wave_original") * 1e-3              # [nm] => [µm], original wavelength solution
                 else:
                     raise KeyError(f"No valid wavelength column found in {filename}. Available columns are: {data_offset.names}")
-                
+
                 # Response data
                 trans0       = _get_col(data_offset, "response")                       # no unit
                 trans_model0 = _get_col(data_offset, "response_model", default=np.copy(trans0), required=False) # no unit
-                
+
                 # Star data
                 star_flux0      = _get_col(data_offset, "star_signal")                 # [e-]
                 star_weight0    = _get_col(data_offset, "star_weight", default=np.ones_like(star_flux0), required=False) # no unit
                 star_sigma_tot0 = _get_col(data_offset, "star_noise")                  # [e-]
                 star_sigma_bkg0 = _get_col(data_offset, "star_noise_background", "star_background_noise", default=np.copy(star_sigma_tot0), required=False) # [e-]
-                
+
                 # Companion data
                 planet_flux0      = _get_col(data_offset, "companion_signal", "comp_signal") # [e-]
                 planet_weight0    = _get_col(data_offset, "companion_weight", "comp_weight", default=np.ones_like(planet_flux0), required=False) # no unit
                 planet_sigma_tot0 = _get_col(data_offset, "companion_noise", "comp_noise") # [e-]
                 planet_sigma_bkg0 = _get_col(data_offset, "companion_noise_background", "companion_background_noise", "comp_noise_background", default=np.copy(planet_sigma_tot0), required=False) # [e-]
-                
+
                 # Reference fibers
                 if reference_fibers and _has_hdu(hdul, f"OFFSET{ioff}_REF"):
                     data_ref = _get_hdu_data(hdul, f"OFFSET{ioff}_REF")
-                    
+
                     for iref in range(nrefs):
                         colname = f"star_ref{iref}_signal"
                         if colname.lower() in _cols(data_ref):
                             bkg_flux0.append(_get_col(data_ref, colname))              # [e-]
-                    
+
                     for iref in range(nrefs):
                         colname = f"companion_ref{iref}_signal"
                         if colname.lower() in _cols(data_ref):
                             bkg_flux0.append(_get_col(data_ref, colname))              # [e-]
-        
+
     # Optional stellar RV correction between the star and companion observations
     if shift_star_corr and date_obs_comp is not None and date_obs_star is not None and rv_comp_corr is not None and rv_star_corr is not None:
         if date_obs_comp > date_obs_star:
@@ -3805,7 +3809,7 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
         star_flux0 = Spectrum(wave0, star_flux0/trans0).doppler_shift(delta_corr, renorm=False).flux * trans0
     else:
         delta_corr = 0
-    
+
     # Wavelength axis properties
     if crop_tell_orders:
         lmin = 1.536
@@ -3814,20 +3818,20 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
         lmin = wave0[0]
         lmax = wave0[-1]
     R_sampling0 = get_resolution(wavelength=wave0, func=np.array) # Raw sampling resolution
-    
-    
+
+
     # Flagging the order limits, for order-by-order filtering
     if order_by_order:
         dl0         = np.nanmedian((lmin + lmax) / (2 * R_sampling0))
         transitions = np.where(np.diff(wave0) > 1000 * dl0)[0] + 1 # Indexes where the order changes
         lmin_orders = wave0[transitions - 1]
         lmax_orders = wave0[transitions]
-    
-    
+
+
     # Prints
     if verbose:
         line = "─" * 78
-        
+
         def _print_value(label, value, fmt="", unit="", sigma=None, sigma_fmt=None):
             if value is None:
                 return
@@ -3839,7 +3843,7 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
                 if sigma_fmt is None:
                     sigma_fmt = fmt
                 print(f"   {label:<34}: {value:{fmt}} ± {sigma:{sigma_fmt}}{unit}")
-        
+
         print(f"\n\033[1m\033[4mHiRISE extracted spectrum: {tn}\033[0m")
         print(line)
         print(" Observation")
@@ -3883,8 +3887,8 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
         _print_value("Mask NaN values", str(mask_nan_values), ">10")
         _print_value("Keep only good pixels", str(keep_only_good), ">10")
         print(line)
-    
-    
+
+
     # Initial missing values
     nan_values0  = ~np.isfinite(wave0)
     nan_values0 |= ~np.isfinite(star_flux0)
@@ -3893,8 +3897,8 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
     nan_values0 |= ~np.isfinite(trans_model0)
     nan_values0 |= trans0 == 0
     valid0       = ~nan_values0
-    
-    
+
+
     # (first) OUTLIERS FILTERING (if wanted)
     if outliers:
         NbNaN0          = nan_values0.sum()
@@ -3924,18 +3928,18 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
                 bkg_mask     = sigma_clip(np.ma.masked_invalid(bkg_flux0_HF), sigma=sigma_outliers).mask
                 bkg_flux0[i] = _mask(bkg_flux0[i], bkg_mask)
         valid0 = ~nan_values0
-    
-    
+
+
     # Interpolation of the data, if requested
     if interpolate:
-        
+
         # New wavelength axis
         if wave_input is not None and not degrade_resolution:
             wave = wave_input
         else:
             dl   = np.nanmin(wave0 / (2*R0)) # [µm/bin] Nyquist sampling of a spectrum with max resolving power R_model: 2 samples per resolution element at lmin_model
             wave = np.arange(lmin, lmax, dl) # [µm] Model wavelength axis (with constant dl step)
-        
+
         # Converting to densities, for interpolations to make sense
         dwave             = np.gradient(wave)  # [µm/px]
         dwave0            = np.gradient(wave0) # [µm/px]
@@ -3948,7 +3952,7 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
         if reference_fibers:
             for i in range(len(bkg_flux0)):
                 bkg_flux0[i] = bkg_flux0[i] / dwave0 # [e-/µm]
-        
+
         # Interpolations, with noise propagation
         valid0 = valid0 & np.isfinite(wave0)
         star_flux0,   star_sigma_tot0,   star_weight0,   _ = interpolate_flux_with_error(wave=wave0[valid0], flux=star_flux0[valid0],   sigma=star_sigma_tot0[valid0],   weight=star_weight0[valid0],   wave_new=wave)
@@ -3960,7 +3964,7 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
         if reference_fibers:
             for i in range(len(bkg_flux0)):
                 bkg_flux0[i], _, _, _ = interpolate_flux_with_error(wave=wave0[valid0], flux=bkg_flux0[i][valid0], sigma=None, weight=None, wave_new=wave)
-        
+
         # Reconverting to flux per bin
         star_flux0        = star_flux0        * dwave # [e-/bin]
         star_sigma_tot0   = star_sigma_tot0   * dwave # [e-/bin]
@@ -3971,25 +3975,25 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
         if reference_fibers:
             for i in range(len(bkg_flux0)):
                 bkg_flux0[i] = bkg_flux0[i] * dwave # [e-/bin]
-        
+
         # Interpolating the initial missing-values mask
         nan_values0  = interp1d(wave0, nan_values0, bounds_error=False, fill_value=np.nan)(wave) != 0
         nan_values0 |= ~np.isfinite(star_flux0)
         nan_values0 |= ~np.isfinite(planet_flux0)
         nan_values0 |= ~np.isfinite(trans0)
         valid0       = ~nan_values0
-        
+
         # Updating native wavelength axis
         wave0 = wave
-    
-    
+
+
     # Artificially degrading the data to an arbitrary resolution R, if requested
     if degrade_resolution:
-        
+
         # Nyquist sampled wavelength axis
-        wave  = get_wavelength_axis_constant_dl(lmin=lmin, lmax=lmax, R=R_target)        
+        wave  = get_wavelength_axis_constant_dl(lmin=lmin, lmax=lmax, R=R_target)
         dwave = np.gradient(wave)
-        
+
         # New sampling resolution
         R_sampling = get_resolution(wavelength=wave, func=np.array)
 
@@ -3999,14 +4003,14 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
         valid0 &= np.isfinite(star_flux0)
         valid0 &= np.isfinite(planet_flux0)
         valid0 &= np.isfinite(trans0)
-        
+
         # Degrading star data
         star_spectrumLR = Spectrum(wave0, star_flux0, R=R0, sigma=star_sigma_tot0).degrade_resolution(wave, renorm=False, R_output=R_target)
         star_flux       = star_spectrumLR.flux
         star_sigma_tot  = star_spectrumLR.sigma
         star_sigma_bkg  = Spectrum(wave0, star_flux0,   R=R0, sigma=star_sigma_bkg0).degrade_resolution(wave,     renorm=False, R_output=R_target).sigma
         star_weight     = Spectrum(wave0, star_weight0, R=R0, sigma=star_sigma_bkg0).interpolate_wavelength(wave, renorm=False).flux
-        
+
         # Degrading companion data
         planet_spectrumLR = Spectrum(wave0, planet_flux0, R=R0, sigma=planet_sigma_tot0).degrade_resolution(wave, renorm=False, R_output=R_target)
         planet_flux       = planet_spectrumLR.flux
@@ -4014,24 +4018,24 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
         R                 = planet_spectrumLR.R
         planet_sigma_bkg  = Spectrum(wave0, planet_flux0,   R=R0, sigma=planet_sigma_bkg0).degrade_resolution(wave,     renorm=False, R_output=R_target).sigma
         planet_weight     = Spectrum(wave0, planet_weight0, R=R0, sigma=planet_sigma_bkg0).interpolate_wavelength(wave, renorm=False).flux
-        
+
         # Degrading transmission data
         trans       = Spectrum(wave0, trans0,       R=R0).degrade_resolution(wave, renorm=False, R_output=R_target).flux
         trans_model = Spectrum(wave0, trans_model0, R=R0).degrade_resolution(wave, renorm=False, R_output=R_target).flux
-        
+
         # Interpolating the initial missing-values mask
         nan_values  = interp1d(wave0, nan_values0, bounds_error=False, fill_value=np.nan)(wave) != 0
         nan_values |= ~np.isfinite(star_flux)
         nan_values |= ~np.isfinite(planet_flux)
         nan_values |= ~np.isfinite(trans)
         valid       = ~nan_values
-        
+
         # Degrading reference fibers
         bkg_flux = []
         if reference_fibers:
             for i in range(len(bkg_flux0)):
                 bkg_flux.append(Spectrum(wave0, bkg_flux0[i], R=R0).degrade_resolution(wave, renorm=False, R_output=R).flux)
-    
+
     # Otherwise, takes the current data
     else:
         R_sampling       = R_sampling0
@@ -4050,14 +4054,14 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
         nan_values       = nan_values0
         valid            = valid0
         bkg_flux         = bkg_flux0 if reference_fibers else []
-    
-    
+
+
     # High-pass filtering
     if order_by_order and len(lmin_orders) > 0:
         star_flux_HF,   star_flux_LF   = np.full_like(wave, np.nan), np.full_like(wave, np.nan)
         planet_flux_HF, planet_flux_LF = np.full_like(wave, np.nan), np.full_like(wave, np.nan)
         sf_HF,          sf_LF          = np.full_like(wave, np.nan), np.full_like(wave, np.nan)
-        
+
         # Process each spectral order separately
         for i in range(len(lmin_orders) + 1):
             if i == 0:                     # First order
@@ -4066,38 +4070,38 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
                 mask_order = wave > lmax_orders[i - 1]
             else:                          # Intermediate orders
                 mask_order = (wave > lmax_orders[i - 1]) & (wave < lmin_orders[i])
-            
+
             if np.any(mask_order):
                 star_flux_HF[mask_order],   star_flux_LF[mask_order]   = filtered_flux(star_flux[mask_order],                   R=R_sampling, Rc=Rc, filter_type=filter_type)
                 planet_flux_HF[mask_order], planet_flux_LF[mask_order] = filtered_flux(planet_flux[mask_order],                 R=R_sampling, Rc=Rc, filter_type=filter_type)
                 sf_HF[mask_order],          sf_LF[mask_order]          = filtered_flux(star_flux[mask_order]/trans[mask_order], R=R_sampling, Rc=Rc, filter_type=filter_type)
-    
+
     else:
-        
+
         # Handling LF filtering edge effects due to the gaps between the orders
         star_flux_HF,   star_flux_LF   = filtered_flux(star_flux,   R=R_sampling, Rc=Rc, filter_type=filter_type)
         planet_flux_HF, planet_flux_LF = filtered_flux(planet_flux, R=R_sampling, Rc=Rc, filter_type=filter_type)
         _,             trans_LF        = filtered_flux(trans,       R=R_sampling, Rc=Rc, filter_type=filter_type)
-        
+
         f              = interp1d(wave[valid], star_flux_LF[valid], bounds_error=False, fill_value=np.nan)
         star_flux_LF   = f(wave)
         f              = interp1d(wave[valid], planet_flux_LF[valid], bounds_error=False, fill_value=np.nan)
         planet_flux_LF = f(wave)
         f              = interp1d(wave[valid], trans_LF[valid], bounds_error=False, fill_value=np.nan)
         trans_LF       = f(wave)
-        
+
         # Masking inter-order regions before re-filtering
         gap_size_pix     = int(max(1, round(0.005 / np.nanmean(np.diff(wave))))) # 0.005 µm ~ typical gap size between orders
         inter_order_mask = keep_true_chunks(nan_values, N=gap_size_pix)
         star_flux[inter_order_mask]   = star_flux_LF[inter_order_mask]
         planet_flux[inter_order_mask] = planet_flux_LF[inter_order_mask]
         trans[inter_order_mask]       = trans_LF[inter_order_mask]
-        
+
         # HF / LF calculations
         star_flux_HF,   star_flux_LF   = filtered_flux(star_flux,       R=R_sampling, Rc=Rc, filter_type=filter_type)
         planet_flux_HF, planet_flux_LF = filtered_flux(planet_flux,     R=R_sampling, Rc=Rc, filter_type=filter_type)
         sf_HF,          sf_LF          = filtered_flux(star_flux/trans, R=R_sampling, Rc=Rc, filter_type=filter_type)
-    
+
     # Filtering reference fibers
     bkg_flux_HF = []
     bkg_flux_LF = []
@@ -4106,32 +4110,32 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
             bkg_HF_i, bkg_LF_i = filtered_flux(bkg_flux[i], R=R_sampling, Rc=Rc, filter_type=filter_type)
             bkg_flux_HF.append(bkg_HF_i)
             bkg_flux_LF.append(bkg_LF_i)
-    
-    
+
+
     # Only apply a high-pass filter to the data, with no stellar subtraction, if requested
     if only_high_pass:
         planet_flux_HF, planet_flux_LF = filtered_flux(planet_flux/trans, R=R_sampling, Rc=Rc, filter_type=filter_type)
         d_planet                       = trans * planet_flux_HF
-        
+
         d_bkg = []
         if reference_fibers:
             for i in range(len(bkg_flux)):
                 bkg_flux_HF_i, bkg_flux_LF_i = filtered_flux(bkg_flux[i]/trans, R=R_sampling, Rc=Rc, filter_type=filter_type)
                 d_bkg.append(trans * bkg_flux_HF_i)
-    
+
     # Standard molecular mapping post-processing
     else:
         d_planet = planet_flux - star_flux * planet_flux_LF / star_flux_LF # high-pass companion spectrum extracted = trans*[Sp]_HF
-        
+
         d_bkg = []
         if reference_fibers:
             for i in range(len(bkg_flux)):
                 d_bkg.append(bkg_flux[i] - star_flux * bkg_flux_LF[i] / star_flux_LF)
-    
-    
+
+
     # Star high-pass filtered data
     d_star = trans * sf_HF # considered as noise / background flux
-    
+
     # (final) OUTLIERS FILTERING (if wanted)
     if outliers:
         NbNaN          = nan_values.sum()
@@ -4161,7 +4165,7 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
                 bkg_mask     = sigma_clip(np.ma.masked_invalid(bkg_flux_HF), sigma=sigma_outliers).mask
                 bkg_flux[i] = _mask(bkg_flux[i], bkg_mask)
         valid = ~nan_values
-    
+
     # Removing the flagged NaN values
     if mask_nan_values:
         mask = nan_values
@@ -4169,7 +4173,7 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
         mask = keep_true_chunks(nan_values, N=50) # Always mask the large gaps between orders
     if keep_only_good:
         mask = mask | (planet_weight < 1)
-    
+
     trans            = _mask(trans,            mask)
     trans_model      = _mask(trans_model,      mask)
     star_flux        = _mask(star_flux,        mask)
@@ -4189,11 +4193,11 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
     if reference_fibers:
         for i in range(len(d_bkg)):
             d_bkg[i] = _mask(d_bkg[i], mask)
-    
-    
+
+
     # Plots
     if verbose and "fiber" not in target_name:
-        
+
         # Plot of the filtered data
         fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(10, 10), dpi=300, sharex=True)
         axes[0].set_title("Companion's Signal", fontsize=14, fontweight="bold")
@@ -4218,7 +4222,7 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
         plt.tight_layout()
         plt.minorticks_on()
         plt.show()
-        
+
         # Plot of the noise budget
         fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(10, 12), dpi=300, sharex=True)
         axes[0].plot(wave, planet_flux, color="gray", linestyle="-", linewidth=2, alpha=0.8, label=r"$S$ (Signal)")
@@ -4244,12 +4248,12 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
         plt.tight_layout()
         plt.minorticks_on()
         plt.show()
-    
-    
+
+
     # Noise estimation
     planet_sigma = np.sqrt(planet_sigma_tot**2 + star_sigma_tot**2 * (planet_flux_LF/star_flux_LF)**2)
-    
-    
+
+
     # Weight function, if requested
     if use_weight:
         planet_weight = (planet_weight + star_weight) / 2 # mean between the two weight functions
@@ -4259,20 +4263,20 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
         planet_sigma = planet_sigma * planet_weight # since the signals will be multiplied by the weight, the noise needs also to be multiplied by it
     else:
         planet_weight = None
-    
-    
+
+
     # Filtering fringe frequencies, if requested
     if cut_fringes:
         if "fiber" not in target_name:
             d_planet = cut_spectral_frequencies(input_flux=d_planet, R=R_sampling, Rmin=Rmin, Rmax=Rmax, show=verbose, target_name=target_name, force_new_calc=True)
         else:
             d_planet = cut_spectral_frequencies(input_flux=d_planet, R=R_sampling, Rmin=Rmin, Rmax=Rmax, show=False, target_name=target_name[:-7], force_new_calc=False)
-    
-    
+
+
     # Add the stellar residual spectrum as an additional background spectrum
     d_bkg.append(d_star)
-    
-    
+
+
     return wave, star_flux, d_star, planet_flux, d_planet, trans, trans_model, R, planet_sigma, planet_weight, T_star, lg_star, rv_star_obs, vsini_star, hdr, d_bkg
 
 
@@ -4318,7 +4322,7 @@ def interp_extrap_sep(separation_ref, separation_new, y_ref, mode="log", tail_mo
         Interpolated (and extrapolated) profile evaluated on 'separation_new'.
 
     """
-    
+
     if np.any(np.diff(separation_ref) <= 0):
         raise ValueError("separation_ref must be strictly increasing.")
     if mode not in {"log", "logit", "linear"}:
@@ -4328,24 +4332,24 @@ def interp_extrap_sep(separation_ref, separation_new, y_ref, mode="log", tail_mo
     if tail_model == "powerlaw" and mode != "log":
         raise ValueError("tail_model='powerlaw' is only supported for mode='log'.")
 
-    # --- Interpolation according to different mode --- 
+    # --- Interpolation according to different mode ---
     if mode == "log": # For PSF profile
         y_new = np.exp(interp1d(separation_ref, np.log(y_ref), bounds_error=False, axis=0, assume_sorted=True, fill_value=np.nan)(separation_new))
     elif mode == "logit": # For fraction core and radial transmission
         y_new = expit(interp1d(separation_ref,  logit(y_ref),  bounds_error=False, axis=0, assume_sorted=True, fill_value=np.nan)(separation_new))
     elif mode == "linear": # Linear interpolation with clamping.
         y_new = interp1d(separation_ref,        y_ref,         bounds_error=False, axis=0, assume_sorted=True, fill_value=np.nan)(separation_new)
-    
-    # --- Extrapolation according to different mode --- 
+
+    # --- Extrapolation according to different mode ---
     m_lo = separation_new < separation_ref[0]
     m_hi = separation_new > separation_ref[-1]
-    
+
     if np.any(m_lo):
         y_new[m_lo] = y_ref[0]
-        
+
     if np.any(m_hi):
         if tail_model == "powerlaw":
-            
+
             # Fit log(y_ref) = alpha*log(rho) + const on the tail of the reference profile.
             x = separation_ref
             y = y_ref
@@ -4356,10 +4360,10 @@ def interp_extrap_sep(separation_ref, separation_new, y_ref, mode="log", tail_mo
             else:
                 logx = np.log(x[valid])
                 logy = np.log(y[valid])
-                
+
                 if slope is None: # should be ~ -3
                     slope, _ = np.polyfit(logx, logy, 1)   # slope should be negative
-                
+
                 if (not np.isfinite(slope)) or (slope >= 0):
                     y_new[m_hi] = y_ref[-1]
                 else:
@@ -4403,7 +4407,7 @@ def warp_sep_wave(wave_ref, wave_new, separation, y_ref, mode="log", amp_power=0
         For example, a halo term scaling approximately as λ^-2 corresponds to 'amp_power=2'.
     tail_model : {"flat", "powerlaw"}, optional
         Outer-separation extrapolation rule passed to :func:'interp_extrap_sep'.
-        
+
     Returns
     -------
     y_out : (N,) ndarray
@@ -4415,12 +4419,12 @@ def warp_sep_wave(wave_ref, wave_new, separation, y_ref, mode="log", amp_power=0
     scaling. Any additional chromatic PSF evolution not captured by λ/D scaling must be modeled
     separately.
     """
-    
+
     # Evaluate the reference profile at x = rho * (wave_ref/wave_new)
     separation_ref = separation
     separation_new = separation * (float(wave_ref) / float(wave_new))
     y_new          = interp_extrap_sep(separation_ref=separation_ref, separation_new=separation_new, y_ref=y_ref, mode=mode, tail_model=tail_model)
-    
+
     # Optional wavelength-dependent amplitude scaling.
     return y_new * (float(wave_ref) / float(wave_new)) ** float(amp_power)
 
@@ -4488,11 +4492,11 @@ def interp_extrap_wave(wave_ref, wave_new, separation, PSF_profile_density_2D, f
     chromatic effects (e.g., wavelength-dependent aberrations, apodizer/chromatic coronagraph
     response beyond the provided transmission map, detector/instrument effects).
     """
-    
+
     if np.any(np.diff(wave_ref) <= 0):
         raise ValueError("wave_ref must be strictly increasing.")
     if np.any(~np.isfinite(wave_ref)) or np.any(~np.isfinite(wave_new)):
-        raise ValueError("wave_ref and wave_new must be finite.")        
+        raise ValueError("wave_ref and wave_new must be finite.")
     if np.any(~np.isfinite(separation)) or np.any(np.diff(separation) <= 0):
         raise ValueError("separation must be finite and strictly increasing.")
 
@@ -4500,7 +4504,7 @@ def interp_extrap_wave(wave_ref, wave_new, separation, PSF_profile_density_2D, f
     i_min, i_max = 0, -1
 
     # --- Interpolation within the band; outside becomes NaN ---
-    # PSF:                        log-log   in lambda 
+    # PSF:                        log-log   in lambda
     # fraction_core/transmission: log-logit in lambda
     PSF_profile_density_2D_new     = np.exp(interp1d(np.log(wave_ref), np.log(PSF_profile_density_2D), bounds_error=False, axis=0, assume_sorted=True, fill_value=np.nan)(np.log(wave_new)))
     fraction_core_2D_new           = expit(interp1d(np.log(wave_ref),  logit(fraction_core_2D),        bounds_error=False, axis=0, assume_sorted=True, fill_value=np.nan)(np.log(wave_new)))
@@ -4575,7 +4579,7 @@ def warp_sep_IWA(separation, y_ref, r_IWA, mode="log", tail_model="powerlaw"):
     - This is a geometric rescaling in separation only; it does not modify profile amplitudes.
     - Low-separation extrapolation is clamped to the first sample of each wavelength slice.
     """
-    
+
     # Evaluate the reference curve at rho/r_IWA
     separation_ref = separation
     separation_new = separation / float(r_IWA)
@@ -4583,11 +4587,11 @@ def warp_sep_IWA(separation, y_ref, r_IWA, mode="log", tail_model="powerlaw"):
     N_wave, N_sep = y_ref.shape
     y_new         = np.zeros((N_wave, N_sep), dtype=float)
 
-    for iw in range(N_wave):        
+    for iw in range(N_wave):
         # Evaluate the reference profile at x = rho * (wave_ref/wave_new)
         y_new[iw] = interp_extrap_sep(separation_ref=separation_ref, separation_new=separation_new, y_ref=y_ref[iw], mode=mode, tail_model=tail_model)
 
-    return y_new 
+    return y_new
 
 
 
@@ -4613,91 +4617,91 @@ def estimate_SR(instru, apodizer, strehl, PSF_3D, PSF_DL_2D_lD, pxscale_data, px
     """
     Estimate an effective Strehl-ratio spectrum and an equivalent achromatic WFE
     from post-AO PSF cubes by comparison with a diffraction-limited PSF.
-    
+
     The input post-AO PSF cube and the diffraction-limited (DL) reference PSF are
     first brought onto a common spatial sampling and cropped to the same field of
     view (FoV). Both cubes are then normalized using the provided aperture
     correction, which approximates the fraction of total flux enclosed in the
     simulated FoV.
-    
+
     For each wavelength, the function estimates an effective Strehl ratio within
     the PSF core by fitting the post-AO core as a weighted linear combination of:
-    
+
         PSF_postAO ~= alpha * PSF_DL + beta
-    
+
     inside a circular region of radius equal to half the DL FWHM. The fitted
     coefficient 'alpha' is used as the effective Strehl estimate at that wavelength.
     This quantity should be interpreted as the amplitude of the diffraction-limited
     component in the PSF core rather than as a strict peak-to-peak Strehl ratio.
-    
+
     The resulting 'SR_raw(wave)' is then converted into an equivalent WFE using the
     Maréchal-like relation:
-    
+
         WFE_rad = sqrt(-log(SR))
-    
+
     and summarized by a single scalar 'WFE_nm', defined as the median WFE over the
     input wavelength grid.
-    
+
     Depending on the instrument, the final Strehl spectrum on 'wave_output' is
     constructed differently:
     - for "HARMONI", a wavelength-independent WFE in nm is assumed, and the
       Strehl is reconstructed from this constant WFE;
     - for "ANDES", the raw Strehl spectrum is interpolated/extrapolated directly
       onto 'wave_output'.
-    
+
     Parameters
     ----------
     instru : str
         Instrument name. Currently used to choose how the output Strehl spectrum is
         propagated to 'wave_output' (e.g. ""HARMONI"" or ""ANDES"").
-    
+
     apodizer : str
         Name of the apodizer, only used for plot labeling.
-    
+
     strehl : str
         AO regime label, only used for plot labeling.
-    
+
     PSF_3D : ndarray of shape (N_wave, Ny, Nx)
         Post-AO PSF cube sampled on the detector grid. The cube is assumed to be
         centered approximately on the optical axis and defined over a finite FoV.
-    
+
     PSF_DL_2D_lD : ndarray of shape (Ny_DL, Nx_DL)
         Diffraction-limited PSF computed on a finely sampled focal grid expressed
         in units of lambda/D per pixel.
-    
+
     pxscale_data : float
         Pixel scale of 'PSF_3D' in mas/pixel.
-    
+
     pxscale_DL_lD : float
         Pixel scale of 'PSF_DL_2D_lD' in units of lambda/D per pixel.
-    
+
     FOV : float
         Field of view size in mas used for the comparison. The PSFs are cropped to
         this FoV after rebinning.
-    
+
     D : float
         Telescope diameter in meters.
-    
+
     wave : ndarray of shape (N_wave,)
         Wavelength grid in microns associated with 'PSF_3D'.
-    
+
     aperture_correction : ndarray of shape (N_wave,)
         Estimated fraction of total flux enclosed within the simulated FoV.
         This is used to normalize both the DL and post-AO PSFs to an approximate
         total-flux convention.
-    
+
     wave_output : ndarray
         Wavelength grid in microns on which the final Strehl spectrum is returned.
-    
+
     Returns
     -------
     SR : ndarray of shape (len(wave_output),)
         Estimated effective Strehl-ratio spectrum on 'wave_output'.
-    
+
     WFE_nm : float
         Median equivalent wavefront error in nanometers, inferred from the raw
         Strehl spectrum over 'wave'.
-    
+
     Notes
     -----
     - The returned Strehl is an *effective* Strehl-like quantity derived from a
@@ -4715,7 +4719,7 @@ def estimate_SR(instru, apodizer, strehl, PSF_3D, PSF_DL_2D_lD, pxscale_data, px
     lD         = wave*1e-6 / D * 1000*rad2arcsec # lambda/D [mas/(lambda/D)]
     pxscale_DL = pxscale_DL_lD * lD              # DL pxscale [mas/px]
     pxscale    = max(np.nanmax(pxscale_DL), pxscale_data)
-    
+
     # Scales and mask
     R_max    = int(round(FOV/2/pxscale)) # [px] FoV radius (FoV/2 in pixels)
     NbLine   = 2*R_max+1
@@ -4725,60 +4729,60 @@ def estimate_SR(instru, apodizer, strehl, PSF_3D, PSF_DL_2D_lD, pxscale_data, px
     r_px     = np.sqrt((Y - y0)**2 + (X - x0)**2)
     r        = r_px * pxscale
     N_wave   = len(wave)
-    
+
     # --- Rebinning and retrieving the PSF for each wavelength ---
     PSF_DL_3D              = np.zeros((N_wave, NbLine, NbColumn))
     for i in tqdm(range(len(wave)), desc="Estimating the Strehl ratio"):
-                
+
         # Cropping to the FoV (in order to make computation faster)
         R_2FOV       = int(round(2*FOV/2/pxscale_DL[i])) # 2*FOV (to be sure)
         PSF_DL_2D = crop(PSF_DL_2D_lD, Y0=PSF_DL_2D_lD.shape[0]//2, X0=PSF_DL_2D_lD.shape[1]//2, R_crop=R_2FOV)
-                
+
         # Rebinning the PSF at the band pxscale
         PSF_DL_2D = rebin_flux_conserving(data=PSF_DL_2D, pxscale_in=pxscale_DL[i], pxscale_out=pxscale)
-        
+
         # Cropping in order to have same PSF sizes
         PSF_DL_2D = crop(PSF_DL_2D, R_crop=R_max)
-        
+
         # Saving the array
         PSF_DL_3D[i] = PSF_DL_2D
-    
+
     # Normalizing
     PSF_DL_3D /= np.nansum(PSF_DL_3D, axis=(1, 2))[:, None, None] / aperture_correction[:, None, None]
-    
+
     # Cropping and normalizing
     PSF_3D  = rebin_flux_conserving(data=PSF_3D, pxscale_in=pxscale_data, pxscale_out=pxscale)
     PSF_3D  = crop(PSF_3D, R_crop=R_max)
     PSF_3D  = fill_invalid_by_symmetry(PSF_3D)
     PSF_3D  = fill_invalid_by_nearest(PSF_3D)
     PSF_3D /= np.nansum(PSF_3D, axis=(1, 2))[:, None, None] / aperture_correction[:, None, None]
-    
-    
+
+
     # # Sanity check plots
     # plot_PSF(instru=instru, coronagraph=None, apodizer=apodizer, strehl=strehl, pxscale=pxscale, sep_unit="mas", wave=wave, PSF_3D=PSF_DL_3D, type_PSF="DL",      model_PSF="gaussian", sigfactor=None, debug=True)
     # plot_PSF(instru=instru, coronagraph=None, apodizer=apodizer, strehl=strehl, pxscale=pxscale, sep_unit="mas", wave=wave, PSF_3D=PSF_3D,    type_PSF="post-AO", model_PSF="gaussian", sigfactor=None, debug=True)
 
-    
+
     # Computing SR
     SR_raw = np.zeros((N_wave))
     for i, l0 in enumerate(wave):
         r_core    = 1.029 * l0*1e-6 / D * 1000*rad2arcsec # DL FWHM radius [mas]
         mask_core = (r <= r_core)
-        
+
         # PSF       = PSF_3D[i][mask_core]
         # PSF_DL    = PSF_DL_3D[i][mask_core]
         # SR_raw[i] = np.nansum(PSF*PSF_DL) / np.nansum(PSF_DL**2)
 
         x = PSF_DL_3D[i][mask_core].ravel()
         y = PSF_3D[i][mask_core].ravel()
-        
+
         A = np.column_stack([x, np.ones_like(x)])
         w = x / np.nanmax(x)
         W = np.sqrt(w)
-        
+
         A_w = A * W[:, None]
         y_w = y * W
-        
+
         res         = lsq_linear(A_w, y_w, bounds=([0.0, 0.0], [1.0, np.inf]))
         alpha, beta = res.x
         alpha       = max(alpha, 1e-8)
@@ -4804,141 +4808,141 @@ def estimate_SR(instru, apodizer, strehl, PSF_3D, PSF_DL_2D_lD, pxscale_data, px
     plt.xlim(wave_output[0], wave_output[-1])
     plt.ylim(0, 100)
     plt.show()
-            
+
     return SR, WFE_nm
-    
+
 
 
 def build_PSF_grid(SR, D, wave, r_WFE, r_IWA, separation, PSF_profile_density_no_coro_2D, fraction_core_no_coro_2D, PSF_profile_density_DL_2D, fraction_core_DL_2D, coronagraph, IWA_ref, PSF_profile_density_coro_2D, fraction_core_coro_2D, radial_transmission_2D, PSF_profile_density_speck_2D=None, eps=1e-8):
     """
     Build a 4D grid of radial PSF quantities as a function of wavelength, WFE scaling,
     and coronagraphic IWA scaling.
-    
+
     This routine constructs radial profiles and core-flux fractions for a reference PSF
     model and propagates them over a grid of wavefront-error scalings ('r_WFE') and,
     when applicable, coronagraph inner-working-angle scalings ('r_IWA').
-    
+
     The non-coronagraphic PSF is modeled as the sum of a diffraction-limited core and a
     speckle halo. The reference halo fraction is estimated from the input post-AO and
     diffraction-limited profiles, then regularized spectrally/radially. For each WFE
     scaling, the diffraction-limited contribution is updated through the Strehl ratio,
     while the halo is rescaled approximately as (1 - SR).
-    
+
     If a coronagraph is provided, the reference coronagraphic stellar halo is assumed to
     be represented by 'PSF_profile_density_coro_2D'. The coronagraphic radial profile is
     then warped with IWA, mixed heuristically with the non-coronagraphic profile using a
     leakage-based coefficient, and paired with an updated radial transmission curve.
-    
+
     Parameters
     ----------
     SR : array-like of shape (N_wave,)
         Reference Strehl ratio as a function of wavelength. Values must lie in [0, 1].
         This defines the reference WFE through the Maréchal-like proxy
         "WFE_rad = sqrt(-log(SR))".
-    
+
     D : float
         Telescope diameter in meters. Used to estimate a characteristic smoothing scale
         for the speckle-halo fraction regularization.
-    
+
     wave : array-like of shape (N_wave,)
         Wavelength axis in microns. Must have the same length as the first dimension of
         the 2D input arrays.
-    
+
     r_WFE : array-like of shape (N_WFE,)
         Multiplicative scaling factors applied to the reference WFE proxy.
         'r_WFE = 1' corresponds to the reference PSF.
         'r_WFE = 0' corresponds to a diffraction-limited case.
-    
+
     r_IWA : array-like of shape (N_IWA,)
         Multiplicative scaling factors applied to the reference coronagraphic IWA.
         Only used when 'coronagraph is not None'.
         'r_IWA = 1' corresponds to the reference IWA.
-    
+
     separation : array-like of shape (N_sep,)
         Monotonically increasing radial separation grid in mas. The first value must be 0.
         This grid is used both:
           1. as the radial coordinate of the PSF profiles, and
           2. as the offset grid with respect to the coronagraphic mask for the
              coronagraphic throughput/core-fraction inputs.
-    
+
     PSF_profile_density_no_coro_2D : ndarray of shape (N_wave, N_sep)
         Reference post-AO non-coronagraphic radial profile:
         mean surface-brightness density in each annular bin divided by the total
         non-coronagraphic flux.
-    
+
     fraction_core_no_coro_2D : ndarray of shape (N_wave, N_sep)
         Reference post-AO non-coronagraphic flux fraction enclosed in the PSF core,
         divided by the total non-coronagraphic flux.
         In practice this quantity is usually constant with separation in the
         non-coronagraphic case, but it is kept as a 2D array for interface uniformity.
-    
+
     PSF_profile_density_DL_2D : ndarray of shape (N_wave, N_sep)
         Diffraction-limited non-coronagraphic radial profile:
         mean surface-brightness density in each annular bin divided by the total
         non-coronagraphic flux.
-    
+
     fraction_core_DL_2D : ndarray of shape (N_wave, N_sep)
         Diffraction-limited flux fraction enclosed in the PSF core, divided by the total
         non-coronagraphic flux.
-    
+
     coronagraph : object or None
         Coronagraph descriptor. Its content is not used directly in this routine, but its
         presence controls whether the coronagraphic branch is computed.
         If 'None', all coronagraphic outputs are returned as 'None'.
-    
+
     IWA_ref : float or None
         Reference inner working angle in mas. Must be strictly positive when a
         coronagraph is used.
-    
+
     PSF_profile_density_coro_2D : ndarray of shape (N_wave, N_sep) or None
         Reference post-AO coronagraphic radial profile:
         mean surface-brightness density in each annular bin divided by the total
         coronagraphic flux.
         This quantity is interpreted as the reference stellar coronagraphic halo profile.
-    
+
     fraction_core_coro_2D : ndarray of shape (N_wave, N_sep) or None
         Reference post-AO coronagraphic flux fraction enclosed in the PSF core,
         divided by the total coronagraphic flux.
         For large separations from the mask, the off-axis value is assumed to be
         represented by the last separation bin ('sep = separation[-1]').
-    
+
     radial_transmission_2D : ndarray of shape (N_wave, N_sep) or None
         Reference coronagraphic throughput:
         total flux with coronagraph divided by total flux without coronagraph,
         as a function of source offset from the coronagraphic mask.
         Required when 'coronagraph is not None'.
-    
+
     eps : float, optional
         Small numerical floor used to stabilize divisions, clipping, and logit transforms.
-    
+
     Returns
     -------
     PSF_profile_density_4D : ndarray of shape (N_wave, N_WFE, N_IWA, N_sep)
         Non-coronagraphic radial profile grid:
         mean surface-brightness density in each annular bin divided by the total
         non-coronagraphic flux.
-    
+
     fraction_core_4D : ndarray of shape (N_wave, N_WFE, N_IWA, N_sep)
         Non-coronagraphic core-flux fraction grid:
         total flux enclosed in the core divided by the total non-coronagraphic flux.
-    
+
     PSF_profile_density_coro_4D : ndarray of shape (N_wave, N_WFE, N_IWA, N_sep) or None
         Coronagraphic radial profile grid:
         mean surface-brightness density in each annular bin divided by the total
         coronagraphic flux.
         Returned only when 'coronagraph is not None', otherwise 'None'.
-    
+
     fraction_core_coro_4D : ndarray of shape (N_wave, N_WFE, N_IWA, N_sep) or None
         Coronagraphic core-flux fraction grid:
         total flux enclosed in the core divided by the total coronagraphic flux.
         Returned only when 'coronagraph is not None', otherwise 'None'.
-    
+
     radial_transmission_4D : ndarray of shape (N_wave, N_WFE, N_IWA, N_sep) or None
         Coronagraphic throughput grid:
         total flux with coronagraph divided by total flux without coronagraph,
         as a function of offset from the mask.
         Returned only when 'coronagraph is not None', otherwise 'None'.
-    
+
     Notes
     -----
     - The PSF core is assumed to be defined elsewhere as a fixed 'size_core x size_core'
@@ -4954,15 +4958,15 @@ def build_PSF_grid(SR, D, wave, r_WFE, r_IWA, separation, PSF_profile_density_no
       and therefore has a plotting side effect.
     - The function assumes that all 2D input arrays are sampled on the same
       '(wave, separation)' grid.
-    
+
     """
     # Safety helpers and basic dimensions
     safe01 = lambda x: np.clip(x, eps, 1 - eps)
-    
+
     N_WFE         = len(r_WFE)
     N_IWA         = len(r_IWA)
     N_wave, N_sep = PSF_profile_density_no_coro_2D.shape
-    
+
     if radial_transmission_2D is None and coronagraph is not None:
         raise ValueError("'radial_transmission_2D' should not be None")
     if radial_transmission_2D is not None and coronagraph is None:
@@ -4985,13 +4989,13 @@ def build_PSF_grid(SR, D, wave, r_WFE, r_IWA, separation, PSF_profile_density_no
         raise ValueError("'r_WFE' must contain only non-negative values")
     if len(wave) != N_wave:
         raise ValueError("'wave' must have length N_wave")
-    
-    
+
+
     # Strehl => WFE proxy
     SR      = np.clip(SR, eps, 1.0)
     WFE_rad = np.sqrt(-np.log(SR)) # [rad]
-    
-    
+
+
     # Radial annulus areas
     r           = separation
     dr          = np.gradient(r) # [mas/px]
@@ -5001,15 +5005,15 @@ def build_PSF_grid(SR, D, wave, r_WFE, r_IWA, separation, PSF_profile_density_no
     edges[-1]   = r[-1] + 0.5 * (r[-1] - r[-2]) if len(r) > 1 else r[0]
     area        = np.pi * (edges[1:]**2 - edges[:-1]**2)
 
-    
-    
+
+
     if PSF_profile_density_speck_2D is not None:
         if PSF_profile_density_DL_2D is None:
             PSF_profile_density_DL_2D = (PSF_profile_density_no_coro_2D - PSF_profile_density_speck_2D) / SR[:, None]
 
     else:
         # Estimate the reference stellar halo contribution (without coronagraph)
-        # I_nc ~= SR * I_DL,nc + I_speck,nc      
+        # I_nc ~= SR * I_DL,nc + I_speck,nc
         # eta = I_speck,nc / I_nc = (I_nc - SR * I_DL,nc) / I_nc
         # smoothing/regularizing eta
         # I_speck,nc = eta * I_nc
@@ -5024,7 +5028,7 @@ def build_PSF_grid(SR, D, wave, r_WFE, r_IWA, separation, PSF_profile_density_no
             valid                = (eta_2D_raw[iw] >= 0) & (eta_2D_raw[iw] <= 1)
             eta_2D_interp[iw] = interp1d(separation[valid], eta_2D_raw[iw][valid], bounds_error=False, fill_value=np.nan)(separation)
             eta_2D_interp[iw] = np.nan_to_num(eta_2D_interp[iw])
-            eta_2D[iw]        = gaussian_filter1d(eta_2D_interp[iw], sigma=sigma_bins[iw]) 
+            eta_2D[iw]        = gaussian_filter1d(eta_2D_interp[iw], sigma=sigma_bins[iw])
         eta_2D[eta_2D <= 0]          = np.nanmin(eta_2D[eta_2D > 0])
         PSF_profile_density_speck_2D = eta_2D * PSF_profile_density_no_coro_2D
         # Sanity check plot
@@ -5042,26 +5046,26 @@ def build_PSF_grid(SR, D, wave, r_WFE, r_IWA, separation, PSF_profile_density_no
         plt.legend()
         plt.grid(True)
         plt.show()
-    
+
 
     if w_coronagraph:
-        
-        # Estimate the reference stellar halo contribution in coronagraphic profile: 
+
+        # Estimate the reference stellar halo contribution in coronagraphic profile:
         # Assuming perfect coronagraph at r_WFE = 1.0: I_c ~= I_speck,c
         PSF_profile_density_coro_speck_2D = np.copy(PSF_profile_density_coro_2D)
-        
+
         # Reference non-coronagraphic encircled energy
         E_inside_r_2D_ref   = np.cumsum(PSF_profile_density_no_coro_2D * area[None, :], axis=1)                          # (wave, separation), Encircled energy inside each separation = total flux inside 'r' / total flux (since PSF_profile_density_no_coro_2D is normalized as such)
         E_inside_FOV_1D_ref = E_inside_r_2D_ref[:, -1]                                                                   # (wave),             Encircled energy inside the FoV         = total flux inside FoV / total flux (since PSF_profile_density_no_coro_2D is normalized as such)
         E_inside_IWA_1D_ref = interp_radial_per_wave(r, E_inside_r_2D_ref, IWA_ref, left=0.0, right=E_inside_FOV_1D_ref) # (wave),             Encircled energy inside the IWA         = total flux inside IWA / total flux (since PSF_profile_density_no_coro_2D is normalized as such)
-        
+
         # Reference stellar leakage outside the reference IWA FPM
         leak_ref = E_inside_FOV_1D_ref - E_inside_IWA_1D_ref # (wave), = total flux inside FoV - total flux inside IWA / total flux
-        
+
         # Reference on-axis anchor of the transmission curve
         radial_transmission_on_axis_1D_ref = safe01(radial_transmission_2D[:, 0]) # (wave)
-    
-        
+
+
     # Allocate outputs
     PSF_profile_density_4D          = np.zeros((N_WFE, N_IWA, N_wave, N_sep), dtype=np.float32) # = mean surface density flux inside bin (without coronagraph) / total flux (without coronagraph)
     fraction_core_4D                = np.zeros((N_WFE, N_IWA, N_wave, N_sep), dtype=np.float32) # = total flux inside core (without coronagraph) / total flux (without coronagraph)
@@ -5073,94 +5077,94 @@ def build_PSF_grid(SR, D, wave, r_WFE, r_IWA, separation, PSF_profile_density_no
         PSF_profile_density_coro_4D = None
         fraction_core_coro_4D       = None
         radial_transmission_4D      = None
-    
-    
+
+
     # Loop over WFE
     for idx_WFE, r_wfe in enumerate(r_WFE):
-        
+
         # Strehl at the CURRENT WFE
         SR_new   = np.exp(-(r_wfe * WFE_rad)**2) # (wave), at the CURRENT WFE
         scale_fc = SR_new / SR                   # (wave), assuming that I_PSF ~ SR*I_DL at sep ~ 0
-        
+
         # Speckle halo rescaling: halo ~ (1 - SR)
         scale_speck = (1 - SR_new) / np.clip(1 - SR, eps, None)
-        
-        
+
+
         # --- WITHOUT CORONAGRAPH ---
-        
+
         # PSF profile scaling at the CURRENT WFE (w/o coronagraph)
         PSF_profile_density_speck_2D_wfe   = PSF_profile_density_speck_2D * scale_speck[:, None]
         PSF_profile_density_no_coro_2D_wfe = SR_new[:, None] * PSF_profile_density_DL_2D + PSF_profile_density_speck_2D_wfe
-        
+
         # Core fractions scaling at the CURRENT WFE (w/o coronagraph)
         fraction_core_no_coro_2D_wfe = fraction_core_no_coro_2D * scale_fc[:, None]                  # (wave, separation), WFE 'gain' on the fractions core
         fraction_core_no_coro_2D_wfe = np.minimum(fraction_core_no_coro_2D_wfe, fraction_core_DL_2D) # (wave, separation), Clipping with the DL fractions core
-        
-        
+
+
         # --- WITH CORONAGRAPH ---
         if w_coronagraph:
-            
+
             # Speckle halo profile scaling at the CURRENT WFE (w/ coronagraph)
             PSF_profile_density_coro_speck_2D_wfe = PSF_profile_density_coro_speck_2D * scale_speck[:, None]
-                        
-            # Core fractions scaling at the CURRENT WFE (w/ coronagraph)        
+
+            # Core fractions scaling at the CURRENT WFE (w/ coronagraph)
             fraction_core_coro_2D_wfe = fraction_core_coro_2D * scale_fc[:, None]                   # (wave, separation), WFE 'gain' on the fractions core
             fraction_core_coro_2D_wfe = np.minimum(fraction_core_coro_2D_wfe, fraction_core_DL_2D)  # (wave, separation) clipped by the non-coronagraphic DL fc
-            
+
             # Non-coronagraphic encircled energy at the CURRENT WFE
             E_inside_r_2D_wfe   = np.cumsum(PSF_profile_density_no_coro_2D_wfe * area[None, :], axis=1) # (wave, separation), Encircled energy inside each separation = total flux inside 'r' / total flux (since PSF_profile_density_no_coro_2D is normalized as such)
-            E_inside_FOV_1D_wfe = E_inside_r_2D_wfe[:, -1]                                              # (wave),             Encircled energy inside the FoV         = total flux inside FoV / total flux (since PSF_profile_density_no_coro_2D is normalized as such)            
-        
-        
+            E_inside_FOV_1D_wfe = E_inside_r_2D_wfe[:, -1]                                              # (wave),             Encircled energy inside the FoV         = total flux inside FoV / total flux (since PSF_profile_density_no_coro_2D is normalized as such)
+
+
         # Loop over IWA
         for idx_IWA, r_iwa in enumerate(r_IWA):
-            
+
             # --- WITHOUT CORONAGRAPH ---
 
             # Non-coronagraphic quantities are left unchanged
-            
-            
+
+
             # --- WITH CORONAGRAPH ---
-            
+
             # Stretching to the new IWA (if coronagraph)
             if w_coronagraph:
-                
+
                 # New physical mask radius
                 IWA_mas_new = r_iwa * IWA_ref
-                
-                
+
+
                 # Stretching to the new IWA
                 PSF_profile_density_coro_speck_2D_wfe_iwa = warp_sep_IWA(separation, PSF_profile_density_coro_speck_2D_wfe, r_iwa, mode="log",   tail_model="powerlaw")
                 fraction_core_coro_2D_wfe_iwa             = warp_sep_IWA(separation, fraction_core_coro_2D_wfe,             r_iwa, mode="logit", tail_model="flat")
                 radial_transmission_2D_iwa                = warp_sep_IWA(separation, radial_transmission_2D,                r_iwa, mode="logit", tail_model="flat")
-                
-                
+
+
                 # PSF profile scaling at the CURRENT WFE AND IWA (w/ coronagraph)
-                
+
                 # Current FoV flux fractions in EACH profile own normalization
                 # - flux_nc_rel  : FoV fraction relative to total non-coronagraphic flux
                 # - flux_c_rel   : FoV fraction relative to total coronagraphic flux
                 flux_nc_rel = np.clip(np.nansum(PSF_profile_density_no_coro_2D_wfe        * area[None, :], axis=1), eps, None)
                 flux_c_rel  = np.clip(np.nansum(PSF_profile_density_coro_speck_2D_wfe_iwa * area[None, :], axis=1), eps, None)
-                
+
                 # Pure radial shapes
                 S_nc = PSF_profile_density_no_coro_2D_wfe        / flux_nc_rel[:, None]
                 S_c  = PSF_profile_density_coro_speck_2D_wfe_iwa / flux_c_rel[:, None]
-                
+
                 # Stellar leakage outside the CURRENT IWA FPM
                 E_inside_IWA_1D_wfe_iwa = interp_radial_per_wave(r, E_inside_r_2D_wfe, IWA_mas_new, left=0.0, right=E_inside_FOV_1D_wfe)
                 leak_wfe_iwa            = E_inside_FOV_1D_wfe - E_inside_IWA_1D_wfe_iwa
-                
+
                 # Mixing coefficient driven by stellar leakage
                 mu = (leak_wfe_iwa - leak_ref) / np.clip(E_inside_FOV_1D_wfe - leak_ref, eps, None)
                 mu = np.clip(mu, 0.0, 1.0)
-                
+
                 # Build the effective coronagraphic radial profile DIRECTLY in coronagraphic relative normalization
                 # This profile describes the redistribution of the coronagraphic flux, while the absolute
                 # transmission level is handled separately by radial_transmission_2D_wfe_iwa.
                 flux_mix_rel = (1.0 - mu)          * flux_c_rel   + mu          * flux_nc_rel
                 S_mix        = (1.0 - mu[:, None]) * S_c          + mu[:, None] * S_nc
-                
+
                 PSF_profile_density_coro_2D_wfe_iwa = S_mix * flux_mix_rel[:, None]
 
 
@@ -5172,8 +5176,8 @@ def build_PSF_grid(SR, D, wave, r_WFE, r_IWA, separation, PSF_profile_density_no
                 fraction_core_coro_2D_wfe_iwa     = np.minimum(fraction_core_coro_2D_wfe_iwa, fraction_core_DL_2D)          # (wave) clipped by the non-coronagraphic DL fc
                 fraction_core_coro_2D_wfe_iwa     = np.minimum(fraction_core_coro_2D_wfe_iwa, fraction_core_no_coro_2D_wfe) # (wave) clipped by the non-coronagraphic fc
 
-                
-                # Anchors 
+
+                # Anchors
                 # y0     = reference anchor after IWA stretch
                 # y1     = off-axis asymptote
                 # y0_new = new on-axis transmission including WFE + IWA effect
@@ -5182,7 +5186,7 @@ def build_PSF_grid(SR, D, wave, r_WFE, r_IWA, separation, PSF_profile_density_no
                 y0_new = safe01(radial_transmission_on_axis_1D_ref * leak_wfe_iwa / np.clip(leak_ref, eps, None))
                 y0_new = np.minimum(y0_new, y1 - eps)
                 y0_new = safe01(y0_new)
-                
+
                 # Affine transform in logit space:
                 #   logit(T_new) = a * logit(T_ref) + b
                 # constrained by:
@@ -5198,14 +5202,14 @@ def build_PSF_grid(SR, D, wave, r_WFE, r_IWA, separation, PSF_profile_density_no
                 b      = L0new - a * L0                             # (wave)
                 radial_transmission_2D_wfe_iwa = expit(a[:, None] * logit(safe01(radial_transmission_2D_iwa)) + b[:, None])
                 radial_transmission_2D_wfe_iwa = np.clip(radial_transmission_2D_wfe_iwa, 0.0, 1.0)
-                
-                
+
+
                 # Re-evaluating core fractions and radial tranmsissions at sep=0 to avoid unphysical warped values
-                for iw in range(N_wave):        
+                for iw in range(N_wave):
                     fraction_core_coro_2D_wfe_iwa[iw]  = interp_extrap_sep(separation_ref=separation[separation!=0], separation_new=separation, y_ref=fraction_core_coro_2D_wfe_iwa[iw][separation!=0],  mode="logit", tail_model="flat")
                     radial_transmission_2D_wfe_iwa[iw] = interp_extrap_sep(separation_ref=separation[separation!=0], separation_new=separation, y_ref=radial_transmission_2D_wfe_iwa[iw][separation!=0], mode="logit", tail_model="flat")
 
-            
+
             # Save current models
             PSF_profile_density_4D[idx_WFE, idx_IWA]          = PSF_profile_density_no_coro_2D_wfe.astype(np.float32)
             fraction_core_4D[idx_WFE, idx_IWA]                = fraction_core_no_coro_2D_wfe.astype(np.float32)
@@ -5213,8 +5217,8 @@ def build_PSF_grid(SR, D, wave, r_WFE, r_IWA, separation, PSF_profile_density_no
                 PSF_profile_density_coro_4D[idx_WFE, idx_IWA] = PSF_profile_density_coro_2D_wfe_iwa.astype(np.float32)
                 fraction_core_coro_4D[idx_WFE, idx_IWA]       = fraction_core_coro_2D_wfe_iwa.astype(np.float32)
                 radial_transmission_4D[idx_WFE, idx_IWA]      = radial_transmission_2D_wfe_iwa.astype(np.float32)
-    
-    
+
+
     # Move wavelength axis first: (N_WFE, N_IWA, N_wave, N_sep) -> (N_wave, N_WFE, N_IWA, N_sep)
     PSF_profile_density_4D          = np.moveaxis(PSF_profile_density_4D,      2, 0)
     fraction_core_4D                = np.moveaxis(fraction_core_4D,            2, 0)
@@ -5222,8 +5226,8 @@ def build_PSF_grid(SR, D, wave, r_WFE, r_IWA, separation, PSF_profile_density_no
         PSF_profile_density_coro_4D = np.moveaxis(PSF_profile_density_coro_4D, 2, 0)
         fraction_core_coro_4D       = np.moveaxis(fraction_core_coro_4D,       2, 0)
         radial_transmission_4D      = np.moveaxis(radial_transmission_4D,      2, 0)
-    
-    
+
+
     return PSF_profile_density_4D, fraction_core_4D, PSF_profile_density_coro_4D, fraction_core_coro_4D, radial_transmission_4D
 
 
@@ -5239,7 +5243,7 @@ def plot_PSF(instru, coronagraph, apodizer, strehl, pxscale, sep_unit, wave, PSF
         dy                 = y_center - y_max
         dx                 = x_center - x_max
         print(f"   The {type_PSF} PSF is uncentered by: dy = {np.nanmean(dy):.3f} px = {np.nanmean(dy)*pxscale:.3f} mas, dx = {np.nanmean(dx):.3f} px = {np.nanmean(dx)*pxscale:.3f} mas")
-    
+
     # PSF post AO rebinned with pxscale plot
     if coronagraph is None:
         if apodizer == "NO_SP":
@@ -5247,7 +5251,7 @@ def plot_PSF(instru, coronagraph, apodizer, strehl, pxscale, sep_unit, wave, PSF
         else:
             title = f"ELT/{instru} {type_PSF} PSF with {apodizer.replace('_', ' ')} apodizer in {strehl} strehl \n without coronagraph with {pxscale:.2f} mas/px pxscale"
     else:
-        title = f"ELT/{instru} {type_PSF} PSF without apodizer in {strehl} strehl \n with Lyot coronagraph with {pxscale:.2f} mas/px pxscale"    
+        title = f"ELT/{instru} {type_PSF} PSF without apodizer in {strehl} strehl \n with Lyot coronagraph with {pxscale:.2f} mas/px pxscale"
     plt.figure(figsize=(8, 8), dpi=300)
     extent = [-pxscale*NbColumn/2, pxscale*NbColumn/2, -pxscale*NbLine/2,   pxscale*NbLine/2]
     plt.imshow(np.nanmean(PSF_3D, 0) / np.nanmax(np.nanmean(PSF_3D, 0)), cmap="inferno", extent=extent, norm=mcolors.LogNorm(vmin=1e-6, vmax=1))
@@ -5260,14 +5264,14 @@ def plot_PSF(instru, coronagraph, apodizer, strehl, pxscale, sep_unit, wave, PSF
     cbar = plt.colorbar()
     cbar.set_label('PSF [raw contrast]', fontsize=14, labelpad=20, rotation=270)
     plt.show()
-    
+
 
 
 def plot_profiles(instru, coronagraph, apodizer, strehl, pxscale, sep_unit, size_core, wave, wave_raw, separation, PSF_profile_density_2D, fraction_core_2D, radial_transmission_2D, type_PSF, title_suffix):
-    
+
     N_wave, N_sep = PSF_profile_density_2D.shape
     cmap_wave     = plt.get_cmap("Spectral_r", N_wave)
-    
+
     if coronagraph is None:
         nrows  = 2
         sharex = False
@@ -5301,7 +5305,7 @@ def plot_profiles(instru, coronagraph, apodizer, strehl, pxscale, sep_unit, size
     axs[0].set_title("PSF profile (for the star)", fontsize=10)
     for iw in range(N_wave):
         axs[0].plot(separation, PSF_profile_density_2D[iw], c=cmap_wave(iw))
-    
+
     # Subplot 2: Flux inside the FWHM
     axs[1].set_ylim(1e-2, 100)
     axs[1].set_yscale('log')
@@ -5321,7 +5325,7 @@ def plot_profiles(instru, coronagraph, apodizer, strehl, pxscale, sep_unit, size
     else:
         # Subplot 2: Flux inside the FWHM
         axs[1].set_xlabel(f"Angular offset separation from the coronagraph [{sep_unit}]", fontsize=10)
-        
+
         # Subplot 3: Transmission
         axs[2].set_ylim(1e-1, 100)
         axs[2].set_yscale('log')
@@ -5331,11 +5335,11 @@ def plot_profiles(instru, coronagraph, apodizer, strehl, pxscale, sep_unit, size
         axs[2].minorticks_on()
         axs[2].tick_params(labelsize=8)
         axs[2].set_title("Coronagraph throughput", fontsize=10)
-        
+
         for iw in range(N_wave):
             axs[1].plot(separation, 100 * fraction_core_2D[iw],       c=cmap_wave(iw))
             axs[2].plot(separation, 100 * radial_transmission_2D[iw], c=cmap_wave(iw))
-            
+
     # Colorbar commune (λ -> couleur)
     norm = mpl.colors.Normalize(vmin=np.nanmin(wave), vmax=np.nanmax(wave))
     sm   = mpl.cm.ScalarMappable(norm=norm, cmap=cmap_wave)
@@ -5483,7 +5487,7 @@ def mjd_to_date(mjd):
 
     Parameters
     ----------
-    mjd 
+    mjd
         The Modified Julian Date to convert.
 
     Returns
@@ -5510,7 +5514,7 @@ def add_if_necessary(array, value):
 
 
 def plot_bkg_skycalc(filename):
-    
+
     # Lecture du fond de ciel
     data                    = fits.getdata(filename)
     wave                    = data["lam"] * 1e-3 # µm
@@ -5531,7 +5535,7 @@ def plot_bkg_skycalc(filename):
     plt.xlabel("Wavelength [µm]", fontsize=14)
     plt.ylabel("Flux [ph/s/m2/µm/arcsec2]", fontsize=14)
     plt.grid(True, which="both", linestyle="--", alpha=0.3)
-    
+
     plt.plot(wave, scattered_moonlight,     alpha=alpha, label="Scattered Moonlight")
     plt.plot(wave, scattered_starlight,     alpha=alpha, label="Scattered Starlight")
     plt.plot(wave, zodiacal_light,          alpha=alpha, label="Zodiacal Light")
@@ -5539,15 +5543,15 @@ def plot_bkg_skycalc(filename):
     plt.plot(wave, mol_emi_low_atmo,        alpha=alpha, label="Molecular Emission (low atmo.)")
     plt.plot(wave, airglow_emi_lines,       alpha=alpha, label="Airglow Emission Lines")
     plt.plot(wave, background,              alpha=alpha, label="Total")
-    
+
     plt.xlim(wave[0], wave[-1])
     plt.ylim(1e-5, 1e10)
     plt.legend(loc='upper left', fontsize=12, frameon=True)
     plt.tight_layout()
     plt.show()
-    
+
     hdr = fits.getheader(filename)
-    
+
     # Extract SkyCalc parameters from COMMENT cards
     params = {}
     for line in hdr["COMMENT"]:
@@ -5555,7 +5559,7 @@ def plot_bkg_skycalc(filename):
         if "=" in line and line.startswith(("SKYMODEL.", "TEL.")):
             key, value = line.split("=", 1)
             params[key.strip()] = value.strip()
-    
+
     print()
     print("-------------------------------------------------------------")
     print("Main parameters used for the background calculation (SkyCalc)")
@@ -5570,7 +5574,7 @@ def plot_bkg_skycalc(filename):
     print(f"Thermal component 1 (Telescope)  = {params.get('SKYMODEL.THERMAL.T1', 'N/A')} K, emissivity = {params.get('SKYMODEL.THERMAL.E1', 'N/A')}")
     print(f"Thermal component 2 (Instrument) = {params.get('SKYMODEL.THERMAL.T2', 'N/A')} K, emissivity = {params.get('SKYMODEL.THERMAL.E2', 'N/A')}")
     print(f"Thermal component 3 (Cryostat)   = {params.get('SKYMODEL.THERMAL.T3', 'N/A')} K, emissivity = {params.get('SKYMODEL.THERMAL.E3', 'N/A')}")
-    
+
 
 
 def plot_trans_tell_tel(trans_tell, trans_tel):
@@ -5592,12 +5596,12 @@ def plot_trans_tell_tel(trans_tell, trans_tel):
     plt.yticks(fontsize=12)
     plt.tight_layout()
     plt.show()
-    
-    
-    
-    
-    
-    
+
+
+
+
+
+
 
 
 
