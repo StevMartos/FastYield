@@ -5502,3 +5502,36 @@ def yield_population_plot(table="Archive", instru="HARMONI", thermal_model="auto
     cbar.set_label("Fraction of detected planets", fontsize=fontsize+2, rotation=270, labelpad=30)
     cbar.ax.tick_params(labelsize=fontsize-2)
     save_and_show(fig_frac, f"ELT_{instru}_detection_fraction_{table}_{band_contrast_plot}band.png")
+
+    # 6) Population colored by final SNR
+    if instru is not None:
+        mask_snr_color = np.isfinite(SNR_plot) & (SNR_plot > 0)
+        if np.any(mask_snr_color):
+            SNR_min  = 1
+            SNR_max  = max(np.nanpercentile(SNR_plot[mask_snr_color], 99), 10 * SNR_min)
+            cmap_snr = plt.get_cmap("rainbow")
+            norm_snr = mpl.colors.LogNorm(vmin=SNR_min, vmax=SNR_max, clip=True)
+
+            def plot_snr_panel(ax, x, y, valid, xlabel, ylabel, xlim, ylim, title, space):
+                groups, masks, markers = get_marker_groups()
+                for group in groups:
+                    mask = valid & not_detected & masks[group]
+                    if np.any(mask):
+                        ax.scatter(x[mask], y[mask], c="0.70", marker=markers[group], s=ss_nondetected, edgecolors="none", alpha=alpha_nondetected, zorder=1)
+                for group in groups:
+                    idx = np.flatnonzero(valid & detected & masks[group])
+                    if idx.size == 0:
+                        continue
+                    idx = idx[np.argsort(SNR_plot[idx])] # highest SNR drawn on top
+                    ax.scatter(x[idx], y[idx], c=SNR_plot[idx], cmap=cmap_snr, norm=norm_snr, marker=markers[group], s=ss_detected, edgecolors="k", linewidths=0.75, alpha=alpha_detected, zorder=3)
+                setup_axes(ax, xlabel, ylabel, xlim, ylim, title)
+
+            fig_snr, axes_snr = make_two_panel(title=f"ELT/{instru} final SNR in {exposure_time/60:.0f} hr per target", subtitle=f"{N_det:.0f}/{N_total:.0f} detections ({N_det/N_total*100:.1f}%)", plot_func=plot_snr_panel)
+            sm   = mpl.cm.ScalarMappable(norm=norm_snr, cmap=cmap_snr)
+            sm.set_array([])
+            cbar = fig_snr.colorbar(sm, ax=axes_snr, pad=0.03, fraction=0.03, extend="max")
+            cbar.set_label("SNR", fontsize=fontsize+2, rotation=270, labelpad=30)
+            cbar.ax.tick_params(labelsize=fontsize-2)
+            if SNR_min <= SNR_thr <= SNR_max:
+                cbar.ax.axhline(SNR_thr, color="k", linestyle="--", linewidth=2.5)
+            save_and_show(fig_snr, f"ELT_{instru}_SNR_{table}_{band_contrast_plot}band.png")
