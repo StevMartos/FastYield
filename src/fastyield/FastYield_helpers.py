@@ -40,8 +40,11 @@ def make_suffix(meta: dict, n=16):
     suffix     = hashlib.sha1(payload.encode("utf-8")).hexdigest()[:n]
     return suffix, meta_clean, payload
 
-def write_meta(sim_dir: Path, suffix: str, meta_clean: dict):
-    meta_path = sim_dir / f"meta_{suffix}.json"
+def write_meta(sim_dir: Path, suffix: str, meta_clean: dict, suffix_as_prefix: bool = False):
+    if suffix_as_prefix:
+        meta_path = sim_dir / f"{suffix}_meta.json"
+    else:
+        meta_path = sim_dir / f"meta_{suffix}.json"
     if not meta_path.exists():
         meta_path.write_text(json.dumps(meta_clean, indent=2, ensure_ascii=False), encoding="utf-8")
     else:
@@ -49,7 +52,7 @@ def write_meta(sim_dir: Path, suffix: str, meta_clean: dict):
         if old != meta_clean:
             raise RuntimeError(f"Meta mismatch for existing {meta_path} (hash collision or changed meta).")
     return meta_path
-    
+
 
 # -------------------------------------
 # Helpers: simulation parameters prints
