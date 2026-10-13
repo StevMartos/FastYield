@@ -371,7 +371,7 @@ def process_colormap_bandwidth_resolution_with_constant_Nlambda(i):
 # GAIN_SNR(Bandwidth vs Resolution) (with constant Dlambda)
 #
 
-def colormap_bandwidth_resolution_with_constant_Dlambda(instru="HARMONI", T_planet=T_earth, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, delta_rv=drv_earth, vsini_planet=vrot_earth, vsini_star=vrot_earth, spectrum_contributions="reflected", model="tellurics", airmass=airmass_earth, Rc=100, filter_type="gaussian", stellar_halo_photon_noise_limited=False, save=False, num=100):
+def colormap_bandwidth_resolution_with_constant_Dlambda(instru="HARMONI", T_planet=T_earth, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, delta_rv=drv_earth, vsini_planet=vrot_earth, vsini_star=vrot_earth, spectrum_contributions="reflected", model="tellurics", airmass=airmass_earth, Rc=100, filter_type="gaussian", noise_regime="photon", save=False, num=100):
     
     # Get instru specs
     config_data = get_config_data(instru)
@@ -447,7 +447,7 @@ def colormap_bandwidth_resolution_with_constant_Dlambda(instru="HARMONI", T_plan
     
     # Global context worker
     global _CM_CTX
-    _CM_CTX = dict(R_arr=R_arr, Dl=Dl, lmin_model=lmin_model, lmax_model=lmax_model, planet=planet, star=star, trans_tell=trans_tell, l0_arr=l0_arr, Rc=Rc, filter_type=filter_type, stellar_halo_photon_noise_limited=stellar_halo_photon_noise_limited)
+    _CM_CTX = dict(R_arr=R_arr, Dl=Dl, lmin_model=lmin_model, lmax_model=lmax_model, planet=planet, star=star, trans_tell=trans_tell, l0_arr=l0_arr, Rc=Rc, filter_type=filter_type, noise_regime=noise_regime)
     
     # Parallel calculations
     print()
@@ -496,7 +496,6 @@ def colormap_bandwidth_resolution_with_constant_Dlambda(instru="HARMONI", T_plan
         
         # Title
         tell         = "with tellurics absorption" if tellurics else "without tellurics absorption"
-        noise_regime = "stellar halo photon noise regime" if stellar_halo_photon_noise_limited else "detector noise regime"
         title_text   = (f"{'S/N' if plot=='SNR' else 'Lost signal'} fluctuations in {noise_regime} ({tell}) \n in {spectrum_contributions} light ({model}-model), $T_*$={T_star:.0f}K, $T_p$={T_planet:.0f}K, "r"$\Delta$rv="f"{delta_rv:.0f}km/s, "r"$\Delta\lambda$="f"{Dl:.2f}µm")
         plt.title(title_text, fontsize=16, pad=14)
         
@@ -538,17 +537,17 @@ def colormap_bandwidth_resolution_with_constant_Dlambda(instru="HARMONI", T_plan
 
 def process_colormap_bandwidth_resolution_with_constant_Dlambda(i):
     
-    R_arr                             = _CM_CTX["R_arr"]
-    Dl                                = _CM_CTX["Dl"]
-    lmin_model                        = _CM_CTX["lmin_model"]
-    lmax_model                        = _CM_CTX["lmax_model"]
-    planet                            = _CM_CTX["planet"] # propto [ph/µm]
-    star                              = _CM_CTX["star"]   # propto [ph/µm]
-    trans_tell                        = _CM_CTX["trans_tell"]
-    l0_arr                            = _CM_CTX["l0_arr"]
-    Rc                                = _CM_CTX["Rc"]
-    filter_type                       = _CM_CTX["filter_type"]
-    stellar_halo_photon_noise_limited = _CM_CTX["stellar_halo_photon_noise_limited"]
+    R_arr        = _CM_CTX["R_arr"]
+    Dl           = _CM_CTX["Dl"]
+    lmin_model   = _CM_CTX["lmin_model"]
+    lmax_model   = _CM_CTX["lmax_model"]
+    planet       = _CM_CTX["planet"] # propto [ph/µm]
+    star         = _CM_CTX["star"]   # propto [ph/µm]
+    trans_tell   = _CM_CTX["trans_tell"]
+    l0_arr       = _CM_CTX["l0_arr"]
+    Rc           = _CM_CTX["Rc"]
+    filter_type  = _CM_CTX["filter_type"]
+    noise_regime = _CM_CTX["noise_regime"]
     
     R = R_arr[i]
     
@@ -612,10 +611,15 @@ def process_colormap_bandwidth_resolution_with_constant_Dlambda(i):
         template             = template / np.sqrt(np.nansum(template**2))
         alpha                = np.nansum(trans*planet_HF * template)
         beta                 = np.nansum(trans*star_HF*planet_LF/star_LF * template)
-        if stellar_halo_photon_noise_limited:
-            sigma_CCF = np.sqrt(np.nansum(trans*star_R_crop * template**2)) # stellar halo photon noise
-        else:
-            sigma_CCF = 1. # wavelength and resolution-independent limiting noise (e.g. RON and dark current - detector noise - domination)
+        
+        if noise_regime in ("photon", "halo"):
+            sigma_CCF = np.sqrt(np.nansum(trans * star_R_crop * template**2))
+        elif noise_regime in ("RON", "ron", "detector"):
+            sigma_CCF = 1.
+        elif noise_regime == "systematic":
+            h         = trans * star_R_crop * template
+            sigma_CCF = np.sqrt(compute_sigma_base_2_al_spec_fast(h=h))
+        
         SNR_1D[j]         = (alpha - beta) / sigma_CCF
         lost_signal_1D[j] = beta / alpha
                     
@@ -2441,7 +2445,7 @@ def colormap_MM_DI_R_Tp(lmin=1, lmax=2.5, Rmin=1_000, Rmax=100_000, Tmin=200, Tm
         title_text = (f"Molecular mapping residual signal fluctuations ({tell}) \n in {spectrum_contributions} light ({model}-model), $T_*$={T_star}K, "r"$\Delta$rv="f"{delta_rv}km/s")    
     else:
         title_text = title
-    #plt.title(title_text, fontsize=20, weight="bold", pad=14)
+    plt.title(title_text, fontsize=20, weight="bold", pad=14)
     
     plt.tight_layout()
     if save:
