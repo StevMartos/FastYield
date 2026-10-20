@@ -653,47 +653,71 @@ def gaussian_filter1d_variable(y, sigma, truncate=4.0, mode="reflect", cval=0.0)
     return y_smooth
 
 
+@lru_cache(maxsize=32)
+def _gaussian_kernel_fft(sigma, lw):
+    """Return a cached, truncated and normalized Gaussian kernel."""
+    k = np.arange(-lw, lw + 1, dtype=np.float64)
+    weights = np.exp(-0.5 * (k / sigma)**2)
+    weights /= weights.sum()
+    return weights
 
-def gaussian_filter1d_fft(input, sigma, axis=-1, order=0, output=None, mode="reflect", cval=0.0, truncate=4.0, *, radius=None):
+
+
+def gaussian_filter1d_fft(input, sigma, axis=-1, order=0, output=None, mode="reflect", cval=0.0, truncate=4.0, *, radius=None, use_fallback=True):
     """
-    Accelerated equivalent of scipy.ndimage.gaussian_filter1d.
+    Accelerated Gaussian filtering using overlap-add FFT convolution.
 
-    Uses overlap-add FFT convolution for wide Gaussian kernels and falls
-    back to scipy for unsupported or unfavorable configurations.
+    Uses a benchmark-calibrated crossover model to select between
+    scipy.ndimage.gaussian_filter1d and FFT convolution.
 
-    The Gaussian kernel and reflect boundary convention match scipy.
+    Matches scipy Gaussian filtering for supported 1D inputs,
+    up to floating-point rounding.
     """
     x     = np.asarray(input)
     sigma = float(sigma)
 
-    # Fall back to scipy for unsupported cases.
-    if (not np.isfinite(sigma) or sigma <= 0 or
-            (radius is not None and int(radius) < 0)):
+    def fallback():
         return gaussian_filter1d(input, sigma, axis=axis, order=order, output=output, mode=mode, cval=cval, truncate=truncate, radius=radius)
+
+    # Invalid sigma: preserve scipy behavior.
+    if not np.isfinite(sigma) or sigma <= 0:
+        return fallback()
+
     lw = int(truncate * sigma + 0.5) if radius is None else int(radius)
-    if (order != 0 or output is not None or mode != "reflect" or
-            x.ndim != 1 or axis not in (0, -1) or
-            lw < 32 or lw >= x.size or
-            not np.issubdtype(x.dtype, np.floating) or
-            not np.all(np.isfinite(x))):
-        return gaussian_filter1d(input, sigma, axis=axis, order=order, output=output, mode=mode, cval=cval, truncate=truncate, radius=radius)
 
-    # Same truncated and normalized Gaussian kernel as scipy.
-    k        = np.arange(-lw, lw + 1, dtype=np.float64)
-    weights  = np.exp(-0.5 * (k / sigma)**2)
-    weights /= weights.sum()
+    # Unsupported cases: always use scipy, independently of use_fallback.
+    if (order != 0 or output is not None or mode != "reflect" or x.ndim != 1 or axis not in (0, -1) or lw < 0 or not np.issubdtype(x.dtype, np.floating)):
+        return fallback()
 
-    # numpy symmetric padding matches scipy reflect boundaries.
+    # Benchmark-calibrated crossover for the standard Gaussian kernel.
+    if use_fallback and radius is None and truncate == 4.0:
+        sigma_crit = max(5.25, 15.83 * (10_000 / x.size)**0.668)
+        if sigma < sigma_crit:
+            return fallback()
+
+    # Non-finite inputs retain scipy's original behavior.
+    if not np.all(np.isfinite(x)):
+        return fallback()
+
+    # Gaussian kernel (cached across calls).
+    weights = _gaussian_kernel_fft(sigma, lw)
+
+    # Reflect boundary conditions.
     x_pad = np.pad(x.astype(np.float64, copy=False), lw, mode="symmetric")
 
-    # FFT convolution.
+    # Overlap-add FFT convolution.
     out = oaconvolve(x_pad, weights, mode="valid")
 
-    # Preserve exact zeros when the full convolution support is zero.
-    cs = np.concatenate(([0], np.cumsum(x_pad != 0)))
-    out[(cs[2 * lw + 1:] - cs[:-2 * lw - 1]) == 0] = 0.0
-
+    # Restore exact zeros in regions with no nonzero input contribution.
+    if np.any(x == 0):
+        nonzero = x_pad != 0
+        cs      = np.empty(nonzero.size + 1, dtype=np.int64)
+        cs[0]   = 0
+        np.cumsum(nonzero, out=cs[1:])
+        support_nonzero = cs[2 * lw + 1:] - cs[:-(2 * lw + 1)]
+        out[support_nonzero == 0] = 0.0
     return out.astype(x.dtype, copy=False)
+
 
 
 @lru_cache(maxsize=128)
@@ -777,7 +801,7 @@ def _fft_filter_response(N, R, Rc, filter_type):
     ffreq = np.fft.fftfreq(N) # cycles/sample
     res   = ffreq * 2*R       # "resolution" axis
 
-    if filter_type == "gaussian" or filter_type == "gaussian_variable":
+    if filter_type in {"gaussian", "gaussian_fast", "gaussian_variable"}:
         # Discrete, truncated Gaussian kernel => circular conv (mode='wrap')
         sigma    = 2*R / (np.pi * Rc) * np.sqrt(np.log(2)/2.)  # samples
         truncate = 4.

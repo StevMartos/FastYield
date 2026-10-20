@@ -437,15 +437,15 @@ def get_S_res(wave, S, Rc, filter_type, trans_Ss=None, outliers=False, sigma_out
     M     = np.zeros_like(S) + np.nan
     
     # Fast vectorized path for the most common case
-    if filter_type == "gaussian" and not debug:
+    if not debug:
                         
         # Estimated modulations, assuming that trans_Ss is the real observed stellar spectrum
         if only_high_pass:
-            S_HF, S_LF = filtered_flux(flux=S, R=R_sampling, Rc=Rc, filter_type=filter_type)
+            S_HF, S_LF = filtered_flux(flux=S, R=R_sampling, Rc=Rc, filter_type="gaussian")
             M          = S_LF / trans_Ss[:, None]
             S_res      = S_HF 
         else:
-            S_norm_HF, M = filtered_flux(flux=S / trans_Ss[:, None], R=R_sampling, Rc=Rc, filter_type=filter_type)
+            S_norm_HF, M = filtered_flux(flux=S / trans_Ss[:, None], R=R_sampling, Rc=Rc, filter_type="gaussian")
             S_res        = trans_Ss[:, None] * S_norm_HF
         
         # Optional outlier clipping (on residual)

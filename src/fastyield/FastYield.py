@@ -1,5 +1,5 @@
 # import FastYield modules
-from .config import dpi_fig, h, c, T_sun, R0_max, LMIN, LMAX, bands, instrus, colors_instru, simulated_path, archive_path, ignore_reflected_thresh_um, SNR_thresh, planet_types, planet_types_reduced, m_u, kB, G, vesc_earth, sim_data_path, instrus_with_systematics
+from .config import dpi_fig, h, c, T_sun, R0_max, LMIN, LMAX, bands, instrus, colors_instru, simulated_path, archive_path, ignore_reflected_thresh_um, SNR_thresh, planet_types, planet_types_reduced, m_u, kB, G, vesc_earth, sim_data_path, instrus_with_systematics, filter_type_default
 from .get_specs import get_config_data, get_band_lims, get_wa, get_R_instru, get_DL_FWHM
 from .utils import faded
 from .spectrum import load_vega_spectrum, get_mag, get_spectrum_contribution_name_model, get_thermal_reflected_spectrum, get_counts_from_density, get_wave_K, get_wave_model
@@ -2306,7 +2306,7 @@ def process_SNR(idx):
 
 
 
-def get_planet_table_SNR(instru, table="Archive", thermal_model="None", reflected_model="None", apodizer="NO_SP", strehl="NO_JQ", coronagraph=None, Rc=100, filter_type="gaussian", background="medium", systematics=False, PCA=False, N_PCA=20):
+def get_planet_table_SNR(instru, table="Archive", thermal_model="None", reflected_model="None", apodizer="NO_SP", strehl="NO_JQ", coronagraph=None, Rc=100, filter_type=filter_type_default, background="medium", systematics=False, PCA=False, N_PCA=20):
     """"
     Compute per-planet SNRs for a given instrument and write results to the table.
 
@@ -2336,8 +2336,6 @@ def get_planet_table_SNR(instru, table="Archive", thermal_model="None", reflecte
     config_data   = get_config_data(instru)
     exposure_time = 120 # [mn]
     time1         = time.time()
-    if systematics and filter_type == "gaussian_fast":
-        filter_type = "gaussian" # "gaussian_fast" is bad for handling systematics estimations
 
     # --- 1) Loading table ---
     if table == "Archive":
@@ -4437,7 +4435,7 @@ def process_contrast(args):
 
 
 
-def get_planet_table_contrast(instru, planet_table, exposure_time, thermal_model="None", reflected_model="None", spectrum_contributions=None, Rc=100, filter_type="gaussian", systematics=False, PCA=False, N_PCA=20, force_table_calc=False, sep_max=None):
+def get_planet_table_contrast(instru, planet_table, exposure_time, thermal_model="None", reflected_model="None", spectrum_contributions=None, Rc=100, filter_type=filter_type_default, systematics=False, PCA=False, N_PCA=20, force_table_calc=False, sep_max=None):
 
     # Contribution and model labels
     _, name_model = get_spectrum_contribution_name_model(thermal_model, reflected_model)
@@ -4564,8 +4562,8 @@ def yield_contrast_ELT_earthlike(thermal_model="BT-Settl", reflected_model="tell
     planet_table = planet_table[mask_earth]
 
     # ---Retrieving tables
-    separation_HARMONI, planet_table_HARMONI = get_planet_table_contrast(instru="HARMONI", planet_table=planet_table, exposure_time=exposure_time, thermal_model=thermal_model, reflected_model=reflected_model, spectrum_contributions=spectrum_contributions, Rc=Rc, filter_type="gaussian", systematics=False, PCA=False, N_PCA=20, force_table_calc=force_table_calc, sep_max=sep_max)
-    separation_ANDES, planet_table_ANDES     = get_planet_table_contrast(instru="ANDES",   planet_table=planet_table, exposure_time=exposure_time, thermal_model=thermal_model, reflected_model=reflected_model, spectrum_contributions=spectrum_contributions, Rc=Rc, filter_type="gaussian", systematics=False, PCA=False, N_PCA=20, force_table_calc=force_table_calc, sep_max=sep_max)
+    separation_HARMONI, planet_table_HARMONI = get_planet_table_contrast(instru="HARMONI", planet_table=planet_table, exposure_time=exposure_time, thermal_model=thermal_model, reflected_model=reflected_model, spectrum_contributions=spectrum_contributions, Rc=Rc, filter_type=filter_type_default, systematics=False, PCA=False, N_PCA=20, force_table_calc=force_table_calc, sep_max=sep_max)
+    separation_ANDES, planet_table_ANDES     = get_planet_table_contrast(instru="ANDES",   planet_table=planet_table, exposure_time=exposure_time, thermal_model=thermal_model, reflected_model=reflected_model, spectrum_contributions=spectrum_contributions, Rc=Rc, filter_type=filter_type_default, systematics=False, PCA=False, N_PCA=20, force_table_calc=force_table_calc, sep_max=sep_max)
 
     # --- 5 sigma contrast
     # HARMONI

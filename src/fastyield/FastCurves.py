@@ -1,5 +1,5 @@
 # import FastYield modules
-from .config import instrus, bands, rad2arcsec
+from .config import instrus, bands, rad2arcsec, filter_type_default
 from .get_specs import get_transmission, get_PSF_profile, get_config_data, get_wa, get_band_lims, get_R_instru, get_logit_coronagraphic_profile_interp, get_R_corr_interp, get_bkg_flux_band
 from .utils import airy_profile, get_r_core, power_law_extrapolation
 from .spectrum import Spectrum, get_wavelength_axis_constant_R, filtered_flux, get_mag, get_resolution, get_spectrum_instru, get_wave_band, get_spectrum_band, load_star_spectrum, load_planet_spectrum, load_vega_spectrum, get_counts_from_density
@@ -1521,7 +1521,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
 
 def FastCurves(calculation=None, instru=None, exposure_time=None, mag_star=None, mag_planet=None, band0=None, band0_star=None, band0_planet=None, model_planet=None, T_planet=None, lg_planet=None, model_star="BT-NextGen", T_star=None, lg_star=None, rv_star=0, rv_planet=0, vsini_star=0, vsini_planet=0, stellar_component=False, 
              apodizer="NO_SP", strehl="NO_JQ", coronagraph=None, systematics=False, speckles=False, PCA=False, PCA_mask=False, N_PCA=20, channel=False, planet_name=None, separation_planet=None, show_plot=True, verbose=True, 
-             post_processing="molecular mapping", background="medium", Rc=100, filter_type="gaussian", input_DIT=None, band_only=None, 
+             post_processing="molecular mapping", background="medium", Rc=100, filter_type=filter_type_default, input_DIT=None, band_only=None, 
              star_spectrum=None, planet_spectrum=None, return_FastYield=False, return_quantity=False):
     """
     Orchestrates inputs (spectra, models, config) and delegates to FastCurves_main
