@@ -232,62 +232,76 @@ def inject_dace_values(planet_table):
 
 
 
+
 def _IKV(planet_table, planet_name, value, unit, quantity, obj, uncertainty=None, reference="inject_known_values()"):
     """
-    Inject a known value into a planet table.
+    Inject a manually curated value into a planet catalogue.
 
-    If a valid value already exists, a warning is printed, but the value is still
-    overwritten. The target column is inferred from the requested physical
-    quantity and object type.
+    If the planet is absent from the catalogue, a warning is printed and the
+    injection is skipped. If a valid value already exists, a warning is printed
+    before overwriting it.
+
+    Values and symmetric uncertainties are converted to the target column units
+    when necessary. The corresponding reference column is also updated.
 
     Parameters
     ----------
     planet_table : astropy.table.Table or astropy.table.QTable
-        Table containing the planet catalogue.
+        Planet catalogue containing the columns to update.
 
     planet_name : str
-        Name of the planet for which the value should be injected.
+        Exact name of the planet in the "PlanetName" column.
 
     value : float
-        Value to inject, expressed in the unit provided by 'unit'.
+        Value to inject, expressed in the specified unit.
 
     unit : astropy.units.Unit
-        Unit of the input value.
+        Unit of the injected value.
 
     quantity : str
-        Name of the quantity to inject. Supported values include:
-        "kmag", "radius", "teff", "distance", and "sma".
+        Physical quantity to inject. Supported values are:
+        "Kmag", "radius", "teff", "distance", and "sma".
 
     obj : str
-        Object to which the quantity refers. Supported values are typically
-        "planet" and "star". This parameter is ignored for system-level
-        quantities such as distance and SMA.
+        Object associated with the quantity: "planet", "star", or "system".
+        Ignored for system-level quantities ("distance" and "sma").
 
     uncertainty : float, optional
-        Symmetric uncertainty on the injected value, expressed in the same unit
-        as 'value'. If provided, both +Delta and -Delta columns are filled.
+        Symmetric uncertainty expressed in the same unit as value.
+        If provided, both positive and negative uncertainty columns are updated.
 
     reference : str, optional
-        Reference string written into the associated reference column.
-
-    Raises
-    ------
-    ValueError
-        If the requested quantity/object combination is not supported, if the
-        inferred column does not exist, or if a valid value already exists.
+        Reference associated with the injected value.
 
     Returns
     -------
     planet_table : astropy.table.Table or astropy.table.QTable
-        The input table, updated in place and also returned for convenience.
+        Original catalogue, modified in place if the planet exists.
+
+    Raises
+    ------
+    ValueError
+        If the quantity/object combination is unsupported, if a required
+        column is missing, or if unit conversion is incompatible.
     """
 
-    # Identify the target row
-    idx            = get_planet_index(planet_table, planet_name)
+    # ------------------------------------------------------------------
+    # 1) Identify the target planet
+    # ------------------------------------------------------------------
+    indices = np.where(planet_table["PlanetName"] == planet_name)[0]
+    if len(indices) == 0:
+        print_warning(f"WARNING: Planet {planet_name!r} not found in the archive table. Skipping injection of {quantity} ({obj}).")
+        return planet_table
+    if len(indices) > 1:
+        print_warning(f"WARNING: Multiple entries found for {planet_name!r} ({len(indices)} matches). Using the first occurrence.")
+    idx = indices[0]
+
+    # ------------------------------------------------------------------
+    # 2) Identify the target column
+    # ------------------------------------------------------------------
     quantity_lower = quantity.lower()
     obj_lower      = obj.lower()
-
-    # Map the requested quantity/object pair to the corresponding table column
+    colname        = None
     if "kmag" in quantity_lower:
         if "planet" in obj_lower:
             colname = "PlanetKmag(thermal+reflected)"
@@ -307,36 +321,57 @@ def _IKV(planet_table, planet_name, value, unit, quantity, obj, uncertainty=None
         colname = "Distance"
     elif "sma" in quantity_lower:
         colname = "SMA"
-    if "colname" not in locals():
+    if colname is None:
         raise ValueError(f"Unsupported quantity/object combination: quantity={quantity!r}, obj={obj!r}")
-
     ref_colname   = f"{colname}Ref"
     plus_colname  = f"+Delta{colname}"
     minus_colname = f"-Delta{colname}"
 
-    # Check whether a valid value is already present
-    current_value = planet_table[colname][idx]
-    if np.isfinite(planet_table[colname][idx]):
-        print_warning(f"WARNING: A valid {colname} value already exists for {planet_name}: {current_value} (new value: {value*unit}).")
+    # ------------------------------------------------------------------
+    # 3) Validate the required columns
+    # ------------------------------------------------------------------
+    required_columns = [colname, ref_colname]
+    if uncertainty is not None:
+        required_columns.extend([plus_colname, minus_colname])
+    missing_columns = [name for name in required_columns if name not in planet_table.colnames]
+    if missing_columns:
+        raise ValueError(f"Cannot inject {quantity} for {planet_name!r}: missing columns {missing_columns}.")
 
-    # Inject the value and its reference
+    # ------------------------------------------------------------------
+    # 4) Convert the value and uncertainty to the target units
+    # ------------------------------------------------------------------
     target_unit = planet_table[colname].unit
     if target_unit is None:
-        planet_table[colname][idx] = value
+        converted_value = value
+        if uncertainty is not None:
+            converted_uncertainty = np.abs(uncertainty)
     else:
-        converted_value = (value * unit).to_value(target_unit)
-        planet_table[colname][idx] = converted_value * target_unit
+        converted_value = (value * unit).to(target_unit)
+        if uncertainty is not None:
+            converted_uncertainty = (np.abs(uncertainty) * unit).to(target_unit)
+
+    # ------------------------------------------------------------------
+    # 5) Warn if an existing valid value will be overwritten
+    # ------------------------------------------------------------------
+    current_value = planet_table[colname][idx]
+    if np.isfinite(current_value):
+        print_warning(f"WARNING: A valid {colname} value already exists for {planet_name}: {current_value} (new value: {converted_value}). Overwriting.")
+
+    # ------------------------------------------------------------------
+    # 6) Inject the value and reference
+    # ------------------------------------------------------------------
+    planet_table[colname][idx]     = converted_value
     planet_table[ref_colname][idx] = reference
 
-    # Inject symmetric uncertainties, if provided
+    # ------------------------------------------------------------------
+    # 7) Inject symmetric uncertainties, if provided
+    # ------------------------------------------------------------------
     if uncertainty is not None:
-        if target_unit is None:
-            planet_table[plus_colname][idx]  = +np.abs(uncertainty)
-            planet_table[minus_colname][idx] = -np.abs(uncertainty)
-        else:
-            converted_uncertainty = (np.abs(uncertainty) * unit).to_value(target_unit)
-            planet_table[plus_colname][idx]  = +converted_uncertainty * target_unit
-            planet_table[minus_colname][idx] = -converted_uncertainty * target_unit
+        planet_table[plus_colname][idx]  = +converted_uncertainty
+        planet_table[minus_colname][idx] = -converted_uncertainty
+
+    return planet_table
+
 
 
 
@@ -421,7 +456,7 @@ def inject_known_values(planet_table):
     _IKV(planet_table, planet_name="HD 284149 AB b",               value=14.33, unit=mag_unit, quantity="Kmag", obj="planet", uncertainty=0.06)  # https://iopscience.iop.org/article/10.3847/1538-3881/ace442/pdf (page 7)
     _IKV(planet_table, planet_name="HD 135344 A b",                value=16.66, unit=mag_unit, quantity="Kmag", obj="planet", uncertainty=0.08)  # https://www.aanda.org/articles/aa/pdf/2025/08/aa55064-25.pdf (page 6); get_mag_from_flux((8.49e-17 + 9.65e-17) / 2, "J/s/m2/um", "K")
     _IKV(planet_table, planet_name="LP 261-75 b",                  value=15.14, unit=mag_unit, quantity="Kmag", obj="planet", uncertainty=0.08)  # https://arxiv.org/pdf/1710.08433 (section 2)
-    _IKV(planet_table, planet_name="CD-35 2722 b",                 value=10.37, unit=mag_unit, quantity="Kmag", obj="planet", uncertainty=0.09)  # https://arxiv.org/pdf/1201.3537
+    #_IKV(planet_table, planet_name="CD-35 2722 b",                 value=10.37, unit=mag_unit, quantity="Kmag", obj="planet", uncertainty=0.09)  # https://arxiv.org/pdf/1201.3537
     _IKV(planet_table, planet_name="WISPIT 2 c",                   value=15.84, unit=mag_unit, quantity="Kmag", obj="planet", uncertainty=0.25)  # https://www.eso.org/public/archives/releases/sciencepapers/eso2604/eso2604a.pdf; get_mag_from_mag(T=2050, lg=3.986, model="BT-Settl", mag_input=16.40, band0_input="H", band0_output="K")
     _IKV(planet_table, planet_name="TYC 8998-760-1 c",             value=18.10, unit=mag_unit, quantity="Kmag", obj="planet", uncertainty=0.05)  # https://iopscience.iop.org/article/10.3847/2041-8213/aba27e/pdf (page 4)
     _IKV(planet_table, planet_name="2MASS J22501512+2325342 b",    value=14.89, unit=mag_unit, quantity="Kmag", obj="planet", uncertainty=0.10)  # https://arxiv.org/html/2402.09067v1
@@ -1142,6 +1177,15 @@ def are_planets_observable(latitude, longitude, altitude, planet_table, date_obs
 #################################################### Magnitudes computations: #########################################
 #######################################################################################################################
 
+def _init_magnitudes_worker(ctx):
+    """
+    Initialize the magnitude-computation context in each worker.
+    """
+    global _MAG_CTX
+    _MAG_CTX = ctx
+
+
+
 def process_magnitudes(idx):
     """
     Worker that computes all magnitudes for a single planet.
@@ -1251,12 +1295,11 @@ def get_planet_table_magnitudes(planet_table):
         counts_vega[band]   = get_counts_from_density(wave=wave_model[masks[band]], density=vega_spectrum.flux[masks[band]])
 
     # --- 3) Init global context for workers ---
-    global _MAG_CTX
-    _MAG_CTX = dict(planet_table=planet_table, wave_model=wave_model, wave_K=wave_K, counts_vega=counts_vega, counts_vega_K=counts_vega_K, masks=masks, use_reflected=use_reflected)
+    mag_ctx = dict(planet_table=planet_table, wave_model=wave_model, wave_K=wave_K, counts_vega=counts_vega, counts_vega_K=counts_vega_K, masks=masks, use_reflected=use_reflected)
 
     # Magnitude estimations
     print()
-    with Pool(processes=cpu_count()//2) as pool:
+    with Pool(processes=max(1, cpu_count() // 2), initializer=_init_magnitudes_worker, initargs=(mag_ctx,)) as pool:
         for (idx, mags) in tqdm(pool.imap(process_magnitudes, [(idx) for idx in range(len(planet_table))]), total=len(planet_table), desc="(14) Estimating all magnitudes"):
             for instru in instrus:
                 planet_table[idx][f"StarINSTRUmag({instru})"]                      = mags[f"StarINSTRUmag({instru})"]
@@ -5052,7 +5095,7 @@ def yield_population_plot(table="Archive", instru="HARMONI", instru_type=None, p
     if instru == "PCS":
         obs_xlim      = (1, 1e3)
     else:
-        obs_xlim      = (1, 1e6)
+        obs_xlim      = (1e-2, 1e6)
     obs_ylim          = (1e-10, 1e-1)
     phys_xlim         = (5e-3, 1e3) # [SMA]
     phys_ylim         = (5e-1, 1e4) # [M_earth]
