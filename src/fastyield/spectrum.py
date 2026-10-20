@@ -3676,4 +3676,66 @@ def get_thermal_reflected_spectrum(planet, thermal_model="auto", reflected_model
 
 
 
+def print_spectral_format(l0, R=None, Dl=None, Nl=None, sampling=2):
+    """
+    Print an IFU spectral format, inferring one missing parameter.
+
+    Parameters
+    ----------
+    l0 : float
+        Central wavelength [um].
+    R : float, optional
+        Spectral resolving power.
+    Dl : float, optional
+        Spectral bandwidth [um].
+    Nl : int, optional
+        Number of spectral channels.
+    sampling : float
+        Number of channels per spectral resolution element (default: 2).
+
+    Exactly two of (R, Dl, Nl) must be provided.
+    Assumes constant resolving power and logarithmic wavelength sampling.
+    """
+
+    if l0 <= 0 or sampling <= 0:
+        raise ValueError("l0 and sampling must be positive.")
+    if sum(x is not None for x in (R, Dl, Nl)) != 2:
+        raise ValueError("Provide exactly two parameters among R, Dl and Nl.")
+    if R is not None and R <= 0:
+        raise ValueError("R must be positive.")
+    if Dl is not None and not (0 < Dl < 2*l0):
+        raise ValueError("Dl must satisfy 0 < Dl < 2*l0.")
+    if Nl is not None and (Nl <= 0 or not float(Nl).is_integer()):
+        raise ValueError("Nl must be a positive integer.")
+
+    # Infer the missing parameter.
+    if Nl is None:
+        Nl = int(np.rint(sampling * R * np.log((l0 + Dl/2) / (l0 - Dl/2))))
+        inferred = "Nl"
+
+    elif R is None:
+        R = Nl / (sampling * np.log((l0 + Dl/2) / (l0 - Dl/2)))
+        inferred = "R"
+
+    else:
+        Dl = 2*l0 * np.tanh(Nl / (2*sampling*R))
+        inferred = "Dl"
+
+    lmin = l0 - Dl/2
+    lmax = l0 + Dl/2
+
+    print("\nSpectral format")
+    print("-" * 38)
+    print(f"  R          = {R:,.1f}")
+    print(f"  l0         = {l0:.4f} µm")
+    print(f"  Dl         = {Dl:.4f} µm")
+    print(f"  Nl         ≈ {Nl:,} channels")
+    print(f"  Band       = [{lmin:.4f}, {lmax:.4f}] µm")
+    print(f"  Dl/l0      = {100*Dl/l0:.2f} %")
+    print(f"  dl_res(l0) = {1e3*l0/R:.4f} nm")
+    print(f"  dl_pix(l0) = {1e3*l0/(sampling*R):.4f} nm")
+    print(f"  Sampling   = {sampling:g} channels/resolution element")
+    print(f"  Inferred   = {inferred}")
+    print()
+
 
