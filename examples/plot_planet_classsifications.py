@@ -24,10 +24,10 @@ mask_tr = planet_table["DiscoveryMethod"]=="Transit"
 mask_ot = (~mask_im) & (~mask_rv) & (~mask_tr)
 
 mask_cold = np.array(planet_table["PlanetTeff"].value < 250)
-mask_temp = np.array(250 <= planet_table["PlanetTeff"].value) & np.array(planet_table["PlanetTeff"].value < 500) 
-mask_warm = np.array(500 <= planet_table["PlanetTeff"].value) & np.array(planet_table["PlanetTeff"].value < 1000) 
-mask_hot  = np.array(1000 <= planet_table["PlanetTeff"].value) & np.array(planet_table["PlanetTeff"].value < 1500) 
-mask_vhot = np.array(1500 <= planet_table["PlanetTeff"].value) & np.array(planet_table["PlanetTeff"].value < 2000) 
+mask_temp = np.array(250 <= planet_table["PlanetTeff"].value) & np.array(planet_table["PlanetTeff"].value < 500)
+mask_warm = np.array(500 <= planet_table["PlanetTeff"].value) & np.array(planet_table["PlanetTeff"].value < 1000)
+mask_hot  = np.array(1000 <= planet_table["PlanetTeff"].value) & np.array(planet_table["PlanetTeff"].value < 1500)
+mask_vhot = np.array(1500 <= planet_table["PlanetTeff"].value) & np.array(planet_table["PlanetTeff"].value < 2000)
 mask_uhot = np.array(2000 <= planet_table["PlanetTeff"].value)
 
 plt.figure(figsize=(10, 6), dpi=300)
@@ -82,13 +82,13 @@ temp_colors_merged = {"Cold (<250 K)":          "#6fb0c9",
                       "Very-hot (1500–2000 K)": "#e36c4a",
                       "Ultra-hot (≥2000 K)":    "#c23a3a"}
 legend_temp = [mlines.Line2D([0], [0], marker='o', linestyle='', markersize=8, label=lbl, markerfacecolor=col, markeredgecolor='none') for lbl, col in temp_colors_merged.items()]
-leg1 = ax.legend(handles=legend_temp, title="Temperature bands", loc='lower right', frameon=True)
+leg1 = ax.legend(handles=legend_temp, title="Temperature bands", loc='lower right', frameon=True, fontsize='x-small')
 ax.add_artist(leg1)
-legend_methods = [mlines.Line2D([], [], marker='s', linestyle='', markersize=8, markerfacecolor='black', markeredgecolor='black', label='Imaging'), 
+legend_methods = [mlines.Line2D([], [], marker='s', linestyle='', markersize=8, markerfacecolor='black', markeredgecolor='black', label='Imaging'),
                   mlines.Line2D([], [], marker='o', linestyle='', markersize=8, markerfacecolor='black', markeredgecolor='black', label='Radial Velocity'),
                   mlines.Line2D([], [], marker='v', linestyle='', markersize=8, markerfacecolor='black', markeredgecolor='black', label='Transit'),
                   mlines.Line2D([], [], marker='P', linestyle='', markersize=8, markerfacecolor='black', markeredgecolor='black', label='Other')]
-ax.legend(handles=legend_methods, title="Discovery method", loc='upper left', frameon=True)
+ax.legend(handles=legend_methods, title="Discovery method", loc='upper left', frameon=True, fontsize='x-small')
 
 # TYPES ZONES
 def build_type_bounds(planet_types, ax):
