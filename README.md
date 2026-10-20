@@ -243,11 +243,7 @@ from fastyield.FastYield_interface import FastYield_interface
 set_sim_data_path("/path/to/sim_data")
 
 # Test the data path by loading a planetary spectrum.
-planet_spectrum = load_planet_spectrum(
-    T_planet=1000,
-    lg_planet=4.0,
-    model="BT-Settl",
-)
+planet_spectrum = load_planet_spectrum(T_planet=1000, lg_planet=4.0, model="BT-Settl")
 
 # Open the FastYield graphical interface.
 FastYield_interface()
