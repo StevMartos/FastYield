@@ -1,5 +1,5 @@
 # import FastYield modules
-from fastyield.config import c, R0_max, config_data_list, T_earth, lg_earth, vrot_earth, drv_earth, airmass_earth, T_sun, lg_sun, vrot_sun, M_earth, M_sun, AU, G, colormaps_path, sim_data_path, planet_types, planet_types_reduced
+from fastyield.config import c, R0_max, config_data_list, T_earth, lg_earth, vrot_earth, drv_earth, airmass_earth, T_sun, lg_sun, vrot_sun, M_earth, M_sun, AU, G, colormaps_path, sim_data_path, planet_types, planet_types_reduced, filter_type_default
 from fastyield.get_specs import load_tell_trans, get_config_data, get_transmission, get_PSF_profile, get_R_instru
 from fastyield.spectrum import get_counts_from_density, load_vega_spectrum, get_wave_K, get_wave_band, get_wavelength_axis_constant_R, filtered_flux, Spectrum, load_star_spectrum, load_planet_spectrum, load_albedo_spectrum, get_spectrum_contribution_name_model, get_thermal_reflected_spectrum
 from fastyield.FastCurves import FastCurves
@@ -45,7 +45,7 @@ def _init_cm_ctx(ctx):
 # GAIN_SNR(Bandwidth vs Resolution) (with constant Nlambda)
 #
 
-def colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_planet=T_earth, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, delta_rv=drv_earth, vsini_planet=vrot_earth, vsini_star=vrot_sun, spectrum_contributions="reflected", model="tellurics", airmass=airmass_earth, Rc=100, filter_type="gaussian", noise_regime="photon", Nlambda=None, title=None, title_weight=None, save=False, num=100):
+def colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_planet=T_earth, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, delta_rv=drv_earth, vsini_planet=vrot_earth, vsini_star=vrot_sun, spectrum_contributions="reflected", model="tellurics", airmass=airmass_earth, Rc=100, filter_type=filter_type_default, noise_regime="photon", Nlambda=None, title=None, title_weight=None, save=False, num=100):
     
     # Get instru specs
     if instru != "all":
@@ -295,13 +295,13 @@ def process_colormap_bandwidth_resolution_with_constant_Nlambda(i):
     half = Nl * dln / 2
     
     # Degrading to wave_R and converting from [ph/µm] to [ph]
-    planet_R = planet.degrade_resolution(wave_R, renorm=False).flux # [ph/µm]
-    star_R   = star.degrade_resolution(wave_R,   renorm=False).flux # [ph/µm]
+    planet_R = planet.degrade_resolution(wave_R, renorm=False, filter_type=filter_type).flux # [ph/µm]
+    star_R   = star.degrade_resolution(wave_R,   renorm=False, filter_type=filter_type).flux # [ph/µm]
     planet_R = planet_R * dwave_R                                   # [ph/µm] => [ph/bin]
     star_R   = star_R   * dwave_R                                   # [ph/µm] => [ph/bin]
     
     if trans_tell is not None:
-        trans_tell_R = trans_tell.degrade_resolution(wave_R, renorm=False).flux
+        trans_tell_R = trans_tell.degrade_resolution(wave_R, renorm=False, filter_type=filter_type).flux
     
     SNR_1D         = np.zeros((len(l0_arr))) + np.nan
     lost_signal_1D = np.zeros((len(l0_arr))) + np.nan
@@ -371,7 +371,7 @@ def process_colormap_bandwidth_resolution_with_constant_Nlambda(i):
 # GAIN_SNR(Bandwidth vs Resolution) (with constant Dlambda)
 #
 
-def colormap_bandwidth_resolution_with_constant_Dlambda(instru="HARMONI", T_planet=T_earth, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, delta_rv=drv_earth, vsini_planet=vrot_earth, vsini_star=vrot_earth, spectrum_contributions="reflected", model="tellurics", airmass=airmass_earth, Rc=100, filter_type="gaussian", noise_regime="photon", save=False, num=100):
+def colormap_bandwidth_resolution_with_constant_Dlambda(instru="HARMONI", T_planet=T_earth, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, delta_rv=drv_earth, vsini_planet=vrot_earth, vsini_star=vrot_earth, spectrum_contributions="reflected", model="tellurics", airmass=airmass_earth, Rc=100, filter_type=filter_type_default, noise_regime="photon", save=False, num=100):
     
     # Get instru specs
     config_data = get_config_data(instru)
@@ -572,13 +572,13 @@ def process_colormap_bandwidth_resolution_with_constant_Dlambda(i):
     dwave_R = np.gradient(wave_R)                                 # [µm/bin]
     
     # Degrading to wave_R and converting from [ph/µm] to [ph]
-    planet_R = planet.degrade_resolution(wave_R, renorm=False).flux # [ph/µm]
-    star_R   = star.degrade_resolution(wave_R,   renorm=False).flux # [ph/µm]
+    planet_R = planet.degrade_resolution(wave_R, renorm=False, filter_type=filter_type).flux # [ph/µm]
+    star_R   = star.degrade_resolution(wave_R,   renorm=False, filter_type=filter_type).flux # [ph/µm]
     planet_R = planet_R * dwave_R # [ph/µm] => [ph/bin]
     star_R   = star_R   * dwave_R # [ph/µm] => [ph/bin]
     
     if trans_tell is not None:
-        trans_tell_R = trans_tell.degrade_resolution(wave_R, renorm=False).flux
+        trans_tell_R = trans_tell.degrade_resolution(wave_R, renorm=False, filter_type=filter_type).flux
     
     SNR_1D         = np.zeros((len(l0_arr))) + np.nan
     lost_signal_1D = np.zeros((len(l0_arr))) + np.nan
@@ -631,7 +631,7 @@ def process_colormap_bandwidth_resolution_with_constant_Dlambda(i):
 # GAIN_SNR(Bandwidth vs Planet Temperature)
 #
 
-def colormap_bandwidth_Tp(instru, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, delta_rv=drv_earth, vsini_planet=vrot_earth, vsini_star=vrot_sun, spectrum_contributions="thermal", model="BT-Settl", airmass=airmass_earth, Rc=100, filter_type="gaussian", stellar_halo_photon_noise_limited=True, save=False, num=100):
+def colormap_bandwidth_Tp(instru, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, delta_rv=drv_earth, vsini_planet=vrot_earth, vsini_star=vrot_sun, spectrum_contributions="thermal", model="BT-Settl", airmass=airmass_earth, Rc=100, filter_type=filter_type_default, stellar_halo_photon_noise_limited=True, save=False, num=100):
     
     # Get instru specs
     config_data = get_config_data(instru)
@@ -858,13 +858,13 @@ def process_colormap_bandwidth_Tp(i):
     half = Nl * dln / 2
     
     # Degrading to wave_R and converting from [ph/µm] to [ph]
-    planet_R = planet.degrade_resolution(wave_R, renorm=False).flux # [ph/µm]
-    star_R   = star.degrade_resolution(wave_R,   renorm=False).flux # [ph/µm]
+    planet_R = planet.degrade_resolution(wave_R, renorm=False, filter_type=filter_type).flux # [ph/µm]
+    star_R   = star.degrade_resolution(wave_R,   renorm=False, filter_type=filter_type).flux # [ph/µm]
     planet_R = planet_R * dwave_R # [ph/µm] => [ph/bin]
     star_R   = star_R   * dwave_R # [ph/µm] => [ph/bin]
     
     if trans_tell is not None:
-        trans_tell_R = trans_tell.degrade_resolution(wave_R, renorm=False).flux
+        trans_tell_R = trans_tell.degrade_resolution(wave_R, renorm=False, filter_type=filter_type).flux
     
     SNR_1D         = np.zeros((len(l0_arr))) + np.nan
     lost_signal_1D = np.zeros((len(l0_arr))) + np.nan
@@ -912,7 +912,7 @@ def process_colormap_bandwidth_Tp(i):
 # GAIN_SNR(Bands vs Planet Temperature)
 #
 
-def colormap_bands_Tp(instru, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, delta_rv=drv_earth, vsini_planet=vrot_earth, vsini_star=vrot_sun, spectrum_contributions="thermal", model="BT-Settl", airmass=airmass_earth, Rc=100, filter_type="gaussian", stellar_halo_photon_noise_limited=True, save=False, num=100):    
+def colormap_bands_Tp(instru, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, delta_rv=drv_earth, vsini_planet=vrot_earth, vsini_star=vrot_sun, spectrum_contributions="thermal", model="BT-Settl", airmass=airmass_earth, Rc=100, filter_type=filter_type_default, stellar_halo_photon_noise_limited=True, save=False, num=100):    
     
     # Get instru specs
     config_data = get_config_data(instru)
@@ -1078,13 +1078,13 @@ def process_colormap_bands_Tp(i):
         R_band     = config_data["gratings"][band].R
         
         # Degrading to wave_band and converting from [ph/µm] to [ph]
-        planet_band = planet.degrade_resolution(wave_band, renorm=False).flux # [ph/µm]
-        star_band   = star.degrade_resolution(wave_band,   renorm=False).flux # [ph/µm]
+        planet_band = planet.degrade_resolution(wave_band, renorm=False, filter_type=filter_type).flux # [ph/µm]
+        star_band   = star.degrade_resolution(wave_band,   renorm=False, filter_type=filter_type).flux # [ph/µm]
         planet_band = planet_band * dwave_band # [ph/µm] => [ph/bin]
         star_band   = star_band   * dwave_band # [ph/µm] => [ph/bin]
         
         if trans_tell is not None:
-            trans = trans_tell.degrade_resolution(wave_band, renorm=False).flux
+            trans = trans_tell.degrade_resolution(wave_band, renorm=False, filter_type=filter_type).flux
         else:
             trans = 1.
 
@@ -1525,7 +1525,7 @@ def colormap_bands_ptypes_parameters(mode="unique", Nmax=1, instru="HARMONI", th
 # GAIN_SNR(STAR_RV VS DELTA_RV)
 #
 
-def colormap_rv(instru="HARMONI", band="H", T_planet=T_earth, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, vsini_planet=vrot_earth, vsini_star=vrot_sun, spectrum_contributions="reflected", model="tellurics", airmass=airmass_earth, Rc=100, filter_type="gaussian", stellar_halo_photon_noise_limited=True, title=None, title_weight=None, save=False, num=100):
+def colormap_rv(instru="HARMONI", band="H", T_planet=T_earth, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, vsini_planet=vrot_earth, vsini_star=vrot_sun, spectrum_contributions="reflected", model="tellurics", airmass=airmass_earth, Rc=100, filter_type=filter_type_default, stellar_halo_photon_noise_limited=True, title=None, title_weight=None, save=False, num=100):
     
     # Get instru specs
     config_data = get_config_data(instru)
@@ -1693,7 +1693,7 @@ def process_colormap_rv(i):
     
     # Preparing the star spectrum
     star_shift       = star.doppler_shift(rv_star)                                         # [ph/µm]
-    star_shift       = star_shift.degrade_resolution(wave_band, renorm=False).flux         # [ph/µm]
+    star_shift       = star_shift.degrade_resolution(wave_band, renorm=False, filter_type=filter_type).flux         # [ph/µm]
     star_shift       = star_shift * dwave_band                                             # [ph/µm] => [ph/bin]
     star_HF, star_LF = filtered_flux(star_shift, R=R_band, Rc=Rc, filter_type=filter_type) # [ph/bin]
     
@@ -1703,7 +1703,7 @@ def process_colormap_rv(i):
         
         # Preparing the planet spectrum
         planet_shift         = planet.doppler_shift(rv_star + delta_rv)                              # [ph/µm]
-        planet_shift         = planet_shift.degrade_resolution(wave_band, renorm=False).flux         # [ph/µm]
+        planet_shift         = planet_shift.degrade_resolution(wave_band, renorm=False, filter_type=filter_type).flux         # [ph/µm]
         planet_shift         = planet_shift * dwave_band                                             # [ph/µm] => [ph/bin]
         planet_HF, planet_LF = filtered_flux(planet_shift, R=R_band, Rc=Rc, filter_type=filter_type) # [ph/bin]
 
@@ -1726,7 +1726,7 @@ def process_colormap_rv(i):
 # GAIN_SNR(STAR_Vsini VS PLANET_Vsini)
 #
 
-def colormap_vrot(instru="HARMONI", band="H", T_planet=T_earth, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, delta_rv=drv_earth, inc=90, spectrum_contributions="reflected", model="tellurics", airmass=airmass_earth, Rc=100, filter_type="gaussian", stellar_halo_photon_noise_limited=True, title=None, title_weight=None, save=False, num=100):
+def colormap_vrot(instru="HARMONI", band="H", T_planet=T_earth, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, delta_rv=drv_earth, inc=90, spectrum_contributions="reflected", model="tellurics", airmass=airmass_earth, Rc=100, filter_type=filter_type_default, stellar_halo_photon_noise_limited=True, title=None, title_weight=None, save=False, num=100):
     """
     https://www.aanda.org/articles/aa/pdf/2022/03/aa42314-21.pdf
     """
@@ -1898,7 +1898,7 @@ def process_colormap_vrot(i):
     star_spectrum_broad = star_spectrum.broad(vsini_star)                                       # [J/µm]
     star_broad          = star_spectrum_broad.interpolate_wavelength(wave_instru, renorm=False) # [J/µm] Interpolating on wave_instru (constant R_model)
     star_broad.flux     = star_broad.flux * wave_instru                                         # [J/µm] => propto [ph/µm]
-    star_broad          = star_broad.degrade_resolution(wave_band, renorm=False).flux           # [ph/µm]
+    star_broad          = star_broad.degrade_resolution(wave_band, renorm=False, filter_type=filter_type).flux           # [ph/µm]
     star_broad          = star_broad * dwave_band                                               # [ph/µm] => [ph/bin]
     star_HF, star_LF    = filtered_flux(star_broad, R=R_band, Rc=Rc, filter_type=filter_type)   # [ph/bin]
     
@@ -1918,7 +1918,7 @@ def process_colormap_vrot(i):
         planet_spectrum_broad = planet_spectrum.broad(vsini_planet)                                     # [J/µm]
         planet_broad          = planet_spectrum_broad.interpolate_wavelength(wave_instru, renorm=False) # [J/µm] Interpolating on wave_instru (constant R_model)
         planet_broad.flux     = planet_broad.flux * wave_instru                                         # [J/µm] => propto [ph/µm]
-        planet_broad          = planet_broad.degrade_resolution(wave_band, renorm=False).flux           # [ph/µm]
+        planet_broad          = planet_broad.degrade_resolution(wave_band, renorm=False, filter_type=filter_type).flux           # [ph/µm]
         planet_broad          = planet_broad * dwave_band                                               # [ph/µm] => [ph/bin]
         planet_HF, planet_LF  = filtered_flux(planet_broad, R=R_band, Rc=Rc, filter_type=filter_type)   # [ph/bin]
         
@@ -1940,7 +1940,7 @@ def process_colormap_vrot(i):
 #
 # GAIN_SNR(PHASE VS MAXSEP(SMA) VS INC)
 #
-def colormap_maxsep_phase_inc(instru="HARMONI", band="H", apodizer="NO_SP", strehl="JQ1", coronagraph=None, T_planet=T_earth, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, vrot_planet=vrot_earth, vrot_star=vrot_sun, M_planet=1, M_star=1, d=10, spectrum_contributions="reflected", model="tellurics", airmass=airmass_earth, Rc=100, filter_type="gaussian", title_list=None, title_weight=None, num=100):
+def colormap_maxsep_phase_inc(instru="HARMONI", band="H", apodizer="NO_SP", strehl="JQ1", coronagraph=None, T_planet=T_earth, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, vrot_planet=vrot_earth, vrot_star=vrot_sun, M_planet=1, M_star=1, d=10, spectrum_contributions="reflected", model="tellurics", airmass=airmass_earth, Rc=100, filter_type=filter_type_default, title_list=None, title_weight=None, num=100):
     
     sep_min = 10/1000 # [arcsec]
     sep_max = 1       # [arcsec]
@@ -2247,7 +2247,7 @@ def process_colormap_maxsep_phase_inc(k):
     # Preparing the star spectrum
     star_broad       = star_spectrum.broad(vsini_star)                                       # [J/µm]
     star_broad.flux  = star_broad.flux * wave_model                                          # [J/µm] => propto [ph/µm]
-    star_broad       = star_broad.degrade_resolution(wave_band, renorm=False).flux           # [ph/µm]
+    star_broad       = star_broad.degrade_resolution(wave_band, renorm=False, filter_type=filter_type).flux           # [ph/µm]
     star_broad       = star_broad * dwave_band                                               # [ph/µm] => [ph/bin]
     star_HF, star_LF = filtered_flux(star_broad, R=R_band, Rc=Rc, filter_type=filter_type)   # [ph/bin]
     
@@ -2256,7 +2256,7 @@ def process_colormap_maxsep_phase_inc(k):
         planet_spectrum = Spectrum(wavelength=wave_model, flux=albedo_spectrum.flux*star_spectrum_broad_ref.flux, R=np.maximum.reduce([star_spectrum.R, albedo_spectrum.R]), T=albedo_spectrum.T, lg=albedo_spectrum.lg, model=albedo_spectrum.model, rv=0, vsini=0)
     planet_broad       = planet_spectrum.broad(vsini_planet)                                            # [J/µm]
     planet_broad.flux *= wave_model
-    planet_broad       = planet_broad.degrade_resolution(wave_band, renorm=False)         # [ph/µm]
+    planet_broad       = planet_broad.degrade_resolution(wave_band, renorm=False, filter_type=filter_type)         # [ph/µm]
     planet_broad.flux  = planet_broad.flux * dwave_band                                             # [ph/µm] => [ph/bin]
     
     # HF/LF split
@@ -2293,7 +2293,7 @@ def process_colormap_maxsep_phase_inc(k):
         #     raise ValueError("spectrum_contributions must be 'reflected' or 'thermal'")
         # planet_broad       = planet_spectrum.broad(vsini_planet)                           # [J/µm]
         # planet_broad.flux *= wave_model
-        # planet_broad       = planet_broad.degrade_resolution(wave_band, renorm=False)         # [ph/µm]
+        # planet_broad       = planet_broad.degrade_resolution(wave_band, renorm=False, filter_type=filter_type)         # [ph/µm]
         # planet_broad.flux  = planet_broad.flux * dwave_band                                             # [ph/µm] => [ph/bin]        
         # # HF/LF split
         # planet_HF = planet_broad.copy()
@@ -2347,7 +2347,7 @@ def process_colormap_maxsep_phase_inc(k):
 
 ######################## signal(MM) / signal(DI) = alpha - beta / delta: Resolution VS Temperature ###########################################################################################################################################################################################
 
-def colormap_MM_DI_R_Tp(lmin=1, lmax=2.5, Rmin=1_000, Rmax=100_000, Tmin=200, Tmax=2_000, tellurics=True, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, delta_rv=drv_earth, vsini_planet=vrot_earth, vsini_star=vrot_sun, spectrum_contributions="thermal", model="BT-Settl", airmass=airmass_earth, Rc=100, filter_type="gaussian", num=100, title=None, save=False):    
+def colormap_MM_DI_R_Tp(lmin=1, lmax=2.5, Rmin=1_000, Rmax=100_000, Tmin=200, Tmax=2_000, tellurics=True, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, delta_rv=drv_earth, vsini_planet=vrot_earth, vsini_star=vrot_sun, spectrum_contributions="thermal", model="BT-Settl", airmass=airmass_earth, Rc=100, filter_type=filter_type_default, num=100, title=None, save=False):    
     
     # Global model-bandwidth (with constant dl step, must be evenly spaced in order to create the model spectra, for the rotational broadening with Vsini)
     lmin_model = 0.9*lmin                                    # [µm] a bit larger for doppler shifts and to avoid edge effects
@@ -2392,11 +2392,11 @@ def colormap_MM_DI_R_Tp(lmin=1, lmax=2.5, Rmin=1_000, Rmax=100_000, Tmin=200, Tm
         R                          = R_arr[j]        
         wave_R[j]                  = get_wavelength_axis_constant_R(lmin=lmin, lmax=lmax, R=R)
         dwave_R[j]                 = np.gradient(wave_R[j])
-        star_R[j]                  = star.degrade_resolution(wave_R[j], renorm=False).flux
+        star_R[j]                  = star.degrade_resolution(wave_R[j], renorm=False, filter_type=filter_type).flux
         star_R[j]                  = star_R[j] * dwave_R[j] # propto [ph/µm] => [ph/bin]
         star_R_HF[j], star_R_LF[j] = filtered_flux(star_R[j], R=R, Rc=Rc, filter_type=filter_type)
         if trans_tell is not None:
-            trans_tell_R[j] = trans_tell.degrade_resolution(wave_R[j], renorm=False).flux
+            trans_tell_R[j] = trans_tell.degrade_resolution(wave_R[j], renorm=False, filter_type=filter_type).flux
 
     # Global context worker
     global _CM_CTX
@@ -2506,7 +2506,7 @@ def process_colormap_MM_DI_R_Tp(i, show=False):
             continue
         
         # Degrading the spectra on wave
-        planet_R = planet.degrade_resolution(wave_R[j], renorm=False).flux
+        planet_R = planet.degrade_resolution(wave_R[j], renorm=False, filter_type=filter_type).flux
         planet_R = planet_R * dwave_R[j] # propto [ph/µm] => [ph/bin]
 
         if trans_tell is not None:

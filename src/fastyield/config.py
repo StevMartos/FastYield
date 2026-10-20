@@ -9,7 +9,8 @@ import collections
 import os
 from pathlib import Path
 
-dpi_fig = 300
+dpi_fig             = 300
+filter_type_default = "gaussian_fast"
 
 
 

@@ -3,7 +3,7 @@ from .config import instrus, bands, rad2arcsec
 from .get_specs import get_transmission, get_PSF_profile, get_config_data, get_wa, get_band_lims, get_R_instru, get_logit_coronagraphic_profile_interp, get_R_corr_interp, get_bkg_flux_band
 from .utils import airy_profile, get_r_core, power_law_extrapolation
 from .spectrum import Spectrum, get_wavelength_axis_constant_R, filtered_flux, get_mag, get_resolution, get_spectrum_instru, get_wave_band, get_spectrum_band, load_star_spectrum, load_planet_spectrum, load_vega_spectrum, get_counts_from_density
-from .signal_noise import get_DIT_RON, get_delta_cos_theta_syst, get_alpha_cos_theta_syst, get_beta, get_fn_HF_LF, get_fn_MM, get_systematics, compute_sigma_base_2_al_spat_numba, compute_sigma_base_2_al_spec_numba, compute_sigma_base_2_speck_numba, compress_h_for_sigma_base_2, compute_sigma_base_2_al_spec_fast
+from .signal_noise import get_DIT_RON, get_delta_cos_theta_syst, get_alpha_cos_theta_syst, get_beta, get_fn_HF_LF, get_systematics, compute_sigma_base_2_al_spat_numba, compute_sigma_base_2_al_spec_numba, compute_sigma_base_2_speck_numba, compress_h_for_sigma_base_2, compute_sigma_base_2_al_spec_fast
 from .data_processing import get_d_sim, parameters_retrieval, plot_CCF_1D_rv
 from .prints_helpers import print_header, print_subheader, print_info, print_metric, print_warning, print_time, sci
 
@@ -288,8 +288,8 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
         lmax_band            = config_data['gratings'][band].lmax                      #  [µm]Lambda max of the considered band [µm]
         R_band               = config_data['gratings'][band].R                         # Spectral resolution of the band
         R_nyquist            = get_resolution(wavelength=wave_band, func=np.nanmedian) # Spectral resolution assuming Nyquist sampling (should be R_nyquist ~ R_band)
-        star_spectrum_band   = get_spectrum_band(spectrum_instru_density=star_spectrum_instru_density,   wave_band=wave_band, dwave_band=dwave_band, R_output=R_band, verbose=verbose) # [ph/bin/mn] (total ph over the FoV)
-        planet_spectrum_band = get_spectrum_band(spectrum_instru_density=planet_spectrum_instru_density, wave_band=wave_band, dwave_band=dwave_band, R_output=R_band, verbose=verbose) # [ph/bin/mn] (total ph over the FoV)
+        star_spectrum_band   = get_spectrum_band(spectrum_instru_density=star_spectrum_instru_density,   wave_band=wave_band, dwave_band=dwave_band, R_output=R_band, filter_type=filter_type, verbose=verbose) # [ph/bin/mn] (total ph over the FoV)
+        planet_spectrum_band = get_spectrum_band(spectrum_instru_density=planet_spectrum_instru_density, wave_band=wave_band, dwave_band=dwave_band, R_output=R_band, filter_type=filter_type, verbose=verbose) # [ph/bin/mn] (total ph over the FoV)
         
         # Band's magnitudes (computed from densities)
         mag_star_band   = None

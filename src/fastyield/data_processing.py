@@ -1,5 +1,5 @@
 # import FastYield modules
-from .config import c, R0_max
+from .config import c, R0_max, filter_type_default
 from .utils import cut_spectral_frequencies, get_logL
 from .spectrum import get_wavelength_axis_constant_dl, Spectrum, get_resolution, filtered_flux, get_psd, load_star_spectrum, load_planet_spectrum, load_albedo_spectrum, load_mol_spectrum, get_model_grid, get_spectrum_band
 from .get_specs import get_config_data
@@ -183,7 +183,7 @@ def get_template(instru, wave, R, model, T, lg, rv, vsini, epsilon=0.8, fastbroa
     
     # 2) Optional LF-based cropping for molecular grids: to crop empty features regions in molecular templates
     # if model[:4] == "mol_":
-    #     _, template_LF          = filtered_flux(template.flux, R=get_resolution(wavelength=template.wavelength, func=np.nanmedian), Rc=1_000, filter_type="gaussian")
+    #     _, template_LF          = filtered_flux(template.flux, R=get_resolution(wavelength=template.wavelength, func=np.nanmedian), Rc=1_000, filter_type=filter_type_default)
     #     sg                      = sigma_clip(np.ma.masked_invalid(template_LF), sigma=1)
     #     template.flux[~sg.mask] = np.nan 
     
@@ -288,7 +288,7 @@ def get_d_sim(instru, d, wave, trans, R, Rc, filter_type, model, T, lg, rv, vsin
     # 2) Match instrument sampling
     if verbose:
         print(f" get_d_sim: Degrading the resolution on 'wave' (degrade_resolution={degrade_resolution})...")
-    Sp = get_spectrum_band(spectrum_instru=template, wave_band=wave, R_output=R, degrade_resolution=degrade_resolution, verbose=False)
+    Sp = get_spectrum_band(spectrum_instru=template, wave_band=wave, R_output=R, degrade_resolution=degrade_resolution, filter_type=filter_type, verbose=False)
     
     # 2') If the modulation Mp is given, taking it into account
     if Mp is not None:
@@ -676,7 +676,7 @@ def get_CCF_2D_rv(instru, S_res, wave, trans, R, Rc, filter_type, model, T, lg, 
         template_wo_shift = get_template(instru=instru, wave=wave, R=R, model=model, T=T, lg=lg, rv=0, vsini=vsini, epsilon=epsilon, fastbroad=fastbroad, airmass=airmass, star_spectrum=star_spectrum, wave_model=wave_model)
     
     # 2) Match instrumental sampling/resolution
-    Sp = get_spectrum_band(spectrum_instru=template_wo_shift, wave_band=wave, R_output=R, degrade_resolution=degrade_resolution, verbose=False)
+    Sp = get_spectrum_band(spectrum_instru=template_wo_shift, wave_band=wave, R_output=R, degrade_resolution=degrade_resolution, filter_type=filter_type, verbose=False)
     
     # Return if Sp only contains NaNs, e.g. if the crop of molecular templates left only NaNs
     if np.all(~np.isfinite(Sp.flux)):
@@ -997,11 +997,11 @@ def get_CCF_1D_rv(instru, band, d, d_bkg, wave, trans, R, Rc, filter_type, model
             template_wo_shift = get_template(instru=instru, wave=wave, R=R, model=model, T=T, lg=lg, rv=0, vsini=vsini, epsilon=epsilon, fastbroad=fastbroad, airmass=airmass, star_spectrum=star_spectrum, wave_model=wave_model)
 
         # Degrade template to target grid
-        template = get_spectrum_band(spectrum_instru=template_wo_shift, wave_band=wave, R_output=R, degrade_resolution=degrade_resolution)
+        template = get_spectrum_band(spectrum_instru=template_wo_shift, wave_band=wave, R_output=R, degrade_resolution=degrade_resolution, filter_type=filter_type)
         
         # if "mol" in model:
         #     template_wo_shift_flat = get_template(instru=instru, wave=wave, R=R, model=model+"_flat", T=T, lg=lg, rv=0, vsini=vsini, epsilon=epsilon, fastbroad=fastbroad, airmass=airmass, star_spectrum=star_spectrum, wave_model=wave_model)
-        #     template_flat          = get_spectrum_band(spectrum_instru=template_wo_shift_flat, wave_band=wave, R_output=R, degrade_resolution=degrade_resolution)
+        #     template_flat          = get_spectrum_band(spectrum_instru=template_wo_shift_flat, wave_band=wave, R_output=R, degrade_resolution=degrade_resolution, filter_type=filter_type)
         #     template.flux         /= template_flat.flux
             
         # Return if template only contains NaNs (i.e. if the crop of the molecular templates left only NaNs)
@@ -1755,7 +1755,7 @@ def get_CCF_1D_vsini(instru, d, d_bkg, wave, trans, R, Rc, filter_type, model, T
             template_wo_broad = get_template(instru=instru, wave=wave, R=R, model=model, T=T, lg=lg, rv=rv, vsini=0, epsilon=epsilon, fastbroad=fastbroad, airmass=airmass, star_spectrum=star_spectrum, wave_model=wave_model)
 
         # Degrade template to target grid
-        template = get_spectrum_band(spectrum_instru=template_wo_broad, wave_band=wave, R_output=R, degrade_resolution=degrade_resolution)
+        template = get_spectrum_band(spectrum_instru=template_wo_broad, wave_band=wave, R_output=R, degrade_resolution=degrade_resolution, filter_type=filter_type)
 
         # Return if template only contains NaNs (i.e. if the crop of the molecular templates left only NaNs)
         if np.all(np.isnan(template.flux)): # Nothing to correlate
@@ -2193,7 +2193,7 @@ def process_parameters_estimation(args):
         template_broad.flux *= wave_model * dwave_model
         
         # Degrade to target grid
-        template_broad = get_spectrum_band(spectrum_instru=template_broad, wave_band=wave, R_output=R, degrade_resolution=degrade_resolution)
+        template_broad = get_spectrum_band(spectrum_instru=template_broad, wave_band=wave, R_output=R, degrade_resolution=degrade_resolution, filter_type=filter_type)
         
         if np.all(~np.isfinite(template_broad.flux)):
             continue

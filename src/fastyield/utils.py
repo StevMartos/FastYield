@@ -4005,23 +4005,23 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
         valid0 &= np.isfinite(trans0)
 
         # Degrading star data
-        star_spectrumLR = Spectrum(wave0, star_flux0, R=R0, sigma=star_sigma_tot0).degrade_resolution(wave, renorm=False, R_output=R_target)
+        star_spectrumLR = Spectrum(wave0, star_flux0, R=R0, sigma=star_sigma_tot0).degrade_resolution(wave, renorm=False, R_output=R_target, filter_type=filter_type)
         star_flux       = star_spectrumLR.flux
         star_sigma_tot  = star_spectrumLR.sigma
-        star_sigma_bkg  = Spectrum(wave0, star_flux0,   R=R0, sigma=star_sigma_bkg0).degrade_resolution(wave,     renorm=False, R_output=R_target).sigma
+        star_sigma_bkg  = Spectrum(wave0, star_flux0,   R=R0, sigma=star_sigma_bkg0).degrade_resolution(wave,     renorm=False, R_output=R_target, filter_type=filter_type).sigma
         star_weight     = Spectrum(wave0, star_weight0, R=R0, sigma=star_sigma_bkg0).interpolate_wavelength(wave, renorm=False).flux
 
         # Degrading companion data
-        planet_spectrumLR = Spectrum(wave0, planet_flux0, R=R0, sigma=planet_sigma_tot0).degrade_resolution(wave, renorm=False, R_output=R_target)
+        planet_spectrumLR = Spectrum(wave0, planet_flux0, R=R0, sigma=planet_sigma_tot0).degrade_resolution(wave, renorm=False, R_output=R_target, filter_type=filter_type)
         planet_flux       = planet_spectrumLR.flux
         planet_sigma_tot  = planet_spectrumLR.sigma
         R                 = planet_spectrumLR.R
-        planet_sigma_bkg  = Spectrum(wave0, planet_flux0,   R=R0, sigma=planet_sigma_bkg0).degrade_resolution(wave,     renorm=False, R_output=R_target).sigma
+        planet_sigma_bkg  = Spectrum(wave0, planet_flux0,   R=R0, sigma=planet_sigma_bkg0).degrade_resolution(wave,     renorm=False, R_output=R_target, filter_type=filter_type).sigma
         planet_weight     = Spectrum(wave0, planet_weight0, R=R0, sigma=planet_sigma_bkg0).interpolate_wavelength(wave, renorm=False).flux
 
         # Degrading transmission data
-        trans       = Spectrum(wave0, trans0,       R=R0).degrade_resolution(wave, renorm=False, R_output=R_target).flux
-        trans_model = Spectrum(wave0, trans_model0, R=R0).degrade_resolution(wave, renorm=False, R_output=R_target).flux
+        trans       = Spectrum(wave0, trans0,       R=R0).degrade_resolution(wave, renorm=False, R_output=R_target, filter_type=filter_type).flux
+        trans_model = Spectrum(wave0, trans_model0, R=R0).degrade_resolution(wave, renorm=False, R_output=R_target, filter_type=filter_type).flux
 
         # Interpolating the initial missing-values mask
         nan_values  = interp1d(wave0, nan_values0, bounds_error=False, fill_value=np.nan)(wave) != 0
@@ -4034,7 +4034,7 @@ def extract_hirise_data(target_name, interpolate, degrade_resolution, R_target, 
         bkg_flux = []
         if reference_fibers:
             for i in range(len(bkg_flux0)):
-                bkg_flux.append(Spectrum(wave0, bkg_flux0[i], R=R0).degrade_resolution(wave, renorm=False, R_output=R).flux)
+                bkg_flux.append(Spectrum(wave0, bkg_flux0[i], R=R0).degrade_resolution(wave, renorm=False, R_output=R, filter_type=filter_type).flux)
 
     # Otherwise, takes the current data
     else:
