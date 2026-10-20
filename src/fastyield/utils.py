@@ -4596,20 +4596,21 @@ def warp_sep_IWA(separation, y_ref, r_IWA, mode="log", tail_model="powerlaw"):
 
 
 def interp_radial_per_wave(separation, quantity_2D, r_eval, left, right):
-    """
-    Interpolate a radial quantity of shape (N_wave, N_sep) at radius r_eval.
-    r_eval can be a scalar.
-    Returns an array of shape (N_wave,).
-    """
-    out = np.empty(quantity_2D.shape[0], dtype=float)
+    """Interpolate each wavelength slice at its own radial position."""
+    N_wave = quantity_2D.shape[0]
+    r_eval = np.asarray(r_eval, dtype=float)
+    if r_eval.ndim == 0:
+        r_eval = np.full(N_wave, float(r_eval))
+    elif r_eval.shape != (N_wave,):
+        raise ValueError(f"r_eval must be scalar or have shape ({N_wave},), got {r_eval.shape}.")
     if np.ndim(left) == 0:
-        left = np.zeros((quantity_2D.shape[0])) + left
+        left = np.full(N_wave, left)
     if np.ndim(right) == 0:
-        right = np.zeros((quantity_2D.shape[0])) + right
-    for iw in range(quantity_2D.shape[0]):
-        out[iw] = np.interp(r_eval, separation, quantity_2D[iw], left=left[iw], right=right[iw])
+        right = np.full(N_wave, right)
+    out = np.empty(N_wave, dtype=float)
+    for iw in range(N_wave):
+        out[iw] = np.interp(r_eval[iw], separation, quantity_2D[iw], left=left[iw], right=right[iw])
     return out
-
 
 
 
@@ -4890,8 +4891,10 @@ def build_PSF_grid(SR, D, wave, r_WFE, r_IWA, separation, PSF_profile_density_no
         presence controls whether the coronagraphic branch is computed.
         If 'None', all coronagraphic outputs are returned as 'None'.
 
-    IWA_ref : float or None
-        Reference inner working angle in mas. Must be strictly positive when a
+    IWA_ref : float, ndarray of shape (N_wave,), or None
+        Reference inner working angle in mas. A scalar applies the same physical
+        radius to every wavelength; a 1D array allows a wavelength-dependent
+        physical reference radius. Values must be strictly positive when a
         coronagraph is used.
 
     PSF_profile_density_coro_2D : ndarray of shape (N_wave, N_sep) or None
@@ -4979,8 +4982,16 @@ def build_PSF_grid(SR, D, wave, r_WFE, r_IWA, separation, PSF_profile_density_no
         raise ValueError("separation[0] must be 0.")
     if w_coronagraph and (PSF_profile_density_coro_2D is None or fraction_core_coro_2D is None):
         raise ValueError("'PSF_profile_density_coro_2D' or 'fraction_core_coro_2D' should not be None")
-    if w_coronagraph and (IWA_ref is None or IWA_ref <= 0):
-        raise ValueError("'IWA_ref' should be > 0")
+    if w_coronagraph:
+        if IWA_ref is None:
+            raise ValueError("'IWA_ref' should not be None")
+        IWA_ref = np.asarray(IWA_ref, dtype=float)
+        if IWA_ref.ndim == 0:
+            IWA_ref = float(IWA_ref)
+        elif IWA_ref.shape != (N_wave,):
+            raise ValueError(f"'IWA_ref' must be a scalar or have shape ({N_wave},), got {IWA_ref.shape}")
+        if np.any(~np.isfinite(IWA_ref)) or np.any(np.asarray(IWA_ref) <= 0):
+            raise ValueError("'IWA_ref' should contain only finite positive values")
     if np.any(np.diff(separation) <= 0):
         raise ValueError("'separation' must be strictly increasing")
     if np.any(np.asarray(r_IWA) <= 0):
@@ -5251,7 +5262,7 @@ def plot_PSF(instru, coronagraph, apodizer, strehl, pxscale, sep_unit, wave, PSF
         else:
             title = f"ELT/{instru} {type_PSF} PSF with {apodizer.replace('_', ' ')} apodizer in {strehl} strehl \n without coronagraph with {pxscale:.2f} mas/px pxscale"
     else:
-        title = f"ELT/{instru} {type_PSF} PSF without apodizer in {strehl} strehl \n with Lyot coronagraph with {pxscale:.2f} mas/px pxscale"
+        title = f"ELT/{instru} {type_PSF} PSF without apodizer in {strehl} strehl \n with {coronagraph} coronagraph with {pxscale:.2f} mas/px pxscale"
     plt.figure(figsize=(8, 8), dpi=300)
     extent = [-pxscale*NbColumn/2, pxscale*NbColumn/2, -pxscale*NbLine/2,   pxscale*NbLine/2]
     plt.imshow(np.nanmean(PSF_3D, 0) / np.nanmax(np.nanmean(PSF_3D, 0)), cmap="inferno", extent=extent, norm=mcolors.LogNorm(vmin=1e-6, vmax=1))
@@ -5282,7 +5293,7 @@ def plot_profiles(instru, coronagraph, apodizer, strehl, pxscale, sep_unit, size
     else:
         nrows  = 3
         sharex = True
-        title  = f"ELT/{instru} {type_PSF} PSF without apodizer in {strehl} strehl \n with Lyot coronagraph"
+        title  = f"ELT/{instru} {type_PSF} PSF without apodizer in {strehl} strehl \n with {coronagraph} coronagraph"
         if instru == "HWO":
             title  = f"{instru} PSF without aberration with {coronagraph}"
     pxscale_suffix = "" if pxscale is None else f" with {pxscale} mas/px pxscale"

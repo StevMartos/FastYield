@@ -5451,7 +5451,6 @@ def yield_population_plot(table="Archive", instru="HARMONI", instru_type=None, p
     light_class[mask_thermal]   = "Thermal"
     light_class[mask_reflected] = "Reflected"
     planet_table["LightRegime"] = light_class
-    planet_table["LightRegime"] = light_class
 
     # Plot style
     cmap_teff = plt.get_cmap("afmhot")

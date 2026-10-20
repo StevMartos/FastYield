@@ -153,7 +153,7 @@ from fastyield.colormaps import colormap_bandwidth_resolution_with_constant_Nlam
 #------------------------------------------------------------------------------#
 
 # colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_planet=1200, T_star=6000, delta_rv=30, spectrum_contributions="thermal", model="BT-Settl", Rc=100, filter_type="gaussian", noise_regime="photon")
-colormap_bandwidth_resolution_with_constant_Dlambda(instru="HARMONI", T_planet=1400, T_star=6000, delta_rv=30, spectrum_contributions="thermal", model="BT-Settl", Rc=100, filter_type="gaussian", noise_regime="photon")
+# colormap_bandwidth_resolution_with_constant_Dlambda(instru="HARMONI", T_planet=1400, T_star=6000, delta_rv=30, vsini_planet=100, spectrum_contributions="thermal", model="BT-Settl", Rc=100, filter_type="gaussian", noise_regime="photon")
 
 # colormap_bandwidth_Tp(instru="HARMONI", T_star=5000, delta_rv=30, spectrum_contributions="reflected", model="PICASO albedo(gas giant)",  Rc=100, filter_type="gaussian", stellar_halo_photon_noise_limited=True)
 # colormap_bandwidth_Tp(instru="HARMONI", T_star=5000, delta_rv=30, spectrum_contributions="reflected", model="PICASO albedo(earth like)", Rc=100, filter_type="gaussian", stellar_halo_photon_noise_limited=True)
