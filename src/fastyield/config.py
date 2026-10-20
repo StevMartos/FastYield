@@ -292,7 +292,7 @@ config_data_HARMONI = {
                                          "SP2":     ApodizerInfo(0.35),             # Available apodizers (transmission, IWA [mas])
                                          "SP_Prox": ApodizerInfo(0.68)},            # Available apodizers (transmission, IWA [mas])
                        'FPMs':          [30, 50, 70, 100],                          # FPM IWA available values in [mas]
-                       #'FPMs':          [30],                                       # FPM IWA available values in [mas]
+                       #'FPMs':          [30],                                      # FPM IWA available values in [mas]
                        'strehls':       ["JQ1"],                                    # Available strehls
                        'coronagraphs':  [None],                                     # Available coronagraphs
                        'pxscale':        0.004,                                     # Pixel scale [arcsec/px]
