@@ -1,5 +1,5 @@
 # import FastYield modules
-from .config import h, c, R0_min, R0_max, bands, instrus, mol_list, get_spectra_path, get_vega_path
+from .config import h, c, R0_min, R0_max, bands, instrus, mol_list, get_spectra_path, get_vega_path, filter_type_default
 from .get_specs import load_tell_trans, get_config_data, get_band_lims, get_R_instru
 from .utils import smoothstep, fill_nan_linear, get_bracket_values, linear_interpolate, log_interpolate, transmission_to_tau, tau_to_transmission
 from .rotbroad import rotBroad, fastRotBroad
@@ -19,7 +19,7 @@ import numpy as np
 
 # import scipy modules
 from scipy.ndimage import gaussian_filter1d
-from scipy.signal import savgol_filter
+from scipy.signal import savgol_filter, oaconvolve
 
 # import other modules
 import os
@@ -654,6 +654,48 @@ def gaussian_filter1d_variable(y, sigma, truncate=4.0, mode="reflect", cval=0.0)
 
 
 
+def gaussian_filter1d_fft(input, sigma, axis=-1, order=0, output=None, mode="reflect", cval=0.0, truncate=4.0, *, radius=None):
+    """
+    Accelerated equivalent of scipy.ndimage.gaussian_filter1d.
+
+    Uses overlap-add FFT convolution for wide Gaussian kernels and falls
+    back to scipy for unsupported or unfavorable configurations.
+
+    The Gaussian kernel and reflect boundary convention match scipy.
+    """
+    x     = np.asarray(input)
+    sigma = float(sigma)
+
+    # Fall back to scipy for unsupported cases.
+    if (not np.isfinite(sigma) or sigma <= 0 or
+            (radius is not None and int(radius) < 0)):
+        return gaussian_filter1d(input, sigma, axis=axis, order=order, output=output, mode=mode, cval=cval, truncate=truncate, radius=radius)
+    lw = int(truncate * sigma + 0.5) if radius is None else int(radius)
+    if (order != 0 or output is not None or mode != "reflect" or
+            x.ndim != 1 or axis not in (0, -1) or
+            lw < 32 or lw >= x.size or
+            not np.issubdtype(x.dtype, np.floating) or
+            not np.all(np.isfinite(x))):
+        return gaussian_filter1d(input, sigma, axis=axis, order=order, output=output, mode=mode, cval=cval, truncate=truncate, radius=radius)
+
+    # Same truncated and normalized Gaussian kernel as scipy.
+    k        = np.arange(-lw, lw + 1, dtype=np.float64)
+    weights  = np.exp(-0.5 * (k / sigma)**2)
+    weights /= weights.sum()
+
+    # numpy symmetric padding matches scipy reflect boundaries.
+    x_pad = np.pad(x.astype(np.float64, copy=False), lw, mode="symmetric")
+
+    # FFT convolution.
+    out = oaconvolve(x_pad, weights, mode="valid")
+
+    # Preserve exact zeros when the full convolution support is zero.
+    cs = np.concatenate(([0], np.cumsum(x_pad != 0)))
+    out[(cs[2 * lw + 1:] - cs[:-2 * lw - 1]) == 0] = 0.0
+
+    return out.astype(x.dtype, copy=False)
+
+
 @lru_cache(maxsize=128)
 def _fft_filter_response(N, R, Rc, filter_type):
     """
@@ -676,10 +718,10 @@ def _fft_filter_response(N, R, Rc, filter_type):
           the low-pass response is unity and the high-pass response is zero.
         - If 'Rc > 0', the corresponding filter response is constructed
           according to 'filter_type'.
-    filter_type : {'gaussian', 'gaussian_fast', 'gaussian_true', 'step', 'smoothstep'}
+    filter_type : {'gaussian', 'gaussian_true', 'step', 'smoothstep'}
         Type of low-pass filter to construct.
 
-        - 'gaussian' or 'gaussian_fast':
+        - 'gaussian':
           discrete truncated Gaussian kernel in direct space, normalized and
           applied as a circular convolution ('wrap'-like behavior).
         - 'gaussian_true':
@@ -709,7 +751,7 @@ def _fft_filter_response(N, R, Rc, filter_type):
 
     so that the high-pass and low-pass operators are complementary.
 
-    For the 'gaussian' and 'gaussian_fast' modes, the low-pass filter is built
+    For the 'gaussian', the low-pass filter is built
     from a finite-width Gaussian kernel in direct space, then transformed into
     Fourier space. This corresponds to a discrete circular convolution and may
     differ slightly from the continuous Gaussian transfer function used in
@@ -735,7 +777,7 @@ def _fft_filter_response(N, R, Rc, filter_type):
     ffreq = np.fft.fftfreq(N) # cycles/sample
     res   = ffreq * 2*R       # "resolution" axis
 
-    if filter_type == "gaussian" or filter_type == "gaussian_fast" or filter_type == "gaussian_variable":
+    if filter_type == "gaussian" or filter_type == "gaussian_variable":
         # Discrete, truncated Gaussian kernel => circular conv (mode='wrap')
         sigma    = 2*R / (np.pi * Rc) * np.sqrt(np.log(2)/2.)  # samples
         truncate = 4.
@@ -769,7 +811,7 @@ def _fft_filter_response(N, R, Rc, filter_type):
         H_LF = smoothstep(res, Rc).astype(np.complex128)
 
     else:
-        raise ValueError("Invalid filter_type. Use 'gaussian_fast','gaussian_true','step','smoothstep'.")
+        raise ValueError("Invalid filter_type. Use 'gaussian_true','step','smoothstep'.")
     
     H_HF = (1. - H_LF).astype(np.complex128)
     
@@ -860,7 +902,7 @@ def _gaussian_filter_axis0(flux_filled, valid_filled, sigma, mode="reflect"):
 
 
 
-def filtered_flux(flux, R, Rc, filter_type="gaussian", mode="reflect", show=False):
+def filtered_flux(flux, R, Rc, filter_type=filter_type_default, mode="reflect", show=False):
     """
     Split an input flux into high-pass and low-pass components using a cut-off
     spectral resolution 'Rc'.
@@ -915,16 +957,17 @@ def filtered_flux(flux, R, Rc, filter_type="gaussian", mode="reflect", show=Fals
     #   - Rc_to_sigma() + np.nanmedian();
     #   - _gaussian_filter_axis0();
     #   - all multidimensional / variable-sigma machinery.
-    if filter_type == "gaussian" and flux.ndim == 1 and np.ndim(R) == 0 and np.ndim(Rc) == 0 and not show:
-        R_float  = float(R)
-        Rc_float = float(Rc)
+    if filter_type in ("gaussian", "gaussian_fast") and flux.ndim == 1 and np.ndim(R) == 0 and np.ndim(Rc) == 0 and not show:
+        gaussian_func = gaussian_filter1d_fft if filter_type == "gaussian_fast" else gaussian_filter1d
+        R_float       = float(R)
+        Rc_float      = float(Rc)
         
         if np.isfinite(R_float) and np.isfinite(Rc_float) and R_float > 0.0 and Rc_float > 0.0:
             sigma = _SIGMA_RC_FACTOR * R_float / Rc_float
 
             # Ultra-fast case: no NaN at all
             if np.all(np.isfinite(flux)):
-                flux_LF = gaussian_filter1d(flux, sigma=sigma, mode=mode)
+                flux_LF = gaussian_func(flux, sigma=sigma, mode=mode)
                 return flux - flux_LF, flux_LF
 
             # Fast NaN-aware 1D case: same behavior as the generic path,
@@ -935,7 +978,7 @@ def filtered_flux(flux, R, Rc, filter_type="gaussian", mode="reflect", show=Fals
 
             flux_LF = np.full_like(flux, np.nan, dtype=float)
             if np.any(valid_filled):
-                flux_LF[valid_filled] = gaussian_filter1d(flux_filled[valid_filled], sigma=sigma, mode=mode)
+                flux_LF[valid_filled] = gaussian_func(flux_filled[valid_filled], sigma=sigma, mode=mode)
 
             flux_LF[~valid] = np.nan
             return flux - flux_LF, flux_LF
@@ -976,7 +1019,10 @@ def filtered_flux(flux, R, Rc, filter_type="gaussian", mode="reflect", show=Fals
         if filter_type == "gaussian_variable":
             sigma_valid   = sigma_filled[valid_filled]
             flux_valid_LF = gaussian_filter1d_variable(flux_valid, sigma=sigma_valid, mode=mode)
-
+        
+        elif filter_type == "gaussian_fast":
+            flux_valid_LF = gaussian_filter1d_fft(flux_valid, sigma=sigma, mode=mode)
+            
         # Savitzky-Golay filter
         elif filter_type == "savitzky_golay":
             # Map Rc to a window length (odd integer >= 5)
@@ -986,7 +1032,7 @@ def filtered_flux(flux, R, Rc, filter_type="gaussian", mode="reflect", show=Fals
             flux_valid_LF = savgol_filter(flux_valid, window_length=N, polyorder=poly)
 
         # Cached frequency responses
-        elif filter_type in {"gaussian_fast", "gaussian_true", "step", "smoothstep"}:
+        elif filter_type in {"gaussian_true", "step", "smoothstep"}:
             if np.ndim(R) != 0 or np.ndim(Rc) != 0:
                 raise ValueError(f"filter_type='{filter_type}' requires scalar R and scalar Rc.")
             fft           = np.fft.fft(np.asarray(flux_valid, dtype=np.complex128))
@@ -1639,7 +1685,7 @@ class Spectrum:
     
     #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
         
-    def degrade_resolution(self, wave_output, renorm=False, gaussian_filtering=True, R_output=None, filter_type="gaussian", bin_type="mean", verbose=False):
+    def degrade_resolution(self, wave_output, renorm=False, gaussian_filtering=True, R_output=None, filter_type=filter_type_default, bin_type="mean", verbose=False):
         """
         Degrade the spectrum to a lower spectral resolution and rebin it onto a new
         wavelength grid.
@@ -1797,7 +1843,7 @@ class Spectrum:
             
             # Mean computed sigma kernel in [input px] and sanity check value (forbidding negative values)
             sigma_kernel_2 = np.clip(a=sigma_kernel_2, a_min=0, a_max=None)
-            if filter_type == "gaussian":
+            if filter_type in ("gaussian", "gaussian_fast"):
                 sigma_kernel = np.nanmedian(np.sqrt(sigma_kernel_2))
             elif filter_type == "gaussian_variable":
                 sigma_kernel = np.sqrt(sigma_kernel_2)
@@ -1808,12 +1854,13 @@ class Spectrum:
                 valid_flux   = np.isfinite(flux_input)                 # Fill internal NaNs (linear) and crop to avoid edges inside the convolution window
                 flux_filled  = fill_nan_linear(wave_input, flux_input) # NaN gaps are filled with linear interpolation
                 valid_filled = np.isfinite(flux_filled)                # NaN edges can remain   
-                if filter_type == "gaussian":
-                    flux_input[valid_filled] = gaussian_filter1d(flux_filled[valid_filled], sigma=sigma_kernel, mode="reflect")
+                if filter_type in ("gaussian", "gaussian_fast"):
+                    gaussian_func            = gaussian_filter1d_fft if filter_type == "gaussian_fast" else gaussian_filter1d
+                    flux_input[valid_filled] = gaussian_func(flux_filled[valid_filled], sigma=sigma_kernel, mode="reflect")
                 elif filter_type == "gaussian_variable":
                     valid_kernel = valid_overlap & np.isfinite(sigma_kernel)
                     if np.count_nonzero(valid_kernel) >= 2:
-                        sigma_kernel_input = np.interp(wave_input[valid_filled], wave_output[valid_kernel], sigma_kernel[valid_kernel], left=np.nan, right=np.nan)
+                        sigma_kernel_input       = np.interp(wave_input[valid_filled], wave_output[valid_kernel], sigma_kernel[valid_kernel], left=np.nan, right=np.nan)
                         flux_input[valid_filled] = gaussian_filter1d_variable(flux_filled[valid_filled], sigma=sigma_kernel_input, mode="reflect")
                     else:
                         flux_input[valid_filled] = flux_filled[valid_filled]
@@ -3120,7 +3167,7 @@ def get_spectrum_instru(spectrum, mag, config_data, band0=None, R_instru=None, w
 
 
 
-def get_spectrum_band(spectrum_instru=None, spectrum_instru_density=None, config_data=None, instru=None, band=None, wave_band=None, dwave_band=None, R_output=None, degrade_resolution=True, verbose=False):
+def get_spectrum_band(spectrum_instru=None, spectrum_instru_density=None, config_data=None, instru=None, band=None, wave_band=None, dwave_band=None, R_output=None, degrade_resolution=True, filter_type=filter_type_default, verbose=False):
     """
     Extract and resample an instrument spectrum onto the wavelength grid of a given band.
 
@@ -3221,7 +3268,7 @@ def get_spectrum_band(spectrum_instru=None, spectrum_instru_density=None, config
 
     # Resample the flux-density spectrum onto the band wavelength grid
     if degrade_resolution:
-        spectrum_band = spectrum_instru_density.degrade_resolution(wave_band, renorm=False, R_output=R_output, verbose=verbose) # [ph/µm/mn]
+        spectrum_band = spectrum_instru_density.degrade_resolution(wave_band, renorm=False, R_output=R_output, filter_type=filter_type, verbose=verbose) # [ph/µm/mn]
     else:
         spectrum_band = spectrum_instru_density.interpolate_wavelength(wave_band, renorm=False) # [ph/µm/mn]
 

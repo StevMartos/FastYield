@@ -890,7 +890,7 @@ def get_systematics(config_data, band, tellurics, apodizer, strehl, coronagraph,
     trans = get_transmission(instru=instru, wave_band=wave_data, band=band, tellurics=tellurics, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, fill_value=np.nan)
     
     # Current stellar model on cube wavelength data grid grid in [ph/bin/mn] (total ph over the FoV)
-    Ss = get_spectrum_band(spectrum_instru=star_spectrum_instru, wave_band=wave_data, R_output=R_band).flux # [ph/bin/mn] (total ph over the FoV)
+    Ss = get_spectrum_band(spectrum_instru=star_spectrum_instru, wave_band=wave_data, R_output=R_band, filter_type=filter_type).flux # [ph/bin/mn] (total ph over the FoV)
     
     # Computing the noiseless data cube (without planet) in [e-/bin/px/mn]
     S_wo_planet = Ms * (trans*Ss)[:, None, None] # [e-/bin/px/mn]
@@ -932,7 +932,7 @@ def get_systematics(config_data, band, tellurics, apodizer, strehl, coronagraph,
         # Planet fake injection (if the sep and the mag are known and the planet is inside the FoV) in order to estimate components that would be estimated on real data and thus estimating the systematic noise and signal reduction 
         if (mag_planet is not None) and (separation_planet is not None) and (separation_planet < FOV / 2):
             
-            Sp = get_spectrum_band(spectrum_instru=planet_spectrum_instru, wave_band=wave_data, R_output=R_band).flux # [ph/bin/mn] (total ph over the FoV)
+            Sp = get_spectrum_band(spectrum_instru=planet_spectrum_instru, wave_band=wave_data, R_output=R_band, filter_type=filter_type).flux # [ph/bin/mn] (total ph over the FoV)
             
             # Planet fake injection
             S_planet            = S_wo_planet * Sp[:, None, None] / Ss[:, None, None]

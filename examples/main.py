@@ -18,7 +18,7 @@ if __name__ == "__main__":
     #                       Graphic User Interface (GUI):                          #
     #------------------------------------------------------------------------------#
     
-    # FastYield_interface()
+    FastYield_interface()
     
     
     #------------------------------------------------------------------------------#
@@ -120,7 +120,7 @@ if __name__ == "__main__":
     #                  FastCurves (comparison with real data cases):               #
     #------------------------------------------------------------------------------#
     
-    # ### CT Cha b / SNR(1MEDIUM) = 11.72 (3.0 s)
+    # ### CT Cha b / SNR(1MEDIUM) = 11.71 (3.0 s)
     # FastCurves(calculation="SNR", instru="MIRIMRS", systematics=True, input_DIT=138.75/60, model_planet="BT-Settl", separation_planet=2.5, T_planet=2600, lg_planet=3.5, planet_name="CT Cha b", mag_star=8.66, mag_planet=14.9, band0='K', T_star=4400, lg_star=3.5, exposure_time=56.426, rv_star=-2.9, rv_planet=15, vsini_star=10, vsini_planet=10, channel=False)
     
     # ### HD 19467 b / SNR(G395H F290LP) = 20.69 (6.0 s)
@@ -153,7 +153,7 @@ if __name__ == "__main__":
     #                                Colormaps:                                    #
     #------------------------------------------------------------------------------#
     
-    colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_planet=1200, T_star=6000, delta_rv=30, spectrum_contributions="thermal", model="BT-Settl", Rc=100, filter_type="gaussian", noise_regime="photon")
+    # colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_planet=1200, T_star=6000, delta_rv=30, spectrum_contributions="thermal", model="BT-Settl", Rc=100, filter_type="gaussian", noise_regime="photon")
     # colormap_bandwidth_resolution_with_constant_Dlambda(instru="HARMONI", T_planet=1400, T_star=6000, delta_rv=30, vsini_planet=100, spectrum_contributions="thermal", model="BT-Settl", Rc=100, filter_type="gaussian", noise_regime="photon")
     
     # colormap_bandwidth_Tp(instru="HARMONI", T_star=5000, delta_rv=30, spectrum_contributions="reflected", model="PICASO albedo(gas giant)",  Rc=100, filter_type="gaussian", stellar_halo_photon_noise_limited=True)
