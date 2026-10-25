@@ -5566,7 +5566,8 @@ def yield_population_plot(table="Archive", instru="HARMONI", instru_type=None, p
     light_colors = {"Thermal": "C3", "Reflected": "C0", "Unclassified": "0.50"}
     light_alphas = {"Non-detected": 0.20, "Detected, thermal-dominated": alpha_detected, "Detected, reflected-dominated": alpha_detected, "Detected, unclassified": alpha_detected}
     fig_light, axes_light = make_panels(title=f"ELT/{instru} thermal/reflected complementarity in {exposure_time/60:.0f} hr", subtitle=f"{N_det:.0f}/{N_total:.0f} detections ({N_det/N_total*100:.1f}%)", plot_func=lambda ax, x, y, valid, xlabel, ylabel, xlim, ylim, title, space: plot_class_panel(ax, x, y, valid, light_class, light_labels, light_colors, light_alphas, xlabel, ylabel, xlim, ylim, title, space))
-    handles_light         = [Line2D([], [], ls="", marker="o", ms=11, markerfacecolor=light_colors["Thermal"], markeredgecolor="k", color=light_colors["Thermal"], label="Thermal"),  Line2D([], [], ls="", marker="o", ms=11, markerfacecolor=light_colors["Reflected"], markeredgecolor="k", color=light_colors["Reflected"], label="Reflected")]
+    N_det_light           = {label: int(np.sum(detected & (light_class == label))) for label in light_labels}
+    handles_light         = [Line2D([], [], ls="", marker="o", ms=11, markerfacecolor=light_colors["Thermal"], markeredgecolor="k", color=light_colors["Thermal"], label=f"Thermal ({N_det_light['Thermal']})"),  Line2D([], [], ls="", marker="o", ms=11, markerfacecolor=light_colors["Reflected"], markeredgecolor="k", color=light_colors["Reflected"], label=f"Reflected ({N_det_light['Reflected']})")]
     axes_light[-1].add_artist(axes_light[-1].legend(handles=handles_light, fontsize=fontsize-2, loc="center right", frameon=True, edgecolor="gray", facecolor="white", title=f"Planet-light regime ({band_regime_plot})", title_fontsize=fontsize))
     save_and_show(fig_light, f"ELT_{instru}{type_and_pp}_thermal_reflected_{table}_{band_regime_plot}band.png")
 
