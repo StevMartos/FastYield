@@ -5213,8 +5213,8 @@ def yield_population_plot(table="Archive", instru="HARMONI", instru_type=None, p
         ax.add_artist(ax.legend(handles=handles, fontsize=fontsize-2, loc=loc, frameon=True, edgecolor="gray", facecolor="white", title="Discovery method", title_fontsize=fontsize))
 
     def add_light_regime_legend(ax, loc="lower right"):
-        groups, _, markers = get_regime_marker_groups()
-        handles = [Line2D([], [], ls="", marker=markers[label], ms=13, markerfacecolor="white", markeredgecolor="k", markeredgewidth=1.5, color="k", label=label) for label in groups]
+        groups, masks, markers = get_regime_marker_groups()
+        handles = [Line2D([], [], ls="", marker=markers[label], ms=13, markerfacecolor="white", markeredgecolor="k", markeredgewidth=1.5, color="k", label=f"{label} ({int(np.sum(detected & masks[label]))})") for label in groups]
         ax.add_artist(ax.legend(handles=handles, fontsize=fontsize-2, loc=loc, frameon=True, edgecolor="gray", facecolor="white", title=f"Planet-light regime ({band_regime_plot})", title_fontsize=fontsize))
 
     def add_detection_legend(ax, loc="lower left"):
