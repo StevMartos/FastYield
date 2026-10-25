@@ -5061,16 +5061,20 @@ def yield_heatmap_ELT(table="Archive", instru="HARMONI", thermal_model="auto", r
 
 
 
-def yield_population_plot(table="Archive", instru="HARMONI", instru_type=None, post_processing=None, thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl="JQ1", config_mode="best", apodizer="NO_SP", coronagraph=None, band_snr="INSTRU", band_contrast_plot="INSTRU", band_regime_plot="INSTRU", systematics=False, PCA=False, planet_table=None, SNR_plot=None, dominant_noise=None, SNR_thr=None, save_dir=None, DL_mas=None, DL_text="Diffraction limit", show_golden_sample=True, show_det_regions=True, show_ptype_regions=True, show_VLT_DL=False):
+def yield_population_plot(table="Archive", instru="HARMONI", instru_type=None, post_processing=None, thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl="JQ1", config_mode="best", apodizer="NO_SP", coronagraph=None, band_snr="INSTRU", band_contrast_plot="INSTRU", band_regime_plot="INSTRU", systematics=False, PCA=False, planet_table=None, SNR_plot=None, dominant_noise=None, SNR_thr=None, save_dir=None, DL_mas=None, DL_text="Diffraction limit", show_golden_sample=True, show_det_regions=True, show_ptype_regions=True, show_VLT_DL=False, space="both"):
     """
     Plot in one call:
-      1) detected population,
+      1) detected population, color coded in different spaces (star Teff, planet Teff, SNR)
       2) dominant noise regime,
       3) thermal/reflected complementarity.
+      4) detection fraction in different bins of the parameter space.
 
     Detection is computed from get_SNR_from_table().
     If config_mode="fixed", one configuration is used.
     If config_mode="max",   the best SNR over all apodizer/coronagraph configurations is used planet by planet.
+    If space="instr", only the instrumental (observational) space is plotted.
+    If space="phys",  only the physical space is plotted.
+    If space="both",  both spaces are plotted side by side.
     """
 
     golden_sample  = ["Proxima Cen b", "Wolf 1061 b", "GJ 682 b"]#, "GJ 273 b", "Ross 128 b"]
@@ -5090,6 +5094,10 @@ def yield_population_plot(table="Archive", instru="HARMONI", instru_type=None, p
     else:
         type_and_pp = ''
 
+    space = space.lower()
+    if space not in ("instr", "phys", "both"):
+        raise ValueError("space must be 'instr', 'phys' or 'both'.")
+
     if instru == "PCS":
         obs_xlim      = (1, 1e3)
     else:
@@ -5103,6 +5111,7 @@ def yield_population_plot(table="Archive", instru="HARMONI", instru_type=None, p
     alpha_nondetected = 0.05
     fontsize          = 22
     dpi               = dpi_fig
+    cbar_frac         = 0.03 if space == "both" else 0.06 # colorbar width and pad, relative to the panel(s) width
 
     # Optional mode using already-computed FastYield results
     precomputed = instru is not None and (planet_table is not None or SNR_plot is not None or dominant_noise is not None)
@@ -5348,40 +5357,54 @@ def yield_population_plot(table="Archive", instru="HARMONI", instru_type=None, p
         ax_right.set_xlim(0.9, max(hist_y_det.max(), 1) * 1.5)
         return mesh
 
-    def make_two_panel(title, plot_func, valid_obs_plot=None, valid_phys_plot=None, subtitle=None, legends=True, marker_legend="method"):
+    def make_panels(title, plot_func, valid_obs_plot=None, valid_phys_plot=None, subtitle=None, legends=True, marker_legend="method"):
+        # One panel per requested space: wide figure for both spaces, narrower one for a single space
         valid_obs_plot  = valid_obs if valid_obs_plot is None else valid_obs_plot
         valid_phys_plot = valid_phys if valid_phys_plot is None else valid_phys_plot
-        fig, axes       = plt.subplots(1, 2, figsize=(22, 10) if instru is not None else (21, 9), dpi=dpi)
-        plot_func(axes[0], AngSep, contrast,   valid_obs_plot,  "Angular separation [mas]", f"{band_contrast_plot}-band contrast", obs_xlim,  obs_ylim,  "Observational space", "obs")
-        plot_func(axes[1], SMA,    PlanetMass, valid_phys_plot, "Semi-major axis [AU]",     r"Planet mass [$M_\oplus$]",           phys_xlim, phys_ylim, "Physical space",      "phys")
-        if DL_mas is not None:
-            axes[0].axvline(DL_mas, color="k", linestyle="--", linewidth=2.5, zorder=4)
-            axes[0].annotate(DL_text, xy=(DL_mas, 0.8), xycoords=axes[0].get_xaxis_transform(), xytext=(10, 0), textcoords="offset points", rotation=270, ha="center", va="center", fontsize=fontsize, fontweight="bold", color="k", bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.75, "pad": 2}, zorder=5)
-        if show_VLT_DL:
-            axes[0].axvline(30, color="k", linestyle="--", linewidth=2, alpha=0.5, zorder=4)
-            axes[0].annotate("VLT", xy=(30, 0.8), xycoords=axes[0].get_xaxis_transform(), xytext=(10, 0), textcoords="offset points", rotation=270, ha="center", va="center", fontsize=fontsize, fontweight="bold", color="k", alpha=0.5, bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.75, "pad": 2}, zorder=5)
-        if show_det_regions:
-            add_detection_method_regions(axes[0])
-        if show_ptype_regions:
-            add_ptype_regions(axes[1])
-        add_golden_sample(axes[0], AngSep, contrast,   valid_obs_plot,  space="obs")
-        add_golden_sample(axes[1], SMA,    PlanetMass, valid_phys_plot, space="phys")
+        if space == "both":
+            fig, axes = plt.subplots(1, 2, figsize=(22, 10) if instru is not None else (21, 9), dpi=dpi)
+            ax_obs, ax_phys = axes
+            margins   = dict(left=0.07, right=0.97, wspace=0.23)
+        else:
+            fig, ax   = plt.subplots(1, 1, figsize=(12, 10) if instru is not None else (11, 9), dpi=dpi)
+            axes      = np.array([ax])
+            ax_obs    = ax if space == "instr" else None
+            ax_phys   = ax if space == "phys"  else None
+            margins   = dict(left=0.13, right=0.95)
+        if ax_obs is not None:
+            plot_func(ax_obs, AngSep, contrast, valid_obs_plot, "Angular separation [mas]", f"{band_contrast_plot}-band contrast", obs_xlim, obs_ylim, "Observational space", "obs")
+            if DL_mas is not None:
+                ax_obs.axvline(DL_mas, color="k", linestyle="--", linewidth=2.5, zorder=4)
+                ax_obs.annotate(DL_text, xy=(DL_mas, 0.8), xycoords=ax_obs.get_xaxis_transform(), xytext=(10, 0), textcoords="offset points", rotation=270, ha="center", va="center", fontsize=fontsize, fontweight="bold", color="k", bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.75, "pad": 2}, zorder=5)
+            if show_VLT_DL:
+                ax_obs.axvline(30, color="k", linestyle="--", linewidth=2, alpha=0.5, zorder=4)
+                ax_obs.annotate("VLT", xy=(30, 0.8), xycoords=ax_obs.get_xaxis_transform(), xytext=(10, 0), textcoords="offset points", rotation=270, ha="center", va="center", fontsize=fontsize, fontweight="bold", color="k", alpha=0.5, bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.75, "pad": 2}, zorder=5)
+            if show_det_regions:
+                add_detection_method_regions(ax_obs)
+            add_golden_sample(ax_obs, AngSep, contrast, valid_obs_plot, space="obs")
+        if ax_phys is not None:
+            plot_func(ax_phys, SMA, PlanetMass, valid_phys_plot, "Semi-major axis [AU]", r"Planet mass [$M_\oplus$]", phys_xlim, phys_ylim, "Physical space", "phys")
+            if show_ptype_regions:
+                add_ptype_regions(ax_phys)
+            add_golden_sample(ax_phys, SMA, PlanetMass, valid_phys_plot, space="phys")
         if legends:
-            if instru is not None:
-                add_detection_legend(axes[0],    loc="lower left")
+            # if instru is not None:
+            #     add_detection_legend(axes[0],    loc="lower left")
             if marker_legend == "regime":
-                add_light_regime_legend(axes[1], loc="lower right")
+                add_light_regime_legend(axes[-1], loc="lower right")
             else:
-                add_detection_method_legend(axes[1], loc="lower right")
+                add_detection_method_legend(axes[-1], loc="lower right")
         if instru is not None:
             fig.suptitle(title, fontsize=fontsize+5, weight="bold", y=0.98)
             if subtitle is not None:
                 fig.text(0.5, 0.905, subtitle, ha="center", va="center", fontsize=fontsize+2, fontweight="normal")
-        fig.subplots_adjust(left=0.07, right=0.97, bottom=0.10, top=0.82 if instru is not None else 0.92, wspace=0.23)
+        fig.subplots_adjust(bottom=0.10, top=0.82 if instru is not None else 0.92, **margins)
         return fig, axes
 
     def save_and_show(fig, filename):
         if save_dir is not None:
+            if space != "both":
+                filename = f"{Path(filename).stem}_{space}{Path(filename).suffix}"
             fig.savefig(save_dir / filename, bbox_inches="tight", dpi=dpi)
         plt.show(block=False)
 
@@ -5508,19 +5531,19 @@ def yield_population_plot(table="Archive", instru="HARMONI", instru_type=None, p
     N_det          = int(np.sum(detected))
 
     # 1) Detected population
-    fig_pop, axes_pop = make_two_panel(title=f"ELT/{instru} detected population in {exposure_time/60:.0f} hr per target", subtitle=f"{N_det:.0f}/{N_total:.0f} detections ({N_det/N_total*100:.1f}%)", plot_func=plot_population_panel)
+    fig_pop, axes_pop = make_panels(title=f"ELT/{instru} detected population in {exposure_time/60:.0f} hr per target", subtitle=f"{N_det:.0f}/{N_total:.0f} detections ({N_det/N_total*100:.1f}%)", plot_func=plot_population_panel)
     sm                = mpl.cm.ScalarMappable(norm=norm_teff, cmap=cmap_teff)
     sm.set_array([])
-    cbar = fig_pop.colorbar(sm, ax=axes_pop, pad=0.03, fraction=0.03)
+    cbar = fig_pop.colorbar(sm, ax=axes_pop, pad=cbar_frac, fraction=cbar_frac)
     cbar.set_label(r"Star $T_\mathrm{eff}$ [K]", fontsize=fontsize+2, rotation=270, labelpad=30)
     cbar.ax.tick_params(labelsize=fontsize-2)
     save_and_show(fig_pop, f"ELT_{instru}{type_and_pp}_detected_population_{table}_{band_contrast_plot}band.png")
 
     # 2) Detected population colored by planet temperature
-    fig_planet_teff, axes_planet_teff = make_two_panel(title=f"ELT/{instru} detected population in {exposure_time/60:.0f} hr per target", subtitle=f"{N_det:.0f}/{N_total:.0f} detections ({N_det/N_total*100:.1f}%)", plot_func=plot_population_planet_teff_panel, valid_obs_plot=valid_obs_planet_teff, valid_phys_plot=valid_phys_planet_teff)
+    fig_planet_teff, axes_planet_teff = make_panels(title=f"ELT/{instru} detected population in {exposure_time/60:.0f} hr per target", subtitle=f"{N_det:.0f}/{N_total:.0f} detections ({N_det/N_total*100:.1f}%)", plot_func=plot_population_planet_teff_panel, valid_obs_plot=valid_obs_planet_teff, valid_phys_plot=valid_phys_planet_teff)
     sm = mpl.cm.ScalarMappable(norm=norm_planet_teff, cmap=cmap_planet_teff)
     sm.set_array([])
-    cbar = fig_planet_teff.colorbar(sm, ax=axes_planet_teff, pad=0.03, fraction=0.03)
+    cbar = fig_planet_teff.colorbar(sm, ax=axes_planet_teff, pad=cbar_frac, fraction=cbar_frac)
     cbar.set_label(r"Planet $T_\mathrm{eff}$ [K]", fontsize=fontsize+2, rotation=270, labelpad=30)
     cbar.ax.tick_params(labelsize=fontsize-2)
     save_and_show(fig_planet_teff, f"ELT_{instru}{type_and_pp}_detected_population_planet_teff_{table}_{band_contrast_plot}band.png")
@@ -5532,18 +5555,18 @@ def yield_population_plot(table="Archive", instru="HARMONI", instru_type=None, p
         noise_colors = {"Stellar halo": "tab:orange", "Background": "tab:blue", "Read noise": "tab:purple", "Dark current": "tab:green", "Speckles": "tab:red", "Residuals": "tab:red", "Systematics": "tab:red", "Fundamental noise": "tab:orange", "Unknown": "0.50"}
         noise_labels = [label for label in noise_order if np.any(noise_class == label)]
         noise_alphas              = {label: 0.20 if label == "Non-detected" else alpha_detected for label in noise_labels}
-        fig_noise, axes_noise     = make_two_panel(title=f"ELT/{instru} dominant noise regime in {exposure_time/60:.0f} hr per target", subtitle=f"{N_det:.0f}/{N_total:.0f} detections ({N_det/N_total*100:.1f}%)", plot_func=lambda ax, x, y, valid, xlabel, ylabel, xlim, ylim, title, space: plot_class_panel(ax, x, y, valid, noise_class, noise_labels, noise_colors, noise_alphas, xlabel, ylabel, xlim, ylim, title, space))
+        fig_noise, axes_noise     = make_panels(title=f"ELT/{instru} dominant noise regime in {exposure_time/60:.0f} hr per target", subtitle=f"{N_det:.0f}/{N_total:.0f} detections ({N_det/N_total*100:.1f}%)", plot_func=lambda ax, x, y, valid, xlabel, ylabel, xlim, ylim, title, space: plot_class_panel(ax, x, y, valid, noise_class, noise_labels, noise_colors, noise_alphas, xlabel, ylabel, xlim, ylim, title, space))
         handles_noise             = [Line2D([], [], ls="", marker="o", ms=11, markerfacecolor=noise_colors[lab], markeredgecolor="k", color=noise_colors[lab], label=lab) for lab in noise_labels if lab != "Non-detected"]
-        axes_noise[1].add_artist(axes_noise[1].legend(handles=handles_noise, fontsize=fontsize-2, loc="center right", frameon=True, edgecolor="gray", facecolor="white", title="Dominant noise", title_fontsize=fontsize))
+        axes_noise[-1].add_artist(axes_noise[-1].legend(handles=handles_noise, fontsize=fontsize-2, loc="center right", frameon=True, edgecolor="gray", facecolor="white", title="Dominant noise", title_fontsize=fontsize))
         save_and_show(fig_noise, f"ELT_{instru}{type_and_pp}_dominant_noise_{table}_{band_contrast_plot}band.png")
 
     # 4) Thermal/reflected complementarity
     light_labels = ["Thermal", "Reflected"] + (["Unclassified"] if np.any(light_class == "Unclassified") else [])
     light_colors = {"Thermal": "C3", "Reflected": "C0", "Unclassified": "0.50"}
     light_alphas = {"Non-detected": 0.20, "Detected, thermal-dominated": alpha_detected, "Detected, reflected-dominated": alpha_detected, "Detected, unclassified": alpha_detected}
-    fig_light, axes_light = make_two_panel(title=f"ELT/{instru} thermal/reflected complementarity in {exposure_time/60:.0f} hr", subtitle=f"{N_det:.0f}/{N_total:.0f} detections ({N_det/N_total*100:.1f}%)", plot_func=lambda ax, x, y, valid, xlabel, ylabel, xlim, ylim, title, space: plot_class_panel(ax, x, y, valid, light_class, light_labels, light_colors, light_alphas, xlabel, ylabel, xlim, ylim, title, space))
+    fig_light, axes_light = make_panels(title=f"ELT/{instru} thermal/reflected complementarity in {exposure_time/60:.0f} hr", subtitle=f"{N_det:.0f}/{N_total:.0f} detections ({N_det/N_total*100:.1f}%)", plot_func=lambda ax, x, y, valid, xlabel, ylabel, xlim, ylim, title, space: plot_class_panel(ax, x, y, valid, light_class, light_labels, light_colors, light_alphas, xlabel, ylabel, xlim, ylim, title, space))
     handles_light         = [Line2D([], [], ls="", marker="o", ms=11, markerfacecolor=light_colors["Thermal"], markeredgecolor="k", color=light_colors["Thermal"], label="Thermal"),  Line2D([], [], ls="", marker="o", ms=11, markerfacecolor=light_colors["Reflected"], markeredgecolor="k", color=light_colors["Reflected"], label="Reflected")]
-    axes_light[1].add_artist(axes_light[1].legend(handles=handles_light, fontsize=fontsize-2, loc="center right", frameon=True, edgecolor="gray", facecolor="white", title=f"Planet-light regime ({band_regime_plot})", title_fontsize=fontsize))
+    axes_light[-1].add_artist(axes_light[-1].legend(handles=handles_light, fontsize=fontsize-2, loc="center right", frameon=True, edgecolor="gray", facecolor="white", title=f"Planet-light regime ({band_regime_plot})", title_fontsize=fontsize))
     save_and_show(fig_light, f"ELT_{instru}{type_and_pp}_thermal_reflected_{table}_{band_regime_plot}band.png")
 
     # 5) Detection fraction per bin (log grid), in observational and physical spaces
@@ -5553,10 +5576,10 @@ def yield_population_plot(table="Archive", instru="HARMONI", instru_type=None, p
     cmap_frac           = plt.get_cmap("inferno").copy()
     cmap_frac.set_bad("white")
     norm_frac           = mpl.colors.Normalize(vmin=0, vmax=1)
-    fig_frac, axes_frac = make_two_panel(title=f"ELT/{instru} detection fraction in {exposure_time/60:.0f} hr per target", subtitle=f"{N_det:.0f}/{N_total:.0f} detections ({N_det/N_total*100:.1f}%)", plot_func=plot_fraction_panel, legends=False)
+    fig_frac, axes_frac = make_panels(title=f"ELT/{instru} detection fraction in {exposure_time/60:.0f} hr per target", subtitle=f"{N_det:.0f}/{N_total:.0f} detections ({N_det/N_total*100:.1f}%)", plot_func=plot_fraction_panel, legends=False)
     sm                  = mpl.cm.ScalarMappable(norm=norm_frac, cmap=cmap_frac)
     sm.set_array([])
-    cbar = fig_frac.colorbar(sm, ax=axes_frac, pad=0.03, fraction=0.03)
+    cbar = fig_frac.colorbar(sm, ax=axes_frac, pad=cbar_frac, fraction=cbar_frac)
     cbar.set_label("Fraction of detected planets", fontsize=fontsize+2, rotation=270, labelpad=30)
     cbar.ax.tick_params(labelsize=fontsize-2)
     save_and_show(fig_frac, f"ELT_{instru}{type_and_pp}_detection_fraction_{table}_{band_contrast_plot}band.png")
@@ -5565,7 +5588,7 @@ def yield_population_plot(table="Archive", instru="HARMONI", instru_type=None, p
     if instru is not None:
         mask_snr_color = np.isfinite(SNR_plot) & (SNR_plot > 0)
         if np.any(mask_snr_color):
-            SNR_min  = 1
+            SNR_min  = 4
             SNR_max  = max(np.nanpercentile(SNR_plot[mask_snr_color], 99), 10 * SNR_min)
             cmap_snr = plt.get_cmap("rainbow")
             norm_snr = mpl.colors.LogNorm(vmin=SNR_min, vmax=SNR_max, clip=True)
@@ -5586,10 +5609,10 @@ def yield_population_plot(table="Archive", instru="HARMONI", instru_type=None, p
                     ax.scatter(x[idx], y[idx], c=SNR_plot[idx], cmap=cmap_snr, norm=norm_snr, marker=markers[group], s=ss_detected, edgecolors="k", linewidths=0.75, alpha=alpha_detected, zorder=3)
                 setup_axes(ax, xlabel, ylabel, xlim, ylim, title)
 
-            fig_snr, axes_snr = make_two_panel(title=f"ELT/{instru} final SNR in {exposure_time/60:.0f} hr per target", subtitle=f"{N_det:.0f}/{N_total:.0f} detections ({N_det/N_total*100:.1f}%)", plot_func=plot_snr_panel, marker_legend="regime")
+            fig_snr, axes_snr = make_panels(title=f"ELT/{instru} final SNR in {exposure_time/60:.0f} hr per target", subtitle=f"{N_det:.0f}/{N_total:.0f} detections ({N_det/N_total*100:.1f}%)", plot_func=plot_snr_panel, marker_legend="regime")
             sm   = mpl.cm.ScalarMappable(norm=norm_snr, cmap=cmap_snr)
             sm.set_array([])
-            cbar = fig_snr.colorbar(sm, ax=axes_snr, pad=0.03, fraction=0.03, extend="max")
+            cbar = fig_snr.colorbar(sm, ax=axes_snr, pad=cbar_frac, fraction=cbar_frac, extend="max")
             cbar.set_label("SNR", fontsize=fontsize+2, rotation=270, labelpad=30)
             cbar.ax.tick_params(labelsize=fontsize-2)
             if SNR_min <= SNR_thr <= SNR_max:
