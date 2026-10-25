@@ -5411,10 +5411,11 @@ def yield_population_plot(table="Archive", instru="HARMONI", instru_type=None, p
         if legends:
             # if instru is not None:
             #     add_detection_legend(axes[0],    loc="lower left")
+            loc = "upper left" if space == "obs" else "lower right"
             if marker_legend == "regime":
-                add_light_regime_legend(axes[-1], loc="lower right")
+                add_light_regime_legend(axes[-1], loc=loc)
             else:
-                add_detection_method_legend(axes[-1], loc="lower right")
+                add_detection_method_legend(axes[-1], loc=loc)
         if instru is not None:
             fig.suptitle(title, fontsize=fontsize+5, weight="bold", y=0.98)
             if subtitle is not None:
@@ -5579,7 +5580,8 @@ def yield_population_plot(table="Archive", instru="HARMONI", instru_type=None, p
         fig_noise, axes_noise     = make_panels(title=f"ELT/{instru} dominant noise regime in {exposure_time/60:.0f} hr per target", subtitle=f"{N_det:.0f}/{N_total:.0f} detections ({N_det/N_total*100:.1f}%)", plot_func=lambda ax, x, y, valid, xlabel, ylabel, xlim, ylim, title, space: plot_class_panel(ax, x, y, valid, noise_class, noise_labels, noise_colors, noise_alphas, xlabel, ylabel, xlim, ylim, title, space))
         N_det_noise               = {label: int(np.sum(detected & (noise_class == label))) for label in noise_labels}
         handles_noise             = [Line2D([], [], ls="", marker="o", ms=11, markerfacecolor=noise_colors[lab], markeredgecolor="k", color=noise_colors[lab], label=f"{lab} ({N_det_noise[lab]})") for lab in noise_labels if lab != "Non-detected"]
-        axes_noise[-1].add_artist(axes_noise[-1].legend(handles=handles_noise, fontsize=fontsize-2, loc="center right", frameon=True, edgecolor="gray", facecolor="white", title="Dominant noise", title_fontsize=fontsize))
+        loc = "upper right" if space == "obs" else "center right"
+        axes_noise[-1].add_artist(axes_noise[-1].legend(handles=handles_noise, fontsize=fontsize-2, loc=loc, frameon=True, edgecolor="gray", facecolor="white", title="Dominant noise", title_fontsize=fontsize))
         save_and_show(fig_noise, f"ELT_{instru}{type_and_pp}_dominant_noise_{table}_{band_contrast_plot}band.png")
 
     # 4) Thermal/reflected complementarity
@@ -5589,7 +5591,8 @@ def yield_population_plot(table="Archive", instru="HARMONI", instru_type=None, p
     fig_light, axes_light = make_panels(title=f"ELT/{instru} thermal/reflected complementarity in {exposure_time/60:.0f} hr", subtitle=f"{N_det:.0f}/{N_total:.0f} detections ({N_det/N_total*100:.1f}%)", plot_func=lambda ax, x, y, valid, xlabel, ylabel, xlim, ylim, title, space: plot_class_panel(ax, x, y, valid, light_class, light_labels, light_colors, light_alphas, xlabel, ylabel, xlim, ylim, title, space))
     N_det_light           = {label: int(np.sum(detected & (light_class == label))) for label in light_labels}
     handles_light         = [Line2D([], [], ls="", marker="o", ms=11, markerfacecolor=light_colors["Thermal"], markeredgecolor="k", color=light_colors["Thermal"], label=f"Thermal ({N_det_light['Thermal']})"),  Line2D([], [], ls="", marker="o", ms=11, markerfacecolor=light_colors["Reflected"], markeredgecolor="k", color=light_colors["Reflected"], label=f"Reflected ({N_det_light['Reflected']})")]
-    axes_light[-1].add_artist(axes_light[-1].legend(handles=handles_light, fontsize=fontsize-2, loc="center right", frameon=True, edgecolor="gray", facecolor="white", title=f"Planet-light regime ({band_regime_plot})", title_fontsize=fontsize))
+    loc = "upper right" if space == "obs" else "center right"
+    axes_light[-1].add_artist(axes_light[-1].legend(handles=handles_light, fontsize=fontsize-2, loc=loc, frameon=True, edgecolor="gray", facecolor="white", title=f"Planet-light regime ({band_regime_plot})", title_fontsize=fontsize))
     save_and_show(fig_light, f"ELT_{instru}{type_and_pp}_thermal_reflected_{table}_{band_regime_plot}band.png")
 
     # 5) Detection fraction per bin (log grid), in observational and physical spaces
