@@ -52,6 +52,13 @@ warnings.filterwarnings("ignore", message="Header block contains null bytes*")
 #################################################### Utils function: #################################################
 #######################################################################################################################
 
+class PlainLogFormatter(mpl.ticker.LogFormatter):
+    """Log-axis tick formatter labelling the same ticks as matplotlib's default one, but in plain number notation"""
+    def __call__(self, x, pos=None):
+        return np.format_float_positional(x, precision=6, unique=False, fractional=False, trim="-") if super().__call__(x, pos) else ""
+
+
+
 def mass_to_size(mass, s0, ds, mass_min=None, mass_max=None):
     if mass_min is None:
         mass_min = np.nanmin(mass[np.isfinite(mass) & (mass > 0)])
@@ -5614,6 +5621,8 @@ def yield_population_plot(table="Archive", instru="HARMONI", instru_type=None, p
             sm.set_array([])
             cbar = fig_snr.colorbar(sm, ax=axes_snr, pad=cbar_frac, fraction=cbar_frac, extend="max")
             cbar.set_label("SNR", fontsize=fontsize+2, rotation=270, labelpad=30)
+            cbar.ax.yaxis.set_major_formatter(PlainLogFormatter())
+            cbar.ax.yaxis.set_minor_formatter(PlainLogFormatter())
             cbar.ax.tick_params(labelsize=fontsize-2)
             if SNR_min <= SNR_thr <= SNR_max:
                 cbar.ax.axhline(SNR_thr, color="k", linestyle="--", linewidth=2.5)
