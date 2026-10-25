@@ -98,23 +98,14 @@ def _find_first_existing_dir(candidates, dirname):
         If no candidate is a valid directory.
     """
     tried = []
-
     for label, path in candidates:
         if path is None:
             continue
-
         path = Path(path).expanduser().resolve()
         tried.append((label, path))
-
         if path.is_dir():
             return path
-
-    msg = [
-        f"Could not find the {dirname} directory.",
-        "",
-        "Tried the following paths:",
-    ]
-
+    msg = [f"Could not find the {dirname} directory.", "", "Tried the following paths:",]
     for label, path in tried:
         if not path.exists():
             status = "does not exist"
@@ -122,16 +113,10 @@ def _find_first_existing_dir(candidates, dirname):
             status = "exists but is not a directory"
         else:
             status = "unknown error"
-
         msg.append(f" - {label}: {path} ({status})")
-
-    msg += [
-        "",
-        "Please define the FASTYIELD_SIM_DATA_PATH environment variable,",
-        "or call set_sim_data_path('/path/to/sim_data') before running FastYield.",
-    ]
-
+    msg += ["", "Please define the FASTYIELD_SIM_DATA_PATH environment variable,", "or call set_sim_data_path('/path/to/sim_data') before running FastYield.",]
     raise FileNotFoundError("\n".join(msg))
+
 
 
 def set_sim_data_path(path):
@@ -148,21 +133,17 @@ def set_sim_data_path(path):
     global sim_data_path
     global archive_path
     global simulated_path
-
     path = Path(path).expanduser().resolve()
-
     if not path.exists():
         raise FileNotFoundError(f"sim_data path does not exist: {path}")
-
     if not path.is_dir():
         raise NotADirectoryError(f"sim_data path is not a directory: {path}")
-
     _sim_data_path = path
-
     # Keep backward-compatible module-level variables updated.
     sim_data_path  = path
     archive_path   = path / "Archive_table"
     simulated_path = path / "Simulated_table"
+
 
 
 def get_sim_data_path():
@@ -196,6 +177,7 @@ def get_sim_data_path():
     return _find_first_existing_dir(candidates, "sim_data")
 
 
+
 def get_spectra_path():
     """
     Return the Spectra path.
@@ -207,8 +189,10 @@ def get_spectra_path():
     return get_sim_data_path() / "Spectra"
 
 
+
 def get_vega_path():
     return get_spectra_path() / "star_spectrum" / "VEGA_Fnu.fits"
+
 
 
 # Default module-level paths.
@@ -222,10 +206,9 @@ def get_vega_path():
 try:
     sim_data_path = get_sim_data_path()
 except FileNotFoundError:
-    sim_data_path = PACKAGE_ROOT / "sim_data"
-
-archive_path = sim_data_path / "Archive_table"
-simulated_path = sim_data_path / "Simulated_table"
+    sim_data_path = PACKAGE_ROOT  / "sim_data"
+archive_path      = sim_data_path / "Archive_table"
+simulated_path    = sim_data_path / "Simulated_table"
 
 # Kept for compatibility if some plotting utilities still use it.
 colormaps_path = PACKAGE_ROOT / "plots" / "colormaps"
