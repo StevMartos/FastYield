@@ -5079,7 +5079,7 @@ def yield_population_plot(table="Archive", instru="HARMONI", instru_type=None, p
     Detection is computed from get_SNR_from_table().
     If config_mode="fixed", one configuration is used.
     If config_mode="max",   the best SNR over all apodizer/coronagraph configurations is used planet by planet.
-    If space="instr", only the instrumental (observational) space is plotted.
+    If space="obs", only the observational space is plotted.
     If space="phys",  only the physical space is plotted.
     If space="both",  both spaces are plotted side by side.
     """
@@ -5102,8 +5102,8 @@ def yield_population_plot(table="Archive", instru="HARMONI", instru_type=None, p
         type_and_pp = ''
 
     space = space.lower()
-    if space not in ("instr", "phys", "both"):
-        raise ValueError("space must be 'instr', 'phys' or 'both'.")
+    if space not in ("obs", "phys", "both"):
+        raise ValueError("space must be 'obs', 'phys' or 'both'.")
 
     if instru == "PCS":
         obs_xlim      = (1, 1e3)
@@ -5389,7 +5389,7 @@ def yield_population_plot(table="Archive", instru="HARMONI", instru_type=None, p
         else:
             fig, ax   = plt.subplots(1, 1, figsize=(12, 10) if instru is not None else (11, 9), dpi=dpi)
             axes      = np.array([ax])
-            ax_obs    = ax if space == "instr" else None
+            ax_obs    = ax if space == "obs" else None
             ax_phys   = ax if space == "phys"  else None
             margins   = dict(left=0.13, right=0.95)
         if ax_obs is not None:
