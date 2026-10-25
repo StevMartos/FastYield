@@ -5556,7 +5556,8 @@ def yield_population_plot(table="Archive", instru="HARMONI", instru_type=None, p
         noise_labels = [label for label in noise_order if np.any(noise_class == label)]
         noise_alphas              = {label: 0.20 if label == "Non-detected" else alpha_detected for label in noise_labels}
         fig_noise, axes_noise     = make_panels(title=f"ELT/{instru} dominant noise regime in {exposure_time/60:.0f} hr per target", subtitle=f"{N_det:.0f}/{N_total:.0f} detections ({N_det/N_total*100:.1f}%)", plot_func=lambda ax, x, y, valid, xlabel, ylabel, xlim, ylim, title, space: plot_class_panel(ax, x, y, valid, noise_class, noise_labels, noise_colors, noise_alphas, xlabel, ylabel, xlim, ylim, title, space))
-        handles_noise             = [Line2D([], [], ls="", marker="o", ms=11, markerfacecolor=noise_colors[lab], markeredgecolor="k", color=noise_colors[lab], label=lab) for lab in noise_labels if lab != "Non-detected"]
+        N_det_noise               = {label: int(np.sum(detected & (noise_class == label))) for label in noise_labels}
+        handles_noise             = [Line2D([], [], ls="", marker="o", ms=11, markerfacecolor=noise_colors[lab], markeredgecolor="k", color=noise_colors[lab], label=f"{lab} ({N_det_noise[lab]})") for lab in noise_labels if lab != "Non-detected"]
         axes_noise[-1].add_artist(axes_noise[-1].legend(handles=handles_noise, fontsize=fontsize-2, loc="center right", frameon=True, edgecolor="gray", facecolor="white", title="Dominant noise", title_fontsize=fontsize))
         save_and_show(fig_noise, f"ELT_{instru}{type_and_pp}_dominant_noise_{table}_{band_contrast_plot}band.png")
 
