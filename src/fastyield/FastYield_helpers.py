@@ -95,7 +95,7 @@ def _print_section(title, char="="):
 def _print_kv(key, value, width=38):
     print(f"{key:<{width}} : {value}")
 
-def print_simulation_summary(instru, instru_type, detector, post_processing, D, S, N_mirror, trans_dust, RON0, RON_lim, DC0, saturation_e, min_DIT, max_DIT, coronagraph, apodizer, strehl, thermal_model, reflected_model, SNR_thr, exposure_time, size_core, A_FWHM, Rc, filter_type, table_type, sep_min, sep_max, N_PT_raw, N_PT, force_new_calc, N_px=None, l0=None, R=None, Nl=None, Dl=None, WFE=None, r_WFE=None, C_raw=None, IWA=None, IWA_unit="mas", trans_instru=None, sigma_m=None, FoV=None):
+def print_simulation_summary(instru, instru_type, detector, post_processing, D, S, N_mirror, trans_dust, RON0, RON_lim, DC0, saturation_e, min_DIT, max_DIT, coronagraph, apodizer, strehl, thermal_model, reflected_model, SNR_thr, exposure_time, spatial_sampling, A_FWHM, Rc, filter_type, table_type, sep_min, sep_max, N_PT_raw, N_PT, force_new_calc, N_px=None, l0=None, R=None, Nl=None, Dl=None, WFE=None, r_WFE=None, C_raw=None, IWA=None, IWA_unit="mas", trans_instru=None, sigma_m=None, FoV=None):
     _print_section("FastYield simulation summary")
 
     # General configuration
@@ -129,7 +129,7 @@ def print_simulation_summary(instru, instru_type, detector, post_processing, D, 
     _print_kv("Reflected model", reflected_model)
     _print_kv("Detection threshold", f"S/N >= {_fmt_scalar(SNR_thr)}")
     _print_kv("Exposure time per target", f"{_fmt_scalar(exposure_time)} mn")
-    _print_kv("Spatial sampling", f"{_fmt_scalar(size_core)} px/FWHM")
+    _print_kv("Spatial sampling", f"{_fmt_scalar(spatial_sampling)} px/FWHM")
     _print_kv("FWHM box area", f"{_fmt_scalar(A_FWHM)} px")
 
     if instru_type == "IFU":
