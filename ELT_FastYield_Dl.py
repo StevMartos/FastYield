@@ -10,7 +10,8 @@ from fastyield.config import h, c, planet_types
 from fastyield.get_specs import get_config_data, load_tell_trans, get_transmission, get_PSF_profile
 from fastyield.spectrum import get_wavelength_axis_constant_R, Spectrum, load_vega_spectrum, get_wave_K, get_wave_band, get_counts_from_density
 from fastyield.FastYield import load_planet_table, get_mask_planet_type, get_filename_table, get_SNR_from_table, get_planet_index
-from fastyield.FastYield_helpers import print_simulation_summary, make_suffix, write_meta, warmup_signal_noise_numba, init_worker, process_ELT, get_SNR, get_Pdet, get_exposure_time
+from fastyield.FastYield_helpers import print_simulation_summary, make_suffix, write_meta, warmup_signal_noise_numba, init_worker
+from fastyield.ELT_FastYield_helpers import process_ELT, get_SNR, get_Pdet, get_exposure_time
 from fastyield.utils import add_if_necessary, plot_bkg_skycalc
 from fastyield.prints_helpers import print_subheader, print_metric
 
