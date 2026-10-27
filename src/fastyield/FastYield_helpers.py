@@ -130,7 +130,7 @@ def print_simulation_summary(instru, instru_type, detector, post_processing, D, 
     _print_kv("Detection threshold", f"S/N >= {_fmt_scalar(SNR_thr)}")
     _print_kv("Exposure time per target", f"{_fmt_scalar(exposure_time)} mn")
     _print_kv("Spatial sampling", f"{_fmt_scalar(spatial_sampling)} px/FWHM")
-    _print_kv("FWHM box area", f"{_fmt_scalar(A_FWHM)} px")
+    _print_kv("FWHM area", f"{_fmt_scalar(A_FWHM)} px")
 
     if instru_type == "IFU":
         _print_kv("High-pass cut-off Rc", _fmt_scalar(Rc))
