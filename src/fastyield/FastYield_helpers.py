@@ -95,7 +95,7 @@ def _print_section(title, char="="):
 def _print_kv(key, value, width=38):
     print(f"{key:<{width}} : {value}")
 
-def print_simulation_summary(instru, instru_type, detector, post_processing, D, S, N_mirror, trans_dust, RON0, RON_lim, DC0, saturation_e, min_DIT, max_DIT, coronagraph, apodizer, strehl, thermal_model, reflected_model, SNR_thr, exposure_time, size_core, A_FWHM, Rc, filter_type, table_type, sep_min, sep_max, N_PT_raw, N_PT, force_new_calc, N_px=None, l0=None, R=None, Nl=None, Dl=None, WFE=None, C_raw=None, IWA=None, trans_instru=None, sigma_m=None, FoV=None):
+def print_simulation_summary(instru, instru_type, detector, post_processing, D, S, N_mirror, trans_dust, RON0, RON_lim, DC0, saturation_e, min_DIT, max_DIT, coronagraph, apodizer, strehl, thermal_model, reflected_model, SNR_thr, exposure_time, size_core, A_FWHM, Rc, filter_type, table_type, sep_min, sep_max, N_PT_raw, N_PT, force_new_calc, N_px=None, l0=None, R=None, Nl=None, Dl=None, WFE=None, r_WFE=None, C_raw=None, IWA=None, IWA_unit="mas", trans_instru=None, sigma_m=None, FoV=None):
     _print_section("FastYield simulation summary")
 
     # General configuration
@@ -155,10 +155,12 @@ def print_simulation_summary(instru, instru_type, detector, post_processing, D, 
         _print_kv("Delta_lambda", _fmt_axis(Dl, unit=" µm", log_hint=False))
     if WFE is not None:
         _print_kv("WFE", _fmt_axis(WFE, unit=" nm RMS", log_hint=False))
+    if r_WFE is not None:
+        _print_kv("r_WFE", _fmt_axis(r_WFE, unit="", log_hint=False))
     if C_raw is not None:
         _print_kv("C_raw", _fmt_axis(C_raw, log_hint=True))
     if IWA is not None:
-        _print_kv("IWA", _fmt_axis(IWA, unit=" mas", log_hint=True))
+        _print_kv("IWA", _fmt_axis(IWA, unit=f" {IWA_unit}", log_hint=True))
     if trans_instru is not None:
         _print_kv("trans_instru", _fmt_axis(trans_instru, unit="e-/ph", log_hint=False))
     if sigma_m is not None:
@@ -363,8 +365,8 @@ def sigma_RON_2_from_DIT(DIT, min_DIT, RON0, RON_lim, A_FWHM, dtype, NbPixel=Non
     sigma_RON_2[valid] = RON0[valid]**2
     mask_UTR           = valid & is_UTR & (DIT >= 2 * min_DIT)
     if np.any(mask_UTR):
-        N_DIT                 = np.floor(DIT[mask_UTR] / min_DIT[mask_UTR])
-        sigma_RON_2[mask_UTR] = RON0[mask_UTR]**2 * 12 * (N_DIT - 1) / (N_DIT * (N_DIT + 1)) + RON_lim[mask_UTR]**2
+        N_read                = np.floor(DIT[mask_UTR] / min_DIT[mask_UTR])
+        sigma_RON_2[mask_UTR] = RON0[mask_UTR]**2 * 12 * (N_read - 1) / (N_read * (N_read + 1)) + RON_lim[mask_UTR]**2
 
     sigma_RON_2 *= A_FWHM
     if NbPixel is not None:
