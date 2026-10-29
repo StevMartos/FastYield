@@ -38,12 +38,16 @@ def _jsonable(x):
         return [_jsonable(v) for v in x]
     return x
 
+
+
 def make_suffix(meta: dict, n=16):
     """Return (suffix, meta_clean, json_payload)."""
     meta_clean = _jsonable(meta)
     payload    = json.dumps(meta_clean, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     suffix     = hashlib.sha1(payload.encode("utf-8")).hexdigest()[:n]
     return suffix, meta_clean, payload
+
+
 
 def write_meta(sim_dir: Path, suffix: str, meta_clean: dict, suffix_as_prefix: bool = False):
     if suffix_as_prefix:
@@ -77,6 +81,8 @@ def _fmt_scalar(x):
         return f"{int(x)}"
     return str(x)
 
+
+
 def _fmt_axis(arr, unit="", log_hint=False):
     """Pretty summary of a 1D parameter axis."""
     arr = np.asarray(arr)
@@ -88,12 +94,18 @@ def _fmt_axis(arr, unit="", log_hint=False):
     spacing = "log" if log_hint else "lin"
     return f"{n:>3d} values | {spacing:>3s} | [{_fmt_scalar(arr[0])}, {_fmt_scalar(arr[-1])}]{unit}"
 
+
+
 def _print_section(title, char="="):
     line = char * 72
     print(f"\n{line}\n{title}\n{line}")
 
+
+
 def _print_kv(key, value, width=38):
     print(f"{key:<{width}} : {value}")
+
+
 
 def print_simulation_summary(instru, instru_type, detector, post_processing, D, S, N_mirror, trans_dust, RON0, RON_lim, DC0, saturation_e, min_DIT, max_DIT, coronagraph, apodizer, strehl, thermal_model, reflected_model, SNR_thr, exposure_time, spatial_sampling, A_FWHM, Rc, filter_type, table_type, sep_min, sep_max, N_PT_raw, N_PT, force_new_calc, N_px=None, l0=None, R=None, Nl=None, Dl=None, WFE=None, r_WFE=None, C_raw=None, IWA=None, IWA_unit="mas", trans_instru=None, sigma_m=None, FoV=None):
     _print_section("FastYield simulation summary")
@@ -191,9 +203,13 @@ def format_nbytes(nbytes):
             return f"{size:.2f} {unit}"
         size /= 1024.0
 
+
+
 def memmap_nbytes(shape, dtype=np.float32):
     """Return theoretical file size in bytes for a memmap array."""
     return int(np.prod(shape, dtype=np.int64) * np.dtype(dtype).itemsize)
+
+
 
 def create_memmap_with_log(path, shape, dtype=np.float32, mode="w+"):
     """Create a memmap file and print its expected size."""

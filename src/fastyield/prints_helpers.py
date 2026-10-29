@@ -90,7 +90,9 @@ def print_header(title, sub=False):
 def print_subheader(title):
     print(style(f"{title}", BOLD, UNDERLINE, LIGHTGRAY))
 
-def print_warning(msg):
+def print_warning(msg, jump=False):
+    if jump:
+        print()
     print(style(f"⚠ {msg}", BOLD, ITALIC, CRIMSONRED))
 
 def print_info(msg, sub=False):
