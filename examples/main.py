@@ -13,7 +13,9 @@ from fastyield.colormaps import colormap_bandwidth_resolution_with_constant_Nlam
 
 if __name__ == "__main__":
     pass
-    
+
+
+
     #------------------------------------------------------------------------------#
     #                       Graphic User Interface (GUI):                          #
     #------------------------------------------------------------------------------#
@@ -75,7 +77,7 @@ if __name__ == "__main__":
     #                           Update FastYield:                                  #
     #------------------------------------------------------------------------------#
     
-    # get_archive_table()                             # ~5.6 mn
+    # get_archive_table()                             # ~6 mn
     # all_SNR_table(table="Archive", instrus=instrus) # ~ 15 hours
     # all_SNR_table(table="Archive", instrus=["MIRIMRS", "NIRCam", "NIRSpec", "VIPAPYRUS"])
     
@@ -153,8 +155,8 @@ if __name__ == "__main__":
     #                                Colormaps:                                    #
     #------------------------------------------------------------------------------#
     
-    colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_planet=1000, T_star=6000, delta_rv=30, spectrum_contributions="thermal", model="BT-Settl", Rc=100, filter_type="gaussian", noise_regime="photon")
-    colormap_bandwidth_resolution_with_constant_Dlambda(instru="HARMONI", T_planet=1000, T_star=6000, delta_rv=30, vsini_planet=100, spectrum_contributions="thermal", model="BT-Settl", Rc=100, filter_type="gaussian", noise_regime="photon")
+    # colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_planet=1000, T_star=6000, delta_rv=30, spectrum_contributions="thermal", model="BT-Settl", Rc=100, filter_type="gaussian", noise_regime="photon")
+    # colormap_bandwidth_resolution_with_constant_Dlambda(instru="HARMONI", T_planet=1000, T_star=6000, delta_rv=30, vsini_planet=100, spectrum_contributions="thermal", model="BT-Settl", Rc=100, filter_type="gaussian", noise_regime="photon")
     
     # colormap_bandwidth_Tp(instru="HARMONI", T_star=5000, delta_rv=30, spectrum_contributions="reflected", model="PICASO albedo(gas giant)",  Rc=100, filter_type="gaussian", stellar_halo_photon_noise_limited=True)
     # colormap_bandwidth_Tp(instru="HARMONI", T_star=5000, delta_rv=30, spectrum_contributions="reflected", model="PICASO albedo(earth like)", Rc=100, filter_type="gaussian", stellar_halo_photon_noise_limited=True)

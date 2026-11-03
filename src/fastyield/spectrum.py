@@ -40,6 +40,7 @@ warnings.filterwarnings("ignore", message="Header block contains null bytes*")
 #######################################################################################################################
 
 
+
 # -------------------------------------------------------------------------
 # Get wavelength axis
 # -------------------------------------------------------------------------
@@ -2582,12 +2583,12 @@ def _load_spectrum(T=None, lg=None, P=None, mol_broadening=None, model=None, ins
                     wave, flux = fits.getdata(f"{spectra_path}/planet_spectrum/{model}/low_res/spectra_YGP_{T:.0f}K_logg{lg}_met1.00_CO0.50.fits")
             
         elif "PICASO" in model: # https://iopscience.iop.org/article/10.3847/1538-4357/ab1b51/pdf + https://github.com/natashabatalha/picaso
-            planet_type = get_planet_type_from_model(model)    
+            planet_type = get_planet_type_from_model(model)
             if "albedo" in model.lower():
                 wave, flux = fits.getdata(f"{spectra_path}/planet_spectrum/albedo/PICASO/{planet_type}/albedo_{planet_type}_{T:.0f}K_lg{lg:.1f}.fits")
             else:
-                wave, flux = fits.getdata(f"{spectra_path}/planet_spectrum/PICASO/thermal_{planet_type}_{T:.0f}K_lg{lg:.1f}.fits")
-            
+                wave, flux = fits.getdata(f"{spectra_path}/planet_spectrum/PICASO/{planet_type}/thermal_{planet_type}_{T:.0f}K_lg{lg:.1f}.fits")
+
         elif "airless" in model.lower() and "rocky" in model.lower(): # from private get_PICASO_spectra.py script
             if "albedo" in model.lower():
                 wave, flux = fits.getdata(f"{spectra_path}/planet_spectrum/albedo/airless_rocky/albedo_airless_rocky_{T:.0f}K_lg{lg:.1f}.fits")
@@ -3398,9 +3399,8 @@ def get_auto_model(planet):
     if "earth" in planet["PlanetType"].lower():
         if planet["HasAtmosphere"]:
             thermal_model   = "PSG Earth-like"
-            reflected_model = "Telluric albedo"
-            # TODO: test this
-            # reflected_model = "PICASO (Earth-like albedo)"
+            reflected_model = "PICASO (Earth-like albedo)"
+            # Old prescription : reflected_model = "Telluric albedo"
         else:
             thermal_model   = "Airless rocky"
             reflected_model = "Airless rocky albedo"
@@ -3431,7 +3431,8 @@ def get_thermal_reflected_spectrum(planet, thermal_model="auto", reflected_model
     planet: dict
         Planet/host properties (FastYield-style). Must contain the following keys
         (with '.value' where noted), and quantities must be convertible to floats:
-        - "StarTeff".value, "StarLogg".value, "StarVsini".value,
+        - "StarTeff".value, "StarLogg".value,
+          "StarVrotFromPlanet".value, "StarVsini".value,            
           "StarKmag", "StarRadialVelocity".value,
           "StarRadius", "Distance"
         - "PlanetTeff".value, "PlanetLogg".value, "PlanetVsini".value,
@@ -3515,19 +3516,19 @@ def get_thermal_reflected_spectrum(planet, thermal_model="auto", reflected_model
         counts_vega_K   = get_counts_from_density(wave=wave_K, density=vega_spectrum_K.flux)
 
     # Host star spectrum (load => resample => broaden => renormalize to K mag)
-    T_star     = planet["StarTeff"].value  # [K]
-    lg_star    = planet["StarLogg"].value  # [dex(cm/s2)]
-    vrot_star  = planet["StarVrot"].value  # [km/s]
-    vsini_star = planet["StarVsini"].value # [km/s]
-    mag_star_K = planet["StarKmag"].value  # [no unit]
-    distance   = planet["Distance"]        # [pc]
-    R_star     = planet["StarRadius"]      # [R_sun]
+    T_star                = planet["StarTeff"].value  # [K]
+    lg_star               = planet["StarLogg"].value  # [dex(cm/s2)]
+    vrot_star_from_planet = planet["StarVrotFromPlanet"].value  # [km/s]
+    vsini_star            = planet["StarVsini"].value # [km/s]
+    mag_star_K            = planet["StarKmag"].value  # [no unit]
+    distance              = planet["Distance"]        # [pc]
+    R_star                = planet["StarRadius"]      # [R_sun]
     star_spectrum_raw = load_star_spectrum(T_star=T_star, lg_star=lg_star)                 # Loading raw spectrum                                     [J/s/m2/µm]
     star_spectrum_K   = star_spectrum_raw.interpolate_wavelength(wave_K,     renorm=False) # Interpolating on K-band                                  [J/s/m2/µm]
     star_spectrum     = star_spectrum_raw.interpolate_wavelength(wave_model, renorm=False) # Interpolating on wave_model                              [J/s/m2/µm]
     if apply_kinematics:
-        star_spectrum_ref = star_spectrum.broad(vrot_star)  # Broadening the spectrum as seen from the planet
-        star_spectrum     = star_spectrum.broad(vsini_star) # Broadening the spectrum as seen from Earth
+        star_spectrum_ref = star_spectrum.broad(vrot_star_from_planet) # Broadening the spectrum as seen from the planet
+        star_spectrum     = star_spectrum.broad(vsini_star)            # Broadening the spectrum as seen from Earth
     else:
         star_spectrum_ref = star_spectrum.copy()
         

@@ -75,6 +75,7 @@ def estimate_RON_UTR(N, RON0, RON_lim):
     return np.sqrt(RON_eff_2)
 
 
+
 def get_DIT_RON(config_data, instru_type, apodizer, PSF_profile, separation, star_spectrum_band, exposure_time, min_DIT, max_DIT, trans, RON0, RON_lim, saturation_e, input_DIT, separation_planet=None):
     """
     Compute the detector integration time (DIT) to avoid saturation and the effective read-noise.
@@ -155,6 +156,7 @@ def get_DIT_RON(config_data, instru_type, apodizer, PSF_profile, separation, sta
     N_DIT = exposure_time / DIT
             
     return N_DIT, DIT, DIT_saturation, DIT_saturation_planet, RON_eff, iwa_FPM
+
 
 
 # -------------------------------------------------------------------------
@@ -1132,51 +1134,69 @@ def get_gaussian_C(wave, Lcorr):
     """
     Build a Gaussian spectral covariance matrix.
 
-    The covariance kernel is modeled as
+    For a constant correlation length, the standard stationary Gaussian kernel
+    is used:
 
-        C_ij = exp[-0.5 * ((lambda_i - lambda_j) / L_ij)^2],
+        C_ij = exp[-0.5 * ((lambda_i - lambda_j) / Lcorr)^2].
 
-    where the effective correlation length L_ij is defined from 'Lcorr'.
+    For a wavelength-dependent correlation length Lcorr(lambda), the wavelength
+    axis is first mapped onto the dimensionless coordinate
+
+        u(lambda) = integral d(lambda') / Lcorr(lambda'),
+
+    and the covariance is defined as
+
+        C_ij = exp[-0.5 * (u_i - u_j)^2].
+
+    This preserves Lcorr(lambda) as the local spectral correlation length while
+    ensuring that the resulting covariance matrix is positive semi-definite.
 
     Parameters
     ----------
     wave : array_like
-        One-dimensional wavelength grid in [µm].
+        One-dimensional, finite, strictly increasing wavelength grid [µm].
     Lcorr : float or array_like
-        Spectral correlation length. If scalar, a single constant correlation
-        length is used for all wavelength pairs. If one-dimensional, it is
-        interpreted as a wavelength-dependent correlation length Lcorr(lambda),
-        and the pairwise correlation length is taken as the geometric mean
-
-            L_ij = sqrt(Lcorr_i * Lcorr_j).
+        Positive spectral correlation length [µm]. If scalar, a stationary
+        Gaussian kernel is used. If one-dimensional, it must have the same shape
+        as 'wave' and defines the local correlation length.
 
     Returns
     -------
     C : ndarray
-        Two-dimensional Gaussian covariance matrix of shape (n_wave, n_wave).
-
-    Raises
-    ------
-    ValueError
-        If 'Lcorr' is neither a scalar nor a one-dimensional array.
-
-    Notes
-    -----
-    A scalar 'Lcorr' corresponds to a stationary kernel, while a one-dimensional
-    'Lcorr' allows for a non-stationary covariance model whose width varies
-    across the spectral domain.
+        Gaussian covariance matrix of shape (n_wave, n_wave).
     """
-    dw = wave[:, None] - wave[None, :]
-
+    wave = np.asarray(wave, dtype=float)
+    if wave.ndim != 1:
+        raise ValueError("wave must be a 1D array.")
+    if wave.size < 2:
+        raise ValueError("wave must contain at least two samples.")
+    if np.any(~np.isfinite(wave)) or np.any(np.diff(wave) <= 0):
+        raise ValueError("wave must be finite and strictly increasing.")
+    
     if np.ndim(Lcorr) == 0:
-        return np.exp(-0.5 * (dw / Lcorr) ** 2)
+        Lcorr = float(Lcorr)
+        if not np.isfinite(Lcorr) or Lcorr <= 0:
+            raise ValueError("Lcorr must be finite and strictly positive.")
+        u = (wave - wave[0]) / Lcorr
 
-    if np.ndim(Lcorr) == 1:
-        Lcorr = np.asarray(Lcorr)
-        Lij   = np.sqrt(Lcorr[:, None] * Lcorr[None, :])
-        return np.exp(-0.5 * (dw / Lij) ** 2)
+    elif np.ndim(Lcorr) == 1:
+        Lcorr = np.asarray(Lcorr, dtype=float)
+        if Lcorr.shape != wave.shape:
+            raise ValueError("1D Lcorr must have the same shape as wave.")
+        if np.any(~np.isfinite(Lcorr)) or np.any(Lcorr <= 0):
+            raise ValueError("Lcorr must contain only finite, strictly positive values.")
+        inv_L = 1.0 / Lcorr
+        # Numerical evaluation of u(lambda) = integral d(lambda) / Lcorr(lambda)
+        # using the trapezoidal rule.
+        u     = np.zeros_like(wave)
+        u[1:] = np.cumsum(0.5 * (inv_L[:-1] + inv_L[1:]) * np.diff(wave))
 
-    raise ValueError("Lcorr must be either a scalar or a 1D array.")
+    else:
+        raise ValueError("Lcorr must be either a scalar or a 1D array.")
+
+    du = u[:, None] - u[None, :]
+
+    return np.exp(-0.5 * du**2)
 
 
 
@@ -1368,9 +1388,14 @@ def get_Lcorr_aliasing_spectral(wave):
 
     The model assumes that the characteristic spectral width of the residual
     modulation is set by the native sampling step of the wavelength grid.
-    This width is then converted into the Gaussian covariance length used in
-
-        C_ij = exp[-0.5 * ((lambda_i - lambda_j) / L_ij)^2].
+    This width defines the local correlation length L(lambda) used to construct
+    the transformed spectral coordinate
+    
+        u(lambda) = integral d(lambda') / L(lambda'),
+    
+    with covariance
+    
+        C_ij = exp[-0.5 * (u_i - u_j)^2].
 
     Parameters
     ----------
@@ -1564,12 +1589,18 @@ def compute_sigma_base_2_speck_numba(h, wave, separation_rad, D, n_sigma_cut=4.0
     # This avoids the overhead of prange and keeps the innermost expression
     # minimal. Since
     #
-    #   L_i   = coeff * wave_i^2 / rho
-    #   L_j   = coeff * wave_j^2 / rho
-    #   L_ij  = sqrt(L_i L_j) = coeff * wave_i * wave_j / rho
+    # For L(lambda) = coeff * lambda^2 / rho, the transformed coordinate
     #
-    # we can compute x = Delta_lambda / L_ij directly, without computing
-    # Li, Lj, or sqrt(Li*Lj) inside the double loop.
+    #   u(lambda) = integral d(lambda) / L(lambda)
+    #             = -rho / (coeff * lambda),
+    #
+    # gives
+    #
+    #   |u_j - u_i|
+    #       = Delta_lambda * rho / (coeff * lambda_i * lambda_j).
+    #
+    # Therefore the expression below is exactly the Gaussian covariance
+    # distance in the transformed coordinate.
     # ------------------------------------------------------------------
     if nsep == 1:
         rho = separation_rad[0]
@@ -1751,9 +1782,6 @@ def compute_sigma_base_2_al_spat_numba(h, wave, separation_rad, pxscale_rad, n_s
     #        = coeff * sqrt(wave_i wave_j) / rho.
     #
     # This avoids computing sqrt(Li*Lj) inside the double loop.
-    sqrt_wave = np.empty(nlam)
-    for i in range(nlam):
-        sqrt_wave[i] = np.sqrt(wave[i])
 
     # ------------------------------------------------------------------
     # Scalar fast path: one separation only.
@@ -1784,8 +1812,7 @@ def compute_sigma_base_2_al_spat_numba(h, wave, separation_rad, pxscale_rad, n_s
             if not np.isfinite(hi) or hi == 0.0:
                 continue
 
-            wi_sqrt = sqrt_wave[i]
-            wi      = wave[i]
+            wi = wave[i]
 
             # Diagonal term: C_ii = 1.
             sb2 += hi * hi
@@ -1795,8 +1822,7 @@ def compute_sigma_base_2_al_spat_numba(h, wave, separation_rad, pxscale_rad, n_s
                 if not np.isfinite(hj) or hj == 0.0:
                     continue
 
-                dw = wave[j] - wi
-                x  = dw * rho / (coeff * wi_sqrt * sqrt_wave[j])
+                x = rho / coeff * np.log(wave[j] / wi)
 
                 if x > n_sigma_cut:
                     break
@@ -1836,8 +1862,7 @@ def compute_sigma_base_2_al_spat_numba(h, wave, separation_rad, pxscale_rad, n_s
             if not np.isfinite(hi) or hi == 0.0:
                 continue
 
-            wi_sqrt = sqrt_wave[i]
-            wi      = wave[i]
+            wi = wave[i]
 
             # Diagonal term: C_ii = 1.
             sb2 += hi * hi
@@ -1847,8 +1872,7 @@ def compute_sigma_base_2_al_spat_numba(h, wave, separation_rad, pxscale_rad, n_s
                 if not np.isfinite(hj) or hj == 0.0:
                     continue
 
-                dw = wave[j] - wi
-                x  = dw * rho / (coeff * wi_sqrt * sqrt_wave[j])
+                x = rho / coeff * np.log(wave[j] / wi)
 
                 if x > n_sigma_cut:
                     break
@@ -1979,6 +2003,15 @@ def compute_sigma_base_2_al_spec_numba(h, wave, n_sigma_cut=4.0):
         L[i] = dlam / (2*np.sqrt(np.log(2)))
 
     Dwave = wave[nlam - 1] - wave[0]
+    
+    # Transformed spectral coordinate:
+    # u(lambda) = integral d(lambda) / L(lambda)
+    u    = np.empty(nlam)
+    u[0] = 0.0
+    for i in range(1, nlam):
+        dlam     = wave[i] - wave[i - 1]
+        invL_mid = 0.5 * (1.0 / L[i - 1] + 1.0 / L[i])
+        u[i]     = u[i - 1] + dlam * invL_mid
 
     # Smallest local correlation length on the band.
     Lmin_global = L[0]
@@ -2011,10 +2044,8 @@ def compute_sigma_base_2_al_spec_numba(h, wave, n_sigma_cut=4.0):
                 if not np.isfinite(hj) or hj == 0.0:
                     continue
 
-                Lij = np.sqrt(L[i] * L[j])
-                dw  = wave[j] - wave[i]
-                x   = dw / Lij
-
+                x = u[j] - u[i]
+                
                 if x > n_sigma_cut:
                     break
 
