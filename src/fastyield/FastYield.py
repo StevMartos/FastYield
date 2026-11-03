@@ -112,7 +112,7 @@ def get_mask_earth(planet_table):
     """Get a mask with the Earth-like planets"""
 
     # --- Ranges "Earth-like"
-    R_min,   R_max     = 0, 2   # [R_earth]
+    R_min,   R_max     = 0, 1.6 # [R_earth]
     M_min,   M_max     = 0, 10  # [M_earth]
     Teff_min, Teff_max = 0, 500 # [K]
 
@@ -173,8 +173,8 @@ def inject_dace_values(planet_table):
     dc_names               = np.asarray(planet_table_dace["planet_name"], dtype=object)
     common, pt_idx, dc_idx = np.intersect1d(pt_names, dc_names, return_indices=True)
     missing                = np.setdiff1d(dc_names, common)
-    print(f"\n(2a) Injecting DACE (https://dace.unige.ch/exoplanets/) values for {len(common)} planets:")
-    print(f"   {len(dc_names) - len(common)} DACE planets are not present in the NASA exo-archive: {missing}")
+    print(f"\n         Injecting DACE (https://dace.unige.ch/exoplanets/) values for {len(common)} planets:")
+    print(f"            {len(dc_names) - len(common)} DACE planets are not present in the NASA exo-archive: {missing}")
 
     def _assign(pt_colname, dc_colname, dc_unit, postproc=None):
         # DACE values as Quantity
@@ -434,6 +434,7 @@ def inject_known_values(planet_table):
     _IKV(planet_table, planet_name="HIP 21152 b",                  value=16.55, unit=mag_unit, quantity="Kmag", obj="planet", uncertainty=0.12)  # https://iopscience.iop.org/article/10.3847/2041-8213/ac772f/pdf (page 3 bottom)
     _IKV(planet_table, planet_name="bet Pic b",                    value=12.64, unit=mag_unit, quantity="Kmag", obj="planet", uncertainty=0.11)  # https://www.aanda.org/articles/aa/pdf/2011/04/aa16224-10.pdf (page 3)
     _IKV(planet_table, planet_name="bet Pic c",                    value=14.30, unit=mag_unit, quantity="Kmag", obj="planet", uncertainty=0.10)  # https://arxiv.org/pdf/2010.04442
+    _IKV(planet_table, planet_name="bet Pic d",                    value=17.35, unit=mag_unit, quantity="Kmag", obj="planet", uncertainty=0.10)  # https://arxiv.org/pdf/2606.23801 (Table 1)
     _IKV(planet_table, planet_name="HR 8799 b",                    value=17.03, unit=mag_unit, quantity="Kmag", obj="planet", uncertainty=0.08)  # https://github.com/tomasstolker/species/blob/main/species/data/companion_data/companion_data.json
     _IKV(planet_table, planet_name="HR 8799 c",                    value=16.11, unit=mag_unit, quantity="Kmag", obj="planet", uncertainty=0.08)  # https://github.com/tomasstolker/species/blob/main/species/data/companion_data/companion_data.json
     _IKV(planet_table, planet_name="HR 8799 d",                    value=16.09, unit=mag_unit, quantity="Kmag", obj="planet", uncertainty=0.12)  # https://github.com/tomasstolker/species/blob/main/species/data/companion_data/companion_data.json
@@ -509,7 +510,6 @@ def inject_known_values(planet_table):
     _IKV(planet_table, planet_name="2MASS J22362452+4751425 b", value=1070.0, unit=u.K,      quantity="teff", obj="planet", uncertainty=100.0)  # https://arxiv.org/pdf/1611.00364
 
     _IKV(planet_table, planet_name="TYC 8998-760-1 b", value=14.70,  unit=mag_unit, quantity="Kmag", obj="planet", uncertainty=0.14)   # https://home.strw.leidenuniv.nl/~kenworthy/papers/2020MNRAS.492..431B.pdf (table 4)
-    _IKV(planet_table, planet_name="TYC 8998-760-1 b", value=1727.0, unit=u.K,      quantity="teff", obj="planet", uncertainty=100.0)  # https://home.strw.leidenuniv.nl/~kenworthy/papers/2020MNRAS.492..431B.pdf (section 4.2.2)
 
     _IKV(planet_table, planet_name="PZ Tel b", value=11.92,  unit=mag_unit, quantity="Kmag", obj="planet", uncertainty=0.08)   # https://arxiv.org/pdf/1404.2870 (table 2)
     _IKV(planet_table, planet_name="PZ Tel b", value=2500.0, unit=u.K,      quantity="teff", obj="planet", uncertainty=100.0)  # https://arxiv.org/pdf/1404.2870
@@ -527,7 +527,6 @@ def inject_known_values(planet_table):
     _IKV(planet_table, planet_name="AB Aur b", value=2200.0, unit=u.K,      quantity="teff", obj="planet", uncertainty=300)   # https://www.nature.com/articles/s41550-022-01634-x
 
     _IKV(planet_table, planet_name="2MASS J0249-0557 c", value=14.78,  unit=mag_unit, quantity="Kmag", obj="planet", uncertainty=0.08)   # https://www.pure.ed.ac.uk/ws/portalfiles/portal/76315059/Dupuy_2018_AJ_156_57.pdf (table 4)
-    _IKV(planet_table, planet_name="2MASS J0249-0557 c", value=1700.0, unit=u.K,      quantity="teff", obj="planet", uncertainty=100.0)  # https://www.pure.ed.ac.uk/ws/portalfiles/portal/76315059/Dupuy_2018_AJ_156_57.pdf
 
     _IKV(planet_table, planet_name="HD 169142 b", value=16.13,  unit=mag_unit, quantity="Kmag", obj="planet", uncertainty=0.25)   # https://www.aanda.org/articles/aa/pdf/2019/03/aa34760-18.pdf (table 5)
     _IKV(planet_table, planet_name="HD 169142 b", value=1260.0, unit=u.K,      quantity="teff", obj="planet", uncertainty=150.0)  # https://www.aanda.org/articles/aa/pdf/2019/03/aa34760-18.pdf
@@ -1307,7 +1306,7 @@ def get_planet_table_magnitudes(planet_table):
     # Magnitude estimations
     print()
     with Pool(processes=max(1, cpu_count() // 2), initializer=_init_magnitudes_worker, initargs=(mag_ctx,)) as pool:
-        for (idx, mags) in tqdm(pool.imap(process_magnitudes, [(idx) for idx in range(len(planet_table))]), total=len(planet_table), desc="(14) Estimating all magnitudes"):
+        for (idx, mags) in tqdm(pool.imap(process_magnitudes, [(idx) for idx in range(len(planet_table))]), total=len(planet_table), desc="         Estimating all magnitudes"):
             for instru in instrus:
                 planet_table[idx][f"StarINSTRUmag({instru})"]                      = mags[f"StarINSTRUmag({instru})"]
                 planet_table[idx][f"PlanetINSTRUmag({instru})(thermal+reflected)"] = mags[f"PlanetINSTRUmag({instru})(thermal+reflected)"]
@@ -1345,13 +1344,13 @@ def chen_kipping_radius_from_mass(Mp):
     Rp : Quantity
         Planet radius, in Earth radii.
     """
-    m = np.asarray(u.Quantity(Mp).to_value(u.M_earth), dtype=float)
-    r = np.full(m.shape, np.nan, dtype=float)
-    valid = np.isfinite(m) & (m > 0)
-    m1    = valid & (m < 2.04)
-    m2    = valid & (m >= 2.04) & (m < 132.0)
-    m3    = valid & (m >= 132.0) & (m < 26600.0)
-    m4    = valid & (m >= 26600.0)
+    m           = np.asarray(u.Quantity(Mp).to_value(u.M_earth), dtype=float)
+    r           = np.full(m.shape, np.nan, dtype=float)
+    valid       = np.isfinite(m) & (m > 0)
+    m1          = valid & (m < 2.04)
+    m2          = valid & (m >= 2.04) & (m < 132.0)
+    m3          = valid & (m >= 132.0) & (m < 26600.0)
+    m4          = valid & (m >= 26600.0)
     logm        = np.full(m.shape, np.nan, dtype=float)
     logm[valid] = np.log10(m[valid])
     logr        = np.full(m.shape, np.nan, dtype=float)
@@ -1359,8 +1358,8 @@ def chen_kipping_radius_from_mass(Mp):
     logr[m2]    = -0.09250 + 0.5890 * logm[m2]
     logr[m3]    =  1.25000 - 0.0440 * logm[m3]
     logr[m4]    = -2.85000 + 0.8810 * logm[m4]
-    ok    = np.isfinite(logr)
-    r[ok] = 10**logr[ok]
+    ok          = np.isfinite(logr)
+    r[ok]       = 10**logr[ok]
     return r * u.R_earth
 
 
@@ -1385,793 +1384,887 @@ def chen_kipping_mass_from_radius(Rp):
     The NASA PSCompPars prescription deliberately does not infer a mass in the
     degenerate interval 11.1 <= Rp/Rearth < 14.3.
     """
-    r = np.asarray(u.Quantity(Rp).to_value(u.R_earth), dtype=float)
-    m = np.full(r.shape, np.nan, dtype=float)
-    valid = np.isfinite(r) & (r > 0)
-    r1    = valid & (r < 1.23)
-    r2    = valid & (r >= 1.23) & (r < 11.1)
-    r4    = valid & (r >= 14.3)
+    r           = np.asarray(u.Quantity(Rp).to_value(u.R_earth), dtype=float)
+    m           = np.full(r.shape, np.nan, dtype=float)
+    valid       = np.isfinite(r) & (r > 0)
+    r1          = valid & (r < 1.23)
+    r2          = valid & (r >= 1.23) & (r < 11.1)
+    r4          = valid & (r >= 14.3)
     logr        = np.full(r.shape, np.nan, dtype=float)
     logr[valid] = np.log10(r[valid])
     logm        = np.full(r.shape, np.nan, dtype=float)
     logm[r1]    = (logr[r1] - 0.00346) / 0.2790
     logm[r2]    = (logr[r2] + 0.09250) / 0.5890
     logm[r4]    = (logr[r4] + 2.85000) / 0.8810
-    ok    = np.isfinite(logm)
-    m[ok] = 10**logm[ok]
+    ok          = np.isfinite(logm)
+    m[ok]       = 10**logm[ok]
     return m * u.M_earth
 
 
 
 def get_archive_table(seed=None):
     """
-    Build the working exoplanet catalog used by FastYield from the NASA Exoplanet Archive.
+    Build the FastYield working exoplanet catalog from the NASA Exoplanet Archive.
 
-    This routine queries a curated subset of the 'pscomppars' table through the
-    NASA Exoplanet Archive TAP service, converts archive-reported units to
-    'astropy.units', renames the columns to the local FastYield schema, fills or
-    repairs missing values using external sources and simple physical prescriptions,
-    derives additional quantities required by the pipeline, filters the sample to
-    planets usable for signal-to-noise calculations, computes synthetic magnitudes,
-    writes both an intermediate and a final ECSV catalog to disk, and returns the
-    final working catalog.
-
-    The returned table is the final FastYield working catalog, with physical
-    quantities stored as 'astropy.units.Quantity' objects whenever applicable.
+    Query the 'pscomppars' composite table, normalize units, inject external and
+    manually curated values, complete selected missing parameters, derive orbital
+    and spectroscopic quantities, filter unusable objects, compute magnitudes,
+    and save the resulting ECSV catalog.
 
     Parameters
     ----------
     seed : int or None, optional
-        Random seed passed to 'numpy.random.default_rng' for reproducible draws
-        of missing stellar and planetary properties inferred from adopted priors
-        (e.g., radial velocities, rotation velocities, argument of periastron).
-        If 'None', the random generator is left unseeded.
+        Seed for 'numpy.random.default_rng'. A fixed seed reproduces random
+        imputations for a fixed archive snapshot and unchanged input ordering.
+        If None, the random generator is unseeded.
 
     Returns
     -------
     planet_table : astropy.table.QTable
-        Final filtered and augmented catalog used by FastYield. Numerical columns
-        are stored as non-masked 'Quantity' objects when units are relevant, while
-        string-like metadata remain plain Astropy columns.
+        Filtered FastYield catalog with physical quantities stored as Astropy
+        quantities and supplementary provenance/imputation flags.
 
-    Data source
-    -----------
-    NASA Exoplanet Archive TAP service:
-    https://exoplanetarchive.ipac.caltech.edu/TAP
-
-    See also the details of the available columns:
+    Data sources and files
+    ----------------------
+    NASA Exoplanet Archive TAP: https://exoplanetarchive.ipac.caltech.edu/TAP
+    Table: 'pscomppars'. Column definitions:
     https://exoplanetarchive.ipac.caltech.edu/docs/API_PS_columns.html
 
-    Queried table:
-        'pscomppars'
+    The routine writes 'Archive_Pull_Raw.ecsv' (after column normalization)
+    and 'Archive_Pull_For_FastYield.ecsv' (final catalog) into 'archive_path'.
+    It also generates diagnostic plots through the existing FastYield helpers.
 
-    Side Effects
-    ------------
-    This function writes two ECSV files under the global 'archive_path' directory:
-
-    - 'Archive_Pull_Raw.ecsv'
-        Raw archive pull after unit normalization and column renaming.
-    - 'Archive_Pull_For_FastYield.ecsv'
-        Final FastYield catalog after augmentation, filtering, and magnitude
-        calculations.
-
-    It also generates a few diagnostic plots.
-
-    Workflow Summary
-    ----------------
-    The main processing steps are:
-    1. Query a selected subset of the NASA Exoplanet Archive 'pscomppars' table.
-    2. Normalize archive-reported units to Astropy units.
-    3. Rename archive columns to the internal FastYield naming convention.
-    4. Convert float-like columns to non-masked 'Quantity' objects, with missing
-       values stored as 'NaN'.
-    5. Save a raw snapshot of the pull and reload it through the local table loader.
-    6. Inject additional values from DACE and other known literature fixes.
-    7. Initialize placeholder magnitude columns for all configured instruments and bands.
-    8. Build discovery-method masks (Imaging, Radial Velocity, Transit, Other).
-    9. Infer missing stellar luminosities and radii when possible.
-    10. Adopt simplified geometric and orbital assumptions to derive projected
-        angular separations, Lambert phase factors, and line-of-sight velocities.
-    11. Build internally consistent stellar rotation quantities by deriving
-        'StarVrot' from archive 'StarVsini' when possible, filling missing
-        'StarVrot' values from stellar-effective-temperature priors when allowed,
-        and reconstructing 'StarVsini = StarVrot * sin(i)'.
-    12. Fill planetary rotation velocities using simple Gaussian priors conditioned
-        on planetary mass, with a zero fallback when no prior applies.
-    13. Estimate missing planetary effective temperatures from equilibrium heating
-        and, when available, evolutionary-model predictions.
-    14. Fill missing planetary radii from the evolutionary model when possible.
-    15. Derive planetary surface gravities and infer missing stellar 'log g' values
-        from mass and radius when possible.
-    16. Filter the sample to planets with sufficient information for FastYield
-        signal-to-noise calculations.
-    17. Classify planets by type.
-    18. Flag rocky planets as atmosphere-retaining or atmosphere-free using simple
-        escape and irradiation criteria.
-    19. Compute a telluric-equivalent airmass proxy used to scale the Earth-like
-        reflected-light albedo template.
-    20. Compute synthetic magnitudes for all configured instruments and bands.
-    21. Save the final catalog, generate a few diagnostic plots, and return the
-        final table.
-
-    Important Derived Quantities
-    ----------------------------
-    In addition to archive quantities, the returned table includes several derived
-    columns used by FastYield, including for example:
-
-    - 'PlanetLogg'
-    - 'Phase'
-    - 'sini'
-    - 'AngSep'
-    - 'alpha'
-    - 'g_alpha'
-    - 'DeltaRadialVelocity'
-    - 'PlanetRadialVelocity'
-    - 'StarVrot'
-    - 'PlanetVrot'
-    - 'PlanetVsini'
-    - 'PlanetType'
-    - 'HasAtmosphere'
-    - 'TelluricEquivalentAirmass'
-
-    It also includes synthetic magnitude columns for the configured bands and
-    instruments, separately tracking thermal, reflected, and combined contributions.
-
-    Physical Assumptions
-    --------------------
-    Several simplified assumptions are adopted to build a homogeneous working
-    catalog:
-
-    - Missing orbital phases are set to quadrature ('phase = pi/2').
-    - Missing inclinations default to '90 deg'.
-    - Missing eccentricities default to zero.
-    - Missing arguments of periastron are drawn uniformly over '[0, 360 deg]'.
-    - Archive stellar 'v sin(i)' values are treated as projected rotation
-      velocities, and the orbital inclination is used as a proxy for the stellar
-      spin inclination when inferring 'StarVrot'.
-    - Missing stellar rotation values are filled through simple empirical
-      Gaussian priors on 'StarVrot' conditioned on stellar effective temperature
-      when 'sin(i)' is non-zero.
-    - Numerically face-on systems, with 'sin(i) <= 1e-12', are not inverted:
-      'StarVrot' remains 'NaN', and 'StarVsini' is reconstructed as 'NaN'.
-    - Planetary rotation velocities are drawn from simple empirical Gaussian
-      priors conditioned on planetary mass, with a zero fallback when no
-      mass-dependent prior applies.
-    - Missing stellar luminosities inferred from 'V' magnitude and distance do not
-      include extinction corrections or bolometric corrections.
-    - Archive 'pl_eqt' is kept as the operational 'PlanetTeff' column because it
-      is heterogeneous: for irradiated planets it generally represents an
-      equilibrium temperature, while for directly imaged young/self-luminous
-      planets it can correspond to an inferred effective temperature.
-    - Missing planetary temperatures are estimated from equilibrium heating
-      ('A_B = 0.3', full '4pi' redistribution) and, when possible, an evolutionary
-      model.
-    - Rocky planets are flagged as atmosphere-free when they fail a simple Jeans
-      escape criterion and/or a coarse irradiation-based atmospheric-loss criterion.
-    - The telluric-equivalent airmass is a heuristic reflected-light proxy used to
-      scale an Earth-like telluric albedo template; it is not a true observational
-      airmass.
+    Adopted conventions and approximations
+    --------------------------------------
+    - All planets are evaluated at the adopted quadrature phase phi = pi/2.
+      The catalog is not a time-resolved ephemeris or a random-epoch survey.
+    - Missing orbital inclinations are completed assuming coplanarity within
+      each host system. Known inclinations are preserved and used to impute
+      missing values after folding i -> min(i, 180-i). Systems without
+      measured inclinations are assigned i = 90 deg if they contain transiting
+      planets; otherwise one isotropic draw is used per system, with
+      cos(i) uniform on [0, 1].
+    - NASA masses marked 'M*sini' are converted to conditional true-mass
+      estimates when the adopted inclination satisfies sin(i) >= 0.1 and the
+      NASA mass is still identifiable after external injections. Such masses
+      are scenario assumptions, not additional measurements. Other minimum
+      masses are left unchanged and flagged.
+    - Missing eccentricities are set to zero; missing arguments of periastron
+      are drawn uniformly in [0, 360) degrees. NASA arguments of periastron
+      are not guaranteed to share a planet-versus-star convention.
+    - 'SMA' may be a projected separation for directly imaged or microlensed
+      planets. For these classes, available archive angular separations are
+      preferred as observational proxies; otherwise SMA/d is used. Neither
+      necessarily describes a simultaneous quadrature observation. Keplerian
+      quantities derived from these SMA values remain uncertain.
+    - Stellar spin inclinations are approximated by orbital inclinations
+      (aligned-spin assumption). Measured stellar rotation periods are used
+      before observed v*sin(i), then temperature-dependent rotation priors.
+      The stellar rotation seen by the planet uses an aligned, prograde,
+      instantaneous-angular-speed approximation.
+    - Planetary equatorial rotations use positive mass-dependent Gaussian
+      priors, with zero reserved as a compatibility fallback if mass is absent.
+      Planetary spin axes are assumed aligned with the orbital axes.
+    - Archive 'pl_eqt' is kept as the operational 'PlanetTeff': it may represent
+      an equilibrium temperature or, for directly imaged companions, an
+      effective temperature. Missing temperatures are approximated by
+      (Teq**4 + Tint**4)**0.25, with Bond albedo 0.3, full redistribution,
+      and a Sonora Bobcat intrinsic-temperature estimate when available.
+    - Rocky-planet atmospheric retention and telluric-equivalent airmass are
+      heuristic proxies, not physical atmosphere detections or measurements.
 
     Caveats
     -------
-    This function is designed to build a practical catalog for yield and
-    signal-to-noise calculations rather than a rigorously homogeneous physical
-    population model. Several inferred quantities rely on simplified assumptions,
-    empirical priors, heterogeneous archive values, or approximate fallback
-    prescriptions. The resulting catalog is therefore suitable for FastYield
-    performance studies, but some derived values should not be interpreted as
-    precise planetary or stellar measurements.
+    'pscomppars' merges parameters from different publications. Orbital
+    solutions, measurement epochs, and provenance may therefore differ.
+    Synthetic orientations, stellar/planetary rotations, orbital RV fallbacks,
+    atmospheric flags, and evolutionary-model values are useful for comparative
+    FastYield studies but must not be interpreted as precise measurements.
     """
 
     time1 = time.time()
-    rng   = np.random.default_rng(seed=seed) # Fixing the seed (if required, i.e. seed is not None)
+    rng   = np.random.default_rng(seed=seed)
+
+    # Consistent, compact progress reports.
+    def report_step(number, title):
+        print(f"\n[{number:02d}] {title}")
+
+    def report_stat(label, value):
+        print(f"         {label:<45} {value}")
 
     # -----------------------------------------------------------------------------
-    # 1) Pull PSCOMPPARS subset and normalize units
+    # 1) Retrieve the composite archive table and normalize units
     # -----------------------------------------------------------------------------
     COLS_TO_PULL = (
-                    "pl_name, hostname, "
-                    "pl_orbper, pl_orbper_reflink, pl_orbsmax, pl_orbsmaxerr1, pl_orbsmaxerr2, pl_orbsmax_reflink, pl_orbeccen, pl_orbeccen_reflink, pl_orbincl, pl_orbincl_reflink, pl_orblper, pl_orbtper_reflink, "
-                    "pl_bmasse, pl_bmasseerr1, pl_bmasseerr2, pl_bmasse_reflink, "
-                    "pl_rade, pl_radeerr1, pl_radeerr2, pl_rade_reflink, "
-                    "pl_eqt, pl_eqterr1, pl_eqterr2, pl_eqt_reflink, "
-                    "ra, dec, sy_dist, sy_disterr1, sy_disterr2, sy_dist_reflink, "
-                    "st_spectype, st_mass, st_teff, st_tefferr1, st_tefferr2, st_teff_reflink, st_rad, st_logg, st_lum, st_age, st_vsin, st_radv, st_met, "
-                    "sy_kmag, sy_kmagerr1, sy_kmagerr2, sy_kmag_reflink, sy_vmag, "
-                    "discoverymethod, disc_refname"
-                   )
+        "pl_name, hostname, "
+        "pl_orbper, pl_orbper_reflink, pl_orbsmax, pl_orbsmaxerr1, pl_orbsmaxerr2, pl_orbsmax_reflink, pl_angsep, pl_angsep_reflink, pl_orbeccen, pl_orbeccen_reflink, pl_orbincl, pl_orbincl_reflink, pl_orblper, pl_orbtper_reflink, "
+        "pl_bmasse, pl_bmassprov, pl_bmasseerr1, pl_bmasseerr2, pl_bmasse_reflink, "
+        "pl_rade, pl_radeerr1, pl_radeerr2, pl_rade_reflink, "
+        "pl_eqt, pl_eqterr1, pl_eqterr2, pl_eqt_reflink, "
+        "ra, dec, sy_dist, sy_disterr1, sy_disterr2, sy_dist_reflink, "
+        "st_spectype, st_mass, st_teff, st_tefferr1, st_tefferr2, st_teff_reflink, st_rad, st_logg, st_lum, st_age, st_vsin, st_rotp, st_rotp_reflink, st_radv, st_met, "
+        "sy_kmag, sy_kmagerr1, sy_kmagerr2, sy_kmag_reflink, sy_vmag, "
+        "discoverymethod, disc_refname"
+    )
 
     NEW_NAMES = [
-                 "PlanetName", "StarName",
-                 "Period", "PeriodRef", "SMA", "+DeltaSMA", "-DeltaSMA", "SMARef", "Ecc", "EccRef", "Inc", "IncRef", "ArgPeri", "ArgPeriRef",
-                 "PlanetMass", "+DeltaPlanetMass", "-DeltaPlanetMass", "PlanetMassRef",
-                 "PlanetRadius", "+DeltaPlanetRadius", "-DeltaPlanetRadius", "PlanetRadiusRef",
-                 "PlanetTeff", "+DeltaPlanetTeff", "-DeltaPlanetTeff", "PlanetTeffRef",
-                 "RA", "Dec", "Distance", "+DeltaDistance", "-DeltaDistance", "DistanceRef",
-                 "StarSpT", "StarMass", "StarTeff", "+DeltaStarTeff", "-DeltaStarTeff", "StarTeffRef", "StarRadius", "StarLogg", "StarLum", "StarAge",
-                 "StarVsini", "StarRadialVelocity", "StarFeH",
-                 "StarKmag", "+DeltaStarKmag", "-DeltaStarKmag", "StarKmagRef", "StarVmag",
-                 "DiscoveryMethod", "DiscoveryRef"
-                ]
+        "PlanetName", "StarName",
+        "Period", "PeriodRef", "SMA", "+DeltaSMA", "-DeltaSMA", "SMARef", "ArchiveAngSep", "ArchiveAngSepRef", "Ecc", "EccRef", "Inc", "IncRef", "ArgPeri", "ArgPeriRef",
+        "PlanetMass", "PlanetMassNASAProvenance", "+DeltaPlanetMass", "-DeltaPlanetMass", "PlanetMassRef",
+        "PlanetRadius", "+DeltaPlanetRadius", "-DeltaPlanetRadius", "PlanetRadiusRef",
+        "PlanetTeff", "+DeltaPlanetTeff", "-DeltaPlanetTeff", "PlanetTeffRef",
+        "RA", "Dec", "Distance", "+DeltaDistance", "-DeltaDistance", "DistanceRef",
+        "StarSpT", "StarMass", "StarTeff", "+DeltaStarTeff", "-DeltaStarTeff", "StarTeffRef", "StarRadius", "StarLogg", "StarLum", "StarAge",
+        "StarVsini", "StarRotationPeriod", "StarRotationPeriodRef", "StarRadialVelocity", "StarFeH",
+        "StarKmag", "+DeltaStarKmag", "-DeltaStarKmag", "StarKmagRef", "StarVmag",
+        "DiscoveryMethod", "DiscoveryRef"
+    ]
 
-    # Note: no dedicated pl_orblper_reflink column is available in pscomppars.
-    # We keep pl_orbtper_reflink as ArgPeriRef only as a proxy reference for the orbital periastron solution.
-
-    print("\n(1) Retrieving NASA archive table from https://exoplanetarchive.ipac.caltech.edu/TAP")
+    # 'pl_orblper_reflink' does not exist in pscomppars; this is only a proxy
+    # for the publication describing the periastron solution, not a direct ref.
+    report_step(1, "NASA Exoplanet Archive")
     svc   = vo.dal.TAPService("https://exoplanetarchive.ipac.caltech.edu/TAP")
     query = f"SELECT {COLS_TO_PULL} FROM pscomppars"
-    job   = svc.submit_job(query, maxrec=100000)
-    job.run()
-    job.wait()
-    job.raise_if_error()
-    table                             = job.fetch_result().to_table()
+    for attempt in range(3):
+        try:
+            table = svc.search(query, maxrec=100000).to_table()
+            if len(table) == 0:
+                raise RuntimeError("NASA TAP returned an empty archive table.")
+            break
+        except Exception as exc:
+            if "502" not in str(exc) or attempt == 2:
+                raise
+            print(f"    TAP HTTP 502; retry {attempt + 1}/2")
+            time.sleep(2**attempt)
+
     planet_table                      = QTable(table)
     planet_table.meta["isPSCOMPPARS"] = True
+    report_stat("Archive entries", len(planet_table))
+    report_stat("Selected columns", len(planet_table.colnames))
 
-    # --- Unit normalization -------------------------------------------------------
-    # Map archive-reported units (by string) to astropy units
     UNIT_MAP = {
-                "Earth Mass":     u.M_earth,
-                "Earth Radius":   u.R_earth,
-                "Solar mass":     u.M_sun,
-                "Solar Radius":   u.R_sun,
-                "days":           u.day,
-                "AU":             u.AU,
-                "log(Solar)":     u.dex(u.solLum),
-                "log10(cm/s**2)": u.dex(u.cm/(u.s**2)),
-                "dex":            u.dimensionless_unscaled,
-                "sy_kmag":        u.dimensionless_unscaled,
-                "sy_vmag":        u.dimensionless_unscaled,
-                "pl_bmasseerr1":  u.M_earth,
-                "pl_bmasseerr2":  u.M_earth,
-                "sy_disterr1":    u.pc,
-                "sy_disterr2":    u.pc,
-                "pl_orbsmax":     u.AU,
-               }
+        "Earth Mass": u.M_earth, "Earth Radius": u.R_earth,
+        "Solar mass": u.M_sun, "Solar Radius": u.R_sun,
+        "days": u.day, "AU": u.AU, "log(Solar)": u.dex(u.solLum),
+        "log10(cm/s**2)": u.dex(u.cm/u.s**2), "dex": u.dimensionless_unscaled,
+        "pl_bmasseerr1": u.M_earth, "pl_bmasseerr2": u.M_earth,
+        "sy_disterr1": u.pc, "sy_disterr2": u.pc,
+        "pl_orbsmax": u.AU, "pl_angsep": u.mas, "st_rotp": u.day,
+        "pl_orbincl": u.deg, "pl_orblper": u.deg,
+        "sy_dist": u.pc, "st_teff": u.K, "pl_eqt": u.K,
+        "sy_kmag": u.dimensionless_unscaled, "sy_vmag": u.dimensionless_unscaled,
+    }
 
-    print("Normalizing units...")
     for colname in planet_table.colnames:
-        current_unit = planet_table[colname].unit
+        col          = planet_table[colname]
+        current_unit = getattr(col, "unit", None)
         if current_unit is not None and str(current_unit) in UNIT_MAP:
-            new_unit              = UNIT_MAP[str(current_unit)]
-            planet_table[colname] = planet_table[colname].value * new_unit
-        elif current_unit is None and str(colname) in UNIT_MAP:
-            new_unit              = UNIT_MAP[str(colname)]
-            planet_table[colname] = planet_table[colname].value * new_unit
+            planet_table[colname] = col.value * UNIT_MAP[str(current_unit)]
+        elif current_unit is None and colname in UNIT_MAP:
+            planet_table[colname] = col.value * UNIT_MAP[colname]
 
-    # Rename to our house schema
-    print("Renaming columns...")
     planet_table.rename_columns(COLS_TO_PULL.split(", "), NEW_NAMES)
 
-    # Make float-like columns plain (non-masked) Quantities; keep strings as Column
+    # Replace masked float-like columns with unmasked quantities containing NaN.
     for colname in list(planet_table.colnames):
         col = planet_table[colname]
-        # Keep integer and object/string columns as plain Columns
-        if col.dtype.kind in ("i", "O", "U", "S", "b"): # Integer / str
+        if col.dtype.kind in ("i", "O", "U", "S", "b"):
             if not isinstance(col, Column):
-                raise KeyError(f"Column {colname!r} should be an astropy Column at this point.")
+                raise KeyError(f"Expected an Astropy Column for {colname!r}.")
             continue
-        # Convert float-like columns (MaskedQuantity/MaskedColumn/Quantity/Column) to non-masked Quantity
-        if col.dtype.kind == "f":
-            unit = getattr(col, "unit", None)
-            # Extract underlying numeric values (may be a masked array)
-            if hasattr(col, "to_value"):  # Quantity / MaskedQuantity / MaskedDex
-                vals = col.to_value(unit) if unit is not None else np.array(col.value, copy=False)
-            else:  # Column / MaskedColumn
-                vals = np.asanyarray(col)
-            # Drop mask -> fill masked entries with NaN
-            vals = np.ma.filled(vals, np.nan)
-            # Build a non-masked Quantity (multiplication also supports logarithmic units like dex)
-            q = vals * (unit or u.dimensionless_unscaled)
-            # Replace the current column with the Quantity
-            planet_table.replace_column(colname, q)
-            continue
-        # Anything else is unexpected here
-        raise KeyError(f"Unhandled dtype kind {col.dtype.kind!r} for column {colname!r}.")
-    # Verification: no float-like column should remain masked
-    for colname in planet_table.colnames:
-        col = planet_table[colname]
-        if col.dtype.kind == "f":
-            assert not hasattr(col, "mask"), f"{colname} is still masked!"
+        if col.dtype.kind != "f":
+            raise KeyError(f"Unsupported dtype {col.dtype.kind!r} for {colname!r}.")
+        unit = getattr(col, "unit", None)
+        mask = getattr(col, "mask", None)
+        vals = col.to_value(unit) if unit is not None and hasattr(col, "to_value") else col.value
+        vals = np.asarray(vals, dtype=float).copy()
+        if mask is not None:
+            vals[np.asarray(mask, dtype=bool)] = np.nan
+        planet_table.replace_column(colname, vals * (unit if unit is not None else u.dimensionless_unscaled))
 
-    # Saving raw pull and re-load via the loader
-    print(f"Saving the raw archive planet_table ({len(planet_table)} planets) to {archive_path}Archive_Pull_Raw.ecsv ...\n")
-    planet_table.write(f"{archive_path}/Archive_Pull_Raw.ecsv", format='ascii.ecsv', overwrite=True)
+    # Keep the raw ECSV/reload convention expected by existing FastYield tools.
+    planet_table.write(f"{archive_path}/Archive_Pull_Raw.ecsv", format="ascii.ecsv", overwrite=True)
     planet_table = load_planet_table("Archive_Pull_Raw.ecsv")
     planet_table_classification_histogram(planet_table)
+    report_stat("Raw snapshot", "Archive_Pull_Raw.ecsv")
 
-    # Discovery-method masks
-    im_mask = planet_table["DiscoveryMethod"] == "Imaging"
-    rv_mask = planet_table["DiscoveryMethod"] == "Radial Velocity"
-    tr_mask = planet_table["DiscoveryMethod"] == "Transit"
-    ot_mask = (~im_mask) & (~rv_mask) & (~tr_mask) # Other: “Microlensing”, “Astrometry”, “Transit Timing Variations”...
+    # Preserve the NASA mass and its reference before external injections.
+    planet_table["PlanetMassNASAOriginal"]       = planet_table["PlanetMass"].copy()
+    nasa_mass_ref                                = np.asarray(planet_table["PlanetMassRef"], dtype=str).copy()
+    planet_table["PlanetMassNASADeprojected"]    = np.zeros(len(planet_table), dtype=bool)
+    planet_table["PlanetMassInclinationImputed"] = np.zeros(len(planet_table), dtype=bool)
+    planet_table["PlanetMassMinimumUncorrected"] = np.zeros(len(planet_table), dtype=bool)
+
 
     # -----------------------------------------------------------------------------
-    # 2) Inject DACE values (vectorized, unit-aware) and known missing values from papers
+    # 2) Inject DACE/literature data and initialize magnitude columns
     # -----------------------------------------------------------------------------
+    report_step(2, "External and literature values")
     try:
-        planet_table = inject_dace_values(planet_table)
-    except Exception as e:
-        print(f" Could not inject DACE values in the table: {e}")
-
-    # Creating magnitudes columns (in order to inject known K-band magnitudes)
+        planet_table = inject_dace_values(planet_table.copy(copy_data=True))
+        report_stat("DACE injection", "completed")
+    except Exception as exc:
+        report_stat("DACE injection", f"skipped ({exc})")
     for instru in instrus:
-        planet_table[f'StarINSTRUmag({instru})']                      = np.full(len(planet_table), np.nan) * u.dimensionless_unscaled
-        planet_table[f'PlanetINSTRUmag({instru})(thermal+reflected)'] = np.full(len(planet_table), np.nan) * u.dimensionless_unscaled
-        planet_table[f'PlanetINSTRUmag({instru})(thermal)']           = np.full(len(planet_table), np.nan) * u.dimensionless_unscaled
-        planet_table[f'PlanetINSTRUmag({instru})(reflected)']         = np.full(len(planet_table), np.nan) * u.dimensionless_unscaled
+        planet_table[f"StarINSTRUmag({instru})"]                      = np.full(len(planet_table), np.nan) * u.dimensionless_unscaled
+        planet_table[f"PlanetINSTRUmag({instru})(thermal+reflected)"] = np.full(len(planet_table), np.nan) * u.dimensionless_unscaled
+        planet_table[f"PlanetINSTRUmag({instru})(thermal)"]           = np.full(len(planet_table), np.nan) * u.dimensionless_unscaled
+        planet_table[f"PlanetINSTRUmag({instru})(reflected)"]         = np.full(len(planet_table), np.nan) * u.dimensionless_unscaled
     for band in bands:
         if band != "K":
-            planet_table[f'Star{band}mag']                  = np.full(len(planet_table), np.nan) * u.dimensionless_unscaled
-        planet_table[f'Planet{band}mag(thermal+reflected)'] = np.full(len(planet_table), np.nan) * u.dimensionless_unscaled
-        planet_table[f'Planet{band}mag(thermal)']           = np.full(len(planet_table), np.nan) * u.dimensionless_unscaled
-        planet_table[f'Planet{band}mag(reflected)']         = np.full(len(planet_table), np.nan) * u.dimensionless_unscaled
+            planet_table[f"Star{band}mag"] = np.full(len(planet_table), np.nan) * u.dimensionless_unscaled
+        planet_table[f"Planet{band}mag(thermal+reflected)"] = np.full(len(planet_table), np.nan) * u.dimensionless_unscaled
+        planet_table[f"Planet{band}mag(thermal)"]           = np.full(len(planet_table), np.nan) * u.dimensionless_unscaled
+        planet_table[f"Planet{band}mag(reflected)"]         = np.full(len(planet_table), np.nan) * u.dimensionless_unscaled
     planet_table["+DeltaPlanetKmag(thermal+reflected)"] = np.full(len(planet_table), np.nan) * u.dimensionless_unscaled
     planet_table["-DeltaPlanetKmag(thermal+reflected)"] = np.full(len(planet_table), np.nan) * u.dimensionless_unscaled
     planet_table["PlanetKmag(thermal+reflected)Ref"]    = np.full(len(planet_table), "", dtype="<U32")
 
-    # Also injecting known missing values
-    print("\n(2b) Injecting known K-band magnitudes and temperatures for directly-imaged planets...")
     planet_table = inject_known_values(planet_table)
     print_missing_known_values(planet_table)
+    report_stat("Known-value injection", "completed")
+    
+    # Refresh discovery-method flags after external and manually curated injections.
+    discovery_methods                          = np.asarray(planet_table["DiscoveryMethod"], dtype=str)
+    tr_mask                                    = discovery_methods == "Transit"
+    planet_table["SMAInterpretationUncertain"] = np.isin(discovery_methods, ["Imaging", "Microlensing"])
 
-    # 2c) Local NASA-style Chen & Kipping (2017) fallback after DACE/known-value injection
-    # PSCompPars already applies this kind of deterministic mass-radius completion
-    # upstream. This local fallback is only meant to recover values that may still
-    # be missing after DACE/manual injections.
-    #
-    # This reproduces the deterministic PSCompPars prescription:
-    #   - radius from mass is defined over the full mass range;
-    #   - mass from radius is not computed for 11.1 <= Rp/Rearth < 14.3;
-    #   - no uncertainties are assigned;
-    #   - existing measured/archive values are never overwritten.
 
+    # -----------------------------------------------------------------------------
+    # 3) Adopt orbital inclinations and correct identifiable NASA M*sin(i) masses
+    # -----------------------------------------------------------------------------
+    report_step(3, "Orbital inclinations and masses")
+    i_invalid                          = get_invalid_mask(planet_table["Inc"])
+    i_outlier                          = get_valid_mask(planet_table["Inc"]) & ((planet_table["Inc"] < 0*u.deg) | (planet_table["Inc"] > 180*u.deg))
+    i_filling                          = i_invalid | i_outlier
+    planet_table["InclinationImputed"] = i_filling.copy()
+    star_names                         = np.asarray(planet_table["StarName"], dtype=str)
+    planet_names                       = np.asarray(planet_table["PlanetName"], dtype=str)
+    star_names                         = np.where(np.char.str_len(np.char.strip(star_names)) > 0, star_names, planet_names)
+    systems_without_inclination        = 0
+    for star_name in np.unique(star_names):
+        idx     = np.where(star_names == star_name)[0]
+        missing = idx[i_filling[idx]]
+        if missing.size == 0:
+            continue
+        known = idx[~i_filling[idx]]
+        if known.size:
+            inc_known = planet_table["Inc"][known].to_value(u.deg)
+            inc       = np.median(np.minimum(inc_known, 180. - inc_known))
+        elif np.any(tr_mask[idx]):
+            inc = 90.
+        else:
+            inc                          = np.rad2deg(np.arccos(rng.uniform(0., 1.)))
+            systems_without_inclination += 1
+        planet_table["Inc"][missing] = inc * u.deg
+    planet_table["sini"] = np.sin(planet_table["Inc"].to(u.rad))
+
+    # Do not deproject externally injected masses: require the NASA value AND
+    # the original mass-reference string to have survived the injections.
+    mass_provenance = np.char.lower(np.char.replace(np.asarray(planet_table["PlanetMassNASAProvenance"], dtype=str), " ", ""))
+    msini_mask      = np.isin(mass_provenance, ["m*sini", "m*sin(i)"])
+    nasa_values     = planet_table["PlanetMassNASAOriginal"].to_value(u.M_earth)
+    current_values  = planet_table["PlanetMass"].to_value(u.M_earth)
+    reference_same  = np.asarray(planet_table["PlanetMassRef"], dtype=str) == nasa_mass_ref
+    mass_same       = np.isclose(current_values, nasa_values, rtol=1e-12, atol=0., equal_nan=False)
+    nasa_unchanged  = msini_mask & reference_same & mass_same & np.isfinite(nasa_values) & (nasa_values > 0.)
+    sini_values     = planet_table["sini"].to_value(u.dimensionless_unscaled)
+    deproject       = nasa_unchanged & np.isfinite(sini_values) & (sini_values >= 0.1)
+
+    planet_table["PlanetMass"][deproject]                   = planet_table["PlanetMass"][deproject] / sini_values[deproject]
+    planet_table["PlanetMassNASADeprojected"][deproject]    = True
+    planet_table["PlanetMassInclinationImputed"][deproject] = i_filling[deproject]
+    planet_table["PlanetMassMinimumUncorrected"]            = nasa_unchanged & ~deproject
+    for colname in ["+DeltaPlanetMass", "-DeltaPlanetMass"]:
+        planet_table[colname][deproject] = planet_table[colname][deproject] / sini_values[deproject]
+
+    n_stars = len(np.unique(star_names))
+    report_stat("Orbital inclinations imputed",          f"{i_filling.sum()}/{len(planet_table)} planets")
+    report_stat("Isotropic system draws",                f"{systems_without_inclination}/{n_stars} systems")
+    report_stat("NASA M*sin(i) deprojected",             f"{deproject.sum()}/{len(planet_table)} planets")
+    report_stat("Deprojected with assumed inclinations", f"{(deproject & i_filling).sum()}/{len(planet_table)} planets")
+    report_stat("Minimum masses not deprojected",        f"{planet_table['PlanetMassMinimumUncorrected'].sum()}/{len(planet_table)} planets")    
+
+
+    # -----------------------------------------------------------------------------
+    # 4) Complete missing planetary masses and radii (Chen & Kipping 2017)
+    # -----------------------------------------------------------------------------
+    
     # Missing radius from mass
-    pr_invalid    = get_invalid_mask(planet_table["PlanetRadius"])
-    pm_valid      = get_valid_mask(planet_table["PlanetMass"])
-    pr_ck         = chen_kipping_radius_from_mass(planet_table["PlanetMass"])
-    pr_ck_valid   = get_valid_mask(pr_ck)
-    pr_ck_filling = pr_invalid & pm_valid & pr_ck_valid
+    report_step(4, "Mass-radius completion (Chen & Kipping)")
+    pr_invalid                                     = get_invalid_mask(planet_table["PlanetRadius"])
+    pm_valid                                       = get_valid_mask(planet_table["PlanetMass"]) & (planet_table["PlanetMass"] > 0*u.M_earth)
+    pr_ck                                          = chen_kipping_radius_from_mass(planet_table["PlanetMass"])
+    pr_ck_valid                                    = get_valid_mask(pr_ck) & (pr_ck > 0*u.R_earth)
+    pr_ck_filling                                  = pr_invalid & pm_valid & pr_ck_valid
     planet_table["PlanetRadius"][pr_ck_filling]    = pr_ck[pr_ck_filling]
     planet_table["PlanetRadiusRef"][pr_ck_filling] = "Calculated Value (Chen & Kipping 2017)"
 
     # Missing mass from radius
-    pm_invalid    = get_invalid_mask(planet_table["PlanetMass"])
-    pr_valid      = get_valid_mask(planet_table["PlanetRadius"])
-    pm_ck         = chen_kipping_mass_from_radius(planet_table["PlanetRadius"])
-    pm_ck_valid   = get_valid_mask(pm_ck)
-    pm_ck_filling = pm_invalid & pr_valid & pm_ck_valid
+    pm_invalid                                   = get_invalid_mask(planet_table["PlanetMass"])
+    pr_valid                                     = get_valid_mask(planet_table["PlanetRadius"]) & (planet_table["PlanetRadius"] > 0*u.R_earth)
+    pm_ck                                        = chen_kipping_mass_from_radius(planet_table["PlanetRadius"])
+    pm_ck_valid                                  = get_valid_mask(pm_ck) & (pm_ck > 0*u.M_earth)
+    pm_ck_filling                                = pm_invalid & pr_valid & pm_ck_valid
     planet_table["PlanetMass"][pm_ck_filling]    = pm_ck[pm_ck_filling]
     planet_table["PlanetMassRef"][pm_ck_filling] = "Calculated Value (Chen & Kipping 2017)"
 
-    # Diagnostic: radii for which NASA-style inversion deliberately returns NaN
     rp            = planet_table["PlanetRadius"].to_value(u.R_earth)
     ck_degenerate = pm_invalid & pr_valid & np.isfinite(rp) & (rp >= 11.1) & (rp < 14.3)
+    
+    report_stat("Planetary radius from mass", f"{pr_ck_filling.sum()}/{len(planet_table)} planets")
+    report_stat("Planetary mass from radius", f"{pm_ck_filling.sum()}/{len(planet_table)} planets")
+    report_stat("Degenerate radii skipped",   f"{ck_degenerate.sum()}/{len(planet_table)} planets")
 
-    print("\n(2c) Filling planet mass/radius with NASA-style Chen & Kipping (2017) after injection:")
-    print(f"                  => Missing PlanetRadius from PlanetMass for {pr_ck_filling.sum()}/{len(planet_table)} planets")
-    print(f"                  => Missing PlanetMass from PlanetRadius for {pm_ck_filling.sum()}/{len(planet_table)} planets")
-    print(f"                  => Skipped degenerate 11.1-14.3 Rearth interval for {ck_degenerate.sum()}/{len(planet_table)} planets")
 
     # -----------------------------------------------------------------------------
-    # 3) Filling missing star radius via L/Lsun = (R/Rsun)^2 (T/Tsun)^4
-    #    => R/Rsun = sqrt(L/Lsun) * (Tsun/T)^2
+    # 5) Complete stellar radii and luminosities
     # -----------------------------------------------------------------------------
-    # Missing StarLum values are estimated from V magnitude and distance without extinction or bolometric correction.
-    # This is only a fallback approximation, mainly used to recover approximate StarRadius and irradiation levels.
+    report_step(5, "Stellar radii and luminosities")
+    
+    lum_ratio                                 = planet_table["StarLum"].to_value(u.dex(u.solLum))
+    teff                                      = planet_table["StarTeff"].to_value(u.K)
+    valid_lum                                 = np.isfinite(lum_ratio) & np.isfinite(teff) & (teff > 0.)
+    sr_invalid                                = get_invalid_mask(planet_table["StarRadius"])
+    R_over_Rsun                               = np.full(len(planet_table), np.nan)
+    R_over_Rsun[valid_lum]                    = np.sqrt(10**lum_ratio[valid_lum]) * (T_sun / teff[valid_lum])**2
+    sr_filled_lum                             = sr_invalid & np.isfinite(R_over_Rsun) & (R_over_Rsun > 0.)
+    planet_table["StarRadius"][sr_filled_lum] = R_over_Rsun[sr_filled_lum] * u.R_sun
 
-    # StarLum from V and Distance (no extinction correction here)
-    abs_V = planet_table["StarVmag"].value - 5 * np.log10((planet_table["Distance"] / (10 * u.pc)).value)
+    # R = sqrt(G*M/g), with StarLogg stored as a logarithmic Astropy unit.
+    g_star                                     = planet_table["StarLogg"].to(u.cm/u.s**2)
+    R_from_M_logg                              = np.sqrt(const.G * planet_table["StarMass"] / g_star).to(u.R_sun)
+    sr_invalid                                 = get_invalid_mask(planet_table["StarRadius"])
+    sr_filled_logg                             = sr_invalid & get_valid_mask(R_from_M_logg) & (R_from_M_logg > 0*u.R_sun)
+    planet_table["StarRadius"][sr_filled_logg] = R_from_M_logg[sr_filled_logg]
 
-    # L/Lsun ≈ 10^{-0.4 (M_V - M_V,⊙)} with M_V,⊙ ≈ 4.83
-    star_lum_from_V                    = (-(abs_V - 4.83) / 2.5) * u.dex(u.solLum)
+    R_ratio                            = planet_table["StarRadius"].to_value(u.R_sun)
+    valid_SB                           = np.isfinite(R_ratio) & (R_ratio > 0.) & np.isfinite(teff) & (teff > 0.)
+    L_ratio                            = np.full(len(planet_table), np.nan)
+    L_ratio[valid_SB]                  = R_ratio[valid_SB]**2 * (teff[valid_SB] / T_sun)**4
     sl_invalid                         = get_invalid_mask(planet_table["StarLum"])
-    sl_filled                          = sl_invalid & get_valid_mask(star_lum_from_V)
-    planet_table["StarLum"][sl_filled] = star_lum_from_V[sl_filled]
-
-    # StarRadius from StarLum and StarTeff
-    R_over_Rsun                           = np.sqrt(10**planet_table["StarLum"].to_value(u.dex(u.solLum))) * (T_sun * u.K / planet_table["StarTeff"])**2
-    sr_invalid                            = get_invalid_mask(planet_table["StarRadius"])
-    sr_filled                             = sr_invalid & get_valid_mask(R_over_Rsun)
-    planet_table["StarRadius"][sr_filled] = R_over_Rsun[sr_filled] * u.R_sun
-
-    print(f"\n(3) Filling missing StarRadius from StarLum and StarTeff for {sr_filled.sum()}/{len(planet_table)} targets")
+    sl_filled                          = sl_invalid & np.isfinite(L_ratio) & (L_ratio > 0.)
+    planet_table["StarLum"][sl_filled] = np.log10(L_ratio[sl_filled]) * u.dex(u.solLum)
+    
+    report_stat("Stellar radius from L and Teff",     f"{sr_filled_lum.sum()}/{len(planet_table)} planet entries")
+    report_stat("Stellar radius from M and logg",     f"{sr_filled_logg.sum()}/{len(planet_table)} planet entries")
+    report_stat("Stellar luminosity from R and Teff", f"{sl_filled.sum()}/{len(planet_table)} planet entries")
+    report_stat("Stellar radius still missing",       f"{get_invalid_mask(planet_table['StarRadius']).sum()}/{len(planet_table)} planet entries")
+    report_stat("Stellar luminosity still missing",   f"{get_invalid_mask(planet_table['StarLum']).sum()}/{len(planet_table)} planet entries")
 
 
     # -----------------------------------------------------------------------------
-    # 4) Assumptions and computations for geometry and kinematics
+    # 6) Orbital geometry and line-of-sight velocities at adopted quadrature
     # -----------------------------------------------------------------------------
+    report_step(6, "Orbital geometry and radial velocities")
+    phi0                  = np.pi/2
+    planet_table["Phase"] = u.Quantity(np.full(len(planet_table), phi0), u.rad, copy=False)
 
-    # Phase [rad] (Photometric/geometric convention: phi=0 => inferior conjunction, phi=pi/2 => quadrature 'redshift', phi=pi => superior conjunction and phi=3pi/2 => quadrature 'blueshift')
-    phi0                  = np.pi / 2
-    planet_table["Phase"] = u.Quantity(np.full(len(planet_table), phi0, dtype=float), u.rad, copy=False)
-
-    # Inclination [°]
-    i0                             = 90
-    i_invalid                      = get_invalid_mask(planet_table["Inc"])
-    planet_table["Inc"][i_invalid] = i0 * u.deg
-    planet_table["sini"]           = np.sin(np.clip(planet_table["Inc"], 0*u.deg, 180*u.deg).to(u.rad))
-
-    # Eccentricity [dimensionless]
-    e0                             = 0.
     e_invalid                      = get_invalid_mask(planet_table["Ecc"])
-    planet_table["Ecc"][e_invalid] = e0 * u.dimensionless_unscaled
+    e_outlier                      = get_valid_mask(planet_table["Ecc"]) & ((planet_table["Ecc"] < 0.) | (planet_table["Ecc"] >= 1.))
+    e_filling                      = e_invalid | e_outlier
+    planet_table["EccImputed"]     = e_filling.copy()
+    planet_table["Ecc"][e_filling] = 0. * u.dimensionless_unscaled
 
-    # Argument of periastron [°]
     omega_invalid                          = get_invalid_mask(planet_table["ArgPeri"])
-    planet_table["ArgPeri"][omega_invalid] = rng.uniform(0, 360, omega_invalid.sum()) * u.deg
+    planet_table["ArgPeriImputed"]         = omega_invalid.copy()
+    planet_table["ArgPeri"][omega_invalid] = rng.uniform(0., 360., omega_invalid.sum()) * u.deg
+    
+    # Treat non-finite or non-positive orbital periods and semi-major axes as missing.
+    P_values                                  = planet_table["Period"].to_value(u.d)
+    a_values                                  = planet_table["SMA"].to_value(u.AU)
+    P_invalid_initial                         = ~np.isfinite(P_values) | (P_values <= 0.)
+    a_invalid_initial                         = ~np.isfinite(a_values) | (a_values <= 0.)
+    planet_table["Period"][P_invalid_initial] = np.nan * u.d
+    planet_table["SMA"][a_invalid_initial]    = np.nan * u.AU
 
-    # Retrieving usefull parameters
-    a     = planet_table["SMA"]                                        # [AU]
-    d     = planet_table["Distance"]                                   # [pc]
-    phi   = planet_table["Phase"]                                      # [rad]
-    i     = np.clip(planet_table["Inc"], 0*u.deg, 180*u.deg).to(u.rad) # [rad]
-    e     = np.clip(planet_table["Ecc"], 0, 0.999)                     # dimensionless
-    omega = planet_table["ArgPeri"].to(u.rad)                          # [rad]
-    Ms    = planet_table["StarMass"]                                   # [M_sun]
-    Mp    = planet_table["PlanetMass"]                                 # [M_earth]
+    # Orbital parameters
+    a     = planet_table["SMA"]
+    d     = planet_table["Distance"]
+    phi   = planet_table["Phase"]
+    i     = planet_table["Inc"].to(u.rad)
+    e     = planet_table["Ecc"]
+    omega = planet_table["ArgPeri"].to(u.rad)
+    
+    # Use the planetary mass when available; otherwise neglect it in Keplerian calculations.
+    # The fallback Mtot = Mstar remains approximate for massive companions.
+    Ms        = planet_table["StarMass"]
+    Mp        = planet_table["PlanetMass"]
+    Ms_values = Ms.to_value(u.M_sun)
+    Mp_values = Mp.to_value(u.M_earth)
+    Ms_orbit  = np.where(np.isfinite(Ms_values) & (Ms_values > 0.), Ms_values, np.nan) * u.M_sun
+    Mp_orbit  = np.where(np.isfinite(Mp_values) & (Mp_values > 0.), Mp_values, 0.) * u.M_earth
+    Mtot      = Ms_orbit + Mp_orbit
 
-    # Filling missing period [d]
-    P                                 = ( 2*np.pi*np.sqrt( a**3 / (const.G*(Ms+Mp)) ) ).to(u.d)
-    P_invalid                         = get_invalid_mask(planet_table["Period"])
-    planet_table["Period"][P_invalid] = P[P_invalid]
+    # Kepler's third law. For imaging/microlensing, SMA may instead be projected.
+    P_from_a                               = (2*np.pi*np.sqrt(a**3/(const.G*Mtot))).to(u.d)
+    P_invalid                              = get_invalid_mask(planet_table["Period"])
+    P_filling                              = P_invalid & get_valid_mask(P_from_a) & (P_from_a > 0*u.d)
+    planet_table["Period"][P_filling]      = P_from_a[P_filling]
+    planet_table["PeriodImputed"]          = P_filling.copy()
+    planet_table["PeriodFromProjectedSMA"] = P_filling & planet_table["SMAInterpretationUncertain"]
 
-    # True anomaly [rad] (cos(nu+omega) = sin(phi) and sin(nu+omega) = -cos(phi))
-    nu = phi - omega - np.pi/2 * u.rad
+    P                              = planet_table["Period"]
+    a_from_period                  = (const.G*Mtot*(P/(2*np.pi))**2)**(1/3)
+    a_from_period                  = a_from_period.to(u.AU)
+    a_invalid                      = get_invalid_mask(planet_table["SMA"])
+    a_filling                      = a_invalid & get_valid_mask(a_from_period) & (a_from_period > 0*u.AU) & (P > 0*u.d) & (Mtot > 0*u.M_sun)
+    planet_table["SMA"][a_filling] = a_from_period[a_filling]
+    planet_table["SMAImputed"]     = a_filling.copy()
+    
+    # A semi-major axis inferred from a genuine orbital period is not a sky-projection measurement.
+    planet_table["SMAInterpretationUncertain"][a_filling] = False
+    a                                                     = planet_table["SMA"]
 
-    # Instantaneous separation [AU]
-    r = a * (1 - e**2) / (1 + e * np.cos(nu))
+    # Check Keplerian consistency only for independently available orbital parameters.
+    # Exclude imputed periods/SMA and uncertain projected separations.
+    # Flag discrepancies exceeding 20%, which may reflect inconsistent NASA references.
+    P_kepler                           = (2*np.pi*np.sqrt(a**3/(const.G*Mtot))).to(u.d)
+    P_consistent_mask                  = get_valid_mask(P) & get_valid_mask(P_kepler) & (P > 0*u.d) & (P_kepler > 0*u.d) & ~P_filling & ~a_filling & ~planet_table["SMAInterpretationUncertain"]
+    P_ratio                            = np.full(len(planet_table), np.nan)
+    P_ratio[P_consistent_mask]         = (P[P_consistent_mask] / P_kepler[P_consistent_mask]).to_value(u.dimensionless_unscaled)
+    planet_table["KeplerInconsistent"] = P_consistent_mask & (np.abs(P_ratio - 1.) > 0.2)
 
-    # Computing projected angular separation
-    planet_table['AngSep'] = ( r/d * np.sqrt( np.cos(nu+omega)**2 + np.sin(nu+omega)**2 * np.cos(i)**2 ) ).to(u.mas, equivalencies=u.dimensionless_angles())
+    # nu is the true anomaly for the adopted photometric-phase convention.
+    # The NASA omega convention can differ by 180 degrees between references.
+    nu = phi - omega - (np.pi/2)*u.rad
+    r  = a * (1. - e**2) / (1. + e*np.cos(nu))
 
-    # Computing projected orbital radial velocity (=> Delta RV) [km/s]
-    Kp                                  = ( np.sqrt( const.G*(Ms+Mp) / a ) * np.sin(i) / np.sqrt( 1 - e**2 ) ).to(u.km/u.s)
-    planet_table['DeltaRadialVelocity'] = Kp * (np.cos(nu+omega) + e*np.cos(omega))
+    # For genuine orbital semi-major axes, project the instantaneous separation.
+    # For ambiguous SMA (imaging/microlensing), use archive sky separation when
+    # available, otherwise the projected-separation proxy SMA/d.
+    planet_table["AngSep"]                    = (r/d * np.sqrt(np.cos(nu+omega)**2 + np.sin(nu+omega)**2 * np.cos(i)**2)).to(u.mas, equivalencies=u.dimensionless_angles())
+    uncertain_sma                             = np.asarray(planet_table["SMAInterpretationUncertain"], dtype=bool)
+    archive_sep_valid                         = get_valid_mask(planet_table["ArchiveAngSep"]) & (planet_table["ArchiveAngSep"] > 0*u.mas)
+    use_archive_sep                           = uncertain_sma & archive_sep_valid
+    use_projected_sma                         = uncertain_sma & ~archive_sep_valid & get_valid_mask(a) & (a > 0*u.AU) & get_valid_mask(d) & (d > 0*u.pc)
+    planet_table["AngSep"][use_archive_sep]   = planet_table["ArchiveAngSep"][use_archive_sep].to(u.mas)
+    planet_table["AngSep"][use_projected_sma] = (a[use_projected_sma] / d[use_projected_sma]).to(u.mas, equivalencies=u.dimensionless_angles())
+    planet_table["AngSepFromArchive"]         = use_archive_sep.copy()
+    planet_table["AngSepProjectedProxy"]      = use_projected_sma.copy()
 
-    print("\n(4) Geometry and kinematics hypothesis:")
-    print(f"                  => Phase   = {phi0:.2f} rad   (for all planets)")
-    print(f"                  => Inc     = {i0:.0f}°        (for {len(planet_table[i_invalid])}/{len(planet_table)} missing values)")
-    print(f"                  => Ecc     = {e0:.1f}        (for {len(planet_table[e_invalid])}/{len(planet_table)} missing values)")
-    print(f"                  => ArgPeri = U(0, 360°) (for {len(planet_table[omega_invalid])}/{len(planet_table)} missing values)")
+    # Velocity relative to the star (not the planet's barycentric RV amplitude).
+    Kp_from_period                      = (2*np.pi*a/P * np.sin(i)/np.sqrt(1.-e**2)).to(u.km/u.s)
+    Kp_from_mass                        = (np.sqrt(const.G*Mtot/a) * np.sin(i)/np.sqrt(1.-e**2)).to(u.km/u.s)
+    Kp                                  = Kp_from_period.copy()
+    Kp_filling                          = get_invalid_mask(Kp) & get_valid_mask(Kp_from_mass)
+    Kp[Kp_filling]                      = Kp_from_mass[Kp_filling]
+    planet_table["DeltaRadialVelocity"] = Kp * (np.cos(nu+omega) + e*np.cos(omega))
 
-    # Lambert phase function: g(alpha)
-    alpha                   = np.arccos(-np.sin(i) * np.cos(phi))
-    planet_table["alpha"]   = alpha.value * u.rad
-    planet_table["g_alpha"] = ( (np.sin(alpha) + (np.pi - alpha.value) * np.cos(alpha)) / np.pi ) * u.dimensionless_unscaled
+    # Stellar systemic velocity: use a measured value within the same host,
+    # otherwise draw once per host from the measured Galactic RV distribution.
+    srv_values  = planet_table["StarRadialVelocity"].to_value(u.km/u.s)
+    srv_known   = np.isfinite(srv_values)
+    srv_mean    = np.nanmedian(srv_values) if srv_known.any() else 0.
+    srv_std     = np.nanstd(srv_values) if srv_known.sum() > 1 else 0.
+    srv_imputed = ~srv_known.copy()
+    for star_name in np.unique(star_names):
+        idx     = np.where(star_names == star_name)[0]
+        known   = idx[np.isfinite(srv_values[idx])]
+        missing = idx[~np.isfinite(srv_values[idx])]
+        if missing.size == 0:
+            continue
+        rv = np.nanmedian(srv_values[known]) if known.size else rng.normal(srv_mean, srv_std)
+        planet_table["StarRadialVelocity"][missing] = rv * u.km/u.s
+        srv_values[missing] = rv
+    planet_table["StarRadialVelocityImputed"] = srv_imputed
 
-    # Randomly draw radial velocities of the stars and Drv according to a normal distribution when they are missing
-    srv_invalid                                     = get_invalid_mask(planet_table["StarRadialVelocity"])
-    srv_mean                                        = np.nanmedian(planet_table["StarRadialVelocity"]).value
-    srv_std                                         = np.nanstd(planet_table["StarRadialVelocity"]).value
-    planet_table["StarRadialVelocity"][srv_invalid] = rng.normal(srv_mean, srv_std, srv_invalid.sum()) * u.km/u.s
-    drv_invalid                                      = get_invalid_mask(planet_table["DeltaRadialVelocity"])
-    drv_mean                                         = np.nanmedian(planet_table["DeltaRadialVelocity"]).value
-    drv_std                                          = np.nanstd(planet_table["DeltaRadialVelocity"]).value
-    planet_table["DeltaRadialVelocity"][drv_invalid] = rng.normal(drv_mean, drv_std, drv_invalid.sum()) * u.km/u.s
+    # Last-resort statistical DeltaRV completion. Values are explicitly flagged;
+    # they are not equivalent to orbital solutions and can bias HRS estimates.
+    drv_values                                       = planet_table["DeltaRadialVelocity"].to_value(u.km/u.s)
+    drv_known                                        = np.isfinite(drv_values)
+    drv_missing                                      = ~drv_known
+    drv_mean                                         = np.nanmedian(drv_values[drv_known]) if drv_known.any() else 0.
+    drv_std                                          = np.nanstd(drv_values[drv_known]) if drv_known.sum() > 1 else 0.
+    planet_table["DeltaRadialVelocity"][drv_missing] = rng.normal(drv_mean, drv_std, drv_missing.sum()) * u.km/u.s
+    planet_table["DeltaRadialVelocityImputed"]       = drv_missing.copy()
+    planet_table["PlanetRadialVelocity"]             = planet_table["StarRadialVelocity"] + planet_table["DeltaRadialVelocity"]
+    
+    # Track orbital RV estimates relying on uncertain or assumed orbital parameters.
+    planet_table["DeltaRVFromOrbit"]      = ~drv_missing
+    planet_table["DeltaRVOrbitUncertain"] = (~drv_missing) & (i_filling | uncertain_sma | planet_table["KeplerInconsistent"] | (omega_invalid & (e > 0.)))
+        
+    # Lambertian phase function. At quadrature alpha = pi/2 and g = 1/pi.
+    alpha                   = np.arccos(np.clip(-np.sin(i)*np.cos(phi), -1., 1.))
+    planet_table["alpha"]   = alpha.to(u.rad)
+    planet_table["g_alpha"] = ((np.sin(alpha) + (np.pi-alpha.to_value(u.rad))*np.cos(alpha))/np.pi) * u.dimensionless_unscaled
 
-    # Computing planet radial velocities (by definiton)
-    planet_table["PlanetRadialVelocity"] = planet_table["StarRadialVelocity"] + planet_table["DeltaRadialVelocity"]
+    sep_from_geometry = ~uncertain_sma & get_valid_mask(planet_table["AngSep"])
+    report_stat("Orbital phase",                "pi/2 rad (quadrature, all planets)")
+    report_stat("Eccentricities set to zero",   f"{e_filling.sum()}/{len(planet_table)} planets")
+    report_stat("Periastron angles drawn",      f"{omega_invalid.sum()}/{len(planet_table)} planets")
+    report_stat("Periods inferred from SMA",    f"{P_filling.sum()}/{len(planet_table)} planets")
+    report_stat("SMA inferred from periods",    f"{a_filling.sum()}/{len(planet_table)} planets")
+    report_stat("Periods from uncertain SMA",   f"{planet_table['PeriodFromProjectedSMA'].sum()}/{len(planet_table)} planets")
+    report_stat("Kepler mismatch (>20%)",       f"{planet_table['KeplerInconsistent'].sum()}/{P_consistent_mask.sum()} tested orbits")
+    report_stat("AngSep from orbital geometry", f"{sep_from_geometry.sum()}/{len(planet_table)} planets")
+    report_stat("AngSep from NASA archive",     f"{use_archive_sep.sum()}/{len(planet_table)} planets")
+    report_stat("AngSep from SMA/d proxy",      f"{use_projected_sma.sum()}/{len(planet_table)} planets")
+    report_stat("Systemic RV imputed",          f"{srv_imputed.sum()}/{len(planet_table)} planets")
+    report_stat("DeltaRV statistically drawn",  f"{drv_missing.sum()}/{len(planet_table)} planets")
 
 
     # -----------------------------------------------------------------------------
-    # 5) v sin i priors for stars and planets (fills only where missing)
+    # 7) Stellar rotation and apparent stellar rotation
     # -----------------------------------------------------------------------------
-    # The NASA archive st_vsin value is already a projected velocity, v sin(i), not an equatorial velocity.
-    # We keep StarVrot as the internal equatorial-rotation column used by FastYield.
-    # Here we enforce consistency between StarVrot and StarVsini through StarVsini = StarVrot*sin(i).
-    # When archive v sin(i) exists and sin(i) > 0, we estimate StarVrot = StarVsini/sin(i), using the
-    # orbital inclination as a proxy for the stellar spin inclination. This assumes spin-orbit alignment.
-    # When archive v sin(i) is missing and sin(i) > 0, StarVrot is filled from Teff-dependent priors.
-    # For numerically face-on systems, StarVrot is left as NaN because it cannot be inferred from v sin(i);
-    # StarVsini is then also set to NaN through the enforced relation StarVsini = StarVrot*sin(i).
+    report_step(7, "Stellar rotation")
+    planet_table["StarVsiniObserved"]    = planet_table["StarVsini"].copy()
+    planet_table["StarVrot"]             = np.full(len(planet_table), np.nan) * u.km/u.s
+    planet_table["StarSpinSini"]         = np.full(len(planet_table), np.nan) * u.dimensionless_unscaled
+    planet_table["StarVrotImputed"]      = np.zeros(len(planet_table), dtype=bool)
+    planet_table["StarVrotFromPeriod"]   = np.zeros(len(planet_table), dtype=bool)
+    planet_table["StarVrotFromVsini"]    = np.zeros(len(planet_table), dtype=bool)
+    planet_table["StarSpinSiniAssumed"]  = np.ones(len(planet_table), dtype=bool)
+    for star_name in np.unique(star_names):
+        idx = np.where(star_names == star_name)[0]
 
-    # Existing archive StarVsini values: infer StarVrot when the inversion is defined
-    planet_table["StarVrot"]                 = np.full(len(planet_table), np.nan) * u.km/u.s
-    sini_nonzero                             = planet_table["sini"].to_value(u.dimensionless_unscaled) > 1e-12
-    svs_valid                                = get_valid_mask(planet_table["StarVsini"])
-    svr_from_vsini                           = svs_valid & sini_nonzero
-    planet_table["StarVrot"][svr_from_vsini] = planet_table["StarVsini"][svr_from_vsini] / planet_table["sini"][svr_from_vsini]
+        # Under spin-orbit alignment, the stellar inclination follows the
+        # orbital inclination (measured or imputed) adopted for this system.
+        orbital_sini   = planet_table["sini"][idx].to_value(u.dimensionless_unscaled)
+        valid_inc      = np.isfinite(orbital_sini) & (orbital_sini >= 0.)
+        spin_sini      = np.median(orbital_sini[valid_inc]) if valid_inc.any() else np.nan
+        observed_vsini = planet_table["StarVsiniObserved"][idx].to_value(u.km/u.s)
+        observed_vsini = observed_vsini[np.isfinite(observed_vsini) & (observed_vsini >= 0.)]
+        periods        = planet_table["StarRotationPeriod"][idx].to_value(u.d)
+        radii          = planet_table["StarRadius"][idx].to_value(u.R_sun)
+        valid_rotation = np.isfinite(periods) & (periods > 0.) & np.isfinite(radii) & (radii > 0.)
+        if valid_rotation.any():
+            vrot    = np.median((2*np.pi*planet_table["StarRadius"][idx][valid_rotation] / planet_table["StarRotationPeriod"][idx][valid_rotation]).to_value(u.km/u.s))
+            source  = "period"
+        elif observed_vsini.size and np.isfinite(spin_sini) and spin_sini >= 0.1:
+            vrot    = np.median(observed_vsini) / spin_sini
+            source  = "vsini"
+        else:
+            teff_values = planet_table["StarTeff"][idx].to_value(u.K)
+            teff_values = teff_values[np.isfinite(teff_values) & (teff_values > 0.)]
+            teff_star   = np.median(teff_values) if teff_values.size else np.nan
+            if np.isfinite(teff_star):
+                if teff_star <= 3500.:
+                    mean, std = 1., 0.5
+                elif teff_star <= 6000.:
+                    mean, std = 3., 1.
+                elif teff_star <= 7500.:
+                    mean, std = 10., 5.
+                elif teff_star <= 10000.:
+                    mean, std = 120., 60.
+                else:
+                    mean, std = 200., 80.
+                vrot = rng.normal(mean, std)
+                while vrot < 0.:
+                    vrot = rng.normal(mean, std)
+                source = "prior"
+            else:
+                vrot   = np.nan
+                source = "missing"
+        vsini                                   = np.median(observed_vsini) if observed_vsini.size else vrot*spin_sini
+        planet_table["StarSpinSini"][idx]       = spin_sini * u.dimensionless_unscaled
+        planet_table["StarVrot"][idx]           = vrot * u.km/u.s
+        planet_table["StarVsini"][idx]          = vsini * u.km/u.s
+        planet_table["StarVrotImputed"][idx]    = source == "prior"
+        planet_table["StarVrotFromPeriod"][idx] = source == "period"
+        planet_table["StarVrotFromVsini"][idx]  = source == "vsini"
+    planet_table["StarVsiniModel"] = planet_table["StarVrot"] * planet_table["StarSpinSini"]
+    
+    # Apparent stellar rotation as seen from the planet: aligned prograde model.
+    # d(nu)/dt is the instantaneous Keplerian angular velocity, not 2*pi/P
+    # for an eccentric orbit. Missing orbital inputs fall back to StarVrot.
+    planet_table["StarVrotFromPlanet"] = planet_table["StarVrot"].copy()
+    svfp_valid                         = (get_valid_mask(planet_table["StarVrot"]) & get_valid_mask(planet_table["StarRadius"]) & get_valid_mask(P) & (planet_table["StarRadius"] > 0*u.R_sun) & (P > 0*u.d) & ~uncertain_sma)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        orbital_angular_velocity = (2*np.pi/P) * (1.+e*np.cos(nu))**2 / (1.-e**2)**1.5
+    orbital_rotation_term                          = np.full(len(planet_table), np.nan) * u.km/u.s
+    orbital_rotation_term[svfp_valid]              = (planet_table["StarRadius"][svfp_valid] * orbital_angular_velocity[svfp_valid]).to(u.km/u.s)
+    planet_table["StarVrotFromPlanet"][svfp_valid] = np.abs(planet_table["StarVrot"][svfp_valid] - orbital_rotation_term[svfp_valid])
+    planet_table["StarVrotFromPlanetFallback"]     = get_valid_mask(planet_table["StarVrot"]) & ~svfp_valid
 
-    # Missing StarVrot values are filled from Teff-dependent priors, but only when sin(i) > 0
-    svr_invalid = get_invalid_mask(planet_table["StarVrot"]) & sini_nonzero
-    Teff        = planet_table["StarTeff"]
-    m1 = svr_invalid & (Teff <= 3500*u.K)
-    m2 = svr_invalid & (3500*u.K < Teff) & (Teff <= 6000*u.K)
-    m3 = svr_invalid & (6000*u.K < Teff) & (Teff <= 7500*u.K)
-    m4 = svr_invalid & (7500*u.K < Teff) & (Teff <= 10000*u.K)
-    m5 = svr_invalid & (10000*u.K < Teff)
-    planet_table["StarVrot"][m1] = rng.normal(1,   0.5, size=m1.sum()) * u.km/u.s
-    planet_table["StarVrot"][m2] = rng.normal(3,   1.0, size=m2.sum()) * u.km/u.s
-    planet_table["StarVrot"][m3] = rng.normal(10,  5.0, size=m3.sum()) * u.km/u.s
-    planet_table["StarVrot"][m4] = rng.normal(120, 60., size=m4.sum()) * u.km/u.s
-    planet_table["StarVrot"][m5] = rng.normal(200, 80., size=m5.sum()) * u.km/u.s
-    planet_table["StarVrot"][planet_table["StarVrot"] < 0*u.km/u.s] = 0*u.km/u.s
-
-    # Enforce consistency: StarVsini = StarVrot*sin(i)
-    planet_table["StarVsini"] = planet_table["StarVrot"] * planet_table["sini"]
-
-    svr_filled = m1 | m2 | m3 | m4 | m5
-    print(f"\n(5a) Filling star Vrot according to adopted priors for {svr_filled.sum()}/{len(planet_table)} planets")
-
-    # Planetary v sin i
-    planet_table["PlanetVrot"] = np.zeros(len(planet_table)) * u.km / u.s
-    Mp                         = planet_table["PlanetMass"]
-
-    p1 = (Mp <= 5 * u.Mearth)
-    p2 = (5   * u.Mearth < Mp) & (Mp <= 20  * u.Mearth)
-    p3 = (20  * u.Mearth < Mp) & (Mp <= 100 * u.Mearth)
-    p4 = (100 * u.Mearth < Mp) & (Mp <= 300 * u.Mearth)
-    p5 = (300 * u.Mearth < Mp)
-
-    planet_table["PlanetVrot"][p1] = rng.normal(0.5, 0.5, size=p1.sum()) * u.km / u.s
-    planet_table["PlanetVrot"][p2] = rng.normal(2.0, 1.0, size=p2.sum()) * u.km / u.s
-    planet_table["PlanetVrot"][p3] = rng.normal(3.0, 1.5, size=p3.sum()) * u.km / u.s
-    planet_table["PlanetVrot"][p4] = rng.normal(12., 4.0, size=p4.sum()) * u.km / u.s
-    planet_table["PlanetVrot"][p5] = rng.normal(20., 8.0, size=p5.sum()) * u.km / u.s
-
-    planet_table["PlanetVrot"][planet_table["PlanetVrot"] < 0 * u.km / u.s] = 0 * u.km / u.s
-
-    planet_table["PlanetVsini"] = planet_table["PlanetVrot"] * planet_table["sini"]
-
-    print("\n(5b) Filling planet Vrot and PlanetVsini according to adopted priors (for all planets)")
+    # Stellar diagnostics count unique hosts, not the associated planet rows.
+    def count_stars(mask):
+        return np.unique(star_names[np.asarray(mask, dtype=bool)]).size
+    n_stars = len(np.unique(star_names))
+    report_stat("Stellar rotation from period",    f"{count_stars(planet_table['StarVrotFromPeriod'])}/{n_stars} stars")
+    report_stat("Stellar rotation from vsini",     f"{count_stars(planet_table['StarVrotFromVsini'])}/{n_stars} stars")
+    report_stat("Stellar rotation from prior",     f"{count_stars(planet_table['StarVrotImputed'])}/{n_stars} stars")
+    report_stat("Stellar Vrot seen from planet",   f"{svfp_valid.sum()}/{len(planet_table)} planets")
 
 
     # -----------------------------------------------------------------------------
-    # 6) Estimating missing planet temperatures
+    # 8) Complete missing planetary temperatures
     # -----------------------------------------------------------------------------
-    # PlanetTeff is the operational planet temperature used by FastYield for thermal models.
-    # Archive pl_eqt is kept as PlanetTeff because it is heterogeneous by construction:
-    # for irradiated planets it is generally an equilibrium temperature, while for directly imaged
-    # young/self-luminous planets it can correspond to an inferred effective temperature.
-    # Missing values are filled with (Teq**4 + Tint**4)**0.25, where Teq is computed from stellar
-    # irradiation and Tint is approximated by the non-irradiated evolutionary-model Teff when available.
-
-    # Catalog-level approximation: we adopt a fixed Bond albedo A_B = 0.3 and full 4π redistribution for all planets.
-    # This is not neutral, but the impact on Teq is moderate because Teq is proportional to (1 - A_B)**0.25:
-    # using A_B = 0.3 instead of A_B = 0 lowers Teq by 0.7**0.25 ≈ 0.91, i.e. about 9%.
+    report_step(8, "Planetary temperatures")
     bond_albedo = 0.3
-    pteq        = planet_table['StarTeff'] * np.sqrt((planet_table['StarRadius']) / (2*planet_table['SMA'])).decompose() * (1 - bond_albedo)**(1/4)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        pteq = planet_table["StarTeff"] * np.sqrt((planet_table["StarRadius"]/(2*planet_table["SMA"])).decompose()) * (1.-bond_albedo)**0.25
+    planet_table["PlanetTeq"] = pteq.copy()
 
-    # Intrinsic cooling temperature and radius from the evolutionary model, using Sonora Bobcat: Marley et al. (2021, Astrophysical Journal, Volume 920, Issue 2, id.85.)
-    ptint_em, pr_em, _ = get_evolutionary_model(planet_table)
-
-    print("\n(6) Hypothesis (possibly pessimistic for young planets):")
-    pteff_invalid  = get_invalid_mask(planet_table["PlanetTeff"])
-    pteq_valid     = get_valid_mask(pteq)
-    ptint_em_valid = get_valid_mask(ptint_em)
-    pteff_filling  = (pteff_invalid) & (pteq_valid | ptint_em_valid)
-    planet_table["PlanetTeff"][pteff_filling]    = ( np.nan_to_num(pteq[pteff_filling])**4 + np.nan_to_num(ptint_em[pteff_filling])**4 )**(1/4)
-    planet_table["PlanetTeffRef"][pteff_filling] = f"Equilibrium temperature (A_B={bond_albedo}, 4π redistribution) + Internal energy (when possible)"
-    print(f"                  => Missing PlanetTeff = (Teq**4 + Tint**4)**0.25, with Teq from irradiation (A_B={bond_albedo}, 4π redistribution) and Tint from the evolutionary model (Sonora Bobcat) when available (for {pteff_filling.sum()}/{len(planet_table)} planets)")
+    # Sonora Bobcat: intrinsic non-irradiated cooling temperature and radius.
+    ptint_em, pr_em, _                                                             = get_evolutionary_model(planet_table)
+    planet_table["PlanetTint"]                                                     = ptint_em.copy()
+    pteq_values                                                                    = pteq.to_value(u.K)
+    ptint_values                                                                   = ptint_em.to_value(u.K)
+    pteq_valid                                                                     = np.isfinite(pteq_values) & (pteq_values > 0.)
+    ptint_em_valid                                                                 = np.isfinite(ptint_values) & (ptint_values > 0.)
+    pteff_invalid                                                                  = get_invalid_mask(planet_table["PlanetTeff"])
+    pteff_filling                                                                  = pteff_invalid & (pteq_valid | ptint_em_valid)
+    pteq_safe                                                                      = np.where(pteq_valid, pteq_values, 0.)
+    ptint_safe                                                                     = np.where(ptint_em_valid, ptint_values, 0.)
+    pteff_values                                                                   = (pteq_safe**4 + ptint_safe**4)**0.25
+    planet_table["PlanetTeff"][pteff_filling]                                      = pteff_values[pteff_filling] * u.K
+    planet_table["PlanetTeffRef"][pteff_filling]                                   = f"Equilibrium (A_B={bond_albedo}, 4pi) + intrinsic Sonora temperature where available"
+    planet_table["PlanetTeffOrigin"]                                               = np.full(len(planet_table), "Archive/injected", dtype="<U32")
+    planet_table["PlanetTeffOrigin"][pteff_filling & pteq_valid & ptint_em_valid]  = "Teq+Tint model"
+    planet_table["PlanetTeffOrigin"][pteff_filling & pteq_valid & ~ptint_em_valid] = "Teq model"
+    planet_table["PlanetTeffOrigin"][pteff_filling & ~pteq_valid & ptint_em_valid] = "Tint model"
+    planet_table["PlanetTeffOrigin"][pteff_invalid & ~pteff_filling]               = "Unavailable"
+    
+    report_stat("Planetary Teff completed",        f"{pteff_filling.sum()}/{len(planet_table)} planets")
+    report_stat("Including intrinsic temperature", f"{(pteff_filling & ptint_em_valid).sum()}/{len(planet_table)} planets")
+    report_stat("Planetary Teff still missing",    f"{get_invalid_mask(planet_table['PlanetTeff']).sum()}/{len(planet_table)} planets")
 
 
     # -----------------------------------------------------------------------------
-    # 7) Filling missing radius from evolutionary model if possible
+    # 9) Complete radii, masses, and planetary rotation
     # -----------------------------------------------------------------------------
-    pr_invalid                                  = get_invalid_mask(planet_table["PlanetRadius"])
-    pr_em_valid                                 = get_valid_mask(pr_em)
-    pr_filling                                  = pr_invalid & pr_em_valid
-    planet_table["PlanetRadius"][pr_filling]    = pr_em[pr_filling]
-    planet_table["PlanetRadiusRef"][pr_filling] = "Evolutionary model"
-    print(f"\n(7) Filling planet radius from evolutionary model for {pr_filling.sum()}/{len(planet_table)}")
-
-    # 7b) Remaining mass fallback from newly available radius
-    # This catches rare cases where a radius became available after step 2c.
-    # In practice this is expected to fill few or no objects, because the
-    # evolutionary-model radius usually requires a mass in the first place.
-
-    # Missing mass from radius
-    pm_invalid    = get_invalid_mask(planet_table["PlanetMass"])
-    pr_valid      = get_valid_mask(planet_table["PlanetRadius"])
-    pm_ck         = chen_kipping_mass_from_radius(planet_table["PlanetRadius"])
-    pm_ck_valid   = get_valid_mask(pm_ck)
-    pm_ck_filling = pm_invalid & pr_valid & pm_ck_valid
+    report_step(9, "Evolutionary radii, Chen & Kipping masses, and planetary rotation")
+    pr_invalid                                   = get_invalid_mask(planet_table["PlanetRadius"])
+    pr_em_valid                                  = get_valid_mask(pr_em) & (pr_em > 0*u.R_earth)
+    pr_filling                                   = pr_invalid & pr_em_valid
+    planet_table["PlanetRadius"][pr_filling]     = pr_em[pr_filling]
+    planet_table["PlanetRadiusRef"][pr_filling]  = "Evolutionary model"
+    pm_invalid                                   = get_invalid_mask(planet_table["PlanetMass"])
+    pr_valid                                     = get_valid_mask(planet_table["PlanetRadius"]) & (planet_table["PlanetRadius"] > 0*u.R_earth)
+    pm_ck                                        = chen_kipping_mass_from_radius(planet_table["PlanetRadius"])
+    pm_ck_valid                                  = get_valid_mask(pm_ck) & (pm_ck > 0*u.M_earth)
+    pm_ck_filling                                = pm_invalid & pr_valid & pm_ck_valid
     planet_table["PlanetMass"][pm_ck_filling]    = pm_ck[pm_ck_filling]
     planet_table["PlanetMassRef"][pm_ck_filling] = "Calculated Value (Chen & Kipping 2017)"
+    rp                                           = planet_table["PlanetRadius"].to_value(u.R_earth)
+    ck_degenerate                                = pm_invalid & pr_valid & np.isfinite(rp) & (rp >= 11.1) & (rp < 14.3)
+    
+    # Check whether late mass completion significantly changes the Keplerian mass budget.
+    late_mass_ratio       = (planet_table["PlanetMass"][pm_ck_filling] / planet_table["StarMass"][pm_ck_filling]).to_value(u.dimensionless_unscaled)
+    late_mass_significant = np.isfinite(late_mass_ratio) & (late_mass_ratio > 0.01)
+        
+    # Positive mass-dependent Gaussian priors for planetary equatorial rotation.
+    # A zero fallback is retained for missing masses for backward compatibility.
+    Mp                         = planet_table["PlanetMass"]
+    planet_table["PlanetVrot"] = np.zeros(len(planet_table)) * u.km/u.s
+    p1                         = (Mp            > 0*u.M_earth) & (Mp <= 5*u.M_earth)
+    p2                         = (5*u.M_earth   < Mp)          & (Mp <= 20*u.M_earth)
+    p3                         = (20*u.M_earth  < Mp)          & (Mp <= 100*u.M_earth)
+    p4                         = (100*u.M_earth < Mp)          & (Mp <= 300*u.M_earth)
+    p5                         = Mp > 300*u.M_earth
+    priors                     = [(p1, 0.5, 0.5), (p2, 2., 1.), (p3, 3., 1.5), (p4, 12., 4.), (p5, 20., 8.)]
+    vrot                       = planet_table["PlanetVrot"].to_value(u.km/u.s)
+    for mask, mean, std in priors:
+        vrot[mask] = rng.normal(mean, std, mask.sum())
+        negative   = mask & (vrot < 0.)
+        while negative.any():
+            vrot[negative] = rng.normal(mean, std, negative.sum())
+            negative       = mask & (vrot < 0.)
+    planet_table["PlanetVrot"]                 = vrot * u.km/u.s
+    planet_table["PlanetVsini"]                = planet_table["PlanetVrot"] * planet_table["sini"]
+    planet_table["PlanetVrotMassUnavailable"] = ~(p1 | p2 | p3 | p4 | p5)
+            
+    report_stat("Planetary radius from evolution",  f"{pr_filling.sum()}/{len(planet_table)} planets")
+    report_stat("Planetary mass from new radius",   f"{pm_ck_filling.sum()}/{len(planet_table)} planets")
+    report_stat("Degenerate radii skipped",         f"{ck_degenerate.sum()}/{len(planet_table)} planets")
+    report_stat("Planetary rotation without mass",  f"{planet_table['PlanetVrotMassUnavailable'].sum()}/{len(planet_table)} planets")
+    report_stat("Late masses > 1% of stellar mass", f"{late_mass_significant.sum()}/{pm_ck_filling.sum()} newly completed planets")
 
-    # Diagnostic: radii for which NASA-style inversion deliberately returns NaN
-    rp            = planet_table["PlanetRadius"].to_value(u.R_earth)
-    ck_degenerate = pm_invalid & pr_valid & np.isfinite(rp) & (rp >= 11.1) & (rp < 14.3)
-
-    print("\n(7b) Filling remaining planet mass from newly available radius with NASA-style Chen & Kipping (2017):")
-    print(f"                  => Missing PlanetMass from PlanetRadius for {pm_ck_filling.sum()}/{len(planet_table)} planets")
-    print(f"                  => Skipped degenerate 11.1-14.3 Rearth interval for {ck_degenerate.sum()}/{len(planet_table)} planets")
-
-
+    
     # -----------------------------------------------------------------------------
-    # 8) Compute planet logg and missing star logg (from M and R) where possible
+    # 10) Compute surface gravities
     # -----------------------------------------------------------------------------
-
-    # PlanetLogg from PlanetMass and PlanetRadius
-    g_planet                   = const.G * planet_table["PlanetMass"] / planet_table["PlanetRadius"]**2
-    planet_table["PlanetLogg"] = np.log10(g_planet.to(u.cm / u.s**2).value) * u.dex(u.cm / u.s**2)
-
-    # Missing StarLogg from StarMass and StarRadius
+    report_step(10, "Surface gravities")
+    g_planet                             = const.G * planet_table["PlanetMass"] / planet_table["PlanetRadius"]**2
+    planet_table["PlanetLogg"]            = np.log10(g_planet.to_value(u.cm/u.s**2)) * u.dex(u.cm/u.s**2)
     g_star                                = const.G * planet_table["StarMass"] / planet_table["StarRadius"]**2
+    g_star_values                         = np.log10(g_star.to_value(u.cm/u.s**2))
     slg_invalid                           = get_invalid_mask(planet_table["StarLogg"])
-    planet_table["StarLogg"][slg_invalid] = np.log10(g_star.to(u.cm / u.s**2).value)[slg_invalid] * u.dex(u.cm / u.s**2)
-
-    # Final fallback: median by discovery method (log g is not critical here)
-    slg_invalid = get_invalid_mask(planet_table["StarLogg"])
-    plg_invalid = get_invalid_mask(planet_table["PlanetLogg"])
-    for det_mask in (im_mask, rv_mask, tr_mask, ot_mask):
-        planet_table["StarLogg"][slg_invalid & det_mask]   = np.nanmedian(planet_table["StarLogg"][det_mask])
-        planet_table["PlanetLogg"][plg_invalid & det_mask] = np.nanmedian(planet_table["PlanetLogg"][det_mask])
-
-    print("\n(8) Computing star and planet logg from (M and R) where possible")
-
-
-    # # -----------------------------------------------------------------------------
-    # # 9) Filtering physically inconsistent planetary outliers
-    # # -----------------------------------------------------------------------------
-    # # This replaces hard clipping. We do not modify outlier values: we remove rows
-    # # only when a valid planet mass, radius, or effective temperature exists but is
-    # # outside a broad exoplanet/planetary-companion domain.
-    # #
-    # # Missing values are kept here, because the S/N-usability filter in step 10
-    # # already handles missing quantities.
-
-    # M_min    = 0.0    * u.M_earth
-    # M_max    = 80.0   * u.M_jup
-    # R_min    = 0.0    * u.R_earth
-    # R_max    = 40.0   * u.R_earth
-    # Teff_min = 0.0    * u.K
-    # Teff_max = 3000.0 * u.K
-
-    # Mp   = planet_table["PlanetMass"].to(u.M_earth)
-    # Rp   = planet_table["PlanetRadius"].to(u.R_earth)
-    # Teff = planet_table["PlanetTeff"].to(u.K)
-
-    # Mp_valid   = get_valid_mask(Mp)
-    # Rp_valid   = get_valid_mask(Rp)
-    # Teff_valid = get_valid_mask(Teff)
-
-    # Mp_outlier   = Mp_valid   & ((Mp   <= M_min.to(u.M_earth)) | (Mp   > M_max.to(u.M_earth)))
-    # Rp_outlier   = Rp_valid   & ((Rp   <= R_min.to(u.R_earth)) | (Rp   > R_max.to(u.R_earth)))
-    # Teff_outlier = Teff_valid & ((Teff <= Teff_min)            | (Teff > Teff_max))
-
-    # planet_param_outlier = Mp_outlier | Rp_outlier | Teff_outlier
-    # planet_param_keep    = ~planet_param_outlier
-
-    # print("\n(9) Filtering physically inconsistent planetary outliers:")
-    # print(f"                  => Accepted PlanetMass range:   0 < Mp   <= {M_max.to_value(u.M_jup):.0f} Mjup ({M_max.to_value(u.M_earth):.0f} Mearth)")
-    # print(f"                  => Accepted PlanetRadius range: 0 < Rp   <= {R_max.to_value(u.R_earth):.0f} Rearth")
-    # print(f"                  => Accepted PlanetTeff range:   0 < Teff <= {Teff_max.to_value(u.K):.0f} K")
-    # print(f"                  => Out-of-range PlanetMass, rejected:          {Mp_outlier.sum()}")
-    # print(f"                  => Out-of-range PlanetRadius, rejected:        {Rp_outlier.sum()}")
-    # print(f"                  => Out-of-range PlanetTeff, rejected:          {Teff_outlier.sum()}")
-    # print(f"                  => Keeping after physical-outlier filter:      {int(planet_param_keep.sum())}/{len(planet_table)} planets")
-
-    # if planet_param_outlier.any():
-    #     rejected_names          = np.asarray(planet_table["PlanetName"][planet_param_outlier], dtype=str).astype(str)
-    #     rejected_names_to_print = rejected_names[:25].tolist()
-    #     suffix = f" (+{len(rejected_names) - len(rejected_names_to_print)} more)" if len(rejected_names) > len(rejected_names_to_print) else ""
-    #     print(f"                  => First rejected targets: {', '.join(rejected_names_to_print)}{suffix}")
-
-    # planet_table = planet_table[planet_param_keep]
-
-    # # Rebuild discovery-method masks after filtering, otherwise the masks no longer
-    # # have the same length as planet_table in step 10 and below.
-    # im_mask = planet_table["DiscoveryMethod"] == "Imaging"
-    # rv_mask = planet_table["DiscoveryMethod"] == "Radial Velocity"
-    # tr_mask = planet_table["DiscoveryMethod"] == "Transit"
-    # ot_mask = (~im_mask) & (~rv_mask) & (~tr_mask)
+    slg_filling                           = slg_invalid & np.isfinite(g_star_values)
+    planet_table["StarLogg"][slg_filling] = g_star_values[slg_filling] * u.dex(u.cm/u.s**2)
+    
+    report_stat("Stellar logg completed",   f"{slg_filling.sum()}/{len(planet_table)} planet entries")
+    report_stat("Planetary logg available", f"{get_valid_mask(planet_table['PlanetLogg']).sum()}/{len(planet_table)} planets")
 
 
     # -----------------------------------------------------------------------------
-    # 10) Filter down to rows usable for S/N calculations
+    # 11) Filter planets outside the adopted physical/model parameter ranges
     # -----------------------------------------------------------------------------
+    report_step(11, "Planetary parameter-range filtering")
+    M_min, M_max       = 0.*u.M_earth, 80.*u.M_jup
+    R_min, R_max       = 0.*u.R_earth, 40.*u.R_earth
+    Teff_min, Teff_max = 0.*u.K, 3000.*u.K
 
-    steff_valid = get_valid_mask(planet_table["StarTeff"])
-    pteff_valid = get_valid_mask(planet_table["PlanetTeff"])
+    Mp, Rp, Teff         = planet_table["PlanetMass"], planet_table["PlanetRadius"], planet_table["PlanetTeff"]
+    Mp_valid             = get_valid_mask(Mp)
+    Rp_valid             = get_valid_mask(Rp)
+    Teff_valid           = get_valid_mask(Teff)
+    Mp_outlier           = Mp_valid & ((Mp <= M_min) | (Mp > M_max))
+    Rp_outlier           = Rp_valid & ((Rp <= R_min) | (Rp > R_max))
+    Teff_outlier         = Teff_valid & ((Teff <= Teff_min) | (Teff > Teff_max))
+    planet_param_outlier = Mp_outlier | Rp_outlier | Teff_outlier
+
+    report_stat("Allowed mass",            "(0, 80] Mjup")
+    report_stat("Allowed radius",          "(0, 40] Rearth")
+    report_stat("Allowed temperature",     "(0, 3000] K")
+    report_stat("Rejected by mass",        f"{Mp_outlier.sum()}/{len(planet_table)} planets")
+    report_stat("Rejected by radius",      f"{Rp_outlier.sum()}/{len(planet_table)} planets")
+    report_stat("Rejected by temperature", f"{Teff_outlier.sum()}/{len(planet_table)} planets")
+    report_stat("Total planets rejected",  f"{planet_param_outlier.sum()}/{len(planet_table)} planets")
+    report_stat("Planets retained",        f"{(~planet_param_outlier).sum()}/{len(planet_table)} planets")
+    if planet_param_outlier.any():
+        rejected = np.asarray(planet_table["PlanetName"][planet_param_outlier], dtype=str)
+        report_stat("Rejected examples", ", ".join(rejected[:3]) + (" ..." if rejected.size > 3 else ""))
+    planet_table = planet_table[~planet_param_outlier]
+
+    # Refresh discovery-method masks after row selection.
+    im_mask = planet_table["DiscoveryMethod"] == "Imaging"
+    rv_mask = planet_table["DiscoveryMethod"] == "Radial Velocity"
+    tr_mask = planet_table["DiscoveryMethod"] == "Transit"
+    ot_mask = (~im_mask) & (~rv_mask) & (~tr_mask)
+
+
+    # -----------------------------------------------------------------------------
+    # 12) Filter rows required by FastYield S/N calculations
+    # -----------------------------------------------------------------------------
+    report_step(12, "S/N usability filtering")
+    steff_valid = get_valid_mask(planet_table["StarTeff"]) & (planet_table["StarTeff"] > 0*u.K)
+    pteff_valid = get_valid_mask(planet_table["PlanetTeff"]) & (planet_table["PlanetTeff"] > 0*u.K)
     skm_valid   = get_valid_mask(planet_table["StarKmag"])
-    pr_valid    = get_valid_mask(planet_table["PlanetRadius"]) | get_valid_mask(planet_table["PlanetKmag(thermal+reflected)"]) # If the Kmag is known, the planet radius is not usefull since the normalisation is already known
-    d_valid     = get_valid_mask(planet_table["Distance"])
-    sma_valid   = get_valid_mask(planet_table["SMA"])
+    pr_valid    = (get_valid_mask(planet_table["PlanetRadius"]) & (planet_table["PlanetRadius"] > 0*u.R_earth)) | get_valid_mask(planet_table["PlanetKmag(thermal+reflected)"])
+    d_valid     = get_valid_mask(planet_table["Distance"]) & (planet_table["Distance"] > 0*u.pc)
+    sma_valid   = get_valid_mask(planet_table["SMA"]) & (planet_table["SMA"] > 0*u.AU)
     snr_valid   = steff_valid & pteff_valid & skm_valid & pr_valid & d_valid & sma_valid
-    print(f"\n(10) Filtering planets for S/N computations: keeping {len(planet_table[snr_valid])}/{len(planet_table)} planets")
-    print(f"                  => Missing StarTeff:     IM: {round(100*len(planet_table[~steff_valid & im_mask])/len(planet_table[im_mask]))}% | RV: {round(100*len(planet_table[~steff_valid & rv_mask])/len(planet_table[rv_mask]))}% | TR: {round(100*len(planet_table[~steff_valid & tr_mask])/len(planet_table[tr_mask]))}% | OT: {round(100*len(planet_table[~steff_valid & ot_mask])/len(planet_table[ot_mask]))}%")
-    print(f"                  => Missing PlanetTeff:   IM: {round(100*len(planet_table[~pteff_valid & im_mask])/len(planet_table[im_mask]))}% | RV: {round(100*len(planet_table[~pteff_valid & rv_mask])/len(planet_table[rv_mask]))}% | TR: {round(100*len(planet_table[~pteff_valid & tr_mask])/len(planet_table[tr_mask]))}% | OT: {round(100*len(planet_table[~pteff_valid & ot_mask])/len(planet_table[ot_mask]))}%")
-    print(f"                  => Missing StarKmag:     IM: {round(100*len(planet_table[~skm_valid & im_mask])/len(planet_table[im_mask]))}% | RV: {round(100*len(planet_table[~skm_valid & rv_mask])/len(planet_table[rv_mask]))}% | TR: {round(100*len(planet_table[~skm_valid & tr_mask])/len(planet_table[tr_mask]))}% | OT: {round(100*len(planet_table[~skm_valid & ot_mask])/len(planet_table[ot_mask]))}%")
-    print(f"                  => Missing PlanetRadius: IM: {round(100*len(planet_table[~pr_valid & im_mask])/len(planet_table[im_mask]))}% | RV: {round(100*len(planet_table[~pr_valid & rv_mask])/len(planet_table[rv_mask]))}% | TR: {round(100*len(planet_table[~pr_valid & tr_mask])/len(planet_table[tr_mask]))}% | OT: {round(100*len(planet_table[~pr_valid & ot_mask])/len(planet_table[ot_mask]))}%")
-    print(f"                  => Missing Distance:     IM: {round(100*len(planet_table[~d_valid & im_mask])/len(planet_table[im_mask]))}% | RV: {round(100*len(planet_table[~d_valid & rv_mask])/len(planet_table[rv_mask]))}% | TR: {round(100*len(planet_table[~d_valid & tr_mask])/len(planet_table[tr_mask]))}% | OT: {round(100*len(planet_table[~d_valid & ot_mask])/len(planet_table[ot_mask]))}%")
-    print(f"                  => Missing SMA:          IM: {round(100*len(planet_table[~sma_valid & im_mask])/len(planet_table[im_mask]))}% | RV: {round(100*len(planet_table[~sma_valid & rv_mask])/len(planet_table[rv_mask]))}% | TR: {round(100*len(planet_table[~sma_valid & tr_mask])/len(planet_table[tr_mask]))}% | OT: {round(100*len(planet_table[~sma_valid & ot_mask])/len(planet_table[ot_mask]))}%")
-    print(f"\nKeeping: TOTAL: {len(planet_table[snr_valid])}/{len(planet_table)} | IM: {len(planet_table[snr_valid & im_mask])}/{len(planet_table[im_mask])} | RV: {len(planet_table[snr_valid & rv_mask])}/{len(planet_table[rv_mask])} | TR: {len(planet_table[snr_valid & tr_mask])}/{len(planet_table[tr_mask])} | OT: {len(planet_table[snr_valid & ot_mask])}/{len(planet_table[ot_mask])}")
+
+    def missing_percentage(valid, mask):
+        return f"{100*np.count_nonzero(~valid & mask)/np.count_nonzero(mask):.0f}%" if np.any(mask) else "--"
+    for label, valid in [("StarTeff", steff_valid), ("PlanetTeff", pteff_valid), ("StarKmag", skm_valid), ("Radius / planet Kmag", pr_valid), ("Distance", d_valid), ("SMA", sma_valid)]:
+        report_stat(f"Missing {label}", f"IM {missing_percentage(valid, im_mask)} | RV {missing_percentage(valid, rv_mask)} | TR {missing_percentage(valid, tr_mask)} | OT {missing_percentage(valid, ot_mask)}")
+    report_stat("Planets usable for S/N", f"{snr_valid.sum()}/{len(planet_table)} planets")
     planet_table = planet_table[snr_valid]
 
 
     # -----------------------------------------------------------------------------
-    # 11) Classifying planet types
+    # 13) Classify planets and complete missing surface gravities
     # -----------------------------------------------------------------------------
-    # Creating planet type column
-    planet_table["PlanetType"] = np.full(len(planet_table), "Unidentified", dtype="<U32")
-
-    # Classifying (from 'planet_types')
+    report_step(13, "Planet classification and logg priors")
+    planet_table["PlanetType"] = np.full(len(planet_table), "Unidentified", dtype="<U48")
     for idx in range(len(planet_table)):
         planet_table[idx]["PlanetType"] = get_planet_type(planet_table[idx])
 
-    print("\n(11) Classifying planets per type...")
+    slg_missing_initial = get_invalid_mask(planet_table["StarLogg"]).copy()
+    plg_missing_initial = get_invalid_mask(planet_table["PlanetLogg"]).copy()
+    star_teff           = planet_table["StarTeff"].to_value(u.K)
+    for tmin, tmax in [(0, 3500), (3500, 6000), (6000, 7500), (7500, np.inf)]:
+        group   = (star_teff >= tmin) & (star_teff < tmax)
+        valid   = group & get_valid_mask(planet_table["StarLogg"])
+        missing = group & get_invalid_mask(planet_table["StarLogg"])
+        if valid.any():
+            planet_table["StarLogg"][missing] = np.nanmedian(planet_table["StarLogg"][valid])
+
+    planet_types_available = np.unique(np.asarray(planet_table["PlanetType"], dtype=str))
+    for ptype in planet_types_available:
+        group   = planet_table["PlanetType"] == ptype
+        valid   = group & get_valid_mask(planet_table["PlanetLogg"])
+        missing = group & get_invalid_mask(planet_table["PlanetLogg"])
+        if valid.any():
+            planet_table["PlanetLogg"][missing] = np.nanmedian(planet_table["PlanetLogg"][valid])
+
+    planet_radii = planet_table["PlanetRadius"].to_value(u.R_earth)
+    for idx in np.where(get_invalid_mask(planet_table["PlanetLogg"]))[0]:
+        radius = planet_radii[idx]
+        if not np.isfinite(radius) or radius <= 0.:
+            continue
+        comparable = get_valid_mask(planet_table["PlanetLogg"]) & np.isfinite(planet_radii) & (planet_radii >= radius/1.4) & (planet_radii <= radius*1.4)
+        if comparable.sum() >= 10:
+            planet_table["PlanetLogg"][idx] = np.nanmedian(planet_table["PlanetLogg"][comparable])
+
+    discovery_methods = np.asarray(planet_table["DiscoveryMethod"], dtype=str)
+    for method in np.unique(discovery_methods):
+        group   = discovery_methods == method
+        valid   = group & get_valid_mask(planet_table["PlanetLogg"])
+        missing = group & get_invalid_mask(planet_table["PlanetLogg"])
+        if valid.any() and missing.any():
+            planet_table["PlanetLogg"][missing] = np.nanmedian(planet_table["PlanetLogg"][valid])
+
+    plg_missing_after                 = get_invalid_mask(planet_table["PlanetLogg"])
+    planet_table["StarLoggImputed"]   = slg_missing_initial & get_valid_mask(planet_table["StarLogg"])
+    planet_table["PlanetLoggImputed"] = plg_missing_initial & get_valid_mask(planet_table["PlanetLogg"])
+    
+    report_stat("Stellar logg imputed",         f"{planet_table['StarLoggImputed'].sum()}/{len(planet_table)} planet entries")
+    report_stat("Planetary logg imputed",       f"{planet_table['PlanetLoggImputed'].sum()}/{len(planet_table)} planets")
+    report_stat("Planetary logg still missing", f"{plg_missing_after.sum()}/{len(planet_table)} planets")
+    if plg_missing_after.any():
+        raise ValueError(f"Still missing PlanetLogg for: {list(planet_table['PlanetName'][plg_missing_after])}")
 
 
     # -----------------------------------------------------------------------------
-    # 12) Determining whether the rocky ("Earth-Like") planets have atmosphere
+    # 14) Atmospheric-retention flags for rocky planets (heuristics)
     # -----------------------------------------------------------------------------
-    # Creating planet atmosphere column
-    planet_table["HasAtmosphere"] = np.full(len(planet_table), True, dtype=bool)
-
-    # Jeans escape parameter λJ for a heavy (N2-like) atmosphere
-    mu               = 28   # mean molecular weight [amu], N2-like
-    lambda_jeans_thr = 100  # heuristic threshold (dimensionless), calibrated with the SAME T definition:
-                            # using global Teff, λJ(N2) ~ 38 for the Moon (T~270 K) and ~69 for Mercury (T~440 K).
-                            # Therefore λJ ≲ O(1e2) corresponds to Moon/Mercury-like weak binding => likely airless/featureless rocky planets.
-    m            = mu * m_u                                   # [kg]
-    M            = planet_table["PlanetMass"].to(u.kg).value  # [kg]
-    R            = planet_table["PlanetRadius"].to(u.m).value # [m]
-    T            = planet_table["PlanetTeff"].to(u.K).value   # [K]
-    lambda_jeans = G * M * m / (kB * T * R)                   # [no unit]
-    no_retention = lambda_jeans < lambda_jeans_thr
-
-    # Atmosphere lost by irradiation / cosmic-shoreline proxy
-    C_shore          = 320 # ad hoc normalization of the cosmic-shoreline scaling (I ~ v_esc^4), set so that Mercury lies near the boundary (Sun-like irradiation): C_mercury = I_rel,mercury / (v_esc,mercury / v_esc,earth )**4
-    I_rel            = (planet_table["StarLum"].to(u.L_sun).value) / (planet_table["SMA"].to(u.AU).value**2) # Insolation relative to Earth (assuming StarLum in Lsun and SMA in AU)
-    vesc             = 1e-3*np.sqrt(2 * G * M / R) # [km/s] escape velocity
-    I_crit           = C_shore * (vesc / vesc_earth)**4
-    blown_atmosphere = I_rel > I_crit
-
-    # Flagging planets without atmosphere
+    report_step(14, "Rocky-planet atmospheric proxies")
+    planet_table["HasAtmosphere"] = np.ones(len(planet_table), dtype=bool)
+    mu                            = 28.
+    lambda_jeans_thr              = 100.
+    m                             = mu * m_u
+    M                             = planet_table["PlanetMass"].to_value(u.kg)
+    R                             = planet_table["PlanetRadius"].to_value(u.m)
+    T                             = planet_table["PlanetTeff"].to_value(u.K)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        lambda_jeans = G*M*m/(kB*T*R)
+        I_rel        = planet_table["StarLum"].to_value(u.L_sun) / planet_table["SMA"].to_value(u.AU)**2
+        vesc         = 1e-3*np.sqrt(2*G*M/R)
+        I_crit       = 320.*(vesc/vesc_earth)**4
+    no_retention                                 = lambda_jeans < lambda_jeans_thr
+    blown_atmosphere                             = I_rel > I_crit
     rocky_planets                                = get_mask_planet_type(planet_table, planet_type="earth")
     no_atmosphere                                = rocky_planets & (no_retention | blown_atmosphere)
     planet_table["HasAtmosphere"][no_atmosphere] = False
-
-    print("\n(12) Flagging rocky planets without atmosphere:")
-    print(f"Rocky planets without retention:           {(rocky_planets & no_retention).sum()} / {rocky_planets.sum()}")
-    print(f"Rocky planets with blown atmosphere:       {(rocky_planets & blown_atmosphere).sum()} / {rocky_planets.sum()}")
-    print(f"Rocky planets with either (no atmosphere): {no_atmosphere.sum()} / {rocky_planets.sum()}")
-
-
-    # --------------------------------------------------------------------------------------------------------
-    # 13) Telluric-equivalent airmass for rocky planets with atmosphere (X_eq = airmass = 2.0 at Earth values)
-    # --------------------------------------------------------------------------------------------------------
-    # Heuristic proxy used only to scale the Earth-like telluric albedo template.
-    # By construction, X_eq = 2 for Earth-like gravity when P_ref = 1 bar and eta = 1.
-    # This is not a true observational airmass.
-    # In practice, we compute this quantity for all planets, in case we later choose to apply or test reflected_model = "tellurics" across the full sample.
-
-    # Models parameters
-    P_ref = 1.0 * u.bar # simple first-order assumption
-    eta   = 1.0         # g^{-1} scaling
-    X_min = 0.5
-    X_max = 8.0
-
-    P_ref_earth = 1.0 * u.bar
-    g_earth     = (const.G * const.M_earth / const.R_earth**2).to(u.m / u.s**2)
-    g_planet    = (const.G * planet_table["PlanetMass"] / planet_table["PlanetRadius"]**2).to(u.m / u.s**2)
-    X_eq        = 2.0 * (P_ref / P_ref_earth) * (g_earth / g_planet)**eta
-    X_eq        = np.clip(X_eq.to_value(u.dimensionless_unscaled), X_min, X_max) * u.dimensionless_unscaled
-
-    planet_table["TelluricEquivalentAirmass"] = X_eq
-    print("\n(13) Assigning telluric-equivalent airmass values...")
+    jeans_available                              = np.isfinite(lambda_jeans) & (lambda_jeans > 0.)
+    shore_available                              = np.isfinite(I_rel) & np.isfinite(vesc) & np.isfinite(I_crit) & (I_crit > 0.)
+    planet_table["AtmosphereJeansAvailable"]     = jeans_available
+    planet_table["AtmosphereShorelineAvailable"] = shore_available
+    planet_table["AtmosphereCriteriaAvailable"]  = jeans_available | shore_available
+    planet_table["AtmosphereCriteriaComplete"]   = jeans_available & shore_available
+    planet_table["AtmosphereStatusUncertain"]    = rocky_planets & ~(jeans_available & shore_available) & ~no_atmosphere
+    
+    report_stat("Rocky planets",                 f"{rocky_planets.sum()}/{len(planet_table)} planets")
+    report_stat("Failed Jeans criterion",        f"{(rocky_planets & no_retention).sum()}/{rocky_planets.sum()} rocky planets")
+    report_stat("Failed shoreline criterion",    f"{(rocky_planets & blown_atmosphere).sum()}/{rocky_planets.sum()} rocky planets")
+    report_stat("Classified without atmosphere", f"{no_atmosphere.sum()}/{rocky_planets.sum()} rocky planets")
+    report_stat("Atmosphere undetermined",       f"{planet_table['AtmosphereStatusUncertain'].sum()}/{rocky_planets.sum()} rocky planets")
 
 
-    # -------------------------------------------------------------------
-    # 14) Computing magnitudes for all bands and classifying planet types
-    # -------------------------------------------------------------------
+    # -----------------------------------------------------------------------------
+    # 15) Telluric-equivalent airmass (gravity-based reflected-light proxy)
+    # -----------------------------------------------------------------------------
+    report_step(15, "Telluric-equivalent airmass")
+    P_ref, P_ref_earth                        = 1.*u.bar, 1.*u.bar
+    eta, X_min, X_max                         = 1., 0.5, 8.
+    g_earth                                   = (const.G*const.M_earth/const.R_earth**2).to(u.m/u.s**2)
+    g_planet                                  = planet_table["PlanetLogg"].to(u.m/u.s**2)
+    X_eq                                      = 2.*(P_ref/P_ref_earth)*(g_earth/g_planet)**eta
+    planet_table["TelluricEquivalentAirmass"] = np.clip(X_eq.to_value(u.dimensionless_unscaled), X_min, X_max) * u.dimensionless_unscaled
+    report_stat("Proxy range", f"[{X_min}, {X_max}]")
+    report_stat("Reference",   "Earth-like gravity -> X_eq = 2")
+
+
+    # -----------------------------------------------------------------------------
+    # 16) Compute synthetic magnitudes, save, and plot diagnostics
+    # -----------------------------------------------------------------------------
+    report_step(16, "Synthetic magnitudes and final catalog")
     planet_table = get_planet_table_magnitudes(planet_table)
-
-
-    # ----------------------
-    # 15) Saving final table
-    # ----------------------
-    print(f"\nTotal number of planets for FastYield calculations: {len(planet_table)}")
-    print(f"Generating the table took {round((time.time()-time1)/60, 1)} mn")
-    planet_table.write(f"{archive_path}/Archive_Pull_For_FastYield.ecsv", format='ascii.ecsv', overwrite=True)
-
-    # Few sanity check plots
+    planet_table.write(f"{archive_path}/Archive_Pull_For_FastYield.ecsv", format="ascii.ecsv", overwrite=True)
+    final_stars = np.asarray(planet_table["StarName"], dtype=str)
+    final_names = np.asarray(planet_table["PlanetName"], dtype=str)
+    final_stars = np.where(np.char.str_len(np.char.strip(final_stars)) > 0, final_stars, final_names)
+    report_stat("Final planets",      len(planet_table))
+    report_stat("Final host systems", len(np.unique(final_stars)))
+    report_stat("Saved catalog",      "Archive_Pull_For_FastYield.ecsv")
+    report_stat("Elapsed time",       f"{(time.time()-time1)/60:.1f} mn")
     planet_table_classification(planet_table)
     planet_table_classification_histogram(planet_table)
     planet_table_statistics(planet_table)
-
     return planet_table
 
 
@@ -4264,7 +4357,7 @@ def yield_contrast_instru(instru="ANDES", exposure_time=6*60, thermal_model="BT-
     tr_mask = planet_table["DiscoveryMethod"]=="Transit"
     rv_mask = planet_table["DiscoveryMethod"]=="Radial Velocity"
     ot_mask = (planet_table["DiscoveryMethod"]!="Imaging") & (planet_table["DiscoveryMethod"]!="Radial Velocity") & (planet_table["DiscoveryMethod"]!="Transit")
-
+    
     # Taille des points (capés) en fonction du SNR
     s = get_size_from_SNR(SNR=SNR, s0=50, ds=200, SNR_min=SNR_thresh, SNR_max=1_000)
 
