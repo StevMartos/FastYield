@@ -53,7 +53,7 @@ def main():
     # ---------------------------
     # Parameters
     # ---------------------------
-    HWO_CODE_VERSION = "HWO_FastYield_v2.0"
+    HWO_CODE_VERSION = "HWO_FastYield_v1.0"
     dtype            = np.float32
 
     # --- HWO telescope (prospective architecture; no fixed flight baseline) ---
@@ -72,11 +72,8 @@ def main():
 
     # --- Paths ---
     instru_dir = get_sim_data_path() / instru
-    local_dir  = Path(__file__).resolve().parent / "data" / instru
-    if not (instru_dir / "PSF_simulations").is_dir() and (local_dir / "PSF_simulations").is_dir():
-        instru_dir = local_dir  # compatibility with the previous HWO local data layout
-    sim_dir = instru_dir / "FastYield_simulations"
-    psf_dir = instru_dir / "PSF_simulations"
+    sim_dir    = instru_dir / "FastYield_outputs"
+    psf_dir    = instru_dir / "PSF_inputs"
     sim_dir.mkdir(parents=True, exist_ok=True)
 
     # --- Coronagraphic PSF library ---
@@ -88,18 +85,18 @@ def main():
     # --- Instrument / science ---
     instru_type       = "imager"               # "IFU" or "imager"
     post_processing   = "DI"                   # "MM" or "DI" (imager forces DI)
-    SNR_thr           = 5
-    exposure_time     = 100*60                 # [mn]
-    force_new_calc    = False
-    thermal_model     = "auto"
-    reflected_model   = "auto"
-    spatial_sampling  = 3                      # [px/FWHM]; must match the PSF extraction convention
-    core_box_width_lD = 1.029                 # [lambda/D]; width of the 1-FWHM square photometric box
-    A_FWHM            = spatial_sampling**2    # [px] HWO legacy FWHM BOX; must match fraction_core FITS convention
-    Rc                = 1_000
-    filter_type       = "gaussian_fast"
-    table_type        = "Archive"
-
+    SNR_thr           = 5                      # Detection threshold
+    exposure_time     = 100*60                 # Total exposure time per planet [mn]
+    force_new_calc    = False                  # Forcing new simulations calculations
+    thermal_model     = "auto"                 # Model for the thermal spectrum of the planet ("auto", "None", "BT-Settl", "Exo-REM", "SONORA", "PICASO", "Saumon", etc.)
+    reflected_model   = "auto"                 # Model for the albedo of the planet ("auto", "tellurics", "flat", "PICASO")
+    spatial_sampling  = 3                      # [px/FWHM] Number of pixels per FWHM along each spatial direction (must match size_core in HWO_FastYield_PSF_profiles.py)
+    core_box_width_lD = 1.029                  # [lambda/D] Width of the square photometric aperture (1 FWHM)
+    A_FWHM            = spatial_sampling**2    # [px] Number of pixels inside the square photometric aperture (3x3 = 9 px)
+    Rc                = 1_000                  # MM cut-off resolution (Rc~100 is enough to reach ~1e-8 with speckles only, Rc~1000 would allows to go further (more conservative))
+    filter_type       = "gaussian_fast"        # MM filter type
+    table_type        = "Archive"              # "Archive": for all known exoplanets | "Simulated": TODO
+    
     # PSF density/fraction_core must use the same aperture definition as A_FWHM.
     # In particular, DO NOT substitute the 2.4 lambda/D PCS circular aperture
     # unless the entire HWO PSF library is recomputed using that convention.
@@ -112,12 +109,25 @@ def main():
     C_raw_min, C_raw_max = 10.0**(-10.75), 10.0**(-7.0) # target raw dark-hole contrast
     IWA_min, IWA_max     = 2.0, 4.5                   # [lambda/D]
 
+    # --- Spectral / instrumental exploratory ranges ---
+    # The HWO concept is NOT fixed; these are design-trade hypotheses.
+    N                  = 10
+    R_min, R_max       = 1_000, 10_000
+    l0_min, l0_max     = 0.2, 2.0              # [um] restricted by the FITS wavelength axis
+    Dl_min, Dl_max     = 0.03, 0.3             # [um] used for IFU and imager
+    Nl_max             = None                  # IFU max spectral channels; None => unrestricted
+    trans_instru_min   = 0.01                  # [e-/ph]
+    trans_instru_max   = 0.50
+    sigma_m_min        = 1e-3
+    sigma_m_max        = 1e-1
+    FoV_min, FoV_max   = 10, 2*sep_max         # [mas], FoV interpreted as full diameter
+    
     # --- Global and population plots ---
     plot_global_results     = True
     plot_populations        = True
     light_regime_plot       = "thermal+reflected"
-    band_plot               = "Y"
-    planet_population_space = "phys" # "obs", "phys", "both"
+    band_plot               = "I"
+    planet_population_space = "both" # "obs", "phys", "both"
 
     # scalar=fixed/interpolated, [min,max]=marginalized, None=full exploration range.
     R_plot            = None
@@ -126,22 +136,9 @@ def main():
     C_raw_plot        = None
     IWA_plot          = None
     trans_instru_plot = None
-    sigma_m_plot      = None # [%] : plot axes use 100*sigma_m
-    FoV_plot          = None
-
-    # --- Spectral / instrumental exploratory ranges ---
-    # The HWO concept is NOT fixed; these are design-trade hypotheses.
-    N                  = 3
-    R_min, R_max       = 1_000, 10_000
-    l0_min, l0_max     = 0.2, 2.0              # [um] restricted by the FITS wavelength axis
-    Dl_min, Dl_max     = 0.02, 0.3             # [um] used for IFU and imager
-    Nl_max             = 10_000               # IFU max spectral channels; None => unrestricted
-    trans_instru_min   = 0.01                  # [e-/ph]
-    trans_instru_max   = 0.50
-    sigma_m_min        = 1e-5 if post_processing == "MM" else 1e-3
-    sigma_m_max        = 1e-1
-    FoV_min, FoV_max   = 10, 2*sep_max         # [mas], FoV interpreted as full diameter
-
+    sigma_m_plot      = sigma_m_min # [%] : plot axes use 100*sigma_m
+    FoV_plot          = FoV_max
+    
     if instru_type == "IFU":
         R       = np.unique(np.logspace(np.log10(R_min), np.log10(R_max), N))
         N_R     = len(R)
@@ -159,6 +156,14 @@ def main():
     trans_instru = np.unique(np.linspace(trans_instru_min, trans_instru_max, N))
     sigma_m      = np.unique(np.logspace(np.log10(sigma_m_min), np.log10(sigma_m_max), N))
     FoV          = np.unique(np.logspace(np.log10(FoV_min), np.log10(FoV_max), N))
+    
+    # Ensure that a fixed FoV_plot is an exact grid point, so that the visibility
+    # condition (2*separation <= FoV) is evaluated without interpolation.
+    if FoV_plot is not None and np.ndim(FoV_plot) == 0:
+        FoV_fixed = float(FoV_plot)
+        if np.isfinite(FoV_fixed) and FoV_min <= FoV_fixed <= FoV_max:
+            FoV = np.unique(np.append(FoV, FoV_fixed))
+    
     N_l0, N_Dl, N_C_raw, N_IWA, N_TI, N_SM, N_FoV = map(len, (l0, Dl, C_raw, IWA, trans_instru, sigma_m, FoV))
 
     # --- Detector specifications at l0 (single family per central band) ---
@@ -401,9 +406,7 @@ def main():
         # Global model-bandwidth (with constant dl step, must be evenly spaced in order to create the model spectra, for the rotationnal broadening with Vsini)
         # Cover every requested IFU spectral window, including the widest one
         # at the boundaries of the l0 axis; retain the original imager handling.
-        if l0_min - Dl_max / 2 <= 0:
-            raise ValueError("The spectral bandwidth extends to nonphysical wavelengths; reduce Dl_max.")
-        lmin_model = 0.98 * (l0_min - Dl_max / 2)                # [µm]
+        lmin_model = max(0.98 * (l0_min - Dl_max / 2), 0.1)      # [µm]
         lmax_model = 1.02 * (l0_max + Dl_max / 2)                # [µm]
         dl_model   = lmin_model / (2*R_model)                    # [µm/bin] Nyquist sampling of a spectrum with max resolving power R_model: 2 samples per resolution element at lmin_model
         wave_model = np.arange(lmin_model, lmax_model, dl_model) # [µm] Model wavelength axis (with constant dl step)
@@ -821,12 +824,13 @@ def main():
         # 2D CORNER PLOT
 
         # Param values at max pdet_1D
-        params_max  = np.zeros((Ndim))
-        params_imax = np.zeros((Ndim), dtype=int)
+        params_max  = np.full(Ndim, np.nan)
+        params_imax = np.full(Ndim, -1, dtype=int)
         for idim in range(Ndim):
-            pdet_1D           = fyh.reduce_hcube(hcube=Pdet_plot, dims_to_keep=[idim], params=params, params_ranges=params_ranges, params_priors=params_priors, params_names=params_names)
-            params_imax[idim] = pdet_1D.argmax()
-            params_max[idim]  = params[idim][pdet_1D.argmax()]
+            pdet_1D = fyh.reduce_hcube(hcube=Pdet_plot, dims_to_keep=[idim], params=params, params_ranges=params_ranges, params_priors=params_priors, params_names=params_names)
+            if np.any(np.isfinite(pdet_1D)):
+                params_imax[idim] = np.nanargmax(pdet_1D)
+                params_max[idim]  = params[idim][params_imax[idim]]
 
         xmin       = np.array([np.nanmin(param) for param in params])
         xmax       = np.array([np.nanmax(param) for param in params])

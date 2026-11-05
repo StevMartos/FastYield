@@ -151,14 +151,14 @@ The expected structure is:
 sim_data/
 ├── Archive_table/
 ├── Background/
-├── PCS/
+├── ELT/
+├── HWO/
 ├── PSF/
 ├── R_corr/
 ├── Simulated_table/
 ├── Spectra/
     ├── planet_spectrum/
-    ├── star_spectrum/
-    └── molecular/
+    └── star_spectrum/
 ├── Systematics/
 └── Transmission/
 ```
