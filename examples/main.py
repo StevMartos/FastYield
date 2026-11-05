@@ -53,7 +53,7 @@ if __name__ == "__main__":
     
     
     
-    # Manuscript:    
+    # PhD manuscript:    
     
     # yield_plot_bands_texp(table="Archive", instru="HiRISE", thermal_model="auto", reflected_model="auto", systematics=False, PCA=False, fraction=False)
     
@@ -68,11 +68,9 @@ if __name__ == "__main__":
     # yield_plot_instrus_texp(exposure_time=10*60, thermal_model="auto", reflected_model="auto", planet_types=planet_types_reduced, fraction=False)
     
     # yield_plot_instrus_contrast(exposure_time=10*60, thermal_model="auto", reflected_model="auto", band_quantity="INSTRU", band_contrast="H", mode="best", nbins=42)
-    
-    
-    
-    
-    
+
+
+
     #------------------------------------------------------------------------------#
     #                           Update FastYield:                                  #
     #------------------------------------------------------------------------------#
@@ -88,10 +86,9 @@ if __name__ == "__main__":
     
     # get_planet_table_SNR(instru="ANDES", table="Archive", thermal_model="auto", reflected_model="auto", apodizer="NO_SP", strehl="MED", coronagraph=None,   systematics=False) # ~ 20 mn
     # get_planet_table_SNR(instru="ANDES", table="Archive", thermal_model="auto", reflected_model="auto", apodizer="NO_SP", strehl="MED", coronagraph="LYOT", systematics=False) # ~ 20 mn
-    
-    
-    
-    
+
+
+
     #------------------------------------------------------------------------------#
     #                     FastCurves (theoritical cases):                          #
     #------------------------------------------------------------------------------#
@@ -119,7 +116,7 @@ if __name__ == "__main__":
      
      
     #------------------------------------------------------------------------------#
-    #                  FastCurves (comparison with real data cases):               #
+    #              FastCurves (comparison with real JWST data cases):              #
     #------------------------------------------------------------------------------#
     
     # ### CT Cha b / SNR(1MEDIUM) = 11.71 (3.0 s)
@@ -131,26 +128,8 @@ if __name__ == "__main__":
     # ### HIP 65426 b / SNR(F356W) = 779.17
     # FastCurves(calculation="SNR", instru="NIRCam", input_DIT=308/60, model_planet="BT-Settl", T_planet=1600, lg_planet=4.0, separation_planet=0.8, planet_name="HIP 65426 b", mag_planet=6.771+9.85, mag_star=6.771, band0='K', T_star=8000, lg_star=4.0, exposure_time=20.3, coronagraph="MASK335R")
     
-    
-    
-    #------------------------------------------------------------------------------#
-    #                           Brown dwarfs with VIPAPYRUS:                       #
-    #------------------------------------------------------------------------------#
-    
-    # # κ And b
-    # FastCurves(instru="VIPAPYRUS", planet_name="κ And b", model_planet="BT-Settl", calculation="SNR", separation_planet=1.05, T_planet=1900, lg_planet=4.0, vsini_planet=0, mag_planet=15.01, T_star=10900, lg_star=4.0, mag_star=4.595, vsini_star=190, band0='H', exposure_time=120, apodizer="NO_SP", strehl="MED")
-    
-    # # HR 7672 B
-    # FastCurves(instru="VIPAPYRUS", planet_name="HR 7672 B", model_planet="BT-Settl", calculation="SNR", separation_planet=0.788, T_planet=1600, lg_planet=4.0, vsini_planet=0, mag_planet=13.04, T_star=5880, lg_star=4.0, mag_star=4.388, vsini_star=2, band0='K', exposure_time=120, apodizer="NO_SP", strehl="MED")
-    
-    # # HD 49197 B (possible ?)
-    # FastCurves(instru="VIPAPYRUS", planet_name="HD 49197 B", model_planet="BT-Settl", calculation="SNR", separation_planet=0.95, T_planet=1700, lg_planet=4.0, vsini_planet=0, mag_planet=14.61, T_star=6500, lg_star=4.0, mag_star=6.095, vsini_star=25, band0='H', exposure_time=120, apodizer="NO_SP", strehl="MED")
-    
-    # # HD 130948 B
-    # FastCurves(calculation="SNR", instru="VIPAPYRUS", planet_name="HD 130948 B", model_planet="BT-Settl", separation_planet=2.56, T_planet=1900, lg_planet=5.0, vsini_planet=62, mag_planet=11.8, T_star=5780, lg_star=4.18, mag_star=4.69, vsini_star=6.8, rv_star=10, rv_planet=30, band0='H', exposure_time=120, apodizer="NO_SP", strehl="MED")
-    
-    
-    
+
+
     #------------------------------------------------------------------------------#
     #                                Colormaps:                                    #
     #------------------------------------------------------------------------------#
@@ -173,13 +152,5 @@ if __name__ == "__main__":
     # colormap_vrot(instru="HARMONI", band="J", T_planet=300, T_star=3000, delta_rv=30, inc=0, spectrum_contributions="reflected", model="tellurics", airmass=2.0, stellar_halo_photon_noise_limited=False)
     
     # colormap_maxsep_phase_inc(instru="HARMONI", band="H", apodizer="NO_SP", strehl="JQ1", coronagraph=None)
-    
-    
-    
-    
-    
-    
-
-
 
 

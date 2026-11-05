@@ -998,7 +998,7 @@ def get_axis_weights_in_range(axis, pmin, pmax, prior):
 
 
 
-def interp_along_axis(values, axis, x0, axis_id):
+def interp_along_axis(values, axis, x0, axis_id, log_axis=False):
     """
     Linear interpolation of an N-D array along one axis.
     """
@@ -1028,10 +1028,15 @@ def interp_along_axis(values, axis, x0, axis_id):
 
     x_left  = axis[i0]
     x_right = axis[i1]
-    alpha   = (x0 - x_left) / (x_right - x_left)
-    v0      = np.take(values, i0, axis=axis_id)
-    v1      = np.take(values, i1, axis=axis_id)
-
+    if log_axis:
+        if x0 <= 0 or x_left <= 0 or x_right <= 0:
+            raise ValueError("Logarithmic interpolation requires positive values.")
+        alpha = (np.log(x0) - np.log(x_left)) / (np.log(x_right) - np.log(x_left))
+    else:
+        alpha = (x0 - x_left) / (x_right - x_left)
+    
+    v0 = np.take(values, i0, axis=axis_id)
+    v1 = np.take(values, i1, axis=axis_id)
     return (1.0 - alpha) * v0 + alpha * v1
 
 
@@ -1138,8 +1143,9 @@ def reduce_hcube(hcube, dims_to_keep, params, params_ranges, params_priors, para
 
         # --- Fix parameter by linear interpolation ---
         if pmin == pmax:
-            numerator   = np.asarray(interp_along_axis(numerator,   axis=axis, x0=pmin, axis_id=idim), dtype=dtype)
-            denominator = np.asarray(interp_along_axis(denominator, axis=axis, x0=pmin, axis_id=idim), dtype=dtype)
+            log_axis    = name == "C_raw"
+            numerator   = np.asarray(interp_along_axis(numerator,   axis=axis, x0=pmin, axis_id=idim, log_axis=log_axis), dtype=dtype)
+            denominator = np.asarray(interp_along_axis(denominator, axis=axis, x0=pmin, axis_id=idim, log_axis=log_axis), dtype=dtype)
             if verbose:
                 print(f"  - Fixing        {name:<20} at {pmin:<8g} with linear interpolation")
 
@@ -1239,7 +1245,7 @@ def set_log_decade_ticks(axis, vmin, vmax, max_labels=4):
 # ----------------------------------------------------
 
 def format_range(r):
-    return f"{r[0]:g}" if np.isclose(r[0], r[1]) else f"[{r[0]:g}, {r[1]:g}]"
+    return f"{r[0]:g}" if r[0] == r[1] else f"[{r[0]:g}, {r[1]:g}]"
 
 
 
@@ -1313,9 +1319,12 @@ def prepare_population_axis(axis, value, prior, name, verbose=False):
         exact = np.flatnonzero(np.isclose(axis, x0, rtol=0, atol=tol))
         if exact.size:
             return np.array([int(exact[0])]), np.array([1.0]), True, x0
-        i1    = int(np.searchsorted(axis, x0))
-        i0    = i1 - 1
-        alpha = (x0 - axis[i0]) / (axis[i1] - axis[i0])
+        i1 = int(np.searchsorted(axis, x0))
+        i0 = i1 - 1
+        if name == "C_raw":
+            alpha = (np.log(x0) - np.log(axis[i0])) / (np.log(axis[i1]) - np.log(axis[i0]))
+        else:
+            alpha = (x0 - axis[i0]) / (axis[i1] - axis[i0])
         return np.array([i0, i1]), np.array([1.0 - alpha, alpha]), True, x0
 
     idx, weights = get_axis_weights_in_range(axis=axis, pmin=pmin, pmax=pmax, prior=prior)
