@@ -9,9 +9,8 @@ os.environ["NUMBA_NUM_THREADS"]    = "1"
 # import fastyield.config as config
 # config.dpi_fig = 72
 from fastyield.config import rad2arcsec, h, c, R0_min, R0_max, lmin_bands, lmax_bands, get_sim_data_path, dpi_fig
-from fastyield.get_specs import get_detector_specs
 from fastyield.FastYield import load_planet_table, get_mask_planet_type, yield_population_plot, yield_heatmap_ELT
-from fastyield.FastYield_helpers import print_simulation_summary, make_suffix, write_meta, memmap_nbytes, format_nbytes, create_memmap_with_log, warmup_signal_noise_numba, get_valid_IFU_windows
+from fastyield.FastYield_helpers import print_simulation_summary, make_suffix, write_meta, memmap_nbytes, format_nbytes, create_memmap_with_log, warmup_signal_noise_numba, get_valid_IFU_windows, spectral_window_quadrature, average_detector_specs
 from fastyield.spectrum import get_wavelength_axis_constant_R, Spectrum, load_vega_spectrum, get_spectrum_contribution_name_model, get_wave_K, get_counts_from_density
 
 # import HWO package helpers module
@@ -53,7 +52,7 @@ def main():
     # ---------------------------
     # Parameters
     # ---------------------------
-    HWO_CODE_VERSION = "HWO_FastYield_v1.1_window_average"
+    HWO_CODE_VERSION = "HWO_FastYield_v1.1"
     dtype            = np.float32
 
     # --- HWO telescope (prospective architecture; no fixed flight baseline) ---
@@ -166,8 +165,8 @@ def main():
     N_l0, N_Dl, N_C_raw, N_IWA, N_TI, N_SM, N_FoV = map(len, (l0, Dl, C_raw, IWA, trans_instru, sigma_m, FoV))
 
     # Window-dependent detector noise. Mixed detector-family windows are approximate.
-    detector_l0 = np.select([l0 < 0.30, (l0 >= 0.30) & (l0 < 0.95), l0 >= 0.95], ["UV_MCP", "EMCCD", "H4RG"], default="UNKNOWN") if detector == "HWO_conservative" else np.select([l0 < 0.30, (l0 >= 0.30) & (l0 < 0.95), l0 >= 0.95], ["UV_MCP", "SKIPPER_CCD", "MKID"], default="UNKNOWN") if detector == "HWO_photon_counting" else np.full(N_l0, detector.replace("constant_", "", 1))
-    detector_specs = fyh.average_detector_specs(l0=l0, Dl=Dl, detector=detector, dtype=dtype)
+    detector_l0        = np.select([l0 < 0.30, (l0 >= 0.30) & (l0 < 0.95), l0 >= 0.95], ["UV_MCP", "EMCCD", "H4RG"], default="UNKNOWN") if detector == "HWO_conservative" else np.select([l0 < 0.30, (l0 >= 0.30) & (l0 < 0.95), l0 >= 0.95], ["UV_MCP", "SKIPPER_CCD", "MKID"], default="UNKNOWN") if detector == "HWO_photon_counting" else np.full(N_l0, detector.replace("constant_", "", 1))
+    detector_specs     = average_detector_specs(l0=l0, Dl=Dl, detector=detector, dtype=dtype)
     RON0, RON_lim, DC0 = (detector_specs[k] for k in ("RON0", "RON_lim", "DC0"))
     saturation_e, min_DIT, max_DIT, is_UTR = (detector_specs[k] for k in ("saturation_e", "min_DIT", "max_DIT", "is_UTR"))
     if np.any(detector_specs["mixed"]):
@@ -233,13 +232,13 @@ def main():
     meta = dict(code_version=HWO_CODE_VERSION, dtype=str(dtype),
 
                 # instrument / telescope
-                instru=instru, D=D, S=S, eps_D=eps_D, N_mirror=N_mirror, trans_dust=trans_dust, detector=detector, detector_l0=detector_l0, detector_window_rule="variance_weighted_mixed_nonUTR_conservative",
+                instru=instru, D=D, S=S, eps_D=eps_D, N_mirror=N_mirror, trans_dust=trans_dust, detector=detector, detector_l0=detector_l0,
 
                 # detector numeric specs that affect DIT/noise/products
                 RON0=RON0, RON_lim=RON_lim, DC0=DC0, saturation_e=saturation_e, min_DIT=min_DIT, max_DIT=max_DIT,
 
                 # science / pipeline
-                coronagraph=coronagraph, apodizer=apodizer, strehl=strehl, psf_suffix=suffix_PSF, psf_window_rule="flat_legendre_12", thermal_model=thermal_model, reflected_model=reflected_model, instru_type=instru_type, post_processing=post_processing, spatial_sampling=spatial_sampling, core_box_width_lD=core_box_width_lD, A_FWHM=A_FWHM, R_model=R_model, table_type=table_type,
+                coronagraph=coronagraph, apodizer=apodizer, strehl=strehl, psf_suffix=suffix_PSF, thermal_model=thermal_model, reflected_model=reflected_model, instru_type=instru_type, post_processing=post_processing, spatial_sampling=spatial_sampling, core_box_width_lD=core_box_width_lD, A_FWHM=A_FWHM, R_model=R_model, table_type=table_type,
 
                 # exploration space
                 l0_min=l0_min, l0_max=l0_max, C_raw_min=C_raw_min, C_raw_max=C_raw_max, IWA_min=IWA_min, IWA_max=IWA_max, trans_instru_min=trans_instru_min, trans_instru_max=trans_instru_max, sep_min=sep_min, sep_max=sep_max, N_PT=N_PT,
@@ -342,33 +341,33 @@ def main():
         # Spectral-window averages: a single (l0, Dl) PSF applies to every R.
         # Integrate the native FITS quantities before applying their separate
         # coronagraphic stellar/planet throughput conventions.
-        shape_psf = (N_l0, N_Dl, N_C_raw, N_IWA, N_sep)
-        PSF_profile_4D     = create_memmap_with_log(PSF_profile_4D_tmp_path,     shape=shape_psf, dtype=dtype, mode="w+")
-        fraction_core_4D   = create_memmap_with_log(fraction_core_4D_tmp_path,   shape=shape_psf, dtype=dtype, mode="w+")
-        PSF_profile_max_3D = create_memmap_with_log(PSF_profile_max_3D_tmp_path, shape=shape_psf[:-1], dtype=dtype, mode="w+")
-        eps_pos = np.finfo(dtype).tiny
-        logC0, logC = np.log10(C_raw0), np.log10(C_raw)
-        interp_psf  = RegularGridInterpolator((wave0, logC0, IWA0, separation0), np.log(np.clip(PSF_profile_density0_4D, eps_pos, None)), bounds_error=True)
-        interp_core = RegularGridInterpolator((wave0, logC0, IWA0, separation0), fraction_core0_4D, bounds_error=True)
-        interp_rt   = RegularGridInterpolator((wave0, logC0, IWA0, separation0), radial_transmission0_4D, bounds_error=True)
-        wave_nodes, node_weights = fyh.spectral_window_quadrature(l0, Dl, n_nodes=12)
+        shape_psf                = (N_l0, N_Dl, N_C_raw, N_IWA, N_sep)
+        PSF_profile_4D           = create_memmap_with_log(PSF_profile_4D_tmp_path,     shape=shape_psf, dtype=dtype, mode="w+")
+        fraction_core_4D         = create_memmap_with_log(fraction_core_4D_tmp_path,   shape=shape_psf, dtype=dtype, mode="w+")
+        PSF_profile_max_3D       = create_memmap_with_log(PSF_profile_max_3D_tmp_path, shape=shape_psf[:-1], dtype=dtype, mode="w+")
+        eps_pos                  = np.finfo(dtype).tiny
+        logC0, logC              = np.log10(C_raw0), np.log10(C_raw)
+        interp_psf               = RegularGridInterpolator((wave0, logC0, IWA0, separation0), np.log(np.clip(PSF_profile_density0_4D, eps_pos, None)), bounds_error=True)
+        interp_core              = RegularGridInterpolator((wave0, logC0, IWA0, separation0), fraction_core0_4D, bounds_error=True)
+        interp_rt                = RegularGridInterpolator((wave0, logC0, IWA0, separation0), radial_transmission0_4D, bounds_error=True)
+        wave_nodes, node_weights = spectral_window_quadrature(l0, Dl, n_nodes=12)
         if np.any((wave_nodes < wave0[0]) | (wave_nodes > wave0[-1])):
             print("WARNING: some spectral windows extend outside HWO PSF coverage; edge PSF values are held constant for those wavelengths.")
         cc, ii, ss = np.meshgrid(logC, IWA, separation, indexing="ij")
-        shape_pts = cc.shape
+        shape_pts  = cc.shape
         for j in tqdm(range(N_l0), desc="Band-averaging HWO PSF products"):
             for k in range(N_Dl):
                 profile_avg = np.zeros(shape_pts, dtype=np.float64)
                 core_avg    = np.zeros(shape_pts, dtype=np.float64)
                 for wn, wt in zip(wave_nodes[j, k], node_weights[j, k]):
-                    wavelength = np.clip(wn, wave0[0], wave0[-1])
-                    pts = np.column_stack((np.full(cc.size, wavelength), cc.ravel(), ii.ravel(), ss.ravel()))
-                    density = np.exp(interp_psf(pts)).reshape(shape_pts)
-                    core = np.clip(interp_core(pts).reshape(shape_pts), 0.0, 1.0)
-                    radial = np.clip(interp_rt(pts).reshape(shape_pts), 0.0, 1.0)
+                    wavelength   = np.clip(wn, wave0[0], wave0[-1])
+                    pts          = np.column_stack((np.full(cc.size, wavelength), cc.ravel(), ii.ravel(), ss.ravel()))
+                    density      = np.exp(interp_psf(pts)).reshape(shape_pts)
+                    core         = np.clip(interp_core(pts).reshape(shape_pts), 0.0, 1.0)
+                    radial       = np.clip(interp_rt(pts).reshape(shape_pts), 0.0, 1.0)
                     profile_avg += wt * density * radial[..., :1]
-                    core_avg += wt * core * radial
-                profile_avg *= pxscales[j]**2  # fixed l0-sized spatial pixel throughout the band
+                    core_avg    += wt * core * radial
+                profile_avg             *= pxscales[j]**2  # fixed l0-sized spatial pixel throughout the band
                 PSF_profile_4D[j, k]     = profile_avg.astype(dtype)
                 fraction_core_4D[j, k]   = core_avg.astype(dtype)
                 PSF_profile_max_3D[j, k] = np.max(profile_avg, axis=-1).astype(dtype)

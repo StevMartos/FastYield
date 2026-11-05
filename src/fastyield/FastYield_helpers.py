@@ -1,6 +1,7 @@
 # import FastYield modules
 from fastyield.config import rad2arcsec
 from fastyield.signal_noise import compute_sigma_base_2_speck_numba, compute_sigma_base_2_al_spat_numba, compute_sigma_base_2_al_spec_fast
+from fastyield.get_specs import get_detector_specs
 
 
 # import numpy modules
@@ -111,35 +112,35 @@ def print_simulation_summary(instru, instru_type, detector, post_processing, D, 
     _print_section("FastYield simulation summary")
 
     # General configuration
-    _print_kv("Instrument", f"ELT/{instru}")
-    _print_kv("Instrument type", instru_type)
-    _print_kv("Detector", detector)
-    _print_kv("Post-processing", post_processing)
+    _print_kv("Instrument",            f"ELT/{instru}")
+    _print_kv("Instrument type",       instru_type)
+    _print_kv("Detector",              detector)
+    _print_kv("Post-processing",       post_processing)
     _print_kv("Force new calculation", force_new_calc)
 
     # Telescope / detector
     _print_section("Telescope and detector", "-")
-    _print_kv("Diameter D", f"{_fmt_scalar(D)} m")
+    _print_kv("Diameter D",        f"{_fmt_scalar(D)} m")
     _print_kv("Collecting area S", f"{_fmt_scalar(S)} m²")
-    _print_kv("ELT mirrors", _fmt_scalar(N_mirror))
+    _print_kv("ELT mirrors",       _fmt_scalar(N_mirror))
     _print_kv("Dust transmission", _fmt_scalar(trans_dust))
     if N_px is not None:
         _print_kv("Detector linear size", f"{_fmt_scalar(N_px)} px")
-    _print_kv("RON0", f"{_fmt_scalar(RON0)} e-/px/read")
-    _print_kv("RON floor", f"{_fmt_scalar(RON_lim)} e-/px")
-    _print_kv("Dark current", f"{_fmt_scalar(DC0)} e-/px/mn")
-    _print_kv("Saturation", f"{_fmt_scalar(saturation_e)} e-/px")
-    _print_kv("Minimum DIT", f"{_fmt_scalar(min_DIT)} mn")
-    _print_kv("Maximum DIT", f"{_fmt_scalar(max_DIT)} mn")
+    _print_kv("RON0",         f"{_fmt_scalar(np.unique(RON0))} e-/px/read")
+    _print_kv("RON floor",    f"{_fmt_scalar(np.unique(RON_lim))} e-/px")
+    _print_kv("Dark current", f"{_fmt_scalar(np.unique(DC0))} e-/px/mn")
+    _print_kv("Saturation",   f"{_fmt_scalar(np.unique(saturation_e))} e-/px")
+    _print_kv("Minimum DIT",  f"{_fmt_scalar(np.unique(min_DIT))} mn")
+    _print_kv("Maximum DIT",  f"{_fmt_scalar(np.unique(max_DIT))} mn")
 
     # Science setup
     _print_section("Science setup", "-")
-    _print_kv("Coronagraph", coronagraph)
-    _print_kv("Apodizer", apodizer)
-    _print_kv("Strehl condition", strehl)
-    _print_kv("Thermal model", thermal_model)
-    _print_kv("Reflected model", reflected_model)
-    _print_kv("Detection threshold", f"S/N >= {_fmt_scalar(SNR_thr)}")
+    _print_kv("Coronagraph",              coronagraph)
+    _print_kv("Apodizer",                 apodizer)
+    _print_kv("Strehl condition",         strehl)
+    _print_kv("Thermal model",            thermal_model)
+    _print_kv("Reflected model",          reflected_model)
+    _print_kv("Detection threshold",      f"S/N >= {_fmt_scalar(SNR_thr)}")
     _print_kv("Exposure time per target", f"{_fmt_scalar(exposure_time)} mn")
     if spatial_sampling is not None:
         _print_kv("Spatial sampling", f"{_fmt_scalar(spatial_sampling)} px/FWHM")
@@ -149,39 +150,39 @@ def print_simulation_summary(instru, instru_type, detector, post_processing, D, 
 
     if instru_type == "IFU":
         _print_kv("High-pass cut-off Rc", _fmt_scalar(Rc))
-        _print_kv("MM filter type", filter_type)
+        _print_kv("MM filter type",       filter_type)
 
     # Catalog parameters
     _print_section("Catalog parameters", "-")
-    _print_kv("Catalog type", table_type)
-    _print_kv("Separation range", f"[{_fmt_scalar(sep_min)}, {_fmt_scalar(sep_max)}] mas")
-    _print_kv("Initial catalog size", f"{_fmt_scalar(N_PT_raw)} planets")
+    _print_kv("Catalog type",          table_type)
+    _print_kv("Separation range",      f"[{_fmt_scalar(sep_min)}, {_fmt_scalar(sep_max)}] mas")
+    _print_kv("Initial catalog size",  f"{_fmt_scalar(N_PT_raw)} planets")
     _print_kv("Filtered catalog size", f"{_fmt_scalar(N_PT)} planets")
 
     # Parameter space
     _print_section("Explored parameter space", "-")
     if R is not None:
-        _print_kv("R", _fmt_axis(R, log_hint=True))
+        _print_kv("R",            _fmt_axis(R, log_hint=True))
     if l0 is not None:
-        _print_kv("lambda_0", _fmt_axis(l0, unit=" µm", log_hint=False))
+        _print_kv("lambda_0",     _fmt_axis(l0, unit=" µm", log_hint=False))
     if Nl is not None:
-        _print_kv("N_lambda", _fmt_axis(Nl, log_hint=True))
+        _print_kv("N_lambda",     _fmt_axis(Nl, log_hint=True))
     if Dl is not None:
         _print_kv("Delta_lambda", _fmt_axis(Dl, unit=" µm", log_hint=False))
     if WFE is not None:
-        _print_kv("WFE", _fmt_axis(WFE, unit=" nm RMS", log_hint=False))
+        _print_kv("WFE",          _fmt_axis(WFE, unit=" nm RMS", log_hint=False))
     if r_WFE is not None:
-        _print_kv("r_WFE", _fmt_axis(r_WFE, unit="", log_hint=False))
+        _print_kv("r_WFE",        _fmt_axis(r_WFE, unit="", log_hint=False))
     if C_raw is not None:
-        _print_kv("C_raw", _fmt_axis(C_raw, log_hint=True))
+        _print_kv("C_raw",        _fmt_axis(C_raw, log_hint=True))
     if IWA is not None:
-        _print_kv("IWA", _fmt_axis(IWA, unit=f" {IWA_unit}", log_hint=True))
+        _print_kv("IWA",          _fmt_axis(IWA, unit=f" {IWA_unit}", log_hint=True))
     if trans_instru is not None:
         _print_kv("trans_instru", _fmt_axis(trans_instru, unit="e-/ph", log_hint=False))
     if sigma_m is not None:
-        _print_kv("sigma_m", _fmt_axis(100*np.asarray(sigma_m), unit=" %", log_hint=True))
+        _print_kv("sigma_m",      _fmt_axis(100*np.asarray(sigma_m), unit=" %", log_hint=True))
     if FoV is not None:
-        _print_kv("FoV", _fmt_axis(FoV, unit=" mas", log_hint=True))
+        _print_kv("FoV",          _fmt_axis(FoV, unit=" mas", log_hint=True))
 
     axes_lengths = []
     for arr in (R, l0, Nl, Dl, WFE, C_raw, IWA, trans_instru, sigma_m, FoV):
@@ -225,6 +226,60 @@ def create_memmap_with_log(path, shape, dtype=np.float32, mode="w+"):
 # --------------
 # General helper
 # --------------
+
+def spectral_window_quadrature(l0, Dl, n_nodes=12):
+    """Legendre nodes and normalized weights for each rectangular spectral band."""
+    nodes, weights = np.polynomial.legendre.leggauss(n_nodes)
+    wavelengths    = np.asarray(l0)[:, None, None] + 0.5*np.asarray(Dl)[None, :, None]*nodes
+    return wavelengths, np.broadcast_to(weights / 2, wavelengths.shape)
+
+
+
+def average_detector_specs(l0, Dl, detector, dtype=np.float32):
+    """Window-integrated detector assumptions, without averaging discrete readout modes.
+
+    Continuous noise variances are averaged by fractional spectral coverage. For
+    mixed-family windows, the non-UTR readout is a conservative approximation;
+    saturation is the lowest full well, and DIT limits use their intersection.
+    This is an effective-detector model, not a physical multi-arm instrument.
+    """
+    lo = np.asarray(l0)[:, None] - np.asarray(Dl)[None, :] / 2
+    hi = np.asarray(l0)[:, None] + np.asarray(Dl)[None, :] / 2
+    if detector.startswith("constant_"):
+        names     = [detector[len("constant_"):]]
+        fractions = np.ones((1,) + lo.shape)
+    else:
+        if detector == "HWO_conservative":
+            names = ["UV_MCP", "EMCCD", "H4RG"]
+        elif detector == "HWO_photon_counting":
+            names = ["UV_MCP", "SKIPPER_CCD", "MKID"]
+        else:
+            raise ValueError(f"Unknown HWO detector mode: {detector}")
+        edges     = [-np.inf, 0.30, 0.95, np.inf]
+        fractions = np.stack([np.maximum(0, np.minimum(hi, b) - np.maximum(lo, a)) / (hi - lo) for a, b in zip(edges[:-1], edges[1:])])
+    specs  = [get_detector_specs(n) for n in names]
+    active = fractions > 1e-12
+    mixed  = np.count_nonzero(active, axis=0) > 1
+    def weighted(key, squared=False):
+        values = np.asarray([x[key] for x in specs], dtype=float)
+        out    = np.tensordot(values**2 if squared else values, fractions, axes=(0, 0))
+        return np.sqrt(out) if squared else out
+    def conservative(key, func):
+        vals = np.asarray([x[key] for x in specs], dtype=float)
+        return func(np.where(active, vals[:, None, None], np.nan), axis=0)
+    RON0         = weighted("RON0", squared=True)
+    RON_lim      = weighted("RON_lim", squared=True)
+    DC0          = weighted("DC0")
+    saturation_e = conservative("saturation_e", np.nanmin)
+    min_DIT      = conservative("min_DIT",      np.nanmax)
+    max_DIT      = conservative("max_DIT",      np.nanmin)
+    if np.any(min_DIT > max_DIT):
+        raise ValueError("Detector families have incompatible DIT limits in a spectral window")
+    utr    = np.asarray([x["family"] == "HgCdTe_HxRG" for x in specs], dtype=bool)
+    is_UTR = np.all(~active | utr[:, None, None], axis=0) & ~mixed
+    return dict(RON0=RON0.astype(dtype), RON_lim=RON_lim.astype(dtype), DC0=DC0.astype(dtype), saturation_e=saturation_e.astype(dtype), min_DIT=min_DIT.astype(dtype), max_DIT=max_DIT.astype(dtype), is_UTR=is_UTR, mixed=mixed)
+
+
 
 def interp_flat_last_axis(x, y, x0, dtype=None):
     """

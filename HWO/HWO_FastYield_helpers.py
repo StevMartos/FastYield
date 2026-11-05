@@ -88,57 +88,6 @@ def find_hwo_psf_suffix(psf_dir, instru, apodizer, coronagraph, D, suffix_overri
 
 # -------------------------------------------------------------
 
-def spectral_window_quadrature(l0, Dl, n_nodes=12):
-    """Legendre nodes and normalized weights for each rectangular spectral band."""
-    nodes, weights = np.polynomial.legendre.leggauss(n_nodes)
-    wavelengths = np.asarray(l0)[:, None, None] + 0.5*np.asarray(Dl)[None, :, None]*nodes
-    return wavelengths, np.broadcast_to(weights / 2, wavelengths.shape)
-
-
-def average_detector_specs(l0, Dl, detector, dtype=np.float32):
-    """Window-integrated detector assumptions, without averaging discrete readout modes.
-
-    Continuous noise variances are averaged by fractional spectral coverage. For
-    mixed-family windows, the non-UTR readout is a conservative approximation;
-    saturation is the lowest full well, and DIT limits use their intersection.
-    This is an effective-detector model, not a physical multi-arm instrument.
-    """
-    from fastyield.get_specs import get_detector_specs
-    lo = np.asarray(l0)[:, None] - np.asarray(Dl)[None, :] / 2
-    hi = np.asarray(l0)[:, None] + np.asarray(Dl)[None, :] / 2
-    if detector.startswith("constant_"):
-        names = [detector[len("constant_"):]]
-        fractions = np.ones((1,) + lo.shape)
-    else:
-        if detector == "HWO_conservative":
-            names = ["UV_MCP", "EMCCD", "H4RG"]
-        elif detector == "HWO_photon_counting":
-            names = ["UV_MCP", "SKIPPER_CCD", "MKID"]
-        else:
-            raise ValueError(f"Unknown HWO detector mode: {detector}")
-        edges = [-np.inf, 0.30, 0.95, np.inf]
-        fractions = np.stack([np.maximum(0, np.minimum(hi, b) - np.maximum(lo, a)) / (hi - lo) for a, b in zip(edges[:-1], edges[1:])])
-    specs = [get_detector_specs(n) for n in names]
-    active = fractions > 1e-12
-    mixed = np.count_nonzero(active, axis=0) > 1
-    def weighted(key, squared=False):
-        values = np.asarray([x[key] for x in specs], dtype=float)
-        out = np.tensordot(values**2 if squared else values, fractions, axes=(0, 0))
-        return np.sqrt(out) if squared else out
-    def conservative(key, func):
-        vals = np.asarray([x[key] for x in specs], dtype=float)
-        return func(np.where(active, vals[:, None, None], np.nan), axis=0)
-    RON0 = weighted("RON0", squared=True)
-    RON_lim = weighted("RON_lim", squared=True)
-    DC0 = weighted("DC0")
-    saturation_e = conservative("saturation_e", np.nanmin)
-    min_DIT = conservative("min_DIT", np.nanmax)
-    max_DIT = conservative("max_DIT", np.nanmin)
-    if np.any(min_DIT > max_DIT):
-        raise ValueError("Detector families have incompatible DIT limits in a spectral window")
-    utr = np.asarray([x["family"] == "HgCdTe_HxRG" for x in specs], dtype=bool)
-    is_UTR = np.all(~active | utr[:, None, None], axis=0) & ~mixed
-    return dict(RON0=RON0.astype(dtype), RON_lim=RON_lim.astype(dtype), DC0=DC0.astype(dtype), saturation_e=saturation_e.astype(dtype), min_DIT=min_DIT.astype(dtype), max_DIT=max_DIT.astype(dtype), is_UTR=is_UTR, mixed=mixed)
 
 
 # --- Globals (context) used by multiprocessing workers ---
@@ -154,7 +103,7 @@ def init_worker_IM(ctx):
     global _IM_CTX
     _IM_CTX = ctx
 
-    # Temp PSF memmaps opened inside each worker
+    # Band-averaged HWO PSF memmaps opened inside each worker: (l0, Dl, C_raw, IWA, separation) for profiles/core and (l0, Dl, C_raw, IWA) for maxima.
     _IM_CTX["PSF_profile_4D"]     = np.load(_IM_CTX["PSF_profile_4D_path"],     mmap_mode="r")
     _IM_CTX["fraction_core_4D"]   = np.load(_IM_CTX["fraction_core_4D_path"],   mmap_mode="r")
     _IM_CTX["PSF_profile_max_3D"] = np.load(_IM_CTX["PSF_profile_max_3D_path"], mmap_mode="r")
@@ -171,7 +120,7 @@ def init_worker_IFU(ctx):
     global _IFU_CTX
     _IFU_CTX = ctx
 
-    # Temp PSF memmaps opened inside each worker
+    # Band-averaged HWO PSF memmaps opened inside each worker: (l0, Dl, C_raw, IWA, separation) for profiles/core and (l0, Dl, C_raw, IWA) for maxima.
     _IFU_CTX["PSF_profile_4D"]     = np.load(_IFU_CTX["PSF_profile_4D_path"],     mmap_mode="r")
     _IFU_CTX["fraction_core_4D"]   = np.load(_IFU_CTX["fraction_core_4D_path"],   mmap_mode="r")
     _IFU_CTX["PSF_profile_max_3D"] = np.load(_IFU_CTX["PSF_profile_max_3D_path"], mmap_mode="r")
@@ -225,7 +174,7 @@ def process_IFU(idx):
     R                      = _IFU_CTX["R"]
     wave_1D_list           = _IFU_CTX["wave_1D_list"]
     dwave_1D_list          = _IFU_CTX["dwave_1D_list"]
-    trans_tel_1D_list = _IFU_CTX["trans_tel_1D_list"]
+    trans_tel_1D_list      = _IFU_CTX["trans_tel_1D_list"]
     trans_instru           = _IFU_CTX["trans_instru"]
     background_1D_list     = _IFU_CTX["background_1D_list"]
     pxscales               = _IFU_CTX["pxscales"]
@@ -258,8 +207,8 @@ def process_IFU(idx):
     planet_spectrum = planet_spectrum.interpolate_wavelength(wave_instru, renorm=False) # [J/s/m2/µm]
 
 
-    # HWO PSFs depend on (l0, C_raw, IWA_lD, separation), not stellar magnitude.
-    # Interpolate linearly in the planet's actual angular separation (mas).
+    # Window-averaged HWO PSFs depend on (l0, Dl, C_raw, IWA_lD, separation), not stellar magnitude or IFU resolution R.
+    # Interpolate the precomputed band-averaged responses at the planet's actual angular separation (mas).
     PSF_profile_sep_4D   = interp_flat_last_axis(separation, PSF_profile_4D,   separation_planet, dtype=dtype)
     fraction_core_sep_4D = interp_flat_last_axis(separation, fraction_core_4D, separation_planet, dtype=dtype)
 
@@ -269,6 +218,8 @@ def process_IFU(idx):
     planet_spectrum.flux *= scale_spectrum # [J/s/m²/µm] => [ph/mn/µm]
 
 
+    # The wavelength-dependent PSF has already been averaged over each (l0, Dl) window;
+    # the following stellar/planet spectral terms retain their own spectral weighting.
     # --- Computing data depending only on R, l0 and Dl ---
     # These quantities do not yet include the spatial PSF factors or
     # the instrumental throughput axis.  They are pure spectral quantities,
@@ -289,10 +240,9 @@ def process_IFU(idx):
             sigma_bkg_2_3D[i]       = np.nan
             sigma_syst_base_2_3D[i] = np.nan
             continue
-
         wave_i           = wave_1D_list[i]
         dwave_i          = dwave_1D_list[i]
-        trans_tel_i = trans_tel_1D_list[i]
+        trans_tel_i      = trans_tel_1D_list[i]
         star_i           = star_spectrum.degrade_resolution(wave_i,   renorm=False, R_output=res, filter_type=filter_type).flux # [ph/mn/µm]
         planet_i         = planet_spectrum.degrade_resolution(wave_i, renorm=False, R_output=res, filter_type=filter_type).flux # [ph/mn/µm]
         idx_lo, idx_hi   = range_1D_list[i] # (l0, Dl)
@@ -426,11 +376,11 @@ def process_IFU(idx):
         sigma_syst_base_2_3D[i, invalid] = np.nan
 
 
-    # --- Computing DIT length in [mn/DIT] (R, l0, Dl, C_raw, IWA, TI) ---
+    # --- Computing DIT length with window-effective saturation and readout limits [mn/DIT] (R, l0, Dl, C_raw, IWA, TI) ---
 
-    # max_star_flux in [ph/px/mn/bin] in the brightest pixel and bin (through coronagraph, if any):
+    # Approximate the brightest stellar pixel/bin from the brightest stellar spectral bin and the window-averaged peak PSF [ph/px/mn/bin].
     # [total star ph/mn/bin] in the brightest bin * [star flux fraction/px] in the brightest pixel => [ph/px/mn/bin] in the brightest pixel and bin
-    # (R, l0, Dl, 1, 1)                           * (1, l0, 1, C_raw, IWA)                         => (R, l0, Dl, C_raw, IWA)
+    # (R, l0, Dl, 1, 1)                           * (1, l0, Dl, C_raw, IWA)                        => (R, l0, Dl, C_raw, IWA)
     max_star_flux_5D = max_star_flux_3D[:, :, :, None, None] * PSF_profile_max_3D[None, :, :, :, :]
 
     # max_star_flux in [e-/px/mn/bin] in the brightest pixel with instrumental transmission (through coronagraph, if any):
@@ -438,7 +388,7 @@ def process_IFU(idx):
     # (R, l0, Dl, C_raw, IWA, 1)                    * (1, 1, 1, 1, 1, TI) => (R, l0, Dl, C_raw, IWA, TI)
     max_star_flux_6D = max_star_flux_5D[:, :, :, :, :, None] * trans_instru[None, None, None, None, None, :]
 
-    # Computing DIT length in [mn/DIT] (+ clipping between min and max DIT)
+    # Compute the DIT [mn/DIT], clipped using the detector constraints effective over each spectral window.
     saturation_e_6D = saturation_e[None, :, :, None, None, None]
     min_DIT_6D      = min_DIT[None, :, :, None, None, None]
     max_DIT_6D      = max_DIT[None, :, :, None, None, None]
@@ -449,17 +399,17 @@ def process_IFU(idx):
 
     # --- Computing signal in [e-/FWHM/DIT] (R, l0, Dl, C_raw, IWA, TI) ---
 
-    # Signal at the planet's separation inside the FWHM in [ph/FWHM/mn] (throught coronagraph, if any)
+    # Signal at the planet's separation inside the FWHM in [ph/FWHM/mn] (through coronagraph, if any)
     # [total planet ph/mn] * [planet flux fraction/FWHM] => [ph/FWHM/mn]
-    # (R, l0, Dl, 1, 1)    * (1, l0, 1, C_raw, IWA)      => (R, l0, Dl, C_raw, IWA)
+    # (R, l0, Dl, 1, 1)    * (1, l0, Dl, C_raw, IWA)     => (R, l0, Dl, C_raw, IWA)
     signal_5D = signal_3D[:, :, :, None, None] * fraction_core_sep_4D[None, :, :, :, :]
 
-    # Signal at the planet's separation inside the FWHM in [e-/FWHM/mn] with instrumental transmission (throught coronagraph, if any)
+    # Signal at the planet's separation inside the FWHM in [e-/FWHM/mn] with instrumental transmission (through coronagraph, if any)
     # [ph/FWHM/mn]               * [e-/ph]             => [e-/FWHM/mn]
     # (R, l0, Dl, C_raw, IWA, 1) * (1, 1, 1, 1, 1, TI) => (R, l0, Dl, C_raw, IWA, TI)
     signal_6D = signal_5D[:, :, :, :, :, None] * trans_instru[None, None, None, None, None, :]
 
-    # Signal at the planet's separation inside the FWHM in [e-/FWHM/DIT] with instrumental transmission integrated over the DIT (throught coronagraph, if any)
+    # Signal at the planet's separation inside the FWHM in [e-/FWHM/DIT] with instrumental transmission integrated over the DIT (through coronagraph, if any)
     # [e-/FWHM/mn]              * [mn/DIT]                  => [e-/FWHM/DIT]
     # (R, l0, Dl, C_raw, IWA, TI) * (R, l0, Dl, C_raw, IWA, TI) => (R, l0, Dl, C_raw, IWA, TI)
     signal_6D = signal_6D * DIT_6D
@@ -467,17 +417,17 @@ def process_IFU(idx):
 
     # --- Computing stellar halo photon noise variance (Poisson) in [e-/FWHM/DIT] (R, l0, Dl, C_raw, IWA, TI) ---
 
-    # Stellar halo photon noise variance (Poisson) at the planet's separation in [ph/px/mn] (throught coronagraph, if any)
+    # Stellar halo photon noise variance (Poisson) at the planet's separation in [ph/px/mn] (through coronagraph, if any)
     # [total star ph/mn] * [star flux fraction/px] => [ph/px/mn]
-    # (R, l0, Dl, 1, 1)  * (1, l0, 1, C_raw, IWA)  => (R, l0, Dl, C_raw, IWA)
+    # (R, l0, Dl, 1, 1)  * (1, l0, Dl, C_raw, IWA) => (R, l0, Dl, C_raw, IWA)
     sigma_halo_2_5D = sigma_halo_2_3D[:, :, :, None, None] * PSF_profile_sep_4D[None, :, :, :, :]
 
-    # Stellar halo photon noise variance (Poisson) at the planet's separation in [e-/px/mn] with instrumental transmission (throught coronagraph, if any)
+    # Stellar halo photon noise variance (Poisson) at the planet's separation in [e-/px/mn] with instrumental transmission (through coronagraph, if any)
     # [ph/px/mn]                 * [e-/ph]             => [e-/px/mn]
     # (R, l0, Dl, C_raw, IWA, 1) * (1, 1, 1, 1, 1, TI) => (R, l0, Dl, C_raw, IWA, TI)
     sigma_halo_2_6D = sigma_halo_2_5D[:, :, :, :, :, None] * trans_instru[None, None, None, None, None, :]
 
-    # Stellar halo photon noise variance (Poisson) at the planet's separation in [e-/FWHM/DIT] with instrumental transmission integrated over the DIT and the FWHM (quadrature addition assuming statistical independance) (throught coronagraph, if any)
+    # Stellar halo photon noise variance (Poisson) at the planet's separation in [e-/FWHM/DIT] with instrumental transmission integrated over the DIT and the FWHM (quadrature addition assuming statistical independence) (through coronagraph, if any)
     # [e-/px/mn]                  * [px/FWHM]*[mn/DIT]          => [e-/FWHM/DIT]
     # (R, l0, Dl, C_raw, IWA, TI) * (R, l0, Dl, C_raw, IWA, TI) => (R, l0, Dl, C_raw, IWA, TI)
     sigma_halo_2_6D = sigma_halo_2_6D * A_FWHM*DIT_6D
@@ -485,17 +435,17 @@ def process_IFU(idx):
 
     # --- Computing stellar halo systematic noise variance (at sigma_m = 1) in [e-/FWHM/DIT]**2 (R, l0, Dl, C_raw, IWA, TI) (all quantities are squared since sigma_syst**2 propto stellar_halo**2) ---
 
-    # Stellar halo systematic noise variance at the planet's separation in [ph/px/mn]**2 (throught coronagraph, if any)
+    # Stellar halo systematic noise variance at the planet's separation in [ph/px/mn]**2 (through coronagraph, if any)
     # [total star ph/mn]**2 * [star flux fraction/px]**2 => [ph/px/mn]**2
-    # (R, l0, Dl, 1, 1)     * (1, l0, 1, C_raw, IWA)     => (R, l0, Dl, C_raw, IWA)
+    # (R, l0, Dl, 1, 1)     * (1, l0, Dl, C_raw, IWA)    => (R, l0, Dl, C_raw, IWA)
     sigma_syst_base_2_5D = sigma_syst_base_2_3D[:, :, :, None, None] * PSF_profile_sep_4D[None, :, :, :, :]**2
 
-    # Stellar halo systematic noise variance at the planet's separation in [e-/px/mn]**2 with instrumental transmission (throught coronagraph, if any)
+    # Stellar halo systematic noise variance at the planet's separation in [e-/px/mn]**2 with instrumental transmission (through coronagraph, if any)
     # [ph/px/mn]**2              * [e-/ph]**2          => [e-/px/mn]**2
     # (R, l0, Dl, C_raw, IWA, 1) * (1, 1, 1, 1, 1, TI) => (R, l0, Dl, C_raw, IWA, TI)
     sigma_syst_base_2_6D = sigma_syst_base_2_5D[:, :, :, :, :, None] * trans_instru[None, None, None, None, None, :]**2
 
-    # Stellar halo systematic noise variance at the planet's separation in [e-/px/mn]**2 with instrumental transmission integrated over the DIT and the FWHM (throught coronagraph, if any) (we take A_FWHM**2 * DIT**2 since sigma_syst_base_2 propto H_integrated**2 propto A_FWHM**2*DIT**2, where H_integrated = the halo integrated over FWHM boxes and the DIT)
+    # Stellar halo systematic noise variance at the planet's separation in [e-/px/mn]**2 with instrumental transmission integrated over the DIT and the FWHM (through coronagraph, if any) (we take A_FWHM**2 * DIT**2 since sigma_syst_base_2 propto H_integrated**2 propto A_FWHM**2*DIT**2, where H_integrated = the halo integrated over FWHM boxes and the DIT)
     # [e-/px/mn]**2               * [px/FWHM]**2*[mn/DIT]**2  => [e-/FWHM/DIT]**2
     # (R, l0, Dl, C_raw, IWA, TI) * (R, l0, Dl, C_raw, IWA, TI) => (R, l0, Dl, C_raw, IWA, TI)
     sigma_syst_base_2_6D = sigma_syst_base_2_6D * A_FWHM**2*DIT_6D**2
@@ -508,7 +458,7 @@ def process_IFU(idx):
     # (R, l0, Dl, 1) * (1, 1, 1, TI) => (R, l0, Dl, TI)
     sigma_bkg_2_4D = sigma_bkg_2_3D[:, :, :, None] * trans_instru[None, None, None, :]
 
-    # Background photon noise variance (Poisson) in [e-/FWHM/DIT] with instrumental transmission integrated over the DIT and the FWHM (quadrature addition assuming statistical independance)
+    # Background photon noise variance (Poisson) in [e-/FWHM/DIT] with instrumental transmission integrated over the DIT and the FWHM (quadrature addition assuming statistical independence)
     # [e-/px/mn]            * [px/FWHM]*[mn/DIT]          => [e-/FWHM/DIT]
     # (R, l0, Dl, 1, 1, TI) * (R, l0, Dl, C_raw, IWA, TI) => (R, l0, Dl, C_raw, IWA, TI)
     sigma_bkg_2_6D = sigma_bkg_2_4D[:, :, :, None, None, :] * A_FWHM*DIT_6D
@@ -560,8 +510,8 @@ def process_IM(idx):
     planet_spectrum, _, _, star_spectrum = get_thermal_reflected_spectrum(planet=planet, thermal_model=thermal_model, reflected_model=reflected_model, instru=None, wave_model=wave_instru, wave_K=wave_K, counts_vega_K=counts_vega_K, show=False, in_planet_mag=True, interpolated_spectrum=True, apply_kinematics=False)
 
 
-    # HWO PSFs depend on (l0, C_raw, IWA_lD, separation), not stellar magnitude.
-    # Interpolate linearly in the planet's actual angular separation (mas).
+    # Window-averaged HWO PSFs depend on (l0, Dl, C_raw, IWA_lD, separation), not stellar magnitude or IFU resolution R.
+    # Interpolate the precomputed band-averaged responses at the planet's actual angular separation (mas).
     PSF_profile_sep_4D   = interp_flat_last_axis(separation, PSF_profile_4D,   separation_planet, dtype=dtype)
     fraction_core_sep_4D = interp_flat_last_axis(separation, fraction_core_4D, separation_planet, dtype=dtype)
 
@@ -571,17 +521,19 @@ def process_IM(idx):
     planet = planet_spectrum.flux * scale_spectrum # [J/s/m²/µm] => [ph/mn/bin]
 
 
+    # The PSF factors were uniformly averaged across each (l0, Dl) window during precomputation;
+    # the stellar and planetary fluxes below are independently integrated over that window.
     # --- Computing data (signal and stellar halo photon noise variance (Poisson)) depending only on l0 and Dl ---
     idx_lo, idx_hi = range_1D
     signal_2D      = window_sums_1d(trans_tel * planet, idx_lo, idx_hi).astype(dtype) # = sum ( trans * S_planet ) (l0, Dl) [ph/mn]
     star_flux_2D   = window_sums_1d(trans_tel * star,   idx_lo, idx_hi).astype(dtype) # = sum ( trans * S_star )   (l0, Dl) [ph/mn]
 
 
-    # --- Computing DIT length in [mn/DIT] (l0, Dl, C_raw, IWA, TI) ---
+    # --- Computing DIT length with window-effective saturation and readout limits [mn/DIT] (l0, Dl, C_raw, IWA, TI) ---
 
-    # max_star_flux in [ph/px/mn] in the brightest pixel (through coronagraph, if any):
+    # Approximate the brightest stellar pixel using the band-integrated stellar flux and window-averaged peak PSF [ph/px/mn].
     # [total star ph/mn] * [star flux fraction/px] in the brightest pixel => [ph/px/mn] in the brightest pixel
-    # (l0, Dl, 1, 1)     * (l0, 1, C_raw, IWA)                              => (l0, Dl, C_raw, IWA)
+    # (l0, Dl, 1, 1)     * (l0, Dl, C_raw, IWA)                             => (l0, Dl, C_raw, IWA)
     max_star_flux_4D = star_flux_2D[:, :, None, None] * PSF_profile_max_3D
 
     # max_star_flux in [e-/px/mn] in the brightest pixel with instrumental transmission (through coronagraph, if any):
@@ -589,7 +541,7 @@ def process_IM(idx):
     # (l0, Dl, C_raw, IWA, 1)           * (1, 1, 1, 1, TI) => (l0, Dl, C_raw, IWA, TI)
     max_star_flux_5D = max_star_flux_4D[:, :, :, :, None] * trans_instru[None, None, None, None, :]
 
-    # Computing DIT length in [mn/DIT] (+ clipping between min and max DIT)
+    # Compute the DIT [mn/DIT], clipped using the detector constraints effective over each spectral window.
     saturation_e_5D = saturation_e[:, :, None, None, None]
     min_DIT_5D      = min_DIT[:, :, None, None, None]
     max_DIT_5D      = max_DIT[:, :, None, None, None]
@@ -600,17 +552,17 @@ def process_IM(idx):
 
     # --- Computing signal in [e-/FWHM/DIT] (l0, Dl, C_raw, IWA, TI) ---
 
-    # Signal at the planet's separation inside the FWHM in [ph/FWHM/mn] (throught coronagraph, if any)
+    # Signal at the planet's separation inside the FWHM in [ph/FWHM/mn] (through coronagraph, if any)
     # [total planet ph/mn] * [planet flux fraction/FWHM] => [ph/FWHM/mn]
-    # (l0, Dl, 1, 1)       * (l0, 1, C_raw, IWA)         => (l0, Dl, C_raw, IWA)
+    # (l0, Dl, 1, 1)       * (l0, Dl, C_raw, IWA)        => (l0, Dl, C_raw, IWA)
     signal_4D = signal_2D[:, :, None, None] * fraction_core_sep_4D
 
-    # Signal at the planet's separation inside the FWHM in [e-/FWHM/mn] with instrumental transmission (throught coronagraph, if any)
+    # Signal at the planet's separation inside the FWHM in [e-/FWHM/mn] with instrumental transmission (through coronagraph, if any)
     # [ph/FWHM/mn]            * [e-/ph]          => [e-/FWHM/mn]
     # (l0, Dl, C_raw, IWA, 1) * (1, 1, 1, 1, TI) => (l0, Dl, C_raw, IWA, TI)
     signal_5D = signal_4D[:, :, :, :, None] * trans_instru[None, None, None, None, :]
 
-    # Signal at the planet's separation inside the FWHM in [e-/FWHM/DIT] with instrumental transmission integrated over the DIT(throught coronagraph, if any)
+    # Signal at the planet's separation inside the FWHM in [e-/FWHM/DIT] with instrumental transmission integrated over the DIT (through coronagraph, if any)
     # [e-/FWHM/mn]             * [mn/DIT]                 => [e-/FWHM/DIT]
     # (l0, Dl, C_raw, IWA, TI) * (l0, Dl, C_raw, IWA, TI) => (l0, Dl, C_raw, IWA, TI)
     signal_5D = signal_5D * DIT_5D
@@ -618,17 +570,17 @@ def process_IM(idx):
 
     # --- Computing stellar halo photon noise variance (Poisson) in [e-/FWHM/DIT] (l0, Dl, C_raw, IWA, TI) ---
 
-    # Stellar halo photon noise variance (Poisson) at the planet's separation in [ph/px/mn] (throught coronagraph, if any)
+    # Stellar halo photon noise variance (Poisson) at the planet's separation in [ph/px/mn] (through coronagraph, if any)
     # [total star ph/mn] * [star flux fraction/px] => [ph/px/mn]
-    # (l0, Dl, 1, 1)     * (l0, 1, C_raw, IWA)     => (l0, Dl, C_raw, IWA)
+    # (l0, Dl, 1, 1)     * (l0, Dl, C_raw, IWA)    => (l0, Dl, C_raw, IWA)
     sigma_halo_2_4D = star_flux_2D[:, :, None, None] * PSF_profile_sep_4D
 
-    # Stellar halo photon noise variance (Poisson) at the planet's separation in [e-/px/mn] with instrumental transmission (throught coronagraph, if any)
+    # Stellar halo photon noise variance (Poisson) at the planet's separation in [e-/px/mn] with instrumental transmission (through coronagraph, if any)
     # [ph/px/mn]              * [e-/ph]          => [e-/px/mn]
     # (l0, Dl, C_raw, IWA, 1) * (1, 1, 1, 1, TI) => (l0, Dl, C_raw, IWA, TI)
     sigma_halo_2_5D = sigma_halo_2_4D[:, :, :, :, None] * trans_instru[None, None, None, None, :]
 
-    # Stellar halo photon noise variance (Poisson) at the planet's separation in [e-/FWHM/DIT] with instrumental transmission integrated over the DIT and the FWHM (quadrature addition assuming statistical independance) (throught coronagraph, if any)
+    # Stellar halo photon noise variance (Poisson) at the planet's separation in [e-/FWHM/DIT] with instrumental transmission integrated over the DIT and the FWHM (quadrature addition assuming statistical independence) (through coronagraph, if any)
     # [e-/px/mn]               * [px/FWHM]*[mn/DIT]       => [e-/FWHM/DIT]
     # (l0, Dl, C_raw, IWA, TI) * (l0, Dl, C_raw, IWA, TI) => (l0, Dl, C_raw, IWA, TI)
     sigma_halo_2_5D = sigma_halo_2_5D * A_FWHM*DIT_5D
@@ -641,7 +593,7 @@ def process_IM(idx):
     # (l0, Dl, 1) * (1, 1, TI) => (l0, Dl, TI)
     sigma_bkg_2_3D = background_flux_2D[:, :, None] * trans_instru[None, None, :]
 
-    # Background photon noise variance (Poisson) in [e-/FWHM/DIT] with instrumental transmission integrated over the DIT and the FWHM (quadrature addition assuming statistical independance)
+    # Background photon noise variance (Poisson) in [e-/FWHM/DIT] with instrumental transmission integrated over the DIT and the FWHM (quadrature addition assuming statistical independence)
     # [e-/px/mn]         * [px/FWHM]*[mn/DIT]       => [e-/FWHM/DIT]
     # (l0, Dl, 1, 1, TI) * (l0, Dl, C_raw, IWA, TI) => (l0, Dl, C_raw, IWA, TI)
     sigma_bkg_2_5D = sigma_bkg_2_3D[:, :, None, None, :] * A_FWHM*DIT_5D
@@ -678,7 +630,8 @@ def process_SNR(idx):
     if instru_type == "IFU":
         sigma_syst_base_2 = _SNR_CTX["sigma_syst_base_2_planets"][idx] # [e-/FWHM/DIT]**2 (at sigma_m = 1)
 
-    # Effective detector properties are (l0, Dl), identical for all R.
+    # Window-effective detector properties have shape (l0, Dl) and are shared by all IFU resolutions R.
+    # Add leading singleton R axis for IFU and trailing singleton (C_raw, IWA, trans_instru) axes.
     det_shape = (1,) + tuple(_SNR_CTX["detector_shape"]) + (1, 1, 1) if instru_type == "IFU" else tuple(_SNR_CTX["detector_shape"]) + (1, 1, 1)
     RON0    = np.asarray(_SNR_CTX["RON0"],    dtype=dtype).reshape(det_shape)
     RON_lim = np.asarray(_SNR_CTX["RON_lim"], dtype=dtype).reshape(det_shape)
@@ -690,10 +643,10 @@ def process_SNR(idx):
     N_DIT = np.floor(exposure_time / DIT).astype(dtype)
     N_DIT = np.clip(N_DIT, 1, None)
 
-    # --- Effective RON variance according to detector readout mode in [e-/FWHM/DIT]**2 ---
+    # --- Read-noise variance using window-effective detector parameters and readout mode [e-/FWHM/DIT]**2 ---
     sigma_RON_2 = sigma_RON_2_from_DIT(DIT=DIT, min_DIT=min_DIT, RON0=RON0, RON_lim=RON_lim, A_FWHM=A_FWHM, dtype=dtype, is_UTR=is_UTR)
 
-    # --- Dark current variance (Poisson) in [e-/FWHM/DIT]**2 ---
+    # --- Dark-current Poisson variance using the window-effective dark current [e-/FWHM/DIT]**2 ---
     sigma_DC_2 = (DC0 * DIT * A_FWHM).astype(dtype) # [e-/FWHM/DIT]**2
 
     # --- Add sigma_m axis at the end ---
@@ -753,10 +706,8 @@ def get_SNR(instru, instru_type, post_processing, exposure_time, min_DIT, RON0, 
     DIT_path          = Path(DIT_planets.filename)
 
     if instru_type == "IFU":
-        l0_axis                = 1
         sigma_syst_base_2_path = Path(sigma_syst_base_2_planets.filename)
     else:
-        l0_axis                = 0
         sigma_syst_base_2_path = None
     detector_shape = np.asarray(RON0).shape
     snr_ctx = dict(instru_type=instru_type, post_processing=post_processing, exposure_time=dtype(exposure_time), min_DIT=dtype(min_DIT), RON0=dtype(RON0), RON_lim=dtype(RON_lim), is_UTR=is_UTR, DC0=dtype(DC0), A_FWHM=dtype(A_FWHM), sigma_m_broadcast=sigma_m_broadcast, signal_path=str(signal_path), sigma_halo_2_path=str(sigma_halo_2_path), sigma_bkg_2_path=str(sigma_bkg_2_path), DIT_path=str(DIT_path), sigma_syst_base_2_path=str(sigma_syst_base_2_path) if sigma_syst_base_2_path is not None else None, SNR_path=str(SNR_path), shape_SNR=shape_SNR, dtype=np.dtype(dtype).str, detector_shape=detector_shape)
@@ -1471,7 +1422,8 @@ def get_population_results(instru_type, signal_planets, sigma_halo_2_planets, si
     indices = {name: prepared[name][0] for name in names}
     weights = {name: prepared[name][1] for name in names}
 
-    # Keep the legacy interpolation behavior, but identify mixed detector families.
+    # Preserve interpolation over l0_plot; warn when the selected l0 nodes cross detector technologies.
+    # Detector specifications themselves have already been aggregated over each (l0, Dl) window.
     if prepared["l0"][2] and len(set(np.asarray(detector_l0)[indices["l0"]])) > 1:
         print("WARNING: l0_plot interpolation mixes two detector technologies. The resulting SNR is only an approximation.")
 
@@ -1524,5 +1476,4 @@ def get_population_results(instru_type, signal_planets, sigma_halo_2_planets, si
     dominant        = np.full(n_planets, "Unknown", dtype=object)
     dominant[known] = labels[np.nanargmax(noise[known], axis=1)]
     return dict(SNR=results[:, 0], dominant_noise=dominant, var_halo=results[:, 1], var_bkg=results[:, 2], var_RON=results[:, 3], var_DC=results[:, 4], var_syst=results[:, 5])
-
 
