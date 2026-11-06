@@ -2,6 +2,7 @@
 from fastyield.config import rad2arcsec
 from fastyield.signal_noise import compute_sigma_base_2_speck_numba, compute_sigma_base_2_al_spat_numba, compute_sigma_base_2_al_spec_fast
 from fastyield.get_specs import get_detector_specs
+from scipy.interpolate import RegularGridInterpolator
 
 
 # import numpy modules
@@ -228,7 +229,7 @@ def create_memmap_with_log(path, shape, dtype=np.float32, mode="w+"):
 # --------------
 
 def spectral_window_quadrature(l0, Dl, n_nodes=12):
-    """Legendre nodes and normalized weights for each rectangular spectral band."""
+    """Gauss--Legendre nodes and normalized weights for rectangular spectral windows."""
     nodes, weights = np.polynomial.legendre.leggauss(n_nodes)
     wavelengths    = np.asarray(l0)[:, None, None] + 0.5*np.asarray(Dl)[None, :, None]*nodes
     return wavelengths, np.broadcast_to(weights / 2, wavelengths.shape)
@@ -279,6 +280,53 @@ def average_detector_specs(l0, Dl, detector, dtype=np.float32):
     is_UTR = np.all(~active | utr[:, None, None], axis=0) & ~mixed
     return dict(RON0=RON0.astype(dtype), RON_lim=RON_lim.astype(dtype), DC0=DC0.astype(dtype), saturation_e=saturation_e.astype(dtype), min_DIT=min_DIT.astype(dtype), max_DIT=max_DIT.astype(dtype), is_UTR=is_UTR, mixed=mixed)
 
+
+
+def average_psf_products_on_window(l0, Dl, wave0, WFE0, IWA0, separation0, density0, core0, radial0, WFE, IWA, separation, pxscale, n_nodes=12, injection=1.0, dtype=np.float32, interpolators=None):
+    """Mean chromatic stellar/planet PSF products over one rectangular spectral window.
+
+    The Gauss--Legendre weights integrate uniformly in wavelength, with the
+    wavelength domain intersected with the actual FITS library coverage.  If
+    the requested interval extends beyond the library, the returned average is
+    over the covered interval only (not an extrapolation).  The caller should
+    warn about such partial windows and interpret their results accordingly.
+
+    Interpolate the positive stellar density in log space; interpolate the
+    bounded planet core and radial throughput linearly so exact zeros survive.
+    Apply the coronagraphic on-axis transmission to the stellar density and
+    the off-axis transmission to the planet core BEFORE wavelength averaging.
+    The pixel scale is fixed by the physical instrument/band, not by lambda.
+    """
+    lower = max(float(l0) - float(Dl)/2, float(wave0[0]))
+    upper = min(float(l0) + float(Dl)/2, float(wave0[-1]))
+    if not lower < upper:
+        raise ValueError(f"No PSF wavelength coverage for window l0={l0:g}, Dl={Dl:g} um")
+    if not (float(Dl) > 0):
+        raise ValueError("Spectral bandwidth Dl must be positive")
+    nodes, weights = np.polynomial.legendre.leggauss(n_nodes)
+    wavelengths = (lower+upper)/2 + (upper-lower)/2*nodes
+    weights = weights/2
+    tiny = np.finfo(float).tiny
+    if interpolators is None:
+        interp_density = RegularGridInterpolator((wave0,WFE0,IWA0,separation0), np.log(np.maximum(density0,tiny)), bounds_error=True)
+        interp_core    = RegularGridInterpolator((wave0,WFE0,IWA0,separation0), core0, bounds_error=True)
+        interp_radial  = RegularGridInterpolator((wave0,WFE0,IWA0,separation0), radial0, bounds_error=True) if radial0 is not None else None
+    else:
+        interp_density, interp_core, interp_radial = interpolators
+    shape = (len(WFE),len(IWA),len(separation))
+    mean_star   = np.zeros(shape, dtype=np.float64)
+    mean_planet = np.zeros(shape, dtype=np.float64)
+    for lam, weight in zip(wavelengths,weights):
+        pts = np.stack(np.meshgrid(np.array([lam]), WFE, IWA, separation, indexing="ij"),axis=-1)
+        density = np.exp(interp_density(pts)[0])
+        core    = np.clip(interp_core(pts)[0],0,1)
+        if interp_radial is not None:
+            radial = np.clip(interp_radial(pts)[0],0,1)
+            density *= radial[...,0,None]  # on-axis stellar coronagraph attenuation
+            core    *= radial              # off-axis planetary coronagraph throughput
+        mean_star   += weight*density
+        mean_planet += weight*core
+    return (mean_star*pxscale**2).astype(dtype), (mean_planet*injection).astype(dtype)
 
 
 def interp_flat_last_axis(x, y, x0, dtype=None):
