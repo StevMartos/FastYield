@@ -127,6 +127,8 @@ def init_worker(ctx):
     # Open PSF memmaps in read-only mode inside each worker
     _CTX["PSF_profile_6D"]   = open_memmap(_CTX["PSF_profile_6D_path"], mode="r")
     _CTX["fraction_core_6D"] = open_memmap(_CTX["fraction_core_6D_path"], mode="r")
+    _CTX["PSF_profile_Dl_4D"]   = open_memmap(_CTX["PSF_profile_Dl_4D_path"],   mode="r")
+    _CTX["fraction_core_Dl_4D"] = open_memmap(_CTX["fraction_core_Dl_4D_path"], mode="r")
 
     # Open output memmaps in read/write mode inside each worker
     for name in _OUT_NAMES:
@@ -143,6 +145,8 @@ def process_ELT(idx):
     pxscales           = _CTX["pxscales"]
     PSF_profile_6D     = _CTX["PSF_profile_6D"]
     fraction_core_6D   = _CTX["fraction_core_6D"]
+    PSF_profile_Dl_4D   = _CTX["PSF_profile_Dl_4D"]
+    fraction_core_Dl_4D = _CTX["fraction_core_Dl_4D"]
     idx_R_ref          = _CTX["idx_R_ref"]
     idx_l0_ref         = _CTX["idx_l0_ref"]
     idx_Dl_ref         = _CTX["idx_Dl_ref"]
@@ -187,13 +191,16 @@ def process_ELT(idx):
     separation_planet_rad_arr = np.array([separation_planet_rad], dtype=dtype) # [rad]
     
     # --- PSF data linearly interpolated at the planet's separation ---
-    # PSF_profile_6D   : (band, config, l0, WFE, IWA, separation)
-    # fraction_core_6D : (band, config, l0, WFE, IWA, separation)
+    # PSF_profile_6D   : (band, config, l0, WFE, IWA, separation), each l0 averaged over band-specific Dl_ref
+    # fraction_core_6D : (band, config, l0, WFE, IWA, separation), each l0 averaged over band-specific Dl_ref
     PSF_profile_sep_5D   = interp_flat_last_axis(separation, PSF_profile_6D,   separation_planet, dtype=dtype) # (band, config, l0, WFE, IWA)
     fraction_core_sep_5D = interp_flat_last_axis(separation, fraction_core_6D, separation_planet, dtype=dtype) # (band, config, l0, WFE, IWA)
+    # Dl sweep uses the separate window-averaged PSF grid at reference l0/WFE/IWA.
+    PSF_profile_sep_3D_Dl   = interp_flat_last_axis(separation, PSF_profile_Dl_4D,   separation_planet, dtype=dtype) # (band, config, Dl)
+    fraction_core_sep_3D_Dl = interp_flat_last_axis(separation, fraction_core_Dl_4D, separation_planet, dtype=dtype) # (band, config, Dl)
     
     
-    # --- PSF data at ref values (bands, configs, *) ---
+    # --- Chromatically averaged PSF data at reference Dl for each l0, and reference l0 for WFE/IWA sweeps ---
     PSF_profile_sep_3D_l0    = PSF_profile_sep_5D[:,   :, :, idx_WFE_ref, idx_IWA_ref]                          # [star flux fraction/px]     (band, config, l0)
     fraction_core_sep_3D_l0  = fraction_core_sep_5D[:, :, :, idx_WFE_ref, idx_IWA_ref]                          # [planet flux fraction/FWHM] (band, config, l0)
     PSF_profile_sep_3D_WFE   = PSF_profile_sep_5D[np.arange(N_band),   :, idx_l0_ref, :, idx_IWA_ref]           # [star flux fraction/px]     (band, config, WFE)
@@ -324,11 +331,11 @@ def process_ELT(idx):
     
     # max_star_flux at the brightest pixel in [ph/px/mn] in the brightest pixel (through coronagraph, if any):
     # [ph/mn] in the brightest bin over the FoV * [star flux fraction/px] in the brightest pixel => [ph/px/mn] in the brightest pixel
-    # (bands, *)                                * (bands, configs, l0)                           => (bands, configs, *)
+    # Each PSF factor is averaged over its own (l0,Dl) window before the spectral-PSF factorization.
     max_star_flux_1D_ref = max_star_flux_2D_R[np.arange(N_band), idx_R_ref]                         # (bands)
     max_star_flux_3D_R   = max_star_flux_2D_R[:, None, :]      * PSF_profile_sep_2D_ref[:, :, None] # (bands, configs, R)
     max_star_flux_3D_l0  = max_star_flux_2D_l0[:, None, :]     * PSF_profile_sep_3D_l0[:, :, :]     # (bands, configs, l0)
-    max_star_flux_3D_Dl  = max_star_flux_2D_Dl[:, None, :]     * PSF_profile_sep_2D_ref[:, :, None] # (bands, configs, Dl)
+    max_star_flux_3D_Dl  = max_star_flux_2D_Dl[:, None, :]     * PSF_profile_sep_3D_Dl # (bands, configs, Dl)
     max_star_flux_3D_WFE = max_star_flux_1D_ref[:, None, None] * PSF_profile_sep_3D_WFE[:, :, :]    # (bands, configs, WFE)
     max_star_flux_3D_IWA = max_star_flux_1D_ref[:, None, None] * PSF_profile_sep_3D_IWA[:, :, :]    # (bands, configs, IWA)
     max_star_flux_2D_ref = max_star_flux_3D_R[np.arange(N_band), :, idx_R_ref]                      # (bands, configs)
@@ -366,7 +373,7 @@ def process_ELT(idx):
     signal_1D_ref = signal_2D_R[np.arange(N_band), idx_R_ref]                           # (bands)
     signal_3D_R   = signal_2D_R[:, None, :]      * fraction_core_sep_2D_ref[:, :, None] # (bands, configs, R)
     signal_3D_l0  = signal_2D_l0[:, None, :]     * fraction_core_sep_3D_l0[:, :, :]     # (bands, configs, l0)
-    signal_3D_Dl  = signal_2D_Dl[:, None, :]     * fraction_core_sep_2D_ref[:, :, None] # (bands, configs, Dl)
+    signal_3D_Dl  = signal_2D_Dl[:, None, :]     * fraction_core_sep_3D_Dl # (bands, configs, Dl)
     signal_3D_WFE = signal_1D_ref[:, None, None] * fraction_core_sep_3D_WFE[:, :, :]    # (bands, configs, WFE)
     signal_3D_IWA = signal_1D_ref[:, None, None] * fraction_core_sep_3D_IWA[:, :, :]    # (bands, configs, IWA)
     signal_2D_ref = signal_3D_R[np.arange(N_band), :, idx_R_ref]                        # (bands, configs)
@@ -401,7 +408,7 @@ def process_ELT(idx):
     sigma_halo_2_1D_ref = sigma_halo_2_2D_R[np.arange(N_band), idx_R_ref]
     sigma_halo_2_3D_R   = sigma_halo_2_2D_R[:, None, :]      * PSF_profile_sep_2D_ref[:, :, None] # (bands, configs, R)
     sigma_halo_2_3D_l0  = sigma_halo_2_2D_l0[:, None, :]     * PSF_profile_sep_3D_l0[:, :, :]     # (bands, configs, l0)
-    sigma_halo_2_3D_Dl  = sigma_halo_2_2D_Dl[:, None, :]     * PSF_profile_sep_2D_ref[:, :, None] # (bands, configs, Dl)
+    sigma_halo_2_3D_Dl  = sigma_halo_2_2D_Dl[:, None, :]     * PSF_profile_sep_3D_Dl # (bands, configs, Dl)
     sigma_halo_2_3D_WFE = sigma_halo_2_1D_ref[:, None, None] * PSF_profile_sep_3D_WFE[:, :, :]    # (bands, configs, WFE)
     sigma_halo_2_3D_IWA = sigma_halo_2_1D_ref[:, None, None] * PSF_profile_sep_3D_IWA[:, :, :]    # (bands, configs, IWA)
     sigma_halo_2_2D_ref = sigma_halo_2_3D_R[np.arange(N_band), :, idx_R_ref]                      # (bands, configs)
@@ -435,7 +442,7 @@ def process_ELT(idx):
     sigma_syst_base_2_1D_ref = sigma_syst_base_2_2D_R[np.arange(N_band), idx_R_ref]
     sigma_syst_base_2_3D_R   = sigma_syst_base_2_2D_R[:, None, :]      * PSF_profile_sep_2D_ref[:, :, None]**2 # (bands, configs, R)
     sigma_syst_base_2_3D_l0  = sigma_syst_base_2_2D_l0[:, None, :]     * PSF_profile_sep_3D_l0[:, :, :]**2     # (bands, configs, l0)
-    sigma_syst_base_2_3D_Dl  = sigma_syst_base_2_2D_Dl[:, None, :]     * PSF_profile_sep_2D_ref[:, :, None]**2 # (bands, configs, Dl)
+    sigma_syst_base_2_3D_Dl  = sigma_syst_base_2_2D_Dl[:, None, :]     * PSF_profile_sep_3D_Dl**2 # (bands, configs, Dl)
     sigma_syst_base_2_3D_WFE = sigma_syst_base_2_1D_ref[:, None, None] * PSF_profile_sep_3D_WFE[:, :, :]**2    # (bands, configs, WFE)
     sigma_syst_base_2_3D_IWA = sigma_syst_base_2_1D_ref[:, None, None] * PSF_profile_sep_3D_IWA[:, :, :]**2    # (bands, configs, IWA)
     sigma_syst_base_2_2D_ref = sigma_syst_base_2_3D_R[np.arange(N_band), :, idx_R_ref]                         # (bands, configs)

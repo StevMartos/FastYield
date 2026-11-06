@@ -10,7 +10,7 @@ from fastyield.config import h, c, rad2arcsec, planet_types, get_sim_data_path
 from fastyield.get_specs import get_config_data, load_tell_trans, get_transmission, get_PSF_profile
 from fastyield.spectrum import get_wavelength_axis_constant_R, Spectrum, load_vega_spectrum, get_thermal_reflected_spectrum, filtered_flux, get_wave_K, get_wave_band, get_counts_from_density
 from fastyield.FastYield import load_planet_table, get_mask_planet_type, get_filename_table, get_SNR_from_table, get_planet_index
-from fastyield.FastYield_helpers import print_simulation_summary, make_suffix, write_meta
+from fastyield.FastYield_helpers import print_simulation_summary, make_suffix, write_meta, average_psf_products_on_window
 from fastyield.utils import add_if_necessary, plot_bkg_skycalc
 from fastyield.prints_helpers import print_subheader, print_metric
 from fastyield.signal_noise import compress_h_for_sigma_base_2, compute_sigma_base_2_speck_numba, compute_sigma_base_2_al_spat_numba, compute_sigma_base_2_al_spec_fast
@@ -224,6 +224,8 @@ def init_worker(ctx):
     # Open PSF memmaps in read-only mode inside each worker
     _CTX["PSF_profile_6D"]   = open_memmap(_CTX["PSF_profile_6D_path"], mode="r")
     _CTX["fraction_core_6D"] = open_memmap(_CTX["fraction_core_6D_path"], mode="r")
+    _CTX["PSF_profile_Dl_4D"]   = open_memmap(_CTX["PSF_profile_Dl_4D_path"], mode="r")
+    _CTX["fraction_core_Dl_4D"] = open_memmap(_CTX["fraction_core_Dl_4D_path"], mode="r")
 
     # Open output memmaps in read/write mode inside each worker
     for name in _OUT_NAMES:
@@ -240,6 +242,8 @@ def process_ELT(idx):
     pxscales           = _CTX["pxscales"]
     PSF_profile_6D     = _CTX["PSF_profile_6D"]
     fraction_core_6D   = _CTX["fraction_core_6D"]
+    PSF_profile_Dl_4D   = _CTX["PSF_profile_Dl_4D"]
+    fraction_core_Dl_4D = _CTX["fraction_core_Dl_4D"]
     idx_R_ref          = _CTX["idx_R_ref"]
     idx_l0_ref         = _CTX["idx_l0_ref"]
     idx_Dl_ref         = _CTX["idx_Dl_ref"]
@@ -283,13 +287,16 @@ def process_ELT(idx):
     separation_planet_rad_arr = np.array([separation_planet_rad], dtype=dtype) # [rad]
     
     # --- PSF data linearly interpolated at the planet's separation ---
-    # PSF_profile_6D   : (band, config, l0, WFE, IWA, separation)
-    # fraction_core_6D : (band, config, l0, WFE, IWA, separation)
+    # PSF_profile_6D   : (band, config, l0, WFE, IWA, separation); average over Dl_ref[band]
+    # fraction_core_6D : (band, config, l0, WFE, IWA, separation); average over Dl_ref[band]
     PSF_profile_sep_5D   = interp_flat_last_axis(separation, PSF_profile_6D,   separation_planet, dtype=dtype) # (band, config, l0, WFE, IWA)
     fraction_core_sep_5D = interp_flat_last_axis(separation, fraction_core_6D, separation_planet, dtype=dtype) # (band, config, l0, WFE, IWA)
+    # Separate Dl-axis PSFs, averaged over each (l0_ref, Dl) spectral window.
+    PSF_profile_sep_3D_Dl   = interp_flat_last_axis(separation, PSF_profile_Dl_4D, separation_planet, dtype=dtype) # (band, config, Dl)
+    fraction_core_sep_3D_Dl = interp_flat_last_axis(separation, fraction_core_Dl_4D, separation_planet, dtype=dtype) # (band, config, Dl)
     
     
-    # --- PSF data at ref values (bands, configs, *) ---
+    # --- Reference-window PSF slices for the separate one-parameter sweeps ---
     PSF_profile_sep_3D_l0    = PSF_profile_sep_5D[:,   :, :, idx_WFE_ref, idx_IWA_ref]                          # [star flux fraction/px]     (band, config, l0)
     fraction_core_sep_3D_l0  = fraction_core_sep_5D[:, :, :, idx_WFE_ref, idx_IWA_ref]                          # [planet flux fraction/FWHM] (band, config, l0)
     PSF_profile_sep_3D_WFE   = PSF_profile_sep_5D[np.arange(N_band),   :, idx_l0_ref, :, idx_IWA_ref]           # [star flux fraction/px]     (band, config, WFE)
@@ -424,7 +431,7 @@ def process_ELT(idx):
     max_star_flux_1D_ref = max_star_flux_2D_R[np.arange(N_band), idx_R_ref]                         # (bands)
     max_star_flux_3D_R   = max_star_flux_2D_R[:, None, :]      * PSF_profile_sep_2D_ref[:, :, None] # (bands, configs, R)
     max_star_flux_3D_l0  = max_star_flux_2D_l0[:, None, :]     * PSF_profile_sep_3D_l0[:, :, :]     # (bands, configs, l0)
-    max_star_flux_3D_Dl  = max_star_flux_2D_Dl[:, None, :]     * PSF_profile_sep_2D_ref[:, :, None] # (bands, configs, Dl)
+    max_star_flux_3D_Dl  = max_star_flux_2D_Dl[:, None, :]     * PSF_profile_sep_3D_Dl # (bands, configs, Dl)
     max_star_flux_3D_WFE = max_star_flux_1D_ref[:, None, None] * PSF_profile_sep_3D_WFE[:, :, :]    # (bands, configs, WFE)
     max_star_flux_3D_IWA = max_star_flux_1D_ref[:, None, None] * PSF_profile_sep_3D_IWA[:, :, :]    # (bands, configs, IWA)
     max_star_flux_2D_ref = max_star_flux_3D_R[np.arange(N_band), :, idx_R_ref]                      # (bands, configs)
@@ -462,7 +469,7 @@ def process_ELT(idx):
     signal_1D_ref = signal_2D_R[np.arange(N_band), idx_R_ref]                           # (bands)
     signal_3D_R   = signal_2D_R[:, None, :]      * fraction_core_sep_2D_ref[:, :, None] # (bands, configs, R)
     signal_3D_l0  = signal_2D_l0[:, None, :]     * fraction_core_sep_3D_l0[:, :, :]     # (bands, configs, l0)
-    signal_3D_Dl  = signal_2D_Dl[:, None, :]     * fraction_core_sep_2D_ref[:, :, None] # (bands, configs, Dl)
+    signal_3D_Dl  = signal_2D_Dl[:, None, :]     * fraction_core_sep_3D_Dl # (bands, configs, Dl)
     signal_3D_WFE = signal_1D_ref[:, None, None] * fraction_core_sep_3D_WFE[:, :, :]    # (bands, configs, WFE)
     signal_3D_IWA = signal_1D_ref[:, None, None] * fraction_core_sep_3D_IWA[:, :, :]    # (bands, configs, IWA)
     signal_2D_ref = signal_3D_R[np.arange(N_band), :, idx_R_ref]                        # (bands, configs)
@@ -497,7 +504,7 @@ def process_ELT(idx):
     sigma_halo_2_1D_ref = sigma_halo_2_2D_R[np.arange(N_band), idx_R_ref]
     sigma_halo_2_3D_R   = sigma_halo_2_2D_R[:, None, :]      * PSF_profile_sep_2D_ref[:, :, None] # (bands, configs, R)
     sigma_halo_2_3D_l0  = sigma_halo_2_2D_l0[:, None, :]     * PSF_profile_sep_3D_l0[:, :, :]     # (bands, configs, l0)
-    sigma_halo_2_3D_Dl  = sigma_halo_2_2D_Dl[:, None, :]     * PSF_profile_sep_2D_ref[:, :, None] # (bands, configs, Dl)
+    sigma_halo_2_3D_Dl  = sigma_halo_2_2D_Dl[:, None, :]     * PSF_profile_sep_3D_Dl # (bands, configs, Dl)
     sigma_halo_2_3D_WFE = sigma_halo_2_1D_ref[:, None, None] * PSF_profile_sep_3D_WFE[:, :, :]    # (bands, configs, WFE)
     sigma_halo_2_3D_IWA = sigma_halo_2_1D_ref[:, None, None] * PSF_profile_sep_3D_IWA[:, :, :]    # (bands, configs, IWA)
     sigma_halo_2_2D_ref = sigma_halo_2_3D_R[np.arange(N_band), :, idx_R_ref]                      # (bands, configs)
@@ -531,7 +538,7 @@ def process_ELT(idx):
     sigma_syst_base_2_1D_ref = sigma_syst_base_2_2D_R[np.arange(N_band), idx_R_ref]
     sigma_syst_base_2_3D_R   = sigma_syst_base_2_2D_R[:, None, :]      * PSF_profile_sep_2D_ref[:, :, None]**2 # (bands, configs, R)
     sigma_syst_base_2_3D_l0  = sigma_syst_base_2_2D_l0[:, None, :]     * PSF_profile_sep_3D_l0[:, :, :]**2     # (bands, configs, l0)
-    sigma_syst_base_2_3D_Dl  = sigma_syst_base_2_2D_Dl[:, None, :]     * PSF_profile_sep_2D_ref[:, :, None]**2 # (bands, configs, Dl)
+    sigma_syst_base_2_3D_Dl  = sigma_syst_base_2_2D_Dl[:, None, :]     * PSF_profile_sep_3D_Dl**2 # (bands, configs, Dl)
     sigma_syst_base_2_3D_WFE = sigma_syst_base_2_1D_ref[:, None, None] * PSF_profile_sep_3D_WFE[:, :, :]**2    # (bands, configs, WFE)
     sigma_syst_base_2_3D_IWA = sigma_syst_base_2_1D_ref[:, None, None] * PSF_profile_sep_3D_IWA[:, :, :]**2    # (bands, configs, IWA)
     sigma_syst_base_2_2D_ref = sigma_syst_base_2_3D_R[np.arange(N_band), :, idx_R_ref]                         # (bands, configs)
@@ -910,6 +917,9 @@ def main():
     else:
         NbPixel   = None
         
+    # --- Fixed detector assumptions (independent of wavelength in config_data) ---
+    # No detector averaging is necessary unless wavelength-dependent detector
+    # specifications or distinct detector families are added to the ELT model.
     # --- Useless specs (already taken into account implicitly, only informative)
     detector   = "H4RG" # Type of detector
     N_px       = 4096   # Detector's size
@@ -924,7 +934,8 @@ def main():
     reflected_model    = "auto"          # Model for the albedo of the planet ("tellurics", "flat", "PICASO")
     post_processing    = "MM"            # Post-processing method ("MM" or "DI")
     Rc                 = 1_00            # MM cut-off resolution
-    filter_type        = "gaussian" # MM filter type
+    filter_type        = "gaussian"      # MM filter type
+    psf_n_nodes        = 12              # Gauss-Legendre nodes for rectangular-window PSF averaging
     force_inside_bands = False           # Not allowing wave axis to be outside the original bands ranges
     table_type         = "Archive"       # "Archive": for all known exoplanets | "Simulated": TODO
     
@@ -1147,7 +1158,7 @@ def main():
         RON0=RON0, RON_lim=RON_lim, DC0=DC0, saturation_e=saturation_e, min_DIT=min_DIT, max_DIT=max_DIT, size_core=size_core,
         
         # General parameters for the simulation
-        thermal_model=thermal_model, reflected_model=reflected_model, post_processing=post_processing, R_model=R_model, Rc=Rc, filter_type=filter_type, force_inside_bands=force_inside_bands, table_type=table_type, N_PT=int(N_PT),
+        thermal_model=thermal_model, reflected_model=reflected_model, post_processing=post_processing, R_model=R_model, Rc=Rc, filter_type=filter_type, force_inside_bands=force_inside_bands, table_type=table_type, N_PT=int(N_PT), psf_window_average="gauss_legendre_covered_v1", psf_n_nodes=psf_n_nodes,
     
         # exploration space (communs)
         l0_min=l0_min, l0_max=l0_max, trans_instru_min=trans_instru_min, trans_instru_max=trans_instru_max, WFE_min=WFE_min, WFE_max=WFE_max, IWA_min=IWA_min, IWA_max=IWA_max, sep_min=sep_min, sep_max=sep_max,
@@ -1194,6 +1205,8 @@ def main():
     DIT_4D_TI_path                = sim_dir / f"DIT_4D_TI_{suffix}.npy"
     PSF_profile_6D_path           = sim_dir / f"tmp_PSF_profile_6D_{suffix}.npy"
     fraction_core_6D_path         = sim_dir / f"tmp_fraction_core_6D_{suffix}.npy"
+    PSF_profile_Dl_4D_path        = sim_dir / f"tmp_PSF_profile_Dl_4D_{suffix}.npy"
+    fraction_core_Dl_4D_path      = sim_dir / f"tmp_fraction_core_Dl_4D_{suffix}.npy"
     
     required_paths = [
                         signal_4D_R_path, signal_4D_l0_path, signal_4D_Dl_path, signal_4D_TI_path, signal_4D_WFE_path, signal_4D_IWA_path,
@@ -1303,124 +1316,64 @@ def main():
                         if IWA.shape != (1,):
                             raise KeyError("This should not happen!")
                     
-                # Initializing arrays
+                # Initialize the reference-bandwidth PSF arrays plus the much smaller
+                # Dl-axis products.  The latter are only needed at the reference
+                # l0/WFE/IWA, since the yield calculation varies one axis at a time.
                 if separation is None:
                     separation       = separation0
                     N_sep            = len(separation)
                     PSF_profile_6D   = open_memmap(PSF_profile_6D_path,   mode="w+", dtype=dtype, shape=(N_band, N_config, N_l0, N_WFE, N_IWA, N_sep))
-                    fraction_core_6D = open_memmap(fraction_core_6D_path, mode="w+", dtype=dtype, shape=(N_band, N_config, N_l0, N_WFE, N_IWA, N_sep),)
-                elif not np.all(separation == separation0):
-                    raise KeyError("This should not happen!")
-                                
-                # Interpolating over current grid
-                pts                    = np.stack((np.meshgrid(l0, WFE, IWA, separation, indexing="ij")), axis=-1)
-                PSF_profile_density_4D = np.exp(RegularGridInterpolator((wave0, WFE0, IWA0, separation0), np.log(PSF_profile_density0_4D), bounds_error=True, fill_value=np.nan)(pts)) # (l0, WFE, IWA, sep) [star flux fraction/px/mas**2]
-                fraction_core_4D       = expit(RegularGridInterpolator((wave0,  WFE0, IWA0, separation0), logit(fraction_core0_4D),        bounds_error=True, fill_value=np.nan)(pts)) # (l0, WFE, IWA, sep) [planet flux fraction/FWHM]
-                if w_coronagraph and config is not None: # with coronagraph
-                    radial_transmission_4D = expit(RegularGridInterpolator((wave0, WFE0, IWA0, separation0), logit(radial_transmission0_4D), bounds_error=True, fill_value=np.nan)(pts)) # (l0, WFE, IWA, sep) coronagraphic transmission
-                    
-                # Converting flux density in fraction of flux inside the FOV per spaxel for a bin at l0, WFE, IWA, separation as function of separation
-                PSF_profile_4D = PSF_profile_density_4D * pxscales[ib]**2 # [star flux fraction/px]
-                                
-                if 1==1:
-                    ##############
-                    # Sanity check
-                    if instru == "ANDES":
-                        PSF_profile_EX = pxscales[ib]**2 * np.nanmean(RegularGridInterpolator((wave0, WFE0, IWA0, separation0), PSF_profile_density0_4D, bounds_error=True, fill_value=np.nan)(np.stack((np.meshgrid(l0[(l0 > 0.95) &  (l0 < 1.8)], WFE_ref, IWA_ref, separation, indexing="ij")), axis=-1))[:, 0, 0, :], axis=0)
-                    else:
-                        PSF_profile_EX = pxscales[ib]**2 * RegularGridInterpolator((wave0, WFE0, IWA0, separation0), PSF_profile_density0_4D, bounds_error=True, fill_value=np.nan)(np.stack((np.meshgrid(l0_ref[ib], WFE_ref, IWA_ref, separation, indexing="ij")), axis=-1))[0, 0, 0, :]
-                    PSF_profile_OG, _, _, _ = get_PSF_profile(band=band, strehl=strehl, apodizer=config if instru=="HARMONI" else "NO_SP", coronagraph=None if instru=="HARMONI" else config, instru=instru, separation=separation)
-                    plt.figure(dpi=300, figsize=(10, 6))
-                    plt.title(f"{instru} | {band} | {config}")
-                    plt.plot(separation, PSF_profile_OG, c="crimson",   label="Original")
-                    plt.plot(separation, PSF_profile_EX, c="steelblue", label="Extrapolated")
-                    plt.legend()
-                    plt.xscale('log')
-                    plt.yscale('log')
-                    plt.xlabel("Separation [mas]", fontsize=14)
-                    plt.ylabel("PSF profile [flux fraction/px]", fontsize=14)
-                    plt.xlim(separation[1], separation[-1])
-                    plt.show()
-                    # Sanity check
-                    fraction_core_EX = RegularGridInterpolator((wave0, WFE0, IWA0, separation0), fraction_core0_4D, bounds_error=True, fill_value=np.nan)(np.stack((np.meshgrid(l0_ref[ib], WFE_ref, IWA_ref, separation, indexing="ij")), axis=-1))[0, 0, 0, :]
-                    plt.figure(dpi=300, figsize=(10, 6))
-                    plt.title(f"{instru} | {band} | {config}")
-                    if config == "LYOT":
-                        from fastyield.get_specs import _load_corona_profile
-                        from scipy.interpolate import interp1d
-                        raw_sep, raw_fraction_core, raw_radial_transmission = _load_corona_profile(instru=instru, band=band, strehl=strehl, apodizer="NO_SP", coronagraph="LYOT")
-                        logit_fraction_core_interp                          = interp1d(raw_sep, logit(raw_fraction_core), bounds_error=False, fill_value=(logit(raw_fraction_core[0]), logit(raw_fraction_core[-1])))
-                        fraction_core_OG                                    = expit(logit_fraction_core_interp(separation))       # Fraction of flux of a PSF inside the FWHM as function of the separation
-                        plt.plot(separation, fraction_core_OG, c="crimson",   label="Original")
-                    else:
-                        _, fraction_core_OG, _, _ = get_PSF_profile(band=band, strehl=strehl, apodizer=config if instru=="HARMONI" else "NO_SP", coronagraph=None if instru=="HARMONI" else config, instru=instru, separation=separation)
-                        plt.axhline(fraction_core_OG, c="crimson", label="Original")
-                    plt.plot(separation, fraction_core_EX, c="steelblue", label="Extrapolated")
-                    plt.legend()
-                    plt.xscale('log')
-                    plt.yscale('log')
-                    plt.xlabel("Separation [mas]", fontsize=14)
-                    plt.ylabel("Core fraction [flux fraction/FWHM]", fontsize=14)
-                    plt.ylim(1e-3, 1)
-                    plt.xlim(separation[1], separation[-1])
-                    plt.show()
-                    if config == "LYOT":
-                        radial_transmission_EX = RegularGridInterpolator((wave0, WFE0, IWA0, separation0), radial_transmission0_4D, bounds_error=True, fill_value=np.nan)(np.stack((np.meshgrid(l0_ref[ib], WFE_ref, IWA_ref, separation, indexing="ij")), axis=-1))[0, 0, 0, :]
-                        plt.figure(dpi=300, figsize=(10, 6))
-                        plt.title(f"{instru} | {band} | {config}")
-                        if config == "LYOT":
-                            logit_radial_transmission_interp = interp1d(raw_sep, logit(raw_radial_transmission), bounds_error=False, fill_value=(logit(raw_radial_transmission[0]), logit(raw_radial_transmission[-1])))
-                            radial_transmission_OG           = expit(logit_radial_transmission_interp(separation))       # Fraction of flux of a PSF inside the FWHM as function of the separation
-                            plt.plot(separation, radial_transmission_OG, c="crimson",   label="Original")
-                        else:
-                            _, radial_transmission_OG, _, _ = get_PSF_profile(band=band, strehl=strehl, apodizer=config if instru=="HARMONI" else "NO_SP", coronagraph=None if instru=="HARMONI" else config, instru=instru, separation=separation)
-                            plt.axhline(radial_transmission_OG, c="crimson", label="Original")
-                        plt.plot(separation, radial_transmission_EX, c="steelblue", label="Extrapolated")
-                        plt.legend()
-                        plt.xscale('log')
-                        plt.yscale('log')
-                        plt.xlabel("Separation [mas]",    fontsize=14)
-                        plt.ylabel("Radial transmission", fontsize=14)
-                        plt.ylim(1e-3, 1)
-                        plt.xlim(separation[1], separation[-1])
-                        plt.show()
-                    ##############
-                
-                # Star transmission throught coronagraph (if any), given at sep = 0, assuming that the coronagraph is perfectly align with the star
-                if w_coronagraph and config is not None: # with coronagraph
-                    i0 = np.argmin(np.abs(separation - 0.0))
-                    if i0 != 0:
-                        raise KeyError("This should not happen!")
-                    star_transmission_3D = radial_transmission_4D[:, :, :, i0] # (l0, WFE, IWA)
-                    # PSF profile throught the coronagraph
-                    PSF_profile_4D = PSF_profile_4D * star_transmission_3D[:, :, :, None] # (l0, WFE, IWA, sep)
-                    
-                # Fraction core signal (for the planet, inside the FWHM) through the coronagraph (if any)
-                if w_coronagraph and config is not None: # with coronagraph
-                    fraction_core_4D = fraction_core_4D * radial_transmission_4D
-                
-                # Fiber-fed IFUs: mean injection correction (e.g. ANDES): the fact that the position of the planet is unknown
-                if "fiber" in instru_type:
-                    fraction_core_4D *= config_data["injection"][band]
-                
-                # Adding to the arrays
-                PSF_profile_6D[ib, ic]   = PSF_profile_4D.astype(dtype,   copy=False)
-                fraction_core_6D[ib, ic] = fraction_core_4D.astype(dtype, copy=False)
-                
-                # Deleting useless variables
-                del wave0, WFE0, IWA0, separation0
-                del PSF_profile_density0_4D, fraction_core0_4D
-                del pts, PSF_profile_density_4D, fraction_core_4D, PSF_profile_4D
+                    fraction_core_6D = open_memmap(fraction_core_6D_path, mode="w+", dtype=dtype, shape=(N_band, N_config, N_l0, N_WFE, N_IWA, N_sep))
+                    PSF_profile_Dl_4D   = open_memmap(PSF_profile_Dl_4D_path,   mode="w+", dtype=dtype, shape=(N_band, N_config, N_Dl, N_sep))
+                    fraction_core_Dl_4D = open_memmap(fraction_core_Dl_4D_path, mode="w+", dtype=dtype, shape=(N_band, N_config, N_Dl, N_sep))
+                elif not np.array_equal(separation, separation0):
+                    raise ValueError("Inconsistent separation axes in ELT PSF libraries")
+
+                # The source FITS products are interpolated at multiple wavelengths
+                # inside each window and averaged with Gauss--Legendre quadrature.
+                # At reference Dl[ib], vary l0, WFE, IWA (the existing 6D layout).
+                # At reference l0[ib], vary Dl but only at WFE_ref and IWA_ref,
+                # avoiding the prohibitive full (l0,Dl,WFE,IWA,sep) tensor.
+                # Detector parameters remain constant per instrument in config_data;
+                # averaging these scalars would give exactly the same values.
+                injection = config_data["injection"][band] if "fiber" in instru_type else 1.0
+                is_coronagraph = w_coronagraph and config is not None
+                radial_library = radial_transmission0_4D if is_coronagraph else None
+                if not (np.all(np.diff(wave0) > 0) and np.all(np.diff(WFE0) > 0) and np.all(np.diff(separation0) > 0)):
+                    raise ValueError("ELT PSF axes must be strictly increasing")
+                if np.any(np.diff(IWA0) <= 0) and len(IWA0) > 1:
+                    raise ValueError("IWA axis must be strictly increasing")
+                # Build expensive FITS interpolators only once per (band,config), then
+                # reuse them for every l0- and Dl-window and every quadrature node.
+                psf_interpolators = (RegularGridInterpolator((wave0, WFE0, IWA0, separation0), np.log(np.maximum(PSF_profile_density0_4D, np.finfo(float).tiny)), bounds_error=True), RegularGridInterpolator((wave0, WFE0, IWA0, separation0), fraction_core0_4D, bounds_error=True), RegularGridInterpolator((wave0, WFE0, IWA0, separation0), radial_library, bounds_error=True) if radial_library is not None else None)
+                clipped_windows = 0
+                for j, center in enumerate(l0):
+                    if center-Dl_ref[ib]/2 < wave0[0] or center+Dl_ref[ib]/2 > wave0[-1]:
+                        clipped_windows += 1
+                    star_avg, planet_avg = average_psf_products_on_window(l0=center, Dl=Dl_ref[ib], wave0=wave0, WFE0=WFE0, IWA0=IWA0, separation0=separation0, density0=PSF_profile_density0_4D, core0=fraction_core0_4D, radial0=radial_library, WFE=WFE, IWA=IWA, separation=separation, pxscale=pxscales[ib], n_nodes=psf_n_nodes, injection=injection, dtype=dtype, interpolators=psf_interpolators)
+                    PSF_profile_6D[ib, ic, j]   = star_avg
+                    fraction_core_6D[ib, ic, j] = planet_avg
+                for k, bandwidth in enumerate(Dl):
+                    if l0_ref[ib]-bandwidth/2 < wave0[0] or l0_ref[ib]+bandwidth/2 > wave0[-1]:
+                        clipped_windows += 1
+                    star_avg, planet_avg = average_psf_products_on_window(l0=l0_ref[ib], Dl=bandwidth, wave0=wave0, WFE0=WFE0, IWA0=IWA0, separation0=separation0, density0=PSF_profile_density0_4D, core0=fraction_core0_4D, radial0=radial_library, WFE=np.array([WFE_ref]), IWA=np.array([IWA_ref]), separation=separation, pxscale=pxscales[ib], n_nodes=psf_n_nodes, injection=injection, dtype=dtype, interpolators=psf_interpolators)
+                    PSF_profile_Dl_4D[ib, ic, k]   = star_avg[0,0]
+                    fraction_core_Dl_4D[ib, ic, k] = planet_avg[0,0]
+                if clipped_windows:
+                    print(f"WARNING: ELT/{instru} {band}/{config}: {clipped_windows} PSF windows partially outside [{wave0[0]:g},{wave0[-1]:g}] um; averaged over the covered wavelengths only.")
+
+                del psf_interpolators
+                del wave0, WFE0, IWA0, separation0, PSF_profile_density0_4D, fraction_core0_4D
                 if radial_transmission0_4D is not None:
                     del radial_transmission0_4D
-                if w_coronagraph and config is not None:
-                    del radial_transmission_4D, star_transmission_3D
                 gc.collect()
         
         # Deleting useless variables
         PSF_profile_6D.flush()
         fraction_core_6D.flush()
-        del PSF_profile_6D, fraction_core_6D
+        PSF_profile_Dl_4D.flush()
+        fraction_core_Dl_4D.flush()
+        del PSF_profile_6D, fraction_core_6D, PSF_profile_Dl_4D, fraction_core_Dl_4D
         gc.collect()
         
         
@@ -1534,7 +1487,7 @@ def main():
         
         
         # --- Global context worker ---
-        _CTX = dict(planet_table=planet_table, separation=separation, pxscales=pxscales, PSF_profile_6D_path=str(PSF_profile_6D_path), fraction_core_6D_path=str(fraction_core_6D_path), idx_R_ref=idx_R_ref, idx_l0_ref=idx_l0_ref, idx_Dl_ref=idx_Dl_ref, idx_WFE_ref=idx_WFE_ref, idx_IWA_ref=idx_IWA_ref, R=R, trans_instru=trans_instru, wave_1D_list=wave_1D_list, dwave_1D_list=dwave_1D_list, range_1D_list=range_1D_list, valid_2D_list=valid_2D_list, trans_tell_1D_list=trans_tell_1D_list, background_1D_list=background_1D_list, wave_model=wave_model, wave_instru=wave_instru, wave_K=wave_K, counts_vega_K=counts_vega_K, scale_spectrum=scale_spectrum, thermal_model=thermal_model, reflected_model=reflected_model, post_processing=post_processing, Rc=Rc, filter_type=filter_type, D=D, saturation_e=saturation_e, min_DIT=min_DIT, max_DIT=max_DIT, A_FWHM=A_FWHM, trans_instru_ref=trans_instru_ref, N_band=N_band, N_config=N_config, N_R=N_R, N_l0=N_l0, N_Dl=N_Dl, signal_4D_R_path=str(signal_4D_R_path), signal_4D_l0_path=str(signal_4D_l0_path), signal_4D_Dl_path=str(signal_4D_Dl_path), signal_4D_TI_path=str(signal_4D_TI_path), signal_4D_WFE_path=str(signal_4D_WFE_path), signal_4D_IWA_path=str(signal_4D_IWA_path), sigma_halo_2_4D_R_path=str(sigma_halo_2_4D_R_path), sigma_halo_2_4D_l0_path=str(sigma_halo_2_4D_l0_path), sigma_halo_2_4D_Dl_path=str(sigma_halo_2_4D_Dl_path), sigma_halo_2_4D_TI_path=str(sigma_halo_2_4D_TI_path), sigma_halo_2_4D_WFE_path=str(sigma_halo_2_4D_WFE_path), sigma_halo_2_4D_IWA_path=str(sigma_halo_2_4D_IWA_path), sigma_syst_base_2_4D_R_path=str(sigma_syst_base_2_4D_R_path), sigma_syst_base_2_4D_l0_path=str(sigma_syst_base_2_4D_l0_path), sigma_syst_base_2_4D_Dl_path=str(sigma_syst_base_2_4D_Dl_path), sigma_syst_base_2_4D_TI_path=str(sigma_syst_base_2_4D_TI_path), sigma_syst_base_2_4D_WFE_path=str(sigma_syst_base_2_4D_WFE_path), sigma_syst_base_2_4D_IWA_path=str(sigma_syst_base_2_4D_IWA_path), sigma_bkg_2_4D_R_path=str(sigma_bkg_2_4D_R_path), sigma_bkg_2_4D_l0_path=str(sigma_bkg_2_4D_l0_path), sigma_bkg_2_4D_Dl_path=str(sigma_bkg_2_4D_Dl_path), sigma_bkg_2_4D_TI_path=str(sigma_bkg_2_4D_TI_path), sigma_bkg_2_4D_WFE_path=str(sigma_bkg_2_4D_WFE_path), sigma_bkg_2_4D_IWA_path=str(sigma_bkg_2_4D_IWA_path), DIT_4D_R_path=str(DIT_4D_R_path), DIT_4D_l0_path=str(DIT_4D_l0_path), DIT_4D_Dl_path=str(DIT_4D_Dl_path), DIT_4D_TI_path=str(DIT_4D_TI_path), DIT_4D_WFE_path=str(DIT_4D_WFE_path), DIT_4D_IWA_path=str(DIT_4D_IWA_path))        
+        _CTX = dict(planet_table=planet_table, separation=separation, pxscales=pxscales, PSF_profile_6D_path=str(PSF_profile_6D_path), fraction_core_6D_path=str(fraction_core_6D_path), PSF_profile_Dl_4D_path=str(PSF_profile_Dl_4D_path), fraction_core_Dl_4D_path=str(fraction_core_Dl_4D_path), idx_R_ref=idx_R_ref, idx_l0_ref=idx_l0_ref, idx_Dl_ref=idx_Dl_ref, idx_WFE_ref=idx_WFE_ref, idx_IWA_ref=idx_IWA_ref, R=R, trans_instru=trans_instru, wave_1D_list=wave_1D_list, dwave_1D_list=dwave_1D_list, range_1D_list=range_1D_list, valid_2D_list=valid_2D_list, trans_tell_1D_list=trans_tell_1D_list, background_1D_list=background_1D_list, wave_model=wave_model, wave_instru=wave_instru, wave_K=wave_K, counts_vega_K=counts_vega_K, scale_spectrum=scale_spectrum, thermal_model=thermal_model, reflected_model=reflected_model, post_processing=post_processing, Rc=Rc, filter_type=filter_type, D=D, saturation_e=saturation_e, min_DIT=min_DIT, max_DIT=max_DIT, A_FWHM=A_FWHM, trans_instru_ref=trans_instru_ref, N_band=N_band, N_config=N_config, N_R=N_R, N_l0=N_l0, N_Dl=N_Dl, signal_4D_R_path=str(signal_4D_R_path), signal_4D_l0_path=str(signal_4D_l0_path), signal_4D_Dl_path=str(signal_4D_Dl_path), signal_4D_TI_path=str(signal_4D_TI_path), signal_4D_WFE_path=str(signal_4D_WFE_path), signal_4D_IWA_path=str(signal_4D_IWA_path), sigma_halo_2_4D_R_path=str(sigma_halo_2_4D_R_path), sigma_halo_2_4D_l0_path=str(sigma_halo_2_4D_l0_path), sigma_halo_2_4D_Dl_path=str(sigma_halo_2_4D_Dl_path), sigma_halo_2_4D_TI_path=str(sigma_halo_2_4D_TI_path), sigma_halo_2_4D_WFE_path=str(sigma_halo_2_4D_WFE_path), sigma_halo_2_4D_IWA_path=str(sigma_halo_2_4D_IWA_path), sigma_syst_base_2_4D_R_path=str(sigma_syst_base_2_4D_R_path), sigma_syst_base_2_4D_l0_path=str(sigma_syst_base_2_4D_l0_path), sigma_syst_base_2_4D_Dl_path=str(sigma_syst_base_2_4D_Dl_path), sigma_syst_base_2_4D_TI_path=str(sigma_syst_base_2_4D_TI_path), sigma_syst_base_2_4D_WFE_path=str(sigma_syst_base_2_4D_WFE_path), sigma_syst_base_2_4D_IWA_path=str(sigma_syst_base_2_4D_IWA_path), sigma_bkg_2_4D_R_path=str(sigma_bkg_2_4D_R_path), sigma_bkg_2_4D_l0_path=str(sigma_bkg_2_4D_l0_path), sigma_bkg_2_4D_Dl_path=str(sigma_bkg_2_4D_Dl_path), sigma_bkg_2_4D_TI_path=str(sigma_bkg_2_4D_TI_path), sigma_bkg_2_4D_WFE_path=str(sigma_bkg_2_4D_WFE_path), sigma_bkg_2_4D_IWA_path=str(sigma_bkg_2_4D_IWA_path), DIT_4D_R_path=str(DIT_4D_R_path), DIT_4D_l0_path=str(DIT_4D_l0_path), DIT_4D_Dl_path=str(DIT_4D_Dl_path), DIT_4D_TI_path=str(DIT_4D_TI_path), DIT_4D_WFE_path=str(DIT_4D_WFE_path), DIT_4D_IWA_path=str(DIT_4D_IWA_path))        
         
         
         
@@ -1632,6 +1585,8 @@ def main():
         # --- Clean temporary memmap files ---
         PSF_profile_6D_path.unlink()
         fraction_core_6D_path.unlink()
+        PSF_profile_Dl_4D_path.unlink()
+        fraction_core_Dl_4D_path.unlink()
         
     
     
@@ -2031,7 +1986,7 @@ def main():
             ax.add_artist(leg_config)
         if dim == 3:
             handles_ref = [Line2D([], [], ls="None", marker="|", markersize=30, markeredgewidth=3, color="k", label="Reference values")]
-            leg_ref     = ax.legend(handles=handles_ref, fontsize=fontsize+3, loc="lower right", frameon=True, edgecolor="gray", facecolor="white")
+            leg_ref     = ax.legend(handles=handles_ref, fontsize=fontsize+3, loc="upper left", frameon=True, edgecolor="gray", facecolor="white")
             ax.add_artist(leg_ref)
         
         # systematic budget with JWST/MIRI/MRS ~ 1%
@@ -2750,7 +2705,6 @@ def main():
             for ib, band in enumerate(bands):
                 ax.axvline(Dl_ref[ib], ls="-", lw=2*lw, c=cmap_bands(ib), alpha=alpha, zorder=0)
         elif len(params[dim]) == len(trans_instru) and np.all(params[dim] == trans_instru):
-            ax.set_xlim(0, trans_instru_max)
             if instru == "HARMONI":
                 ic = 0
                 for ib, band in enumerate(bands):
@@ -2769,10 +2723,7 @@ def main():
             ax.axvline(IWA_ref, ls="-", lw=2*lw, c="black", alpha=alpha, zorder=0)
 
         # --- X scale + minor ticks ---
-        if len(params[dim]) == len(trans_instru) and np.all(params[dim] == trans_instru):
-            ax.set_xlim(0, trans_instru_max)
-        else:
-            ax.set_xlim(np.nanmin(params[dim]), np.nanmax(params[dim]))
+        ax.set_xlim(np.nanmin(params[dim]), np.nanmax(params[dim]))
         if params_islog[dim]:
             ax.set_xscale("log")
             ax.xaxis.set_minor_locator(LogLocator(base=10.0, subs=(2, 3, 4, 5, 6, 7, 8, 9)))
@@ -2803,7 +2754,7 @@ def main():
             ax.add_artist(leg_config)
         if dim == 3:
             handles_ref = [Line2D([], [], ls="None", marker="|", markersize=30, markeredgewidth=3, color="k", label="Reference values")]
-            leg_ref     = ax.legend(handles=handles_ref, fontsize=fontsize+3, loc="lower right", frameon=True, edgecolor="gray", facecolor="white")
+            leg_ref     = ax.legend(handles=handles_ref, fontsize=fontsize+3, loc="upper left", frameon=True, edgecolor="gray", facecolor="white")
             ax.add_artist(leg_ref)
 
         # --- Systematic budget markers ---
@@ -2895,10 +2846,7 @@ def main():
             ax.axvspan(lmin_bands[ib_fixed], lmax_bands[ib_fixed], color="black", alpha=0.08, zorder=4)
 
         # --- X scale + minor ticks ---
-        if len(params[dim]) == len(trans_instru) and np.all(params[dim] == trans_instru):
-            ax.set_xlim(0, trans_instru_max)
-        else:
-            ax.set_xlim(np.nanmin(params[dim]), np.nanmax(params[dim]))
+        ax.set_xlim(np.nanmin(params[dim]), np.nanmax(params[dim]))
         if params_islog[dim]:
             ax.set_xscale("log")
             ax.xaxis.set_minor_locator(LogLocator(base=10.0, subs=(2, 3, 4, 5, 6, 7, 8, 9)))
