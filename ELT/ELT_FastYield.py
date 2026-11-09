@@ -446,11 +446,11 @@ def main():
                 # Retrieving PSF data and axis
                 
                 # PSF data ranges (HARD CODED)
-                l0_min_PSF        = 0.6   # [µm]
-                l0_max_PSF        = 3.0   # [µm]
-                sep_max_PSF       = 1_000 # [mas]
-                WFE_min_PSF       = 10    # [nm]
-                WFE_max_PSF       = 500   # [nm]
+                l0_min_PSF  = 0.6   # [µm]
+                l0_max_PSF  = 3.0   # [µm]
+                sep_max_PSF = 1_000 # [mas]
+                WFE_min_PSF = 10    # [nm]
+                WFE_max_PSF = 500   # [nm]
                 if w_coronagraph:
                     IWA_min_PSF = 0.1     # [mas]
                     IWA_max_PSF = 100     # [mas]
@@ -480,10 +480,10 @@ def main():
                 # Dl-axis products.  The latter are only needed at the reference
                 # l0/WFE/IWA, since the yield calculation varies one axis at a time.
                 if separation is None:
-                    separation       = separation0
-                    N_sep            = len(separation)
-                    PSF_profile_6D   = open_memmap(PSF_profile_6D_path,   mode="w+", dtype=dtype, shape=(N_band, N_config, N_l0, N_WFE, N_IWA, N_sep))
-                    fraction_core_6D = open_memmap(fraction_core_6D_path, mode="w+", dtype=dtype, shape=(N_band, N_config, N_l0, N_WFE, N_IWA, N_sep))
+                    separation          = separation0
+                    N_sep               = len(separation)
+                    PSF_profile_6D      = open_memmap(PSF_profile_6D_path,   mode="w+", dtype=dtype, shape=(N_band, N_config, N_l0, N_WFE, N_IWA, N_sep))
+                    fraction_core_6D    = open_memmap(fraction_core_6D_path, mode="w+", dtype=dtype, shape=(N_band, N_config, N_l0, N_WFE, N_IWA, N_sep))
                     PSF_profile_Dl_4D   = open_memmap(PSF_profile_Dl_4D_path,   mode="w+", dtype=dtype, shape=(N_band, N_config, N_Dl, N_sep))
                     fraction_core_Dl_4D = open_memmap(fraction_core_Dl_4D_path, mode="w+", dtype=dtype, shape=(N_band, N_config, N_Dl, N_sep))
                 elif not np.array_equal(separation, separation0):
@@ -1046,7 +1046,6 @@ def main():
         t  = dim % ncols
         ax = axes[r, t]
         ax.tick_params(axis='both', which='major', labelsize=fontsize+2)
-
         ax.grid(which="major", linestyle="--", linewidth=0.7, alpha=0.45)
         ax.grid(which="minor", linestyle=":",  linewidth=0.4, alpha=0.25)
     
@@ -1416,7 +1415,6 @@ def main():
     nrows     = int(np.ceil(len(param_specs) / ncols))
     fig, axes = plt.subplots(nrows, ncols, figsize=(16, 5.8 * nrows), dpi=dpi, sharex=True, sharey=True)
     axes      = np.atleast_1d(axes).ravel()
-    
     for iax, spec in enumerate(param_specs):
         ax         = axes[iax]
         values     = spec["values"]

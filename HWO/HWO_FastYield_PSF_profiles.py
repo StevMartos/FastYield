@@ -69,13 +69,13 @@ shift_step_lD = 0.1    # [lambda/D], offset sampling in the raw cubes
 FWHM_lD       = 1.029  # [lambda/D], approximate diffraction-limited FWHM
 
 # Physical wavelength and final angular-separation axes.
-lmin    = 0.2    # [um]
-lmax    = 2.0    # [um]
+lmin    = 0.1    # [um]
+lmax    = 3.0    # [um]
 sep_max = 1_000  # [mas]
-N_wave  = 50
-N_sep   = 1_000
+N_wave  = 40
+N_sep   = 400
 
-wave           = np.linspace(lmin,        lmax,    num=N_wave)
+wave           = np.linspace(lmin,        lmax,              num=N_wave) # [µm]
 separation_mas = np.logspace(np.log10(1), np.log10(sep_max), num=N_sep)  # [mas]
 separation_mas = add_if_necessary(array=separation_mas, value=0.0)       # [mas]
 

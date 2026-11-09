@@ -60,10 +60,13 @@ WFE_max    = 500   # [nm] RMS
 IWA_min    = 1e-1  # [mas]
 IWA_max    = 100   # [mas]
 
-wave       = np.linspace(lmin,              lmax,              num=50)
-WFE        = np.linspace(WFE_min,           WFE_max,           num=50)
-IWA        = np.logspace(np.log10(IWA_min), np.log10(IWA_max), num=50)
-separation = np.logspace(np.log10(1),       np.log10(sep_max), num=1_000)
+N_wave = 40
+N_sep  = 400
+
+wave       = np.linspace(lmin,              lmax,              num=N_wave)
+WFE        = np.linspace(WFE_min,           WFE_max,           num=N_wave)
+IWA        = np.logspace(np.log10(IWA_min), np.log10(IWA_max), num=N_wave)
+separation = np.logspace(np.log10(1),       np.log10(sep_max), num=N_sep)
 
 WFE        = add_if_necessary(array=WFE,        value=WFE_ref)
 IWA        = add_if_necessary(array=IWA,        value=IWA_ref)

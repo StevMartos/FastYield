@@ -590,7 +590,6 @@ def process_ELT(idx):
 
 
 
-
 # --------------------------
 # Function for computing S/N
 # --------------------------
