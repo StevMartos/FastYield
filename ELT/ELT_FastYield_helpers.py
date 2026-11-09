@@ -9,6 +9,9 @@ from fastyield.spectrum import get_thermal_reflected_spectrum, filtered_flux
 import numpy as np
 from numpy.lib.format import open_memmap
 
+# import scipy modules
+from scipy.interpolate import RegularGridInterpolator
+
 # import other modules
 from tqdm import tqdm
 
@@ -17,6 +20,54 @@ from tqdm import tqdm
 # ---------------------------------------------------
 # Main functions for ELT instruments (HARMONI, ANDES)
 # ---------------------------------------------------
+
+def average_psf_products_on_window(l0, Dl, wave0, WFE0, IWA0, separation0, density0, core0, radial0, WFE, IWA, separation, pxscale, n_nodes=12, injection=1.0, dtype=np.float32, interpolators=None):
+    """Mean chromatic stellar/planet PSF products over one rectangular spectral window.
+
+    The Gauss--Legendre weights integrate uniformly in wavelength, with the
+    wavelength domain intersected with the actual FITS library coverage.  If
+    the requested interval extends beyond the library, the returned average is
+    over the covered interval only (not an extrapolation).  The caller should
+    warn about such partial windows and interpret their results accordingly.
+
+    Interpolate the positive stellar density in log space; interpolate the
+    bounded planet core and radial throughput linearly so exact zeros survive.
+    Apply the coronagraphic on-axis transmission to the stellar density and
+    the off-axis transmission to the planet core BEFORE wavelength averaging.
+    The pixel scale is fixed by the physical instrument/band, not by lambda.
+    """
+    lower = max(float(l0) - float(Dl)/2, float(wave0[0]))
+    upper = min(float(l0) + float(Dl)/2, float(wave0[-1]))
+    if not lower < upper:
+        raise ValueError(f"No PSF wavelength coverage for window l0={l0:g}, Dl={Dl:g} um")
+    if not (float(Dl) > 0):
+        raise ValueError("Spectral bandwidth Dl must be positive")
+    nodes, weights = np.polynomial.legendre.leggauss(n_nodes)
+    wavelengths = (lower+upper)/2 + (upper-lower)/2*nodes
+    weights = weights/2
+    tiny = np.finfo(float).tiny
+    if interpolators is None:
+        interp_density = RegularGridInterpolator((wave0,WFE0,IWA0,separation0), np.log(np.maximum(density0,tiny)), bounds_error=True)
+        interp_core    = RegularGridInterpolator((wave0,WFE0,IWA0,separation0), core0, bounds_error=True)
+        interp_radial  = RegularGridInterpolator((wave0,WFE0,IWA0,separation0), radial0, bounds_error=True) if radial0 is not None else None
+    else:
+        interp_density, interp_core, interp_radial = interpolators
+    shape = (len(WFE),len(IWA),len(separation))
+    mean_star   = np.zeros(shape, dtype=np.float64)
+    mean_planet = np.zeros(shape, dtype=np.float64)
+    for lam, weight in zip(wavelengths,weights):
+        pts = np.stack(np.meshgrid(np.array([lam]), WFE, IWA, separation, indexing="ij"),axis=-1)
+        density = np.exp(interp_density(pts)[0])
+        core    = np.clip(interp_core(pts)[0],0,1)
+        if interp_radial is not None:
+            radial = np.clip(interp_radial(pts)[0],0,1)
+            density *= radial[...,0,None]  # on-axis stellar coronagraph attenuation
+            core    *= radial              # off-axis planetary coronagraph throughput
+        mean_star   += weight*density
+        mean_planet += weight*core
+    return (mean_star*pxscale**2).astype(dtype), (mean_planet*injection).astype(dtype)
+
+
 
 def metrics_slice(sl, post_processing, wave_i, trans_tell_i, star_i, planet_i, background_i, star_HF_i, star_LF_i, planet_HF_i, planet_LF_i, valid_i, separation_planet_rad, separation_planet_rad_arr, pxscale_rad, D, background_scale, fast_comp=True):
     if sl.stop <= sl.start or sl.stop - sl.start < 2:
@@ -200,7 +251,7 @@ def process_ELT(idx):
     fraction_core_sep_3D_Dl = interp_flat_last_axis(separation, fraction_core_Dl_4D, separation_planet, dtype=dtype) # (band, config, Dl)
     
     
-    # --- Chromatically averaged PSF data at reference Dl for each l0, and reference l0 for WFE/IWA sweeps ---
+    # --- Window-averaged PSF factors for independent one-parameter sweeps ---
     PSF_profile_sep_3D_l0    = PSF_profile_sep_5D[:,   :, :, idx_WFE_ref, idx_IWA_ref]                          # [star flux fraction/px]     (band, config, l0)
     fraction_core_sep_3D_l0  = fraction_core_sep_5D[:, :, :, idx_WFE_ref, idx_IWA_ref]                          # [planet flux fraction/FWHM] (band, config, l0)
     PSF_profile_sep_3D_WFE   = PSF_profile_sep_5D[np.arange(N_band),   :, idx_l0_ref, :, idx_IWA_ref]           # [star flux fraction/px]     (band, config, WFE)
@@ -736,7 +787,7 @@ def get_exposure_time(min_DIT, DC0, RON0, RON_lim, A_FWHM, NbPixel, SNR_thr, idx
     # Data shape = (planets, bands, configs, *)
     N_PT, N_band, N_config, _ = signal_4D_R.shape
 
-    # --- Detector variances per DIT ---
+    # --- Detector variances per DIT (shared FastYield readout model) ---
     def detector_variances(DIT):
         sigma_RON_2 = sigma_RON_2_from_DIT(DIT, min_DIT, RON0, RON_lim, A_FWHM, NbPixel=NbPixel, dtype=dtype)
         sigma_DC_2  = (DC0 * DIT * A_FWHM).astype(dtype)

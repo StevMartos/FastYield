@@ -2,8 +2,6 @@
 from fastyield.config import rad2arcsec
 from fastyield.signal_noise import compute_sigma_base_2_speck_numba, compute_sigma_base_2_al_spat_numba, compute_sigma_base_2_al_spec_fast
 from fastyield.get_specs import get_detector_specs
-from scipy.interpolate import RegularGridInterpolator
-
 
 # import numpy modules
 import numpy as np
@@ -243,21 +241,38 @@ def average_detector_specs(l0, Dl, detector, dtype=np.float32):
     mixed-family windows, the non-UTR readout is a conservative approximation;
     saturation is the lowest full well, and DIT limits use their intersection.
     This is an effective-detector model, not a physical multi-arm instrument.
+    Supported presets: HWO and PCS families, plus constant_<detector_name>.
+    The detector_l0 output is descriptive only; all noise fields use (l0, Dl).
     """
-    lo = np.asarray(l0)[:, None] - np.asarray(Dl)[None, :] / 2
-    hi = np.asarray(l0)[:, None] + np.asarray(Dl)[None, :] / 2
+    # Detector families are assigned over physical wavelength intervals. The
+    # same window-averaging rules apply to HWO and PCS; only the band edges and
+    # detector-family names depend on the chosen instrument prescription.
+    l0 = np.asarray(l0, dtype=float)
+    Dl = np.asarray(Dl, dtype=float)
+    lo = l0[:, None] - Dl[None, :] / 2
+    hi = l0[:, None] + Dl[None, :] / 2
+    if np.any(~np.isfinite(lo)) or np.any(~np.isfinite(hi)) or np.any(hi <= lo):
+        raise ValueError("Spectral windows must be finite and have positive widths.")
+
     if detector.startswith("constant_"):
-        names     = [detector[len("constant_"):]]
-        fractions = np.ones((1,) + lo.shape)
+        names       = [detector[len("constant_"):]]
+        edges       = [-np.inf, np.inf]
     else:
-        if detector == "HWO_conservative":
-            names = ["UV_MCP", "EMCCD", "H4RG"]
-        elif detector == "HWO_photon_counting":
-            names = ["UV_MCP", "SKIPPER_CCD", "MKID"]
-        else:
-            raise ValueError(f"Unknown HWO detector mode: {detector}")
-        edges     = [-np.inf, 0.30, 0.95, np.inf]
-        fractions = np.stack([np.maximum(0, np.minimum(hi, b) - np.maximum(lo, a)) / (hi - lo) for a, b in zip(edges[:-1], edges[1:])])
+        prescriptions = {
+            "HWO_conservative":         (["UV_MCP",  "EMCCD",       "H4RG"], [-np.inf, 0.30, 0.95, np.inf]),
+            "HWO_photon_counting":      (["UV_MCP",  "SKIPPER_CCD", "MKID"], [-np.inf, 0.30, 0.95, np.inf]),
+            "PCS_visNIR_conservative":  (["VIS_CCD", "H4RG"],                [-np.inf, 0.80, np.inf]),
+            "PCS_low_noise_visNIR":     (["EMCCD",   "H4RG"],                [-np.inf, 0.80, np.inf]),
+            "PCS_NIR_APD_optimistic":   (["EMCCD",   "SAPHIRA"],             [-np.inf, 0.80, np.inf]),
+        }
+        if detector not in prescriptions:
+            raise ValueError(f"Unknown detector mode: {detector}")
+        names, edges = prescriptions[detector]
+
+    fractions = np.stack([np.maximum(0.0, np.minimum(hi, b) - np.maximum(lo, a)) / (hi - lo) for a, b in zip(edges[:-1], edges[1:])])
+    # Metadata for identifying the detector at the window central wavelength;
+    # noise calculations always use the window-integrated (l0, Dl) arrays.
+    detector_l0 = np.asarray(names)[np.searchsorted(edges[1:-1], l0, side="right")]
     specs  = [get_detector_specs(n) for n in names]
     active = fractions > 1e-12
     mixed  = np.count_nonzero(active, axis=0) > 1
@@ -278,55 +293,8 @@ def average_detector_specs(l0, Dl, detector, dtype=np.float32):
         raise ValueError("Detector families have incompatible DIT limits in a spectral window")
     utr    = np.asarray([x["family"] == "HgCdTe_HxRG" for x in specs], dtype=bool)
     is_UTR = np.all(~active | utr[:, None, None], axis=0) & ~mixed
-    return dict(RON0=RON0.astype(dtype), RON_lim=RON_lim.astype(dtype), DC0=DC0.astype(dtype), saturation_e=saturation_e.astype(dtype), min_DIT=min_DIT.astype(dtype), max_DIT=max_DIT.astype(dtype), is_UTR=is_UTR, mixed=mixed)
+    return dict(RON0=RON0.astype(dtype), RON_lim=RON_lim.astype(dtype), DC0=DC0.astype(dtype), saturation_e=saturation_e.astype(dtype), min_DIT=min_DIT.astype(dtype), max_DIT=max_DIT.astype(dtype), is_UTR=is_UTR, mixed=mixed, detector_l0=detector_l0)
 
-
-
-def average_psf_products_on_window(l0, Dl, wave0, WFE0, IWA0, separation0, density0, core0, radial0, WFE, IWA, separation, pxscale, n_nodes=12, injection=1.0, dtype=np.float32, interpolators=None):
-    """Mean chromatic stellar/planet PSF products over one rectangular spectral window.
-
-    The Gauss--Legendre weights integrate uniformly in wavelength, with the
-    wavelength domain intersected with the actual FITS library coverage.  If
-    the requested interval extends beyond the library, the returned average is
-    over the covered interval only (not an extrapolation).  The caller should
-    warn about such partial windows and interpret their results accordingly.
-
-    Interpolate the positive stellar density in log space; interpolate the
-    bounded planet core and radial throughput linearly so exact zeros survive.
-    Apply the coronagraphic on-axis transmission to the stellar density and
-    the off-axis transmission to the planet core BEFORE wavelength averaging.
-    The pixel scale is fixed by the physical instrument/band, not by lambda.
-    """
-    lower = max(float(l0) - float(Dl)/2, float(wave0[0]))
-    upper = min(float(l0) + float(Dl)/2, float(wave0[-1]))
-    if not lower < upper:
-        raise ValueError(f"No PSF wavelength coverage for window l0={l0:g}, Dl={Dl:g} um")
-    if not (float(Dl) > 0):
-        raise ValueError("Spectral bandwidth Dl must be positive")
-    nodes, weights = np.polynomial.legendre.leggauss(n_nodes)
-    wavelengths = (lower+upper)/2 + (upper-lower)/2*nodes
-    weights = weights/2
-    tiny = np.finfo(float).tiny
-    if interpolators is None:
-        interp_density = RegularGridInterpolator((wave0,WFE0,IWA0,separation0), np.log(np.maximum(density0,tiny)), bounds_error=True)
-        interp_core    = RegularGridInterpolator((wave0,WFE0,IWA0,separation0), core0, bounds_error=True)
-        interp_radial  = RegularGridInterpolator((wave0,WFE0,IWA0,separation0), radial0, bounds_error=True) if radial0 is not None else None
-    else:
-        interp_density, interp_core, interp_radial = interpolators
-    shape = (len(WFE),len(IWA),len(separation))
-    mean_star   = np.zeros(shape, dtype=np.float64)
-    mean_planet = np.zeros(shape, dtype=np.float64)
-    for lam, weight in zip(wavelengths,weights):
-        pts = np.stack(np.meshgrid(np.array([lam]), WFE, IWA, separation, indexing="ij"),axis=-1)
-        density = np.exp(interp_density(pts)[0])
-        core    = np.clip(interp_core(pts)[0],0,1)
-        if interp_radial is not None:
-            radial = np.clip(interp_radial(pts)[0],0,1)
-            density *= radial[...,0,None]  # on-axis stellar coronagraph attenuation
-            core    *= radial              # off-axis planetary coronagraph throughput
-        mean_star   += weight*density
-        mean_planet += weight*core
-    return (mean_star*pxscale**2).astype(dtype), (mean_planet*injection).astype(dtype)
 
 
 def interp_flat_last_axis(x, y, x0, dtype=None):
