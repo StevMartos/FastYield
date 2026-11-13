@@ -259,7 +259,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
         ax_flux_band  = fig_band_flux.gca()
         ax_flux_band.set_yscale("log")
         ax_flux_band.set_xlabel("Wavelength [µm]", fontsize=14)
-        ax_flux_band.grid(which='both', linestyle=':', color='gray', alpha=0.5) 
+        ax_flux_band.grid(which='both', linestyle=':', color='gray', alpha=0.5)
         ax_flux_band.yaxis.set_ticks_position('both')
         ax_flux_band.minorticks_on()
         ymin = +np.inf

@@ -392,6 +392,82 @@ config_data_ANDES = {
 #                                                    "saturation_e": 80_000},                           # Full well capacity [e-] 
 #                    }
 
+# From ScopeSim (METIS L and M spectroscopy)
+config_data_METIS_LMS = {
+                       'name':           "METIS_LMS",                                 # Instrument name
+                       'telescope_name': "ELT",                                       # Telescope name
+                       'type':           "IFU",                                       # Instrument type
+                       'gratings':      {"L":  GratingInfo(3.4728, 3.5253, 100_000),  # Spectral range [µm], resolving power
+                                         "M":  GratingInfo(4.7625, 4.8370, 100_000)}, # Spectral range [µm], resolving power
+                       'lambda_range':  {"lambda_min": 3.4728, "lambda_max": 4.8370}, # Minimum and maximum instrumental wavelength range [µm]
+                       'size_core':      3,                                           # Size in pixels of the FWHM  (here: side of the PSF core box)
+                       'apodizers':     {"NO_SP":   ApodizerInfo(1)},                 # Available apodizers (transmission, IWA [mas])
+                       'strehls':       ["MED"],                                      # Available strehls
+                       'coronagraphs':  [None, "CVC", "RAVC", "APP"],                 # Available coronagraphs
+                       'pxscale':                   {"L": 0.0082,                     # Pixel scale [arcsec/px]
+                                                     "M": 0.0082},                    # Pixel scale [arcsec/px]
+                       'FOV':            0.9,                                         # Field Of View [arcsec]
+                       'sep_unit':       "mas",                                       # Unit for angular separation
+                       'detector':      {"RON":          70,                          # Read-Out Noise [e-/px/read]
+                                         "RON_lim":      4.1,                         # Read-Out Noise limit [e-/px/read]
+                                         "dark_current": 0.1,                         # Dark current [e-/px/s]
+                                         "minDIT":       0.0217,                      # Minimum Detector Integration Time [mn]
+                                         "maxDIT":       5,                           # Maximum Detector Integration Time [mn]
+                                         "saturation_e": 100_000},                    # Full well capacity [e-] 
+                     }
+
+# From ScopeSim (METIS long-slit spectroscopy, L/M bands only)
+config_data_METIS_LSS = {
+                       'name':           "METIS_LSS",                                 # Instrument name
+                       'telescope_name': "ELT",                                       # Telescope name
+                       'type':           "IFU",                                       # IFU approximation for an orientable long slit
+                       'gratings':      {"L":  GratingInfo(2.9, 4.2, 1_500),          # Spectral range [µm], resolving power
+                                         "M":  GratingInfo(4.5, 5.2, 1_900)},         # Spectral range [µm], resolving power
+                       'lambda_range':  {"lambda_min": 2.9, "lambda_max": 5.2},       # Minimum and maximum instrumental wavelength range [µm]
+                       'size_core':      3,                                           # Approximate PSF core size [px] (to be calibrated)
+                       'apodizers':     {"NO_SP": ApodizerInfo(1)},                   # Available apodizers (transmission, IWA [mas])
+                       'strehls':       ["MED"],                                      # Available strehls
+                       'coronagraphs':  [None],                                       # No coronagraph in the LSS optical path
+                       'pxscale':      {"L": 0.00547,                                 # Pixel scale along the slit [arcsec/px]
+                                        "M": 0.00547},                                # Pixel scale along the slit [arcsec/px]
+                       'FOV':            8.0,                                         # Slit length [arcsec], equivalent OWA = 4 arcsec
+                       'sep_unit':       "mas",                                       # Unit for angular separation
+                       'detector':      {"RON":          15,                          # Read-Out Noise, slow mode [e-/px/read]
+                                         "RON_lim":      4.1,                         # Assumed effective Read-Out Noise limit [e-/px/read]
+                                         "dark_current": 0.05,                        # Dark current [e-/px/s]
+                                         "minDIT":       1.3/60,                      # Minimum Detector Integration Time [mn]
+                                         "maxDIT":       5,                           # Assumed Maximum Detector Integration Time [mn]
+                                         "saturation_e": 100_000},                    # Full well capacity [e-]
+                     }
+
+# From ScopeSim (assuming an H2RG detector for all bands, including N)
+config_data_METIS_IMG = {
+                       'name':           "METIS_IMG",                                  # Instrument name
+                       'telescope_name': "ELT",                                        # Telescope name
+                       'type':           "imager",                                     # Instrument type
+                       'gratings':      {"L": GratingInfo(2.9,  4.2,  R0_min),         # Spectral range [µm], numerical resolution for photometry
+                                         "M": GratingInfo(4.5,  5.3,  R0_min),
+                                         "N": GratingInfo(7.5, 13.5,  R0_min)},        # Full band coverage; actual filters must be modelled separately
+                       'lambda_range':  {"lambda_min": 2.9, "lambda_max": 13.5},       # Minimum and maximum instrumental wavelength range [µm]
+                       'size_core':      5,                                            # Approximate PSF core size [px] (wavelength-dependent in reality)
+                       'apodizers':     {"NO_SP": ApodizerInfo(1)},                    # Available apodizers (transmission, IWA [mas])
+                       'strehls':       ["MED"],                                       # Available strehls
+                       'coronagraphs':  [None, "CVC", "RAVC", "APP"],                  # Add CVC/RAVC once their PSF models are implemented
+                       'pxscale':      {"L": 0.00547,                                  # Pixel scale [arcsec/px]
+                                        "M": 0.00547,
+                                        "N": 0.00679},
+                       'FOV':            10.5,                                         # Conservative common FoV [arcsec] (N actually 13.5")
+                       'sep_unit':       "mas",                                        # Unit for angular separation
+                       'detector':      {"RON":          70,                           # H2RG fast-mode Read-Out Noise [e-/px/read]
+                                         "RON_lim":      4.1,                          # Assumed Read-Out Noise limit [e-/px/read]
+                                         "dark_current": 0.1,                          # Assumed H2RG dark current [e-/px/s]
+                                         "minDIT":       0.04/60,                      # H2RG fast-mode Minimum DIT [mn]
+                                         "maxDIT":       5,                            # Assumed Maximum DIT [mn], subject to saturation
+                                         "saturation_e": 100_000},                     # H2RG full well capacity [e-]
+                     }
+
+
+
 #------------------------------------------------------------------------------#
 #                                  VLT:                                        #
 #------------------------------------------------------------------------------#
@@ -657,6 +733,9 @@ config_data_VIPAPYRUS = {
 config_data_list = [
                     config_data_HARMONI,
                     config_data_ANDES,
+                    config_data_METIS_LMS,
+                    config_data_METIS_LSS,
+                    config_data_METIS_IMG,
                     config_data_ERIS,
                     config_data_HiRISE,
                     config_data_CRIRES,
