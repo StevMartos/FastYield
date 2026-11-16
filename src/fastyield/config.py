@@ -284,6 +284,7 @@ config_data_HARMONI = {
                        'sep_unit':       "mas",                                     # Unit for angular separation
                        'detector':      {"RON":          10.0,                      # Read-Out Noise [e-/px/read]
                                          "RON_lim":      1.,                        # Read-Out Noise limit [e-/px/read]
+                                         "is_UTR":       True,                      # Keep existing UTR noise model
                                          "dark_current": 0.0053,                    # Dark current [e-/px/s]
                                          "minDIT":       1.3/60,                    # Minimum Detector Integration Time [mn]
                                          "maxDIT":       5,                         # Maximum Detector Integration Time [mn]
@@ -314,6 +315,7 @@ config_data_ANDES = {
                      'sep_unit':                   "mas",                                            # Unit for angular separation
                      'detector':                  {"RON":          10.0,                             # Read-Out Noise [e-/px/read]
                                                    "RON_lim":      1.,                               # Read-Out Noise limit [e-/px/read]
+                                                   "is_UTR":       True,                             # Keep existing UTR noise model
                                                    "dark_current": 0.0053,                           # Dark current [e-/px/s]
                                                    "minDIT":       1.3/60,                           # Minimum Detector Integration Time [mn]
                                                    "maxDIT":       5,                                # Maximum Detector Integration Time [mn]
@@ -410,6 +412,7 @@ config_data_METIS_LMS = {
                        'sep_unit':       "mas",                                       # Unit for angular separation
                        'detector':      {"RON":          70,                          # Read-Out Noise [e-/px/read]
                                          "RON_lim":      4.1,                         # Read-Out Noise limit [e-/px/read]
+                                         "is_UTR":       True,                        # Keep existing UTR noise model
                                          "dark_current": 0.1,                         # Dark current [e-/px/s]
                                          "minDIT":       0.0217,                      # Minimum Detector Integration Time [mn]
                                          "maxDIT":       5,                           # Maximum Detector Integration Time [mn]
@@ -436,12 +439,14 @@ config_data_METIS_LSS = {
                        'sep_unit':       "mas",                                       # Unit for angular separation
                        'detector':      {"RON":          15,                          # Default L/M: H2RG slow-mode RON [e-/px/read]
                                          "RON_lim":      4.1,                         # Assumed effective Read-Out Noise limit [e-/px/read]
+                                         "is_UTR":       True,                        # Keep existing UTR noise model
                                          "dark_current": 0.05,                        # Dark current [e-/px/s]
                                          "minDIT":       1.3/60,                      # Minimum Detector Integration Time [mn]
                                          "maxDIT":       5,                           # Assumed Maximum Detector Integration Time [mn]
                                          "saturation_e": 100_000},                    # Full well capacity [e-]
                        'detectors':     {"N": {"RON":          35,                    # ScopeSim GeoSnap low_capacity [e-/px/read]
                                                "RON_lim":      35,                    # No assumed UTR reduction for GeoSnap [e-/px/DIT]
+                                               "is_UTR":       False,                 # No UTR reduction (GeoSnap)
                                                "dark_current": 1e5,                   # ScopeSim GeoSnap [e-/px/s]
                                                "minDIT":       0.011/60,              # ScopeSim GeoSnap [mn]
                                                "maxDIT":       5,                     # Assumed maximum [mn], subject to saturation
@@ -468,12 +473,14 @@ config_data_METIS_IMG = {
                        'sep_unit':       "mas",                                        # Unit for angular separation
                        'detector':      {"RON":          70,                           # Default L/M: H2RG fast-mode RON [e-/px/read]
                                          "RON_lim":      4.1,                          # Assumed Read-Out Noise limit [e-/px/read]
+                                         "is_UTR":       True,                         # Keep existing UTR noise model
                                          "dark_current": 0.1,                          # Assumed L/M H2RG dark current [e-/px/s]
                                          "minDIT":       0.04/60,                      # H2RG fast-mode Minimum DIT [mn]
                                          "maxDIT":       5,                            # Assumed Maximum DIT [mn], subject to saturation
                                          "saturation_e": 100_000},                     # H2RG full well capacity [e-]
                        'detectors':     {"N": {"RON":          300,                   # ScopeSim GeoSnap high_capacity [e-/px/read]
                                                "RON_lim":      300,                   # No assumed UTR reduction for GeoSnap [e-/px/DIT]
+                                               "is_UTR":       False,                 # No UTR reduction (GeoSnap)
                                                "dark_current": 1e5,                   # ScopeSim GeoSnap [e-/px/s]
                                                "minDIT":       0.011/60,              # ScopeSim GeoSnap [mn]
                                                "maxDIT":       5,                     # Assumed maximum [mn], subject to saturation
@@ -512,6 +519,7 @@ config_data_ERIS = {
                     'sep_unit':       "mas",                                        # Unit for angular separation
                     'detector':      {"RON":          12.0,                         # Read-Out Noise [e-/px/read]
                                       "RON_lim":      7.,                           # Read-Out Noise limit [e-/px/read]
+                                      "is_UTR":       True,                         # Keep existing UTR noise model
                                       "dark_current": 0.19,                         # Dark current [e-/px/s]
                                       "minDIT":       1.6/60,                       # Minimum Detector Integration Time [mn]
                                       "maxDIT":       2,                            # Maximum Detector Integration Time [mn]
@@ -538,6 +546,7 @@ config_data_HiRISE = {
                       'sep_unit':                   "arcsec",                                # Unit for angular separation
                       'detector':                  {"RON":          12,                      # Read-Out Noise [e-/px/read]
                                                     "RON_lim":      4.1,                     # Read-Out Noise limit [e-/px/read] https://www.eso.org/sci/facilities/paranal/instruments/crires/doc/CRIRES_User_Manual_P108_Phase2.pdf?utm.com
+                                                    "is_UTR":       True,                    # Keep existing UTR noise model
                                                     "dark_current": 0.03,                    # Dark current [e-/px/s]
                                                     "minDIT":       1.4725/60,               # Minimum Detector Integration Time [mn]
                                                     "maxDIT":       20,                      # Maximum Detector Integration Time [mn]
@@ -573,6 +582,7 @@ config_data_CRIRES = {
                       'sep_unit':                   "arcsec",                                  # Unit for angular separation
                       'detector':                  {"RON":          12,                        # Read-Out Noise [e-/px/read]
                                                     "RON_lim":      4.1,                       # Read-Out Noise limit [e-/px/read] https://www.eso.org/sci/facilities/paranal/instruments/crires/doc/CRIRES_User_Manual_P108_Phase2.pdf?utm.com
+                                                    "is_UTR":       True,                      # Keep existing UTR noise model
                                                     "dark_current": 0.03,                      # Dark current [e-/px/s]
                                                     "minDIT":       1.4725/60,                 # Minimum Detector Integration Time [mn]
                                                     "maxDIT":       20,                        # Maximum Detector Integration Time [mn]
@@ -618,6 +628,7 @@ config_data_MIRIMRS = {
                       'sep_unit':        "arcsec",                                                  # Unit for angular separation
                       'detector':       {"RON":          19,                                        # Read-Out Noise [e-/px/read]
                                          "RON_lim":      1.,                                        # Read-Out Noise limit [e-/px/read]
+                                         "is_UTR":       True,                                      # Keep existing UTR noise model
                                          "dark_current": 0.2,                                       # Dark current [e-/px/s]
                                          "minDIT":       2.775/60,                                  # Minimum Detector Integration Time [mn]
                                          "maxDIT":       5,                                         # Maximum Detector Integration Time [mn]
@@ -647,6 +658,7 @@ config_data_NIRCam = {
                       'sep_unit':       "arcsec",                                          # Unit for angular separation
                       'detector':      {"RON":          9.4,                               # Read-Out Noise [e-/px/read]
                                         "RON_lim":      1.,                                # Read-Out Noise limit [e-/px/read]
+                                        "is_UTR":       True,                              # Keep existing UTR noise model
                                         "dark_current": 34.2/1000,                         # Dark current [e-/px/s]
                                         "minDIT":       10.737/60,                         # Minimum Detector Integration Time [mn]
                                         "maxDIT":       5,                                 # Maximum Detector Integration Time [mn]
@@ -673,6 +685,7 @@ config_data_NIRSpec = {
                        'sep_unit':       "arcsec",                                          # Unit for angular separation
                        'detector':      {"RON":          10,                                # Read-Out Noise [e-/px/read]
                                          "RON_lim":      1.,                                # Read-Out Noise limit [e-/px/read]
+                                         "is_UTR":       True,                              # Keep existing UTR noise model
                                          "dark_current": 0.008,                             # Dark current [e-/px/s]
                                          "minDIT":       10.737/60,                         # Minimum Detector Integration Time [mn]
                                          "maxDIT":       5,                                 # Maximum Detector Integration Time [mn]
@@ -704,6 +717,7 @@ config_data_VIPAPYRUS = {
                          'sep_unit':                  "arcsec",                                    # Unit for angular separation
                          'detector':                 {"RON":          11.4,                        # Read-Out Noise [e-/px/read]
                                                       "RON_lim":      4.1,                         # Read-Out Noise limit [e-/px/read]
+                                                      "is_UTR":       True,                        # Keep existing UTR noise model
                                                       "dark_current": 0.0053,                      # Dark current [e-/px/s]
                                                       "minDIT":       1.4725/60,                   # Minimum Detector Integration Time [mn]
                                                       "maxDIT":       5,                           # Maximum Detector Integration Time [mn]

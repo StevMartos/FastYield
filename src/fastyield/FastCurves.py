@@ -277,6 +277,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
         max_DIT        = detector["maxDIT"]       # Maximal integration time [mn]
         RON0           = detector["RON"]          # Read-out noise [e-/px/read]
         RON_lim        = detector["RON_lim"]      # Effective read-out noise floor [e-/px/DIT]
+        is_UTR         = detector["is_UTR"]       # Apply UTR readout model for this detector
         dark_current   = detector["dark_current"] # Dark current [e-/px/s]
                 
         # -----------------------------------------------------------------------
@@ -334,7 +335,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
         # -------------------------------------------------------
         # DIT in [mn] and effective read-out noise in [e-/px/DIT] 
         # -------------------------------------------------------
-        N_DIT, DIT, DIT_saturation, DIT_saturation_planet, RON_eff, iwa_FPM = get_DIT_RON(config_data=config_data, instru_type=instru_type, apodizer=apodizer, PSF_profile=PSF_profile, separation=separation, star_spectrum_band=star_spectrum_band, exposure_time=exposure_time, min_DIT=min_DIT, max_DIT=max_DIT, trans=trans, RON0=RON0, RON_lim=RON_lim, saturation_e=saturation_e, input_DIT=input_DIT, separation_planet=separation_planet)
+        N_DIT, DIT, DIT_saturation, DIT_saturation_planet, RON_eff, iwa_FPM = get_DIT_RON(config_data=config_data, instru_type=instru_type, apodizer=apodizer, PSF_profile=PSF_profile, separation=separation, star_spectrum_band=star_spectrum_band, exposure_time=exposure_time, min_DIT=min_DIT, max_DIT=max_DIT, trans=trans, RON0=RON0, RON_lim=RON_lim, saturation_e=saturation_e, input_DIT=input_DIT, separation_planet=separation_planet, is_UTR=is_UTR)
         
         # Star and planet spectra integrated over the DIT in [ph/bin/DIT] (total ph over the FoV)
         Ss       = star_spectrum_band.flux   * DIT # [ph/bin/DIT] (total ph over the FoV)
@@ -697,7 +698,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
                 print_metric("Number of spectral channels", "N_λ", f"{len(wave_band)}", "channels")
             print_metric("Detector Integration Time",       "DIT",        f"{DIT:.3f}",                   "mn")
             print_metric("Saturating DIT",                  "DIT_sat",    f"{DIT_saturation:.3f}",        "mn")
-            print_metric("Effective post-UTR RON",          "RON_eff",    f"{RON_eff:.3f}",               "e-/DIT")
+            print_metric("Effective post-UTR RON" if is_UTR else "Effective RON", "RON_eff",    f"{RON_eff:.3f}",               "e-/DIT")
             print_metric("Mean total system transmission",  "trans",      f"{100*np.nanmedian(trans):.1f}", "%")
             if separation_planet is not None and coronagraph is not None:
                 print_metric("Fraction of flux in the FWHM", "f_FWHM", f"{100*fraction_core[idx_planet_sep]:.1f}", f"% (at {separation_planet:.1f} {sep_unit})")

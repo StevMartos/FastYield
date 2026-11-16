@@ -76,7 +76,7 @@ def estimate_RON_UTR(N, RON0, RON_lim):
 
 
 
-def get_DIT_RON(config_data, instru_type, apodizer, PSF_profile, separation, star_spectrum_band, exposure_time, min_DIT, max_DIT, trans, RON0, RON_lim, saturation_e, input_DIT, separation_planet=None):
+def get_DIT_RON(config_data, instru_type, apodizer, PSF_profile, separation, star_spectrum_band, exposure_time, min_DIT, max_DIT, trans, RON0, RON_lim, saturation_e, input_DIT, separation_planet=None, is_UTR=True):
     """
     Compute the detector integration time (DIT) to avoid saturation and the effective read-noise.
 
@@ -109,6 +109,8 @@ def get_DIT_RON(config_data, instru_type, apodizer, PSF_profile, separation, sta
         Integration time per exposure [mn].
     RON_eff
         Effective read-out noise per DIT [e-/px].
+    is_UTR
+        Whether to apply the UTR read-noise reduction (default: True).
     """
     # Per-DIT max electron rate estimate (worst-case pixel in the PSF core)
     if instru_type == "imager":
@@ -144,9 +146,9 @@ def get_DIT_RON(config_data, instru_type, apodizer, PSF_profile, separation, sta
         DIT = np.clip(DIT_saturation, min_DIT, max_DIT)
     DIT = min(DIT, exposure_time) # [mn]: The DIT cannot be longer than the total exposure time
     
-    # Up-the-ramp effective readout-noise in [e-/px/DIT] (see https://arxiv.org/pdf/0706.2344)
-    if DIT >= 2*min_DIT: # At least 2 reads inside the ramp
-        N_read  = DIT / min_DIT                                         # Number of intermittent non-destructive readings
+    # Effective readout-noise [e-/px/DIT]: UTR only when enabled for this detector.
+    if is_UTR and DIT >= 2*min_DIT: # At least 2 reads inside the ramp
+        N_read  = DIT / min_DIT                                          # Number of intermittent non-destructive readings
         RON_eff = estimate_RON_UTR(N=N_read, RON0=RON0, RON_lim=RON_lim) # Effective read out noise [e-/px/DIT]
         RON_eff = min(RON_eff, RON0)                                     # [e-/px/DIT]
     else:
@@ -2088,6 +2090,8 @@ def plot_dark_noise_budget(instru, noise_level=None, band=None):
     min_DIT      = detector["minDIT"]       # minimal integration time (in mn)
     max_DIT      = detector["maxDIT"]       # maximal integration time (in mn)
     RON          = detector["RON"]          # read out noise (in e-/px/DIT)
+    RON_lim      = detector["RON_lim"]      # Effective UTR read-noise floor [e-/px/DIT]
+    is_UTR       = detector["is_UTR"]       # UTR noise reduction enabled for this detector
     dark_current = detector["dark_current"] # dark current (in e-/px/s)
     DIT       = np.logspace(np.log10(min_DIT), np.log10(200*max_DIT), 100)
     sigma_dc  = np.zeros_like(DIT)
@@ -2095,12 +2099,9 @@ def plot_dark_noise_budget(instru, noise_level=None, band=None):
     for i in range(len(DIT)):
         dit = DIT[i]
         sigma_dc[i] = np.sqrt(dark_current * dit * 60) # e-/px/DOT
-        nb_min_DIT = 1 # "Up the ramp" reading mode: the pose is sequenced in several non-destructive readings to reduce reading noise (see https://en.wikipedia.org/wiki/Signal_averaging).
-        if instru in {"METIS_LSS", "METIS_IMG"} and band == "N":
-            sigma_ron[i] = RON  # GeoSnap: no H2RG-style UTR noise reduction assumed
-        elif dit > nb_min_DIT*min_DIT: # choose 4 min_DIT because if intermittent readings are too short, the detector will heat up too quickly => + dark current
-            N_i          = dit / (nb_min_DIT*min_DIT) # number of intermittent readings
-            sigma_ron[i] = RON / np.sqrt(N_i)         # effective read out noise (in e-/px/DIT)
+        if is_UTR and dit >= 2*min_DIT:
+            N_read       = dit / min_DIT
+            sigma_ron[i] = min(estimate_RON_UTR(N=N_read, RON0=RON, RON_lim=RON_lim), RON) # Same prescription as get_DIT_RON()
         else:
             sigma_ron[i] = RON
         if instru == 'ERIS' and sigma_ron[i] < 7: # effective RON lower limit for ERIS
