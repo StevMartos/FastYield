@@ -227,40 +227,6 @@ ApodizerInfo = collections.namedtuple("ApodizerInfo", ["transmission"])
 #                                  ELT:                                        #
 #------------------------------------------------------------------------------#
 
-# # BEFORE RESCOPE
-# config_data_HARMONI = {
-#                        'name':           "HARMONI",                                    # Instrument name
-#                        'telescope_name': "ELT",                                        # Telescope name
-#                        'type':           "IFU",                                        # Instrument type
-#                        'gratings':      {"J":       GratingInfo(1.046, 1.324, 7555),   # Spectral range [µm], resolving power
-#                                          "H":       GratingInfo(1.435, 1.815, 7555),   # Spectral range [µm], resolving power
-#                                          "H_high":  GratingInfo(1.538, 1.678, 17385),  # Spectral range [µm], resolving power
-#                                          "HK":      GratingInfo(1.450, 2.450, 3355),   # Spectral range [µm], resolving power
-#                                          "K":       GratingInfo(1.951, 2.469, 7555),   # Spectral range [µm], resolving power
-#                                          "K1_high": GratingInfo(2.017, 2.200, 17385),  # Spectral range [µm], resolving power
-#                                          "K2_high": GratingInfo(2.199, 2.400, 17385)}, # Spectral range [µm], resolving power
-#                        'lambda_range':  {"lambda_min": 1.046, "lambda_max": 2.469},    # Minimum and maximum instrumental wavelength range [µm]
-#                        'size_core':      3,                                            # Size in pixels of the FWHM  (here: side of the PSF core box)
-#                        'apodizers':     {"NO_SP":   ApodizerInfo(0.84),                # Available apodizers (transmission, IWA [mas])
-#                                          "SP1":     ApodizerInfo(0.45),                # Available apodizers (transmission, IWA [mas])
-#                                          "SP2":     ApodizerInfo(0.35),                # Available apodizers (transmission, IWA [mas])
-#                                          "SP_Prox": ApodizerInfo(0.68)},               # Available apodizers (transmission, IWA [mas])
-#                        'FPMs':          [30, 50, 70, 100],                             # FPM IWA available values in [mas]
-#                        #'FPMs':          [30],                                         # FPM IWA available values in [mas]
-#                        'strehls':       ["JQ1"],                                       # Available strehls
-#                        'coronagraphs':  [None],                                        # Available coronagraphs
-#                        'pxscale':        0.004,                                        # Pixel scale [arcsec/px]
-#                        'FOV':            0.8,                                          # Field Of View [arcsec]
-#                        'sep_unit':       "mas",                                        # Unit for angular separation
-#                        'detector':      {"RON":          10.0,                         # Read-Out Noise [e-/px/read]
-#                                          "RON_lim":      1.,                           # Read-Out Noise limit [e-/px/read]
-#                                          "dark_current": 0.0053,                       # Dark current [e-/px/s]
-#                                          "minDIT":       1.3/60,                       # Minimum Detector Integration Time [mn]
-#                                          "maxDIT":       5,                            # Maximum Detector Integration Time [mn]
-#                                          "saturation_e": 80_000},                      # Full well capacity [e-] 
-#                      }
-
-# AFTER RESCOPE
 config_data_HARMONI = {
                        'name':           "HARMONI",                                 # Instrument name
                        'telescope_name': "ELT",                                     # Telescope name
@@ -284,14 +250,13 @@ config_data_HARMONI = {
                        'sep_unit':       "mas",                                     # Unit for angular separation
                        'detector':      {"RON":          10.0,                      # Read-Out Noise [e-/px/read]
                                          "RON_lim":      1.,                        # Read-Out Noise limit [e-/px/read]
-                                         "is_UTR":       True,                      # Keep existing UTR noise model
+                                         "is_UTR":       True,                      # Up-The-Ramp readout mode
                                          "dark_current": 0.0053,                    # Dark current [e-/px/s]
                                          "minDIT":       1.3/60,                    # Minimum Detector Integration Time [mn]
                                          "maxDIT":       5,                         # Maximum Detector Integration Time [mn]
                                          "saturation_e": 80_000},                   # Full well capacity [e-] 
                      }
 
-# Standard version at R = 100_000
 config_data_ANDES = {
                      'name':                       "ANDES",                                          # Instrument name
                      'telescope_name':             "ELT",                                            # Telescope name
@@ -315,104 +280,46 @@ config_data_ANDES = {
                      'sep_unit':                   "mas",                                            # Unit for angular separation
                      'detector':                  {"RON":          10.0,                             # Read-Out Noise [e-/px/read]
                                                    "RON_lim":      1.,                               # Read-Out Noise limit [e-/px/read]
-                                                   "is_UTR":       True,                             # Keep existing UTR noise model
+                                                   "is_UTR":       True,                             # Up-The-Ramp readout mode
                                                    "dark_current": 0.0053,                           # Dark current [e-/px/s]
                                                    "minDIT":       1.3/60,                           # Minimum Detector Integration Time [mn]
                                                    "maxDIT":       5,                                # Maximum Detector Integration Time [mn]
                                                    "saturation_e": 80_000},                          # Full well capacity [e-] 
                    }
 
-# # With different resolutions: 50_000, 75_000, 100_000, 125_000, 150_000
-# config_data_ANDES = {
-#                      'name':                       "ANDES",                                           # Instrument name
-#                      'telescope_name':             "ELT",                                             # Telescope name
-#                      'type':                       "IFU_fiber",                                       # Instrument type
-#                      'gratings':                  {
-                                                   
-#                                                    # "YJH_5mas_50":   GratingInfo(0.95, 1.8, 50_000),   # Spectral range [µm], resolving power
-#                                                    # "YJH_5mas_75":   GratingInfo(0.95, 1.8, 75_000),   # Spectral range [µm], resolving power
-#                                                    # "YJH_5mas_100":  GratingInfo(0.95, 1.8, 100_000),  # Spectral range [µm], resolving power
-#                                                    # "YJH_5mas_125":  GratingInfo(0.95, 1.8, 125_000),  # Spectral range [µm], resolving power
-#                                                    # "YJH_5mas_150":  GratingInfo(0.95, 1.8, 150_000),  # Spectral range [µm], resolving power
-                                                   
-#                                                    "YJH_10mas_50":  GratingInfo(0.95, 1.8, 50_000),   # Spectral range [µm], resolving power
-#                                                    "YJH_10mas_75":  GratingInfo(0.95, 1.8, 75_000),   # Spectral range [µm], resolving power
-#                                                    "YJH_10mas_100": GratingInfo(0.95, 1.8, 100_000),  # Spectral range [µm], resolving power
-#                                                    "YJH_10mas_125": GratingInfo(0.95, 1.8, 125_000),  # Spectral range [µm], resolving power
-#                                                    "YJH_10mas_150": GratingInfo(0.95, 1.8, 150_000),  # Spectral range [µm], resolving power
-                                                   
-#                                                    # "YJH_16mas_50":  GratingInfo(0.95, 1.8, 50_000),   # Spectral range [µm], resolving power
-#                                                    # "YJH_16mas_75":  GratingInfo(0.95, 1.8, 75_000),   # Spectral range [µm], resolving power
-#                                                    # "YJH_16mas_100": GratingInfo(0.95, 1.8, 100_000),  # Spectral range [µm], resolving power
-#                                                    # "YJH_16mas_125": GratingInfo(0.95, 1.8, 125_000),  # Spectral range [µm], resolving power
-#                                                    # "YJH_16mas_150": GratingInfo(0.95, 1.8, 150_000)
-                                                   
-#                                                    }, # Spectral range [µm], resolving power
-#                      'lambda_range':              {"lambda_min": 0.95, "lambda_max": 1.8},            # Minimum and maximum instrumental wavelength range [µm]
-#                      'size_core':                  1,                                                 # Size in pixels of the FWHM  (here: 1 fiber on the planet)
-#                      'injection':                 {"YJH_5mas_50":   0.848,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
-#                                                    "YJH_5mas_75":   0.848,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
-#                                                    "YJH_5mas_100":  0.848,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
-#                                                    "YJH_5mas_125":  0.848,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
-#                                                    "YJH_5mas_150":  0.848,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
-#                                                    "YJH_10mas_50":  0.715,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
-#                                                    "YJH_10mas_75":  0.715,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
-#                                                    "YJH_10mas_100": 0.715,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
-#                                                    "YJH_10mas_125": 0.715,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
-#                                                    "YJH_10mas_150": 0.715,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
-#                                                    "YJH_16mas_50":  0.784,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
-#                                                    "YJH_16mas_75":  0.784,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
-#                                                    "YJH_16mas_100": 0.784,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
-#                                                    "YJH_16mas_125": 0.784,                            # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
-#                                                    "YJH_16mas_150": 0.784},                           # Mean injection efficiency in the fiber (the fact that the planet could not be perfectly centered in the fiber)
-#                      'pixel_detector_projection':  3,                                                 # Effective number of pixels per spectral channel (here: first guess)
-#                      'apodizers':                 {"NO_SP": ApodizerInfo(1)},                         # Available apodizers
-#                      'strehls':                   ["MED"],                                            # Available strehls
-#                      'coronagraphs':              [None, "LYOT"],                                     # Available coronagraphs
-#                      'pxscale':                   {"YJH_5mas_50":   0.005,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
-#                                                    "YJH_5mas_75":   0.005,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
-#                                                    "YJH_5mas_100":  0.005,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
-#                                                    "YJH_5mas_125":  0.005,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
-#                                                    "YJH_5mas_150":  0.005,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
-#                                                    "YJH_10mas_50":  0.010,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
-#                                                    "YJH_10mas_75":  0.010,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
-#                                                    "YJH_10mas_100": 0.010,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
-#                                                    "YJH_10mas_125": 0.010,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
-#                                                    "YJH_10mas_150": 0.010,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
-#                                                    "YJH_16mas_50":  0.016,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
-#                                                    "YJH_16mas_75":  0.016,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
-#                                                    "YJH_16mas_100": 0.016,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
-#                                                    "YJH_16mas_125": 0.016,                            # Fiber scale [arcsec/fiber] <=> [arcsec/px]
-#                                                    "YJH_16mas_150": 0.016},                           # Fiber scale [arcsec/fiber] <=> [arcsec/px]
-#                      'FOV':                        0.144,                                             # Field Of View [arcsec], 16 mas * 9 fibers
-#                      'sep_unit':                   "mas",                                             # Unit for angular separation
-#                      'detector':                  {"RON":          10.0,                              # Read-Out Noise [e-/px/read]
-#                                                    "RON_lim":      1.,                                # Read-Out Noise limit [e-/px/read]
-#                                                    "dark_current": 0.0053,                            # Dark current [e-/px/s]
-#                                                    "minDIT":       1.3/60,                            # Minimum Detector Integration Time [mn]
-#                                                    "maxDIT":       5,                                 # Maximum Detector Integration Time [mn]
-#                                                    "saturation_e": 80_000},                           # Full well capacity [e-] 
-#                    }
+# Nominal LMS echelle settings supplied by Roy (2026-11); full catalogue in metis_lms_settings.py.
+# Keep L/M aliases initially so all existing FastCurves/FastYield calls still work.
+# For setting-level studies, change/extend this dictionary, e.g.:
+# METIS_LMS_SELECTED = {setting: setting for setting in METIS_LMS_CATALOGUE if METIS_LMS_CATALOGUE[setting][0] >= 2.8}
+# (107 settings total, some outside Roy's 2.8-5.5 um transmission range).
+from .metis_lms_settings import METIS_LMS_CATALOGUE
+METIS_LMS_SELECTED = {"L": "O32_Em36", "M": "O23_Em18"}
+METIS_LMS_R        = 100_000  # Roy's conservative nominal R
+METIS_LMS_USE_EXCEL_R = False  # True: use the R values tabulated for each setting (not a measured LSF)
+METIS_LMS_PXSCALE  = 0.0085   # [arcsec/px], Roy's mean along-slice sampling
 
 # From ScopeSim (METIS L and M spectroscopy)
 config_data_METIS_LMS = {
                        'name':           "METIS_LMS",                                 # Instrument name
                        'telescope_name': "ELT",                                       # Telescope name
                        'type':           "IFU",                                       # Instrument type
-                       'gratings':      {"L":  GratingInfo(3.4728, 3.5253, 100_000),  # Spectral range [µm], resolving power
-                                         "M":  GratingInfo(4.7625, 4.8370, 100_000)}, # Spectral range [µm], resolving power
-                       'lambda_range':  {"lambda_min": 3.4728, "lambda_max": 4.8370}, # Minimum and maximum instrumental wavelength range [µm]
+                       'gratings':      {band: GratingInfo(METIS_LMS_CATALOGUE[setting][0], METIS_LMS_CATALOGUE[setting][3], METIS_LMS_CATALOGUE[setting][4] if METIS_LMS_USE_EXCEL_R else METIS_LMS_R) for band, setting in METIS_LMS_SELECTED.items()},
+                       'lambda_range':  {"lambda_min": min(g[0] for g in (METIS_LMS_CATALOGUE[s] for s in METIS_LMS_SELECTED.values())),
+                                         "lambda_max": max(g[3] for g in (METIS_LMS_CATALOGUE[s] for s in METIS_LMS_SELECTED.values()))},
+                       'lms_settings':   METIS_LMS_SELECTED,                          # Band alias -> Roy setting ID
+                       'spectral_segments': {band: ((METIS_LMS_CATALOGUE[setting][0], METIS_LMS_CATALOGUE[setting][1]),
+                                                    (METIS_LMS_CATALOGUE[setting][2], METIS_LMS_CATALOGUE[setting][3])) for band, setting in METIS_LMS_SELECTED.items()},
+                       'psf_bands':     {band: ("L" if np.mean(METIS_LMS_CATALOGUE[setting][:4]) < 4.2 else "M") for band, setting in METIS_LMS_SELECTED.items()}, # Approximate PSF aliases only (not chromatic PSFs)
                        'size_core':      3,                                           # Size in pixels of the FWHM  (here: side of the PSF core box)
                        'apodizers':     {"NO_SP":   ApodizerInfo(1)},                 # Available apodizers (transmission, IWA [mas])
                        'strehls':       ["MED"],                                      # Available strehls
                        'coronagraphs':  [None, "CVC", "RAVC", "APP"],                 # Available coronagraphs
-                       'pxscale':                   {"L": 0.0082,                     # Pixel scale [arcsec/px]
-                                                     "M": 0.0082},                    # Pixel scale [arcsec/px]
+                       'pxscale':      {band: METIS_LMS_PXSCALE for band in METIS_LMS_SELECTED},  # [arcsec/px] along a slice
                        'FOV':            0.9,                                         # Field Of View [arcsec]
                        'sep_unit':       "mas",                                       # Unit for angular separation
-                       'detector':      {"RON":          70,                          # Read-Out Noise [e-/px/read]
-                                         "RON_lim":      4.1,                         # Read-Out Noise limit [e-/px/read]
-                                         "is_UTR":       True,                        # Keep existing UTR noise model
+                       'detector':      {"RON":          15,                          # Roy 2026 CDS estimate [e-/px/DIT]
+                                         "RON_lim":      15,                         # No assumed UTR reduction [e-/px/DIT]
+                                         "is_UTR":       False,                        # Conservative CDS, UTR improvement not quantified
                                          "dark_current": 0.1,                         # Dark current [e-/px/s]
                                          "minDIT":       0.0217,                      # Minimum Detector Integration Time [mn]
                                          "maxDIT":       5,                           # Maximum Detector Integration Time [mn]
@@ -426,8 +333,8 @@ config_data_METIS_LSS = {
                        'type':           "IFU",                                       # IFU approximation for an orientable long slit
                        'gratings':      {"L":  GratingInfo(2.9, 4.2, 1_500),          # Spectral range [µm], resolving power
                                          "M":  GratingInfo(4.5, 5.2, 1_900),
-                                         "N":  GratingInfo(7.5, 13.5, 400)},         # Spectral range [µm], resolving power
-                       'lambda_range':  {"lambda_min": 2.9, "lambda_max": 13.5},       # Minimum and maximum instrumental wavelength range [µm]
+                                         "N":  GratingInfo(7.5, 13.5, 400)},          # Spectral range [µm], resolving power
+                       'lambda_range':  {"lambda_min": 2.9, "lambda_max": 13.5},      # Minimum and maximum instrumental wavelength range [µm]
                        'size_core':      3,                                           # Approximate PSF core size [px] (to be calibrated)
                        'apodizers':     {"NO_SP": ApodizerInfo(1)},                   # Available apodizers (transmission, IWA [mas])
                        'strehls':       ["MED"],                                      # Available strehls
@@ -439,7 +346,7 @@ config_data_METIS_LSS = {
                        'sep_unit':       "mas",                                       # Unit for angular separation
                        'detector':      {"RON":          15,                          # Default L/M: H2RG slow-mode RON [e-/px/read]
                                          "RON_lim":      4.1,                         # Assumed effective Read-Out Noise limit [e-/px/read]
-                                         "is_UTR":       True,                        # Keep existing UTR noise model
+                                         "is_UTR":       True,                        # Up-The-Ramp readout mode
                                          "dark_current": 0.05,                        # Dark current [e-/px/s]
                                          "minDIT":       1.3/60,                      # Minimum Detector Integration Time [mn]
                                          "maxDIT":       5,                           # Assumed Maximum Detector Integration Time [mn]
@@ -450,7 +357,7 @@ config_data_METIS_LSS = {
                                                "dark_current": 1e5,                   # ScopeSim GeoSnap [e-/px/s]
                                                "minDIT":       0.011/60,              # ScopeSim GeoSnap [mn]
                                                "maxDIT":       5,                     # Assumed maximum [mn], subject to saturation
-                                               "saturation_e": 180_000}},            # ScopeSim GeoSnap low_capacity full well [e-]
+                                               "saturation_e": 180_000}},             # ScopeSim GeoSnap low_capacity full well [e-]
                      }
 
 # From ScopeSim (H2RG for L/M, GeoSnap for N)
@@ -473,7 +380,7 @@ config_data_METIS_IMG = {
                        'sep_unit':       "mas",                                        # Unit for angular separation
                        'detector':      {"RON":          70,                           # Default L/M: H2RG fast-mode RON [e-/px/read]
                                          "RON_lim":      4.1,                          # Assumed Read-Out Noise limit [e-/px/read]
-                                         "is_UTR":       True,                         # Keep existing UTR noise model
+                                         "is_UTR":       True,                         # Up-The-Ramp readout mode
                                          "dark_current": 0.1,                          # Assumed L/M H2RG dark current [e-/px/s]
                                          "minDIT":       0.04/60,                      # H2RG fast-mode Minimum DIT [mn]
                                          "maxDIT":       5,                            # Assumed Maximum DIT [mn], subject to saturation
@@ -519,7 +426,7 @@ config_data_ERIS = {
                     'sep_unit':       "mas",                                        # Unit for angular separation
                     'detector':      {"RON":          12.0,                         # Read-Out Noise [e-/px/read]
                                       "RON_lim":      7.,                           # Read-Out Noise limit [e-/px/read]
-                                      "is_UTR":       True,                         # Keep existing UTR noise model
+                                      "is_UTR":       True,                         # Up-The-Ramp readout mode
                                       "dark_current": 0.19,                         # Dark current [e-/px/s]
                                       "minDIT":       1.6/60,                       # Minimum Detector Integration Time [mn]
                                       "maxDIT":       2,                            # Maximum Detector Integration Time [mn]
@@ -546,7 +453,7 @@ config_data_HiRISE = {
                       'sep_unit':                   "arcsec",                                # Unit for angular separation
                       'detector':                  {"RON":          12,                      # Read-Out Noise [e-/px/read]
                                                     "RON_lim":      4.1,                     # Read-Out Noise limit [e-/px/read] https://www.eso.org/sci/facilities/paranal/instruments/crires/doc/CRIRES_User_Manual_P108_Phase2.pdf?utm.com
-                                                    "is_UTR":       True,                    # Keep existing UTR noise model
+                                                    "is_UTR":       True,                    # Up-The-Ramp readout mode
                                                     "dark_current": 0.03,                    # Dark current [e-/px/s]
                                                     "minDIT":       1.4725/60,               # Minimum Detector Integration Time [mn]
                                                     "maxDIT":       20,                      # Maximum Detector Integration Time [mn]
@@ -582,7 +489,7 @@ config_data_CRIRES = {
                       'sep_unit':                   "arcsec",                                  # Unit for angular separation
                       'detector':                  {"RON":          12,                        # Read-Out Noise [e-/px/read]
                                                     "RON_lim":      4.1,                       # Read-Out Noise limit [e-/px/read] https://www.eso.org/sci/facilities/paranal/instruments/crires/doc/CRIRES_User_Manual_P108_Phase2.pdf?utm.com
-                                                    "is_UTR":       True,                      # Keep existing UTR noise model
+                                                    "is_UTR":       True,                      # Up-The-Ramp readout mode
                                                     "dark_current": 0.03,                      # Dark current [e-/px/s]
                                                     "minDIT":       1.4725/60,                 # Minimum Detector Integration Time [mn]
                                                     "maxDIT":       20,                        # Maximum Detector Integration Time [mn]
@@ -628,7 +535,7 @@ config_data_MIRIMRS = {
                       'sep_unit':        "arcsec",                                                  # Unit for angular separation
                       'detector':       {"RON":          19,                                        # Read-Out Noise [e-/px/read]
                                          "RON_lim":      1.,                                        # Read-Out Noise limit [e-/px/read]
-                                         "is_UTR":       True,                                      # Keep existing UTR noise model
+                                         "is_UTR":       True,                                      # Up-The-Ramp readout mode
                                          "dark_current": 0.2,                                       # Dark current [e-/px/s]
                                          "minDIT":       2.775/60,                                  # Minimum Detector Integration Time [mn]
                                          "maxDIT":       5,                                         # Maximum Detector Integration Time [mn]
@@ -658,7 +565,7 @@ config_data_NIRCam = {
                       'sep_unit':       "arcsec",                                          # Unit for angular separation
                       'detector':      {"RON":          9.4,                               # Read-Out Noise [e-/px/read]
                                         "RON_lim":      1.,                                # Read-Out Noise limit [e-/px/read]
-                                        "is_UTR":       True,                              # Keep existing UTR noise model
+                                        "is_UTR":       True,                              # Up-The-Ramp readout mode
                                         "dark_current": 34.2/1000,                         # Dark current [e-/px/s]
                                         "minDIT":       10.737/60,                         # Minimum Detector Integration Time [mn]
                                         "maxDIT":       5,                                 # Maximum Detector Integration Time [mn]
@@ -685,7 +592,7 @@ config_data_NIRSpec = {
                        'sep_unit':       "arcsec",                                          # Unit for angular separation
                        'detector':      {"RON":          10,                                # Read-Out Noise [e-/px/read]
                                          "RON_lim":      1.,                                # Read-Out Noise limit [e-/px/read]
-                                         "is_UTR":       True,                              # Keep existing UTR noise model
+                                         "is_UTR":       True,                              # Up-The-Ramp readout mode
                                          "dark_current": 0.008,                             # Dark current [e-/px/s]
                                          "minDIT":       10.737/60,                         # Minimum Detector Integration Time [mn]
                                          "maxDIT":       5,                                 # Maximum Detector Integration Time [mn]
@@ -717,7 +624,7 @@ config_data_VIPAPYRUS = {
                          'sep_unit':                  "arcsec",                                    # Unit for angular separation
                          'detector':                 {"RON":          11.4,                        # Read-Out Noise [e-/px/read]
                                                       "RON_lim":      4.1,                         # Read-Out Noise limit [e-/px/read]
-                                                      "is_UTR":       True,                        # Keep existing UTR noise model
+                                                      "is_UTR":       True,                        # Up-The-Ramp readout mode
                                                       "dark_current": 0.0053,                      # Dark current [e-/px/s]
                                                       "minDIT":       1.4725/60,                   # Minimum Detector Integration Time [mn]
                                                       "maxDIT":       5,                           # Maximum Detector Integration Time [mn]
