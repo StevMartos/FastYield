@@ -178,7 +178,7 @@ This directory contains the instrumental data, simulation data, and spectral lib
 
 The `sim_data/` directory can be downloaded here:
 
-[Download the sim_data directory](https://filesender.renater.fr/?s=download&token=82647e85-07a6-4d88-ab13-1b1051adc9ca)
+[Download the sim_data directory](https://filesender.renater.fr/?s=download&token=29dcc59c-6371-44a5-96a4-9c461781faab)
 
 After downloading and extracting the archive, you should have a directory named:
 
@@ -192,14 +192,14 @@ The expected structure is:
 sim_data/
 ├── Archive_table/
 ├── Background/
-├── PCS/
+├── ELT/
+├── HWO/
 ├── PSF/
 ├── R_corr/
 ├── Simulated_table/
 ├── Spectra/
     ├── planet_spectrum/
-    ├── star_spectrum/
-    └── molecular/
+    └── star_spectrum/
 ├── Systematics/
 └── Transmission/
 ```
@@ -284,11 +284,7 @@ from fastyield.FastYield_interface import FastYield_interface
 set_sim_data_path("/path/to/sim_data")
 
 # Test the data path by loading a planetary spectrum.
-planet_spectrum = load_planet_spectrum(
-    T_planet=1000,
-    lg_planet=4.0,
-    model="BT-Settl",
-)
+planet_spectrum = load_planet_spectrum(T_planet=1000, lg_planet=4.0, model="BT-Settl")
 
 # Open the FastYield graphical interface.
 FastYield_interface()

@@ -2402,10 +2402,10 @@ def colormap_MM_DI_R_Tp(lmin=1, lmax=2.5, Rmin=1_000, Rmax=100_000, Tmin=200, Tm
     global _CM_CTX
     _CM_CTX = dict(T_arr=T_arr, lg_planet=lg_planet, delta_rv=delta_rv, vsini_planet=vsini_planet, airmass=airmass, trans_tell=trans_tell, spectrum_contributions=spectrum_contributions, model=model, star_spectrum=star_spectrum, wave_model=wave_model, wave_instru=wave_instru, R_arr=R_arr, Rc=Rc, filter_type=filter_type, wave_R=wave_R, dwave_R=dwave_R, star_R_HF=star_R_HF, star_R_LF=star_R_LF, trans_tell_R=trans_tell_R)
     
-    # Showing spectra 
-    process_colormap_MM_DI_R_Tp(i=np.argmin(np.abs(T_arr-500)), show=True)
-    process_colormap_MM_DI_R_Tp(i=len(T_arr)-1,                 show=True)    
-    
+    # Showing spectra at T_planet extrema
+    process_colormap_MM_DI_R_Tp(i=0,            show=True)
+    process_colormap_MM_DI_R_Tp(i=len(T_arr)-1, show=True)    
+        
     # Parallel calculations
     with Pool(processes=cpu_count(), initializer=_init_cm_ctx, initargs=(_CM_CTX,)) as pool:
         for (i, residual_signal_1D) in tqdm(pool.imap(process_colormap_MM_DI_R_Tp, [(i) for i in range(num)]), total=num, desc=f"rocess_colormap_MM_DI_R_Tp(lmin={lmin}, lmax={lmax}, Rmin={Rmin}, Rmax={Rmax}, Tmin={Tmin}, Tmax={Tmax}, model={model})"):
@@ -2497,7 +2497,7 @@ def process_colormap_MM_DI_R_Tp(i, show=False):
     planet_spectrum = planet_spectrum.doppler_shift(delta_rv)                           # Shifting the spectrum
     planet          = planet_spectrum.interpolate_wavelength(wave_instru, renorm=False) # Interpolating on wave_instru (constant R_model)
     planet.flux     = planet.flux * wave_instru                                         # [J/s/m2/µm] => propto [ph/µm]
-    
+        
     # Calculation for each R
     residual_signal_1D = np.zeros((len(R_arr)))
     for j, R in enumerate(R_arr):
@@ -2531,6 +2531,7 @@ def process_colormap_MM_DI_R_Tp(i, show=False):
         # Lost signal calculations
         residual_signal_1D[j] = (alpha - beta) / delta
         
+        # Showing spectra at R extrema
         if show and (j==0 or j==len(R_arr)-1):
             plt.figure(dpi=300)
             plt.plot(wave_R[j], planet_R / dwave_R[j] / np.nanmax(planet_R / dwave_R[j]))
@@ -2540,8 +2541,6 @@ def process_colormap_MM_DI_R_Tp(i, show=False):
             plt.ylabel("Flux [normalized]")
             plt.ylim(1e-3, 1)
             plt.show()
-        
-        
     
     return i, residual_signal_1D
 

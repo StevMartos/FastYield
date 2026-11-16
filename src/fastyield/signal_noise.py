@@ -2081,13 +2081,14 @@ def compute_sigma_base_2_al_spec_numba(h, wave, n_sigma_cut=4.0):
 
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-def plot_dark_noise_budget(instru, noise_level=None):
+def plot_dark_noise_budget(instru, noise_level=None, band=None):
     RON_min = 0.5 # e-/px/DIT (achieved laboratory limit)
     config_data  = get_config_data(instru)
-    min_DIT      = config_data["detector"]["minDIT"]       # minimal integration time (in mn)
-    max_DIT      = config_data["detector"]["maxDIT"]       # maximal integration time (in mn)
-    RON          = config_data["detector"]["RON"]          # read out noise (in e-/px/DIT)
-    dark_current = config_data["detector"]["dark_current"] # dark current (in e-/px/s)
+    detector     = config_data.get("detectors", {}).get(band, config_data["detector"]) # Optional band-dependent detector
+    min_DIT      = detector["minDIT"]       # minimal integration time (in mn)
+    max_DIT      = detector["maxDIT"]       # maximal integration time (in mn)
+    RON          = detector["RON"]          # read out noise (in e-/px/DIT)
+    dark_current = detector["dark_current"] # dark current (in e-/px/s)
     DIT       = np.logspace(np.log10(min_DIT), np.log10(200*max_DIT), 100)
     sigma_dc  = np.zeros_like(DIT)
     sigma_ron = np.zeros_like(DIT)
@@ -2095,7 +2096,9 @@ def plot_dark_noise_budget(instru, noise_level=None):
         dit = DIT[i]
         sigma_dc[i] = np.sqrt(dark_current * dit * 60) # e-/px/DOT
         nb_min_DIT = 1 # "Up the ramp" reading mode: the pose is sequenced in several non-destructive readings to reduce reading noise (see https://en.wikipedia.org/wiki/Signal_averaging).
-        if dit > nb_min_DIT*min_DIT: # choose 4 min_DIT because if intermittent readings are too short, the detector will heat up too quickly => + dark current
+        if instru in {"METIS_LSS", "METIS_IMG"} and band == "N":
+            sigma_ron[i] = RON  # GeoSnap: no H2RG-style UTR noise reduction assumed
+        elif dit > nb_min_DIT*min_DIT: # choose 4 min_DIT because if intermittent readings are too short, the detector will heat up too quickly => + dark current
             N_i          = dit / (nb_min_DIT*min_DIT) # number of intermittent readings
             sigma_ron[i] = RON / np.sqrt(N_i)         # effective read out noise (in e-/px/DIT)
         else:

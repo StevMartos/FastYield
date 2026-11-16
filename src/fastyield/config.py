@@ -416,31 +416,39 @@ config_data_METIS_LMS = {
                                          "saturation_e": 100_000},                    # Full well capacity [e-] 
                      }
 
-# From ScopeSim (METIS long-slit spectroscopy, L/M bands only)
+# From ScopeSim (METIS long-slit spectroscopy, L/M/N bands)
 config_data_METIS_LSS = {
                        'name':           "METIS_LSS",                                 # Instrument name
                        'telescope_name': "ELT",                                       # Telescope name
                        'type':           "IFU",                                       # IFU approximation for an orientable long slit
                        'gratings':      {"L":  GratingInfo(2.9, 4.2, 1_500),          # Spectral range [µm], resolving power
-                                         "M":  GratingInfo(4.5, 5.2, 1_900)},         # Spectral range [µm], resolving power
-                       'lambda_range':  {"lambda_min": 2.9, "lambda_max": 5.2},       # Minimum and maximum instrumental wavelength range [µm]
+                                         "M":  GratingInfo(4.5, 5.2, 1_900),
+                                         "N":  GratingInfo(7.5, 13.5, 400)},         # Spectral range [µm], resolving power
+                       'lambda_range':  {"lambda_min": 2.9, "lambda_max": 13.5},       # Minimum and maximum instrumental wavelength range [µm]
                        'size_core':      3,                                           # Approximate PSF core size [px] (to be calibrated)
                        'apodizers':     {"NO_SP": ApodizerInfo(1)},                   # Available apodizers (transmission, IWA [mas])
                        'strehls':       ["MED"],                                      # Available strehls
                        'coronagraphs':  [None],                                       # No coronagraph in the LSS optical path
                        'pxscale':      {"L": 0.00547,                                 # Pixel scale along the slit [arcsec/px]
-                                        "M": 0.00547},                                # Pixel scale along the slit [arcsec/px]
+                                        "M": 0.00547,
+                                        "N": 0.00679},                                # Pixel scale along the slit [arcsec/px]
                        'FOV':            8.0,                                         # Slit length [arcsec], equivalent OWA = 4 arcsec
                        'sep_unit':       "mas",                                       # Unit for angular separation
-                       'detector':      {"RON":          15,                          # Read-Out Noise, slow mode [e-/px/read]
+                       'detector':      {"RON":          15,                          # Default L/M: H2RG slow-mode RON [e-/px/read]
                                          "RON_lim":      4.1,                         # Assumed effective Read-Out Noise limit [e-/px/read]
                                          "dark_current": 0.05,                        # Dark current [e-/px/s]
                                          "minDIT":       1.3/60,                      # Minimum Detector Integration Time [mn]
                                          "maxDIT":       5,                           # Assumed Maximum Detector Integration Time [mn]
                                          "saturation_e": 100_000},                    # Full well capacity [e-]
+                       'detectors':     {"N": {"RON":          35,                    # ScopeSim GeoSnap low_capacity [e-/px/read]
+                                               "RON_lim":      35,                    # No assumed UTR reduction for GeoSnap [e-/px/DIT]
+                                               "dark_current": 1e5,                   # ScopeSim GeoSnap [e-/px/s]
+                                               "minDIT":       0.011/60,              # ScopeSim GeoSnap [mn]
+                                               "maxDIT":       5,                     # Assumed maximum [mn], subject to saturation
+                                               "saturation_e": 180_000}},            # ScopeSim GeoSnap low_capacity full well [e-]
                      }
 
-# From ScopeSim (assuming an H2RG detector for all bands, including N)
+# From ScopeSim (H2RG for L/M, GeoSnap for N)
 config_data_METIS_IMG = {
                        'name':           "METIS_IMG",                                  # Instrument name
                        'telescope_name': "ELT",                                        # Telescope name
@@ -458,12 +466,18 @@ config_data_METIS_IMG = {
                                         "N": 0.00679},
                        'FOV':            10.5,                                         # Conservative common FoV [arcsec] (N actually 13.5")
                        'sep_unit':       "mas",                                        # Unit for angular separation
-                       'detector':      {"RON":          70,                           # H2RG fast-mode Read-Out Noise [e-/px/read]
+                       'detector':      {"RON":          70,                           # Default L/M: H2RG fast-mode RON [e-/px/read]
                                          "RON_lim":      4.1,                          # Assumed Read-Out Noise limit [e-/px/read]
-                                         "dark_current": 0.1,                          # Assumed H2RG dark current [e-/px/s]
+                                         "dark_current": 0.1,                          # Assumed L/M H2RG dark current [e-/px/s]
                                          "minDIT":       0.04/60,                      # H2RG fast-mode Minimum DIT [mn]
                                          "maxDIT":       5,                            # Assumed Maximum DIT [mn], subject to saturation
                                          "saturation_e": 100_000},                     # H2RG full well capacity [e-]
+                       'detectors':     {"N": {"RON":          300,                   # ScopeSim GeoSnap high_capacity [e-/px/read]
+                                               "RON_lim":      300,                   # No assumed UTR reduction for GeoSnap [e-/px/DIT]
+                                               "dark_current": 1e5,                   # ScopeSim GeoSnap [e-/px/s]
+                                               "minDIT":       0.011/60,              # ScopeSim GeoSnap [mn]
+                                               "maxDIT":       5,                     # Assumed maximum [mn], subject to saturation
+                                               "saturation_e": 2_800_000}},          # ScopeSim GeoSnap high_capacity full well [e-]
                      }
 
 

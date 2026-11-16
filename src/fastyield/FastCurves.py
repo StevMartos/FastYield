@@ -69,12 +69,6 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
     NbBand         = len(config_data["gratings"])            # Number of bands
     size_core      = config_data["size_core"]                # Aperture size on which the signal is integrated [pixels] (=1 for fiber-fed instrument, otherwise, for IFU instrument size_core ~ 3 spaxels)
     A_FWHM         = size_core**2                            # Box aperture (=1 for fiber-fed instrument, otherwise, for IFU instrument size_core ~ 3 spaxels)
-    saturation_e   = config_data["detector"]["saturation_e"] # Full well capacity of the detector [e-]
-    min_DIT        = config_data["detector"]["minDIT"]       # Minimal integration time [in mn]
-    max_DIT        = config_data["detector"]["maxDIT"]       # Maximal integration time [mn]
-    RON0           = config_data["detector"]["RON"]          # Read out noise [e-/px/read]
-    RON_lim        = config_data["detector"]["RON_lim"]      # Read out noise limit [e-/px/read]
-    dark_current   = config_data["detector"]["dark_current"] # Dark current [e-/px/s]
     IWA, OWA       = get_wa(instru=instru, band="instru", sep_unit=sep_unit) # Inner and Outer Working Angle in 'sep_unit' 
     if show_plot:
         cmap = plt.get_cmap("rainbow", NbBand)
@@ -277,6 +271,13 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
     for nb, band in enumerate(config_data["gratings"]):
         if (band_only is not None and band != band_only) or (instru=="HARMONI" and strehl=="MED" and band not in ["H", "K"]):
             continue # If you want to calculate for band_only only
+        detector       = config_data.get("detectors", {}).get(band, config_data["detector"]) # Optional band-dependent detector (METIS N = GeoSnap)
+        saturation_e   = detector["saturation_e"] # Full well capacity [e-]
+        min_DIT        = detector["minDIT"]       # Minimal integration time [mn]
+        max_DIT        = detector["maxDIT"]       # Maximal integration time [mn]
+        RON0           = detector["RON"]          # Read-out noise [e-/px/read]
+        RON_lim        = detector["RON_lim"]      # Effective read-out noise floor [e-/px/DIT]
+        dark_current   = detector["dark_current"] # Dark current [e-/px/s]
                 
         # -----------------------------------------------------------------------
         # Spectra on the band + magnitudes in [ph/bin/mn] (total ph over the FoV)
