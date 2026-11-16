@@ -58,15 +58,10 @@ def load_tell_trans(airmass, return_R=False):
     else:
         return np.copy(wave_tell), np.copy(tell)
 
-def _psf_band(instru, band):
-    """Optional reference-PSF alias for echelle settings (NOT a chromatic PSF model)."""
-    return get_config_data(instru).get("psf_bands", {}).get(band, band)
-
 @lru_cache(maxsize=32)
 def _load_psf_profile(instru, band, strehl, apodizer, coronagraph):
     """Load *once* the PSF profile arrays + header for (instru, band, strehl, apodizer, coronagraph)."""
     sim_data_path = get_sim_data_path()
-    band         = _psf_band(instru, band)
     if coronagraph is None:
         psf_file = f"{sim_data_path}/PSF/PSF_{instru}/PSF_{band}_{strehl}_{apodizer}.fits"
     else:
@@ -81,7 +76,6 @@ def _load_psf_profile(instru, band, strehl, apodizer, coronagraph):
 def _load_corona_profile(instru, band, strehl, apodizer, coronagraph):
     """Load *once* the coronagraphic profile arrays."""
     sim_data_path                           = get_sim_data_path()
-    band                                    = _psf_band(instru, band)
     sep, fraction_core, radial_transmission = fits.getdata(f"{sim_data_path}/PSF/PSF_{instru}/fraction_core_radial_transmission_{band}_{coronagraph}_{strehl}_{apodizer}.fits")
     return sep, fraction_core, radial_transmission
 
@@ -103,7 +97,6 @@ def _load_stellar_modulation_function(instru, band, on_sky_data, T_star_sim, cor
 def _load_corr_factor(instru, band):
     """Load *once* the corrective factor."""
     sim_data_path = get_sim_data_path()
-    band          = _psf_band(instru, band)
     sep, r_corr   = fits.getdata(f"{sim_data_path}/R_corr/R_corr_{instru}/R_corr_{band}.fits")
     return sep, r_corr
 

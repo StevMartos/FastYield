@@ -1648,7 +1648,7 @@ float
     lmin_band0_star, lmax_band0_star     = get_band_lims(band=instru if band0_star.lower()   == "instru" else band0_star)   # [µm]
     lmin_band0_planet, lmax_band0_planet = get_band_lims(band=instru if band0_planet.lower() == "instru" else band0_planet) # [µm]
     if band_only is not None:
-        lmin_band_only, lmax_band_only = get_band_lims(band=band_only) # [µm]
+        lmin_band_only, lmax_band_only = config_data["gratings"][band_only].lmin, config_data["gratings"][band_only].lmax # [µm]
 
     # ---- Load / prepare star spectrum if not provided ----
     if star_spectrum is None:

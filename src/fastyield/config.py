@@ -287,43 +287,38 @@ config_data_ANDES = {
                                                    "saturation_e": 80_000},                          # Full well capacity [e-] 
                    }
 
-# Nominal LMS echelle settings supplied by Roy (2026-11); full catalogue in metis_lms_settings.py.
-# Keep L/M aliases initially so all existing FastCurves/FastYield calls still work.
-# For setting-level studies, change/extend this dictionary, e.g.:
-# METIS_LMS_SELECTED = {setting: setting for setting in METIS_LMS_CATALOGUE if METIS_LMS_CATALOGUE[setting][0] >= 2.8}
-# (107 settings total, some outside Roy's 2.8-5.5 um transmission range).
+# All 107 nominal LMS echelle settings supplied by Roy (2026-11).
+# Each setting is a distinct FastYield band; the two detector segments and gap
+# are defined once in metis_lms_settings.py, and masked in METIS_inputs.py.
 from .metis_lms_settings import METIS_LMS_CATALOGUE
-METIS_LMS_SELECTED = {"L": "O32_Em36", "M": "O23_Em18"}
-METIS_LMS_R        = 100_000  # Roy's conservative nominal R
-METIS_LMS_USE_EXCEL_R = False  # True: use the R values tabulated for each setting (not a measured LSF)
-METIS_LMS_PXSCALE  = 0.0085   # [arcsec/px], Roy's mean along-slice sampling
+METIS_LMS_PXSCALE     = 0.0085   # [arcsec/px], mean LMS along-slice sampling
 
-# From ScopeSim (METIS L and M spectroscopy)
+# Common H2RG assumptions for METIS LMS, LSS-L/M and IMG-L/M (FastYield model).
+METIS_H2RG = {"RON":          70,          # [e-/px/read]
+              "RON_lim":      4.1,         # [e-/px/read] effective floor (assumed)
+              "is_UTR":       True,        # FastYield UTR approximation
+              "dark_current": 0.1,         # [e-/px/s]
+              "minDIT":       0.04/60,     # [min]
+              "maxDIT":       5,           # [min]
+              "saturation_e": 100_000}     # [e-/px]
+
+# From Roy's nominal LMS echelle-settings table (not simultaneous bands).
+# The tabulated R is an optical-model estimate (not a measured LSF).
 config_data_METIS_LMS = {
                        'name':           "METIS_LMS",                                 # Instrument name
                        'telescope_name': "ELT",                                       # Telescope name
                        'type':           "IFU",                                       # Instrument type
-                       'gratings':      {band: GratingInfo(METIS_LMS_CATALOGUE[setting][0], METIS_LMS_CATALOGUE[setting][3], METIS_LMS_CATALOGUE[setting][4] if METIS_LMS_USE_EXCEL_R else METIS_LMS_R) for band, setting in METIS_LMS_SELECTED.items()},
-                       'lambda_range':  {"lambda_min": min(g[0] for g in (METIS_LMS_CATALOGUE[s] for s in METIS_LMS_SELECTED.values())),
-                                         "lambda_max": max(g[3] for g in (METIS_LMS_CATALOGUE[s] for s in METIS_LMS_SELECTED.values()))},
-                       'lms_settings':   METIS_LMS_SELECTED,                          # Band alias -> Roy setting ID
-                       'spectral_segments': {band: ((METIS_LMS_CATALOGUE[setting][0], METIS_LMS_CATALOGUE[setting][1]),
-                                                    (METIS_LMS_CATALOGUE[setting][2], METIS_LMS_CATALOGUE[setting][3])) for band, setting in METIS_LMS_SELECTED.items()},
-                       'psf_bands':     {band: ("L" if np.mean(METIS_LMS_CATALOGUE[setting][:4]) < 4.2 else "M") for band, setting in METIS_LMS_SELECTED.items()}, # Approximate PSF aliases only (not chromatic PSFs)
+                       'gratings':      {setting: GratingInfo(lam[0], lam[3], lam[4]) for setting, lam in METIS_LMS_CATALOGUE.items()},
+                       'lambda_range':  {"lambda_min": min(lam[0] for lam in METIS_LMS_CATALOGUE.values()),
+                                         "lambda_max": max(lam[3] for lam in METIS_LMS_CATALOGUE.values())},
                        'size_core':      3,                                           # Size in pixels of the FWHM  (here: side of the PSF core box)
                        'apodizers':     {"NO_SP":   ApodizerInfo(1)},                 # Available apodizers (transmission, IWA [mas])
                        'strehls':       ["MED"],                                      # Available strehls
                        'coronagraphs':  [None, "CVC", "RAVC", "APP"],                 # Available coronagraphs
-                       'pxscale':      {band: METIS_LMS_PXSCALE for band in METIS_LMS_SELECTED},  # [arcsec/px] along a slice
+                       'pxscale':      {setting: METIS_LMS_PXSCALE for setting in METIS_LMS_CATALOGUE},  # [arcsec/px] along a slice
                        'FOV':            0.9,                                         # Field Of View [arcsec]
                        'sep_unit':       "mas",                                       # Unit for angular separation
-                       'detector':      {"RON":          15,                          # Roy 2026 CDS estimate [e-/px/DIT]
-                                         "RON_lim":      15,                         # No assumed UTR reduction [e-/px/DIT]
-                                         "is_UTR":       False,                        # Conservative CDS, UTR improvement not quantified
-                                         "dark_current": 0.1,                         # Dark current [e-/px/s]
-                                         "minDIT":       0.0217,                      # Minimum Detector Integration Time [mn]
-                                         "maxDIT":       5,                           # Maximum Detector Integration Time [mn]
-                                         "saturation_e": 100_000},                    # Full well capacity [e-] 
+                       'detector':       METIS_H2RG.copy(),                            # Same H2RG assumptions as IMG-L/M
                      }
 
 # From ScopeSim (METIS long-slit spectroscopy, L/M/N bands)
@@ -344,13 +339,7 @@ config_data_METIS_LSS = {
                                         "N": 0.00679},                                # Pixel scale along the slit [arcsec/px]
                        'FOV':            8.0,                                         # Slit length [arcsec], equivalent OWA = 4 arcsec
                        'sep_unit':       "mas",                                       # Unit for angular separation
-                       'detector':      {"RON":          15,                          # Default L/M: H2RG slow-mode RON [e-/px/read]
-                                         "RON_lim":      4.1,                         # Assumed effective Read-Out Noise limit [e-/px/read]
-                                         "is_UTR":       True,                        # Up-The-Ramp readout mode
-                                         "dark_current": 0.05,                        # Dark current [e-/px/s]
-                                         "minDIT":       1.3/60,                      # Minimum Detector Integration Time [mn]
-                                         "maxDIT":       5,                           # Assumed Maximum Detector Integration Time [mn]
-                                         "saturation_e": 100_000},                    # Full well capacity [e-]
+                       'detector':       METIS_H2RG.copy(),                            # Same H2RG assumptions as IMG-L/M
                        'detectors':     {"N": {"RON":          35,                    # ScopeSim GeoSnap low_capacity [e-/px/read]
                                                "RON_lim":      35,                    # No assumed UTR reduction for GeoSnap [e-/px/DIT]
                                                "is_UTR":       False,                 # No UTR reduction (GeoSnap)
@@ -378,13 +367,7 @@ config_data_METIS_IMG = {
                                         "N": 0.00679},
                        'FOV':            10.5,                                         # Conservative common FoV [arcsec] (N actually 13.5")
                        'sep_unit':       "mas",                                        # Unit for angular separation
-                       'detector':      {"RON":          70,                           # Default L/M: H2RG fast-mode RON [e-/px/read]
-                                         "RON_lim":      4.1,                          # Assumed Read-Out Noise limit [e-/px/read]
-                                         "is_UTR":       True,                         # Up-The-Ramp readout mode
-                                         "dark_current": 0.1,                          # Assumed L/M H2RG dark current [e-/px/s]
-                                         "minDIT":       0.04/60,                      # H2RG fast-mode Minimum DIT [mn]
-                                         "maxDIT":       5,                            # Assumed Maximum DIT [mn], subject to saturation
-                                         "saturation_e": 100_000},                     # H2RG full well capacity [e-]
+                       'detector':       METIS_H2RG.copy(),                            # Same H2RG assumptions as IMG-L/M
                        'detectors':     {"N": {"RON":          300,                   # ScopeSim GeoSnap high_capacity [e-/px/read]
                                                "RON_lim":      300,                   # No assumed UTR reduction for GeoSnap [e-/px/DIT]
                                                "is_UTR":       False,                 # No UTR reduction (GeoSnap)
@@ -752,7 +735,9 @@ for cfg in config_data_list:
     # register gratings / bands
     for band_name, g in cfg["gratings"].items():
         if band_name not in lmin_bands:  # first time we see it
-            bands.append(band_name)
+            # LMS echelle settings are observable configurations, not global photometric filters.
+            if instru != "METIS_LMS":
+                bands.append(band_name)
             lmin_bands[band_name] = float(g.lmin)
             lmax_bands[band_name] = float(g.lmax)
 
