@@ -287,23 +287,10 @@ config_data_ANDES = {
                                                    "saturation_e": 80_000},                          # Full well capacity [e-] 
                    }
 
-# All 107 nominal LMS echelle settings supplied by Roy (2026-11).
-# Each setting is a distinct FastYield band; the two detector segments and gap
-# are defined once in metis_lms_settings.py, and masked in METIS_inputs.py.
+# All 107 nominal LMS echelle settings (not simultaneous observations).
+# The two detector segments and the central gap are defined in metis_lms_settings.py.
 from .metis_lms_settings import METIS_LMS_CATALOGUE
-METIS_LMS_PXSCALE     = 0.0085   # [arcsec/px], mean LMS along-slice sampling
 
-# Common H2RG assumptions for METIS LMS, LSS-L/M and IMG-L/M (FastYield model).
-METIS_H2RG = {"RON":          70,          # [e-/px/read]
-              "RON_lim":      4.1,         # [e-/px/read] effective floor (assumed)
-              "is_UTR":       True,        # FastYield UTR approximation
-              "dark_current": 0.1,         # [e-/px/s]
-              "minDIT":       0.04/60,     # [min]
-              "maxDIT":       5,           # [min]
-              "saturation_e": 100_000}     # [e-/px]
-
-# From Roy's nominal LMS echelle-settings table (not simultaneous bands).
-# The tabulated R is an optical-model estimate (not a measured LSF).
 config_data_METIS_LMS = {
                        'name':           "METIS_LMS",                                 # Instrument name
                        'telescope_name': "ELT",                                       # Telescope name
@@ -315,10 +302,16 @@ config_data_METIS_LMS = {
                        'apodizers':     {"NO_SP":   ApodizerInfo(1)},                 # Available apodizers (transmission, IWA [mas])
                        'strehls':       ["MED"],                                      # Available strehls
                        'coronagraphs':  [None, "CVC", "RAVC", "APP"],                 # Available coronagraphs
-                       'pxscale':      {setting: METIS_LMS_PXSCALE for setting in METIS_LMS_CATALOGUE},  # [arcsec/px] along a slice
+                       'pxscale':        0.0082,                                      # [arcsec/px] along a slice
                        'FOV':            0.9,                                         # Field Of View [arcsec]
                        'sep_unit':       "mas",                                       # Unit for angular separation
-                       'detector':       METIS_H2RG.copy(),                            # Same H2RG assumptions as IMG-L/M
+                       'detector':      {"RON":          12,                          # Default L/M: H2RG fast-mode RON [e-/px/read]
+                                         "RON_lim":      4.1,                         # Assumed Read-Out Noise limit [e-/px/read]
+                                         "is_UTR":       True,                        # Up-The-Ramp readout mode
+                                         "dark_current": 0.1,                         # Assumed L/M H2RG dark current [e-/px/s]
+                                         "minDIT":       0.04/60,                     # H2RG fast-mode Minimum DIT [mn]
+                                         "maxDIT":       5,                           # Assumed Maximum DIT [mn], subject to saturation
+                                         "saturation_e": 100_000},                    # H2RG full well capacity [e-]
                      }
 
 # From ScopeSim (METIS long-slit spectroscopy, L/M/N bands)
@@ -339,7 +332,13 @@ config_data_METIS_LSS = {
                                         "N": 0.00679},                                # Pixel scale along the slit [arcsec/px]
                        'FOV':            8.0,                                         # Slit length [arcsec], equivalent OWA = 4 arcsec
                        'sep_unit':       "mas",                                       # Unit for angular separation
-                       'detector':       METIS_H2RG.copy(),                            # Same H2RG assumptions as IMG-L/M
+                       'detector':      {"RON":          12,                          # Default L/M: H2RG fast-mode RON [e-/px/read]
+                                         "RON_lim":      4.1,                         # Assumed Read-Out Noise limit [e-/px/read]
+                                         "is_UTR":       True,                        # Up-The-Ramp readout mode
+                                         "dark_current": 0.1,                         # Assumed L/M H2RG dark current [e-/px/s]
+                                         "minDIT":       0.04/60,                     # H2RG fast-mode Minimum DIT [mn]
+                                         "maxDIT":       5,                           # Assumed Maximum DIT [mn], subject to saturation
+                                         "saturation_e": 100_000},                    # H2RG full well capacity [e-]
                        'detectors':     {"N": {"RON":          35,                    # ScopeSim GeoSnap low_capacity [e-/px/read]
                                                "RON_lim":      35,                    # No assumed UTR reduction for GeoSnap [e-/px/DIT]
                                                "is_UTR":       False,                 # No UTR reduction (GeoSnap)
@@ -351,30 +350,36 @@ config_data_METIS_LSS = {
 
 # From ScopeSim (H2RG for L/M, GeoSnap for N)
 config_data_METIS_IMG = {
-                       'name':           "METIS_IMG",                                  # Instrument name
-                       'telescope_name': "ELT",                                        # Telescope name
-                       'type':           "imager",                                     # Instrument type
-                       'gratings':      {"L": GratingInfo(2.9,  4.2,  R0_min),         # Spectral range [µm], numerical resolution for photometry
+                       'name':           "METIS_IMG",                                 # Instrument name
+                       'telescope_name': "ELT",                                       # Telescope name
+                       'type':           "imager",                                    # Instrument type
+                       'gratings':      {"L": GratingInfo(2.9,  4.2,  R0_min),        # Spectral range [µm], numerical resolution for photometry
                                          "M": GratingInfo(4.5,  5.3,  R0_min),
-                                         "N": GratingInfo(7.5, 13.5,  R0_min)},        # Full band coverage; actual filters must be modelled separately
-                       'lambda_range':  {"lambda_min": 2.9, "lambda_max": 13.5},       # Minimum and maximum instrumental wavelength range [µm]
-                       'size_core':      5,                                            # Approximate PSF core size [px] (wavelength-dependent in reality)
-                       'apodizers':     {"NO_SP": ApodizerInfo(1)},                    # Available apodizers (transmission, IWA [mas])
-                       'strehls':       ["MED"],                                       # Available strehls
-                       'coronagraphs':  [None, "CVC", "RAVC", "APP"],                  # Add CVC/RAVC once their PSF models are implemented
-                       'pxscale':      {"L": 0.00547,                                  # Pixel scale [arcsec/px]
+                                         "N": GratingInfo(7.5, 13.5,  R0_min)},       # Full band coverage; actual filters must be modelled separately
+                       'lambda_range':  {"lambda_min": 2.9, "lambda_max": 13.5},      # Minimum and maximum instrumental wavelength range [µm]
+                       'size_core':      5,                                           # Approximate PSF core size [px] (wavelength-dependent in reality)
+                       'apodizers':     {"NO_SP": ApodizerInfo(1)},                   # Available apodizers (transmission, IWA [mas])
+                       'strehls':       ["MED"],                                      # Available strehls
+                       'coronagraphs':  [None, "CVC", "RAVC", "APP"],                 # Add CVC/RAVC once their PSF models are implemented
+                       'pxscale':      {"L": 0.00547,                                 # Pixel scale [arcsec/px]
                                         "M": 0.00547,
                                         "N": 0.00679},
-                       'FOV':            10.5,                                         # Conservative common FoV [arcsec] (N actually 13.5")
-                       'sep_unit':       "mas",                                        # Unit for angular separation
-                       'detector':       METIS_H2RG.copy(),                            # Same H2RG assumptions as IMG-L/M
+                       'FOV':            10.5,                                        # Conservative common FoV [arcsec] (N actually 13.5")
+                       'sep_unit':       "mas",                                       # Unit for angular separation
+                       'detector':      {"RON":          12,                          # Default L/M: H2RG fast-mode RON [e-/px/read]
+                                         "RON_lim":      4.1,                         # Assumed Read-Out Noise limit [e-/px/read]
+                                         "is_UTR":       True,                        # Up-The-Ramp readout mode
+                                         "dark_current": 0.1,                         # Assumed L/M H2RG dark current [e-/px/s]
+                                         "minDIT":       0.04/60,                     # H2RG fast-mode Minimum DIT [mn]
+                                         "maxDIT":       5,                           # Assumed Maximum DIT [mn], subject to saturation
+                                         "saturation_e": 100_000},                    # H2RG full well capacity [e-]
                        'detectors':     {"N": {"RON":          300,                   # ScopeSim GeoSnap high_capacity [e-/px/read]
                                                "RON_lim":      300,                   # No assumed UTR reduction for GeoSnap [e-/px/DIT]
                                                "is_UTR":       False,                 # No UTR reduction (GeoSnap)
                                                "dark_current": 1e5,                   # ScopeSim GeoSnap [e-/px/s]
                                                "minDIT":       0.011/60,              # ScopeSim GeoSnap [mn]
                                                "maxDIT":       5,                     # Assumed maximum [mn], subject to saturation
-                                               "saturation_e": 2_800_000}},          # ScopeSim GeoSnap high_capacity full well [e-]
+                                               "saturation_e": 2_800_000}},           # ScopeSim GeoSnap high_capacity full well [e-]
                      }
 
 
@@ -735,9 +740,7 @@ for cfg in config_data_list:
     # register gratings / bands
     for band_name, g in cfg["gratings"].items():
         if band_name not in lmin_bands:  # first time we see it
-            # LMS echelle settings are observable configurations, not global photometric filters.
-            if instru != "METIS_LMS":
-                bands.append(band_name)
+            bands.append(band_name)
             lmin_bands[band_name] = float(g.lmin)
             lmax_bands[band_name] = float(g.lmax)
 

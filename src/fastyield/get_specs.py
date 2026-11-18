@@ -319,7 +319,7 @@ def _build_transmission(instru, wave_band, band, tellurics, apodizer, strehl=Non
     # 3) Telluric transmission
     if tellurics:
         from .spectrum import Spectrum
-        wave_tell, tell = load_tell_trans(airmass=1.0)
+        wave_tell, tell = load_tell_trans(airmass=1.2)
         trans          *= Spectrum(wave_tell, tell).degrade_resolution(wave_band, renorm=False, gaussian_filtering=gaussian_filtering).flux
 
     # Numerical cleanup

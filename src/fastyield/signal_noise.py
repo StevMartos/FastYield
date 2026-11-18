@@ -69,95 +69,84 @@ def estimate_RON_UTR(N, RON0, RON_lim):
     """
     if (type(N) == int or type(N) == float) and N < 2:
         raise ValueError("N must be >= 2 for Up-the-Ramp.")
-
     RON_eff_2 = (RON0**2) * 12 * (N - 1) / (N * (N + 1)) + RON_lim**2
-    
     return np.sqrt(RON_eff_2)
 
 
 
-def get_DIT_RON(config_data, instru_type, apodizer, PSF_profile, separation, star_spectrum_band, exposure_time, min_DIT, max_DIT, trans, RON0, RON_lim, saturation_e, input_DIT, separation_planet=None, is_UTR=True):
+def get_DIT_RON(config_data, instru_type, apodizer, PSF_profile, separation, star_spectrum_band, exposure_time, min_DIT, max_DIT, trans, RON0, RON_lim, saturation_e, input_DIT, separation_planet=None, is_UTR=True, bkg_flux_band=None, dark_current=0.):
     """
-    Compute the detector integration time (DIT) to avoid saturation and the effective read-noise.
+    Compute the DIT limited by detector saturation and the effective read noise.
 
-    Parameters
-    ----------
-    config_data: dict
-        Instrument specs.
-    PSF_profile
-        Radial PSF profile (in fraction per pixel^2, already scaled).
-    separation
-        Separation vector matching 'PSF_profile'.
-    star_spectrum_band
-        Star spectrum [ph/mn] on the considered band and grid.
-    exposure_time
-        Total exposure time [mn].
-    min_DIT, max_DIT
-        Min/max allowed DIT [mn].
-    trans
-        Total transmission on the considered band (array).
-    RON0
-        Read-Out Noise [e-/px].
-    saturation_e
-        Full-well capacity [e-].
-    input_DIT
-        If provided, forces the DIT (still clamped by exposure time).
+    Saturation includes stellar photons, optical background and dark current.
+    Imaging integrates all spectral bins into the same spatial pixel, whereas
+    spectroscopic modes consider each spectral bin independently.
 
-    Returns
-    -------
-    DIT
-        Integration time per exposure [mn].
-    RON_eff
-        Effective read-out noise per DIT [e-/px].
-    is_UTR
-        Whether to apply the UTR read-noise reduction (default: True).
+    star_spectrum_band.flux : [ph/bin/mn]
+    trans                   : [e-/ph]
+    bkg_flux_band           : [e-/bin/px/mn] (optional)
+    dark_current            : [e-/px/s]
+    DIT, min_DIT, max_DIT   : [mn]
+
+    The DIT remains constrained to [min_DIT, max_DIT], even when saturation
+    occurs at min_DIT. An explicitly provided input_DIT is preserved.
     """
-    # Per-DIT max electron rate estimate (worst-case pixel in the PSF core)
-    if instru_type == "imager":
-        func = np.nansum
-    else:
-        func = np.nanmax
     try:
         iwa_FPM_values = config_data["FPMs"]
         iwa_FPM        = max((x for x in iwa_FPM_values if x < separation_planet), default=0.)
-    except:
+    except (KeyError, TypeError):
         iwa_FPM = 0.
-    
-    # DIT when the saturation is reached on the brightest pixel
-    star_e_rate    = func(trans * star_spectrum_band.flux)                       # [e-/mn] or [e-/bin/mn], depending on mode
-    max_flux_e     = np.nanmax(PSF_profile[separation >= iwa_FPM]) * star_e_rate # [e-/mn/px] or [e-/bin/mn/px], depending on mode
-    DIT_saturation = saturation_e / max_flux_e                                   # [mn]
-    
-    # DIT when the saturation is reached at the planet position (if needed)
+
+    # Stellar and background electron rates [e-/bin/mn].
+    star_rate = np.asarray(trans * star_spectrum_band.flux, dtype=float)
+    star_rate = np.where(np.isfinite(star_rate), np.maximum(star_rate, 0.), 0.)
+
+    if bkg_flux_band is None:
+        bkg_rate = np.zeros_like(star_rate)
+    else:
+        bkg_rate = np.asarray(bkg_flux_band, dtype=float)
+        if bkg_rate.shape != star_rate.shape:
+            raise ValueError("Background and stellar spectral grids must have the same shape")
+        bkg_rate = np.where(np.isfinite(bkg_rate), np.maximum(bkg_rate, 0.), 0.)
+
+    dark_rate = 60. * dark_current # [e-/px/mn]
+    peak_psf  = np.nanmax(PSF_profile[separation >= iwa_FPM]) # [stellar flux fraction/px]
+
+    # Imaging integrates all wavelengths; spectroscopy retains the brightest bin.
+    if instru_type == "imager":
+        max_flux_e = peak_psf * np.sum(star_rate) + np.sum(bkg_rate) + dark_rate
+    else:
+        max_flux_e = np.max(peak_psf * star_rate + bkg_rate + dark_rate)
+    DIT_saturation = saturation_e / max_flux_e if max_flux_e > 0 else np.inf # [mn]
+
     if separation_planet is not None:
-        idx_sep               = np.nanargmin(np.abs(separation - separation_planet))
-        max_flux_e_planet     = PSF_profile[idx_sep] * star_e_rate # Flux at the planet position [e-/bin/mn] or [e-/mn]
-        DIT_saturation_planet = saturation_e / max_flux_e_planet   # [mn]
+        idx_sep = np.nanargmin(np.abs(separation - separation_planet))
+        if instru_type == "imager":
+            max_flux_e_planet = PSF_profile[idx_sep] * np.sum(star_rate) + np.sum(bkg_rate) + dark_rate
+        else:
+            max_flux_e_planet = np.max(PSF_profile[idx_sep] * star_rate + bkg_rate + dark_rate)
+        DIT_saturation_planet = saturation_e / max_flux_e_planet if max_flux_e_planet > 0 else np.inf
     else:
         DIT_saturation_planet = None
-        
+
     if "fiber_injection_HRS" in instru_type and DIT_saturation_planet is not None:
         DIT_saturation = DIT_saturation_planet
 
-    # Apply limits / overrides
     if input_DIT is not None:
         DIT = input_DIT
     else:
         DIT = np.clip(DIT_saturation, min_DIT, max_DIT)
-    DIT = min(DIT, exposure_time) # [mn]: The DIT cannot be longer than the total exposure time
-    
-    # Effective readout-noise [e-/px/DIT]: UTR only when enabled for this detector.
-    if is_UTR and DIT >= 2*min_DIT: # At least 2 reads inside the ramp
-        N_read  = DIT / min_DIT                                          # Number of intermittent non-destructive readings
-        RON_eff = estimate_RON_UTR(N=N_read, RON0=RON0, RON_lim=RON_lim) # Effective read out noise [e-/px/DIT]
-        RON_eff = min(RON_eff, RON0)                                     # [e-/px/DIT]
+    DIT = min(DIT, exposure_time) # [mn]
+
+    if is_UTR and DIT >= 2*min_DIT:
+        N_read  = DIT / min_DIT
+        RON_eff = min(estimate_RON_UTR(N=N_read, RON0=RON0, RON_lim=RON_lim), RON0)
     else:
-        RON_eff = RON0 # [e-/px/DIT]
-    
-    # Total number of integrations
+        RON_eff = RON0
+
     N_DIT = exposure_time / DIT
-            
     return N_DIT, DIT, DIT_saturation, DIT_saturation_planet, RON_eff, iwa_FPM
+
 
 
 

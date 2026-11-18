@@ -333,9 +333,10 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
             idx_planet_sep = np.nanargmin(np.abs(separation - separation_planet))
         
         # -------------------------------------------------------
-        # DIT in [mn] and effective read-out noise in [e-/px/DIT] 
+        # Background [e-/bin/px/mn], DIT [mn] and RON [e-/px/DIT]
         # -------------------------------------------------------
-        N_DIT, DIT, DIT_saturation, DIT_saturation_planet, RON_eff, iwa_FPM = get_DIT_RON(config_data=config_data, instru_type=instru_type, apodizer=apodizer, PSF_profile=PSF_profile, separation=separation, star_spectrum_band=star_spectrum_band, exposure_time=exposure_time, min_DIT=min_DIT, max_DIT=max_DIT, trans=trans, RON0=RON0, RON_lim=RON_lim, saturation_e=saturation_e, input_DIT=input_DIT, separation_planet=separation_planet, is_UTR=is_UTR)
+        bkg_flux_band = get_bkg_flux_band(instru=instru, band=band, background_level=background) if background is not None else None # [e-/bin/px/mn]
+        N_DIT, DIT, DIT_saturation, DIT_saturation_planet, RON_eff, iwa_FPM = get_DIT_RON(config_data=config_data, instru_type=instru_type, apodizer=apodizer, PSF_profile=PSF_profile, separation=separation, star_spectrum_band=star_spectrum_band, exposure_time=exposure_time, min_DIT=min_DIT, max_DIT=max_DIT, trans=trans, RON0=RON0, RON_lim=RON_lim, saturation_e=saturation_e, input_DIT=input_DIT, separation_planet=separation_planet, is_UTR=is_UTR, bkg_flux_band=bkg_flux_band, dark_current=dark_current)
         
         # Star and planet spectra integrated over the DIT in [ph/bin/DIT] (total ph over the FoV)
         Ss       = star_spectrum_band.flux   * DIT # [ph/bin/DIT] (total ph over the FoV)
@@ -559,13 +560,12 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
         # --------------------------------------
         # Background photon noise in [e-/px/DIT]
         # --------------------------------------
-        if background is None:
+        if bkg_flux_band is None:
             sigma_bkg_2       = 0. # [e-/px/DIT]
             sigma_bkg_prime_2 = 0. # [e-/px/DIT]
         
         else:
-            bkg_flux_band = get_bkg_flux_band(instru=instru, band=band, background_level=background) # [e-/bin/px/mn]
-            sigma_bkg_2   = bkg_flux_band * DIT                                                      # Background photon noise per spectral channel in [e-/bin/px/DIT] for each separation
+            sigma_bkg_2 = bkg_flux_band * DIT # Background photon noise per spectral channel [e-/bin/px/DIT]
             if mask_wave is not None:
                 sigma_bkg_2 = sigma_bkg_2[mask_wave]
             
@@ -1648,7 +1648,7 @@ float
     lmin_band0_star, lmax_band0_star     = get_band_lims(band=instru if band0_star.lower()   == "instru" else band0_star)   # [µm]
     lmin_band0_planet, lmax_band0_planet = get_band_lims(band=instru if band0_planet.lower() == "instru" else band0_planet) # [µm]
     if band_only is not None:
-        lmin_band_only, lmax_band_only = config_data["gratings"][band_only].lmin, config_data["gratings"][band_only].lmax # [µm]
+        lmin_band_only, lmax_band_only = get_band_lims(band=band_only) # [µm]
 
     # ---- Load / prepare star spectrum if not provided ----
     if star_spectrum is None:

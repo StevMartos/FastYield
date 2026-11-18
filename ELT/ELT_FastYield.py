@@ -565,9 +565,8 @@ def main():
         lmax_model = min(wave_model[-1], wave_instru[-1]) # [µm] effective lmax 
         
         # Tellurics transmission spectrum (from SkyCalc)
-        wave_tell, trans_tell = load_tell_trans(airmass=1.0) # at airmass = 1.0
-        airmass               = 1.2                          # 1.2 to be coherent with the used background skytable
-        trans_tell            = Spectrum(wavelength=wave_tell, flux=trans_tell**airmass).interpolate_wavelength(wave_output=wave_instru, renorm=False, fill_value=(trans_tell[0], trans_tell[-1]))
+        wave_tell, trans_tell = load_tell_trans(airmass=1.2) # 1.2 to be coherent with the used background skytable
+        trans_tell            = Spectrum(wavelength=wave_tell, flux=trans_tell).interpolate_wavelength(wave_output=wave_instru, renorm=False, fill_value=(trans_tell[0], trans_tell[-1]))
 
         # Background spectrum [ph/mas2/mn/µm] (from SkyCalc)
         plot_bkg_skycalc(filename=ELT_dir / "skytable_background.fits")
