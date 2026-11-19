@@ -2,7 +2,8 @@
 from fastyield.config import set_sim_data_path, instrus, planet_types, planet_types_reduced
 from fastyield.FastCurves import FastCurves
 from fastyield.FastYield_interface import FastYield_interface
-from fastyield.FastYield import planet_table_classification, planet_table_classification_histogram, planet_table_statistics, yield_plot_instrus_texp, yield_plot_bands_texp, yield_hist_instrus_ptypes, yield_hist_instrus_ptypes_ELT, yield_corner_instru, yield_corner_instrus, yield_contrast_instru, yield_contrast_ELT_earthlike, get_archive_table, all_SNR_table, get_planet_table_SNR, yield_heatmap_ELT, yield_population_plot, yield_plot_instrus_contrast
+from fastyield.FastYield import planet_table_classification, planet_table_classification_histogram, planet_table_statistics, yield_plot_instrus_texp, yield_plot_bands_texp, yield_hist_instrus_ptypes, yield_hist_instrus_ptypes_ELT, yield_corner_instru, yield_corner_instrus, yield_contrast_instru, yield_contrast_ELT_earthlike, all_SNR_table, get_planet_table_SNR, yield_heatmap_ELT, yield_population_plot, yield_plot_instrus_contrast
+from fastyield.FastYield_archive import get_archive_table
 from fastyield.colormaps import colormap_bandwidth_resolution_with_constant_Nlambda, colormap_bandwidth_resolution_with_constant_Dlambda, colormap_bandwidth_Tp, colormap_bands_Tp, colormap_bands_ptypes_SNR, colormap_bands_ptypes_parameters, colormap_rv, colormap_vrot, colormap_maxsep_phase_inc
 
 # Required if FASTYIELD_SIM_DATA_PATH is not defined:
@@ -75,7 +76,7 @@ if __name__ == "__main__":
     #                           Update FastYield:                                  #
     #------------------------------------------------------------------------------#
     
-    # get_archive_table()                             # ~6 mn
+    get_archive_table()                             # ~6 mn
     # all_SNR_table(table="Archive", instrus=instrus) # ~ 15 hours
     # all_SNR_table(table="Archive", instrus=["MIRIMRS", "NIRCam", "NIRSpec", "VIPAPYRUS"])
     

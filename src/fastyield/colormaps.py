@@ -1109,7 +1109,7 @@ def process_colormap_bands_Tp(i):
 # GAIN_SNR(Bands vs Planet Types)
 #
 
-def colormap_bands_ptypes_SNR(mode="multi", Nmax=None, instru="HARMONI", thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl="JQ1", systematics=False, PCA=False, planet_types=planet_types, save=False):
+def colormap_bands_ptypes_SNR(mode="multi", Nmax=None, instru="HARMONI", thermal_model="auto", reflected_model="auto", exposure_time=10*60, strehl="JQ1", systematics=False, PCA=False, planet_types=planet_types, save=False, table="Archive"):
     
     # Get instru specs
     config_data = get_config_data(instru)
@@ -1119,8 +1119,7 @@ def colormap_bands_ptypes_SNR(mode="multi", Nmax=None, instru="HARMONI", thermal
     # get spectrum contribution + name model
     spectrum_contributions, name_model = get_spectrum_contribution_name_model(thermal_model, reflected_model)
 
-    # Load the planet tables and retrieving SNR
-    table = "Archive"
+    # Load SNR tables from the selected catalog.
     if systematics:
         suffix = "with_systematics+PCA" if PCA else "with_systematics"
     else:
@@ -1297,7 +1296,7 @@ def colormap_bands_ptypes_SNR(mode="multi", Nmax=None, instru="HARMONI", thermal
 # GAIN_UNCERTAINTIES(Bands vs Planet Types)
 #
 
-def colormap_bands_ptypes_parameters(mode="unique", Nmax=1, instru="HARMONI", thermal_model="auto", reflected_model="auto", exposure_time=10*60, apodizer="NO_SP", strehl="JQ1", coronagraph=None, systematics=False, PCA=False, PCA_mask=False, N_PCA=20, Rc=100, filter_type="gaussian_gast", planet_types=planet_types_reduced, save=False):
+def colormap_bands_ptypes_parameters(mode="unique", Nmax=1, instru="HARMONI", thermal_model="auto", reflected_model="auto", exposure_time=10*60, apodizer="NO_SP", strehl="JQ1", coronagraph=None, systematics=False, PCA=False, PCA_mask=False, N_PCA=20, Rc=100, filter_type="gaussian_gast", planet_types=planet_types_reduced, save=False, table="Archive"):
     
     def normalize_if_possible(x):
         x     = np.asarray(x, dtype=float)
@@ -1345,8 +1344,7 @@ def colormap_bands_ptypes_parameters(mode="unique", Nmax=1, instru="HARMONI", th
     # get spectrum contribution + name model
     spectrum_contributions, name_model = get_spectrum_contribution_name_model(thermal_model, reflected_model)
 
-    # Load the matching ECSV planet table.
-    table           = "Archive"
+    # Load the matching ECSV planet table from the selected catalog.
     coronagraph_str = "_"+str(coronagraph) if coronagraph is not None else ""
     if systematics:
         suffix = "with_systematics+PCA" if PCA else "with_systematics"

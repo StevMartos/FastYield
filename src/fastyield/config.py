@@ -129,19 +129,16 @@ def set_sim_data_path(path):
         Path to the sim_data directory itself, for example:
         /home/user/data/FastYield/sim_data
     """
-    global _sim_data_path
-    global sim_data_path, planet_table_path, archive_path, simulated_path
+    global _sim_data_path, sim_data_path, planet_table_path
     path = Path(path).expanduser().resolve()
     if not path.exists():
         raise FileNotFoundError(f"sim_data path does not exist: {path}")
     if not path.is_dir():
         raise NotADirectoryError(f"sim_data path is not a directory: {path}")
     _sim_data_path = path
-    # Keep backward-compatible module-level variables updated.
+    # Keep the legacy sim_data_path alias updated. Prefer get_sim_data_path().
     sim_data_path     = path
-    planet_table_path = path / "planet_table"
-    archive_path      = planet_table_path / "Archive"
-    simulated_path    = planet_table_path / "Simulated"
+    planet_table_path = sim_data_path / "planet_table"
 
 
 
@@ -177,11 +174,12 @@ def get_sim_data_path():
 
 
 
-def get_planet_table_path(table="Archive", create=False):
-    """Return sim_data/planet_table/<table> (create it for outputs if requested).
+def get_planet_table_path(table, create=False):
+    """Return sim_data/planet_table/<table> for any catalog name.
 
-    The base directory is resolved at call time, so set_sim_data_path() and
-    FASTYIELD_SIM_DATA_PATH work even after FastYield has been imported.
+    Resolve the base directory at call time, so changes made through
+    set_sim_data_path() or FASTYIELD_SIM_DATA_PATH take effect immediately.
+    If create=True, create the catalog directory when writing tables.
     """
     path = get_sim_data_path() / "planet_table" / table
     if create:
@@ -207,21 +205,13 @@ def get_vega_path():
 
 
 
-# Default module-level paths.
-#
-# Legacy aliases, kept for external callers. Internal code should use the
-# get_sim_data_path() / get_planet_table_path() getters to avoid stale paths.
-#
-# In a non-editable pip installation, users should define FASTYIELD_SIM_DATA_PATH
-# before importing FastYield, or call set_sim_data_path(...) before running
-# functions that need external data.
+# Legacy sim_data_path alias. Use get_sim_data_path() and
+# get_planet_table_path(table) for all internal file operations.
 try:
     sim_data_path = get_sim_data_path()
 except FileNotFoundError:
     sim_data_path = PACKAGE_ROOT / "sim_data"
 planet_table_path = sim_data_path / "planet_table"
-archive_path      = planet_table_path / "Archive"
-simulated_path    = planet_table_path / "Simulated"
 
 # Kept for compatibility if some plotting utilities still use it.
 colormaps_path = PACKAGE_ROOT / "plots" / "colormaps"

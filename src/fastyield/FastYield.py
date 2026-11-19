@@ -325,15 +325,16 @@ def process_SNR(idx):
 
 
 def get_planet_table_SNR(instru, table="Archive", thermal_model="None", reflected_model="None", apodizer="NO_SP", strehl="NO_JQ", coronagraph=None, Rc=100, filter_type=filter_type_default, background="medium", systematics=False, PCA=False, N_PCA=20):
-    """"
+    """
     Compute per-planet SNRs for a given instrument and write results to the table.
 
     Parameters
     ----------
     instru : str
         Instrument name (must be known by your config & globals).
-    table : {"Archive", "Simulated"}, optional
-        Which table file to load.
+    table : str, optional
+        Catalog name, used for both input and output (default: "Archive").
+        The input must be <table>_Pull_For_FastYield.ecsv in its directory.
     thermal_model, reflected_model : str, optional
         Spectrum choices for the planet/starlight models.
     apodizer, strehl : str, optional
@@ -355,8 +356,8 @@ def get_planet_table_SNR(instru, table="Archive", thermal_model="None", reflecte
     exposure_time = 120 # [mn]
     time1         = time.time()
 
-    # --- 1) Source archive and output directory (Archive or Simulated) ---
-    planet_table = load_planet_table("Archive_Pull_For_FastYield.ecsv")
+    # --- 1) Input catalog and output directory ---
+    planet_table = load_planet_table(f"{table}_Pull_For_FastYield.ecsv", table=table)
     path         = get_planet_table_path(table, create=True)
 
     # --- 2) Wavelength grids and Vega ---
@@ -3137,7 +3138,7 @@ def yield_population_plot(table="Archive", instru="HARMONI", instru_type=None, p
     spectrum_contributions, name_model = get_spectrum_contribution_name_model(thermal_model, reflected_model)
 
     if instru is None:
-        planet_table = load_planet_table('Archive_Pull_For_FastYield.ecsv')
+        planet_table = load_planet_table(f'{table}_Pull_For_FastYield.ecsv', table=table)
         config_data  = None
         configs      = None
     elif precomputed:
@@ -3637,8 +3638,3 @@ def yield_population_plot(table="Archive", instru="HARMONI", instru_type=None, p
             save_and_show(fig_snr, f"ELT_{instru}{type_and_pp}_SNR_{table}_{band_contrast_plot}band.png")
 
 
-
-def get_archive_table(seed=None):
-    """Build the archive catalog; implementation lives in FastYield_archive."""
-    from .FastYield_archive import get_archive_table as _get_archive_table
-    return _get_archive_table(seed=seed)

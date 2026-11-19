@@ -606,7 +606,6 @@ def get_archive_table(seed=None):
 
     time1        = time.time()
     rng          = np.random.default_rng(seed=seed)
-    archive_path = get_planet_table_path("Archive", create=True)
 
     # Consistent, compact progress reports.
     def report_step(number, title):
@@ -706,8 +705,8 @@ def get_archive_table(seed=None):
         planet_table.replace_column(colname, vals * (unit if unit is not None else u.dimensionless_unscaled))
 
     # Keep the raw ECSV/reload convention expected by existing FastYield tools.
-    planet_table.write(archive_path / "Archive_Pull_Raw.ecsv", format="ascii.ecsv", overwrite=True)
-    planet_table = load_planet_table("Archive_Pull_Raw.ecsv")
+    planet_table.write(get_planet_table_path("Archive", create=True) / "Archive_Pull_Raw.ecsv", format="ascii.ecsv", overwrite=True)
+    planet_table = load_planet_table("Archive_Pull_Raw.ecsv", table="Archive")
     planet_table_classification_histogram(planet_table)
     report_stat("Raw snapshot", "Archive_Pull_Raw.ecsv")
 
@@ -1377,7 +1376,7 @@ def get_archive_table(seed=None):
     # -----------------------------------------------------------------------------
     report_step(16, "Synthetic magnitudes and final catalog")
     planet_table = get_planet_table_magnitudes(planet_table)
-    planet_table.write(archive_path / "Archive_Pull_For_FastYield.ecsv", format="ascii.ecsv", overwrite=True)
+    planet_table.write(get_planet_table_path("Archive", create=True) / "Archive_Pull_For_FastYield.ecsv", format="ascii.ecsv", overwrite=True)
     final_stars = np.asarray(planet_table["StarName"], dtype=str)
     final_names = np.asarray(planet_table["PlanetName"], dtype=str)
     final_stars = np.where(np.char.str_len(np.char.strip(final_stars)) > 0, final_stars, final_names)
