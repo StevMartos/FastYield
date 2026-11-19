@@ -1,10 +1,10 @@
 # import FastYield modules
-from fastyield.config import c, R0_max, config_data_list, T_earth, lg_earth, vrot_earth, drv_earth, airmass_earth, T_sun, lg_sun, vrot_sun, M_earth, M_sun, AU, G, colormaps_path, sim_data_path, planet_types, planet_types_reduced, filter_type_default
-from fastyield.get_specs import load_tell_trans, get_config_data, get_transmission, get_PSF_profile, get_R_instru
-from fastyield.spectrum import get_counts_from_density, load_vega_spectrum, get_wave_K, get_wave_band, get_wavelength_axis_constant_R, filtered_flux, Spectrum, load_star_spectrum, load_planet_spectrum, load_albedo_spectrum, get_spectrum_contribution_name_model, get_thermal_reflected_spectrum
-from fastyield.FastCurves import FastCurves
-from fastyield.FastYield_helpers import load_planet_table, get_SNR_from_table, build_match_dict, plot_matching_planets
-from fastyield.signal_noise import compute_sigma_base_2_al_spec_fast
+from .config import c, R0_max, config_data_list, T_earth, lg_earth, vrot_earth, drv_earth, airmass_earth, T_sun, lg_sun, vrot_sun, M_earth, M_sun, AU, G, colormaps_path, get_sim_data_path, planet_types, planet_types_reduced, filter_type_default
+from .get_specs import load_tell_trans, get_config_data, get_transmission, get_PSF_profile, get_R_instru
+from .spectrum import get_counts_from_density, load_vega_spectrum, get_wave_K, get_wave_band, get_wavelength_axis_constant_R, filtered_flux, Spectrum, load_star_spectrum, load_planet_spectrum, load_albedo_spectrum, get_spectrum_contribution_name_model, get_thermal_reflected_spectrum
+from .FastCurves import FastCurves
+from .FastYield_helpers import load_planet_table, get_filename_table, get_SNR_from_table, build_match_dict, plot_matching_planets
+from .signal_noise import compute_sigma_base_2_al_spec_fast
 
 # import matplotlib modules
 import matplotlib.pyplot as plt
@@ -1131,8 +1131,7 @@ def colormap_bands_ptypes_SNR(mode="multi", Nmax=None, instru="HARMONI", thermal
     ref_names         = None
     for apodizer in config_data["apodizers"]:
         for coronagraph in config_data["coronagraphs"]:
-            coronagraph_str = "_" + str(coronagraph) if coronagraph is not None else ""
-            filename        = f"{table}_Pull_{instru}_{apodizer}_{strehl}{coronagraph_str}_{suffix}_{name_model}"
+            filename        = get_filename_table(table=table, instru=instru, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, systematics=systematics, PCA=PCA, name_model=name_model)
             if len(config_data["apodizers"]) > 1 and len(config_data["coronagraphs"]) > 1:
                 config_name = f"{apodizer} + {coronagraph if coronagraph is not None else 'None'}"
             elif len(config_data["apodizers"]) > 1:
@@ -1142,12 +1141,12 @@ def colormap_bands_ptypes_SNR(mode="multi", Nmax=None, instru="HARMONI", thermal
             else:
                 config_name = str(apodizer) if apodizer is not None else (str(coronagraph) if coronagraph is not None else "None")
             config_names.append(config_name)
-            planet_table  = load_planet_table(f"{filename}.ecsv")
+            planet_table  = load_planet_table(filename, table=table)
             current_names = np.asarray(planet_table["PlanetName"], dtype=str).astype(str)
             if ref_names is None:
                 ref_names = current_names.copy()
             elif len(current_names) != len(ref_names) or np.any(current_names != ref_names):
-                raise ValueError(f"Inconsistent planet ordering/content in {filename}.ecsv. All apodizer/coronagraph tables must contain the same planets in the same order.")
+                raise ValueError(f"Inconsistent planet ordering/content in {filename}. All apodizer/coronagraph tables must contain the same planets in the same order.")
             SNR_configs.append(get_SNR_from_table(planet_table=planet_table, exposure_time=exposure_time, band="INSTRU"))
             for band in config_data["gratings"]:
                 SNR_bands_configs[band].append(get_SNR_from_table(planet_table=planet_table, exposure_time=exposure_time, band=band))
@@ -1346,15 +1345,15 @@ def colormap_bands_ptypes_parameters(mode="unique", Nmax=1, instru="HARMONI", th
     # get spectrum contribution + name model
     spectrum_contributions, name_model = get_spectrum_contribution_name_model(thermal_model, reflected_model)
 
-    # Load the planet table and convert it from QTable to pandas DataFrame
+    # Load the matching ECSV planet table.
     table           = "Archive"
     coronagraph_str = "_"+str(coronagraph) if coronagraph is not None else ""
     if systematics:
         suffix = "with_systematics+PCA" if PCA else "with_systematics"
     else:
         suffix = "without_systematics"
-    filename            = f"{table}_Pull_{instru}_{apodizer}_{strehl}{coronagraph_str}_{suffix}_{name_model}"
-    planet_table        = load_planet_table(f"{filename}.ecsv")    
+    filename            = get_filename_table(table=table, instru=instru, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, systematics=systematics, PCA=PCA, name_model=name_model)
+    planet_table        = load_planet_table(filename, table=table)
     planet_table["SNR"] = get_SNR_from_table(planet_table=planet_table, exposure_time=exposure_time, band="INSTRU")
     
     # Find planets based on mode: the classification is performed once inside build_match_dict().
@@ -2029,7 +2028,7 @@ def colormap_maxsep_phase_inc(instru="HARMONI", band="H", apodizer="NO_SP", stre
     if coronagraph is None:
         fraction_core = np.zeros(len(separation)) + fraction_core
     else:
-        separation0, fraction_core0, radial_transmission0 = fits.getdata(f"{sim_data_path}/PSF/PSF_{instru}/fraction_core_radial_transmission_{band}_{coronagraph}_{strehl}_{apodizer}.fits")
+        separation0, fraction_core0, radial_transmission0 = fits.getdata(get_sim_data_path() / f"PSF/PSF_{instru}/fraction_core_radial_transmission_{band}_{coronagraph}_{strehl}_{apodizer}.fits")
         fraction_core0                                    = fraction_core0 * radial_transmission0 # taking into account the coronagraph transmission, not needed for the star, as it is a common scaling factor (star_transmission)
         fraction_core                                     = interp1d(separation0, fraction_core0, bounds_error=False, fill_value=np.nan)(separation)
         fraction_core[separation > separation0[-1]]       = fraction_core0[-1] # flat extrapolation

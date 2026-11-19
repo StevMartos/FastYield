@@ -80,7 +80,7 @@ def _find_first_existing_dir(candidates, dirname):
     Return the first valid directory among candidate paths.
 
     Parameters
-    ----------get_sim_data_path()
+    ----------
     candidates : list of tuple[str, str or pathlib.Path]
         List of (label, path) candidates to test.
 
@@ -130,8 +130,7 @@ def set_sim_data_path(path):
         /home/user/data/FastYield/sim_data
     """
     global _sim_data_path
-    global sim_data_path
-    global planet_table_path
+    global sim_data_path, planet_table_path, archive_path, simulated_path
     path = Path(path).expanduser().resolve()
     if not path.exists():
         raise FileNotFoundError(f"sim_data path does not exist: {path}")
@@ -141,6 +140,8 @@ def set_sim_data_path(path):
     # Keep backward-compatible module-level variables updated.
     sim_data_path     = path
     planet_table_path = path / "planet_table"
+    archive_path      = planet_table_path / "Archive"
+    simulated_path    = planet_table_path / "Simulated"
 
 
 
@@ -154,8 +155,8 @@ def get_sim_data_path():
     3. local development path: PACKAGE_ROOT/sim_data
     4. current working directory: ./sim_data
 
-    The sim_data directory is expected to contain Spectra/, planet_table/,
-    Background/, PSF/, R_corr/, Systematics/, and Transmission/.
+    The sim_data directory contains Spectra/, Background/, PSF/, R_corr/,
+    Systematics/, Transmission/, and planet_table/<table>/<table>_*.ecsv.
     """
     candidates = []
 
@@ -173,6 +174,19 @@ def get_sim_data_path():
     candidates.append(("current working directory", Path.cwd() / "sim_data"))
 
     return _find_first_existing_dir(candidates, "sim_data")
+
+
+
+def get_planet_table_path(table="Archive", create=False):
+    """Return sim_data/planet_table/<table> (create it for outputs if requested).
+
+    The base directory is resolved at call time, so set_sim_data_path() and
+    FASTYIELD_SIM_DATA_PATH work even after FastYield has been imported.
+    """
+    path = get_sim_data_path() / "planet_table" / table
+    if create:
+        path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 
@@ -195,8 +209,8 @@ def get_vega_path():
 
 # Default module-level paths.
 #
-# These are kept for backward compatibility with parts of the code that still
-# import sim_data_path, archive_path, or simulated_path directly.
+# Legacy aliases, kept for external callers. Internal code should use the
+# get_sim_data_path() / get_planet_table_path() getters to avoid stale paths.
 #
 # In a non-editable pip installation, users should define FASTYIELD_SIM_DATA_PATH
 # before importing FastYield, or call set_sim_data_path(...) before running
@@ -204,9 +218,10 @@ def get_vega_path():
 try:
     sim_data_path = get_sim_data_path()
 except FileNotFoundError:
-    sim_data_path = PACKAGE_ROOT  / "sim_data"
-archive_path      = sim_data_path / "Archive_table"
-simulated_path    = sim_data_path / "Simulated_table"
+    sim_data_path = PACKAGE_ROOT / "sim_data"
+planet_table_path = sim_data_path / "planet_table"
+archive_path      = planet_table_path / "Archive"
+simulated_path    = planet_table_path / "Simulated"
 
 # Kept for compatibility if some plotting utilities still use it.
 colormaps_path = PACKAGE_ROOT / "plots" / "colormaps"

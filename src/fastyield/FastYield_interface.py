@@ -1,12 +1,13 @@
 # import FastYield modules
-from .config import instrus_with_systematics, SNR_thresh, ignore_reflected_thresh_um
+from .config import instrus_with_systematics, SNR_thresh, ignore_reflected_thresh_um, get_planet_table_path
 from .get_specs import get_config_data, get_wa
 from .spectrum import get_spectrum_contribution_name_model, get_thermal_reflected_spectrum
 from .FastCurves import FastCurves
-from .FastYield import load_planet_table, get_planet_index, get_valid_mask, get_SNR_from_table, get_size_from_SNR
+from .FastYield_helpers import load_planet_table, get_filename_table, get_planet_index, get_valid_mask, get_SNR_from_table, get_size_from_SNR
 
 # import astropy modules
 from astropy import units as u
+from astropy.table import QTable
 from astropy.coordinates import EarthLocation, AltAz, get_body, SkyCoord
 from astropy.time import Time
 
@@ -452,13 +453,9 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         # Clearing the plot
         self.__plt.clear()
         
-        # Loading SNR planet table 
-        coronagraph_str = "_"+str(self.coronagraph) if self.coronagraph is not None else ""
-        if self.systematics:
-            suffix = "with_systematics+PCA" if self.PCA else "with_systematics"
-        else:
-            suffix = "without_systematics"
-        self.planet_table = load_planet_table_cached(f"{self.table}_Pull_{self.instru}_{self.apodizer}_{self.strehl}{coronagraph_str}_{suffix}_{self.model_planet}.ecsv")
+        # Loading the SNR catalog from the selected table directory.
+        filename          = get_filename_table(table=self.table, instru=self.instru, apodizer=self.apodizer, strehl=self.strehl, coronagraph=self.coronagraph, systematics=self.systematics, PCA=self.PCA, name_model=self.model_planet)
+        self.planet_table = load_planet_table_cached(filename, table=self.table)
         
         # Filtrage des planètes non-visibles depuis le site d'observation (if necessary)
         if self.config_data["base"]=="ground":
@@ -730,8 +727,14 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
 
 
 @lru_cache(maxsize=32)
-def load_planet_table_cached(filename: str):
-    return load_planet_table(filename)
+def _load_planet_table_cached(path):
+    return QTable.read(path, format="ascii.ecsv")
+
+
+
+def load_planet_table_cached(filename: str, table="Archive"):
+    """Cache a catalog by resolved path (including its table directory)."""
+    return _load_planet_table_cached(get_planet_table_path(table) / filename)
 
     
 

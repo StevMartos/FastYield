@@ -1,8 +1,7 @@
 # import FastYield modules
-from .config import m_u, kB, G, vesc_earth, T_sun, planet_table_path, instrus, bands
+from .config import m_u, kB, G, vesc_earth, T_sun, get_planet_table_path, instrus, bands
 from .prints_helpers import print_warning
-from .FastYield_helpers import get_valid_mask, get_invalid_mask, load_planet_table, chen_kipping_mass_from_radius, chen_kipping_radius_from_mass, get_evolutionary_model, get_planet_type, get_mask_planet_type, planet_table_statistics
-from .FastYield import planet_table_classification_histogram, planet_table_classification, get_planet_table_magnitudes
+from .FastYield_helpers import get_valid_mask, get_invalid_mask, load_planet_table, chen_kipping_mass_from_radius, chen_kipping_radius_from_mass, get_evolutionary_model, get_planet_type, get_mask_planet_type
 
 # import astropy modules
 from astropy import constants as const
@@ -550,7 +549,8 @@ def get_archive_table(seed=None):
     https://exoplanetarchive.ipac.caltech.edu/docs/API_PS_columns.html
 
     The routine writes 'Archive_Pull_Raw.ecsv' (after column normalization)
-    and 'Archive_Pull_For_FastYield.ecsv' (final catalog) into 'archive_path'.
+    and 'Archive_Pull_For_FastYield.ecsv' (final catalog) into
+    sim_data/planet_table/Archive/.
     It also generates diagnostic plots through the existing FastYield helpers.
 
     Adopted conventions and approximations
@@ -601,8 +601,12 @@ def get_archive_table(seed=None):
     FastYield studies but must not be interpreted as precise measurements.
     """
 
-    time1 = time.time()
-    rng   = np.random.default_rng(seed=seed)
+    # Import plotting/magnitude routines only for the full catalog workflow.
+    from .FastYield import get_planet_table_magnitudes, planet_table_classification, planet_table_classification_histogram, planet_table_statistics
+
+    time1        = time.time()
+    rng          = np.random.default_rng(seed=seed)
+    archive_path = get_planet_table_path("Archive", create=True)
 
     # Consistent, compact progress reports.
     def report_step(number, title):
@@ -702,7 +706,7 @@ def get_archive_table(seed=None):
         planet_table.replace_column(colname, vals * (unit if unit is not None else u.dimensionless_unscaled))
 
     # Keep the raw ECSV/reload convention expected by existing FastYield tools.
-    planet_table.write(f"{planet_table_path}/Archive/Archive_Pull_Raw.ecsv", format="ascii.ecsv", overwrite=True)
+    planet_table.write(archive_path / "Archive_Pull_Raw.ecsv", format="ascii.ecsv", overwrite=True)
     planet_table = load_planet_table("Archive_Pull_Raw.ecsv")
     planet_table_classification_histogram(planet_table)
     report_stat("Raw snapshot", "Archive_Pull_Raw.ecsv")
@@ -1373,7 +1377,7 @@ def get_archive_table(seed=None):
     # -----------------------------------------------------------------------------
     report_step(16, "Synthetic magnitudes and final catalog")
     planet_table = get_planet_table_magnitudes(planet_table)
-    planet_table.write(f"{planet_table_path}/Archive/Archive_Pull_For_FastYield.ecsv", format="ascii.ecsv", overwrite=True)
+    planet_table.write(archive_path / "Archive_Pull_For_FastYield.ecsv", format="ascii.ecsv", overwrite=True)
     final_stars = np.asarray(planet_table["StarName"], dtype=str)
     final_names = np.asarray(planet_table["PlanetName"], dtype=str)
     final_stars = np.where(np.char.str_len(np.char.strip(final_stars)) > 0, final_stars, final_names)

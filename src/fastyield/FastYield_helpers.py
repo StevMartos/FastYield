@@ -1,7 +1,7 @@
 # import FastYield modules
-from .config import rad2arcsec, dpi_fig, SNR_thresh, planet_types, sim_data_path, planet_table_path
-from fastyield.signal_noise import compute_sigma_base_2_speck_numba, compute_sigma_base_2_al_spat_numba, compute_sigma_base_2_al_spec_fast
-from fastyield.get_specs import get_detector_specs
+from .config import rad2arcsec, dpi_fig, SNR_thresh, planet_types, get_planet_table_path
+from .signal_noise import compute_sigma_base_2_speck_numba, compute_sigma_base_2_al_spat_numba, compute_sigma_base_2_al_spec_fast
+from .get_specs import get_detector_specs
 
 # import numpy modules
 import numpy as np
@@ -51,6 +51,7 @@ def mass_to_size(mass, s0, ds, mass_min=None, mass_max=None):
 
 
 def get_filename_table(table, instru, apodizer, strehl, coronagraph, systematics, PCA, name_model):
+    """Return the <table>_Pull_*.ecsv filename (without its directory)."""
     coronagraph_str = "_"+str(coronagraph) if coronagraph is not None else ""
     if systematics:
         suffix = "with_systematics+PCA" if PCA else "with_systematics"
@@ -62,8 +63,8 @@ def get_filename_table(table, instru, apodizer, strehl, coronagraph, systematics
 
 
 def load_planet_table(table_name, table="Archive"):
-    """Load table_name from the appropriate path."""
-    return QTable.read(f"{planet_table_path}/{table}/{table_name}", format="ascii.ecsv")
+    """Read sim_data/planet_table/<table>/<table_name> as an ECSV QTable."""
+    return QTable.read(get_planet_table_path(table) / table_name, format="ascii.ecsv")
 
 
 
@@ -151,7 +152,7 @@ def get_evolutionary_model(planet_table):
     A_gyr = planet_table["StarAge"].to_value(u.Gyr)
 
     # ---- Load grid (cached)
-    EVOL_GRID_NPZ = f"{sim_data_path}/Archive_table/sonora_bobcat_evol_grid.npz"
+    EVOL_GRID_NPZ = get_planet_table_path("Archive") / "sonora_bobcat_evol_grid.npz"
     data          = np.load(EVOL_GRID_NPZ, allow_pickle=True, mmap_mode="r")
     m_axis        = np.asarray(data["mass_axis_mjup"], dtype=float) # (Nm,)
     a_axis        = np.asarray(data["age_axis_gyr"],   dtype=float) # (Na,)

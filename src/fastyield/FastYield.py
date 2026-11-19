@@ -1,5 +1,5 @@
 # import FastYield modules
-from .config import dpi_fig, h, c, R0_max, LMIN, LMAX, bands, instrus, colors_instru, planet_table_path, ignore_reflected_thresh_um, SNR_thresh, planet_types, planet_types_reduced, instrus_with_systematics, filter_type_default
+from .config import dpi_fig, h, c, R0_max, LMIN, LMAX, bands, instrus, colors_instru, get_planet_table_path, ignore_reflected_thresh_um, SNR_thresh, planet_types, planet_types_reduced, instrus_with_systematics, filter_type_default
 from .get_specs import get_config_data, get_band_lims, get_wa, get_R_instru, get_DL_FWHM
 from .utils import faded
 from .spectrum import load_vega_spectrum, get_mag, get_spectrum_contribution_name_model, get_thermal_reflected_spectrum, get_counts_from_density, get_wave_K, get_wave_model
@@ -355,9 +355,9 @@ def get_planet_table_SNR(instru, table="Archive", thermal_model="None", reflecte
     exposure_time = 120 # [mn]
     time1         = time.time()
 
-    # --- 1) Loading table ---
+    # --- 1) Source archive and output directory (Archive or Simulated) ---
     planet_table = load_planet_table("Archive_Pull_For_FastYield.ecsv")
-    path         = f"{planet_table_path}/{table}"
+    path         = get_planet_table_path(table, create=True)
 
     # --- 2) Wavelength grids and Vega ---
     # K-band for photometry
@@ -473,8 +473,8 @@ def get_planet_table_SNR(instru, table="Archive", thermal_model="None", reflecte
 
     print(f"\n Calculating SNR took {(time.time()-time1)/60:.1f} mn")
     filename = get_filename_table(table=table, instru=instru, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, systematics=systematics, PCA=PCA, name_model=name_model)
-    planet_table.write(f"{path}/{filename}", format='ascii.ecsv', overwrite=True)
-    print(f"Table saved: {path}/{filename}")
+    planet_table.write(path / filename, format='ascii.ecsv', overwrite=True)
+    print(f"Table saved: {path / filename}")
 
 
 
@@ -1147,7 +1147,7 @@ def yield_plot_bands_texp(table="Archive", instru="HARMONI", thermal_model="auto
         NbPlanet      = np.zeros(len(modes), dtype=int)
         for im, mode in enumerate(modes):
             filename_pt  = get_filename_table(table=table, instru=instru, apodizer=mode, strehl=strehl, coronagraph=coronagraph, systematics=systematics, PCA=PCA, name_model=name_model)
-            pt           = load_planet_table(filename_pt)
+            pt           = load_planet_table(filename_pt, table=table)
             NbPlanet[im] = len(pt)
             planet_tables.append(pt)
 
@@ -1157,13 +1157,13 @@ def yield_plot_bands_texp(table="Archive", instru="HARMONI", thermal_model="auto
         NbPlanet      = np.zeros(len(modes), dtype=int)
         for im, mode in enumerate(modes):
             filename_pt  = get_filename_table(table=table, instru=instru, apodizer=apodizer, strehl=strehl, coronagraph=mode, systematics=systematics, PCA=PCA, name_model=name_model)
-            pt           = load_planet_table(filename_pt)
+            pt           = load_planet_table(filename_pt, table=table)
             NbPlanet[im] = len(pt)
             planet_tables.append(pt)
 
     else:
         filename_pt   = get_filename_table(table=table, instru=instru, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, systematics=systematics, PCA=PCA, name_model=name_model)
-        pt            = load_planet_table(filename_pt)
+        pt            = load_planet_table(filename_pt, table=table)
         planet_tables = [pt]
         NbPlanet      = np.array([len(pt)])
         modes         = [""]
@@ -2027,7 +2027,7 @@ def yield_plot_instrus_contrast(table="Archive", exposure_time=10*60, thermal_mo
     def load_config(config):
         instru, apodizer, strehl, coronagraph, systematics, PCA, model_name, _ = config
         filename = get_filename_table(table=table, instru=instru, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, systematics=systematics, PCA=PCA, name_model=model_name)
-        return load_planet_table(filename)
+        return load_planet_table(filename, table=table)
 
     def get_binned_curve(separation, contrast, bins, mode):
         xbin  = np.sqrt(bins[:-1]*bins[1:])
@@ -2252,7 +2252,7 @@ def yield_contrast_instru(instru="ANDES", exposure_time=6*60, thermal_model="BT-
         suffix = "without_systematics"
     tablename = f"{table}_Pull_{instru}_{apodizer}_{strehl}{coronagraph_str}_{suffix}_{name_model}.ecsv"
 
-    planet_table = load_planet_table(tablename)
+    planet_table = load_planet_table(tablename, table=table)
     SNR          = get_SNR_from_table(planet_table=planet_table, exposure_time=exposure_time, band=band)
     planet_table = planet_table[SNR > SNR_thresh]
     SNR          = SNR[SNR > SNR_thresh]
@@ -2460,7 +2460,7 @@ def get_planet_table_contrast(instru, planet_table, exposure_time, table="Archiv
         suffix = "with_systematics+PCA" if PCA else "with_systematics"
     else:
         suffix = "without_systematics"
-    filename = f"{planet_table_path}/{table}/ELT_Contrast_Earth_Like_{table}_Pull_{instru}_{suffix}_{name_model}_{spectrum_contributions}_t{exposure_time}mn_Rc{Rc}.ecsv"
+    filename = str(get_planet_table_path(table, create=True) / f"{table}_ELT_Contrast_Earth_Like_Pull_{instru}_{suffix}_{name_model}_{spectrum_contributions}_t{exposure_time}mn_Rc{Rc}.ecsv")
 
     # Retrieving or computing the table
     try:
@@ -2967,7 +2967,7 @@ def yield_heatmap_ELT(table="Archive", instru="HARMONI", thermal_model="auto", r
         detected_names_total = {ptype: set() for ptype in ptypes_heatmap}
         for icfg, cfg in enumerate(configs):
             filename_table = get_filename_table(table=table, instru=instru, apodizer=cfg["apodizer"], strehl=strehl, coronagraph=cfg["coronagraph"], systematics=systematics, PCA=PCA, name_model=name_model)
-            planet_table   = load_planet_table(filename_table)
+            planet_table   = load_planet_table(filename_table, table=table)
             base_masks     = {ptype: get_ptype_mask(planet_table, ptype) for ptype in base_ptypes}
             if split_ptypes_by_regime and not regime_by_current_band:
                 regime_masks = get_regime_masks(planet_table, band_regime_plot)
@@ -3444,7 +3444,7 @@ def yield_population_plot(table="Archive", instru="HARMONI", instru_type=None, p
         ref_names         = None
         for cfg in configs:
             filename         = get_filename_table(table=table, instru=instru, apodizer=cfg["apodizer"], strehl=strehl, coronagraph=cfg["coronagraph"], systematics=systematics, PCA=PCA, name_model=name_model)
-            planet_table_cfg = load_planet_table(filename)
+            planet_table_cfg = load_planet_table(filename, table=table)
             names            = np.asarray(planet_table_cfg["PlanetName"], dtype=str)
             if ref_names is None:
                 ref_names    = names.copy()
@@ -3635,3 +3635,10 @@ def yield_population_plot(table="Archive", instru="HARMONI", instru_type=None, p
             if SNR_min <= SNR_thr <= SNR_max:
                 cbar.ax.axhline(SNR_thr, color="k", linestyle="--", linewidth=2.5)
             save_and_show(fig_snr, f"ELT_{instru}{type_and_pp}_SNR_{table}_{band_contrast_plot}band.png")
+
+
+
+def get_archive_table(seed=None):
+    """Build the archive catalog; implementation lives in FastYield_archive."""
+    from .FastYield_archive import get_archive_table as _get_archive_table
+    return _get_archive_table(seed=seed)
