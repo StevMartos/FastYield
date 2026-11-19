@@ -129,7 +129,7 @@ def set_sim_data_path(path):
         Path to the sim_data directory itself, for example:
         /home/user/data/FastYield/sim_data
     """
-    global _sim_data_path, sim_data_path, planet_table_path
+    global _sim_data_path, sim_data_path
     path = Path(path).expanduser().resolve()
     if not path.exists():
         raise FileNotFoundError(f"sim_data path does not exist: {path}")
@@ -137,8 +137,7 @@ def set_sim_data_path(path):
         raise NotADirectoryError(f"sim_data path is not a directory: {path}")
     _sim_data_path = path
     # Keep the legacy sim_data_path alias updated. Prefer get_sim_data_path().
-    sim_data_path     = path
-    planet_table_path = sim_data_path / "planet_table"
+    sim_data_path = path
 
 
 
@@ -211,7 +210,6 @@ try:
     sim_data_path = get_sim_data_path()
 except FileNotFoundError:
     sim_data_path = PACKAGE_ROOT / "sim_data"
-planet_table_path = sim_data_path / "planet_table"
 
 # Kept for compatibility if some plotting utilities still use it.
 colormaps_path = PACKAGE_ROOT / "plots" / "colormaps"

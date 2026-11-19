@@ -21,9 +21,10 @@ if __name__ == "__main__":
     #                       Graphic User Interface (GUI):                          #
     #------------------------------------------------------------------------------#
     
-    # FastYield_interface()
-    
-    
+    FastYield_interface()
+
+
+
     #------------------------------------------------------------------------------#
     #                                FastYield plots:                              #
     #------------------------------------------------------------------------------#
@@ -34,8 +35,7 @@ if __name__ == "__main__":
     # yield_population_plot(table="Archive", instru=None, DL_mas=7,    DL_text="ELT", show_golden_sample=False, show_det_regions=False, show_ptype_regions=True, show_VLT_DL=True)
     # yield_population_plot(table="Archive", instru=None, DL_mas=7,    DL_text="ELT", show_golden_sample=False, show_det_regions=True,  show_ptype_regions=True, show_VLT_DL=True)
     # yield_population_plot(table="Archive", instru=None, DL_mas=7,    DL_text="ELT", show_golden_sample=True,  show_det_regions=True,  show_ptype_regions=True, show_VLT_DL=True)
-    
-    
+        
     # yield_plot_instrus_texp(thermal_model="auto", reflected_model="auto", fraction=False)
     # yield_plot_bands_texp(table="Archive", instru="HARMONI", thermal_model="auto", reflected_model="auto", systematics=False, PCA=False, fraction=False)
     # yield_plot_bands_texp(table="Archive", instru="ANDES", thermal_model="auto", reflected_model="auto", systematics=False, PCA=False, fraction=False)
@@ -76,7 +76,7 @@ if __name__ == "__main__":
     #                           Update FastYield:                                  #
     #------------------------------------------------------------------------------#
     
-    get_archive_table()                             # ~6 mn
+    # get_archive_table()                             # ~6 mn
     # all_SNR_table(table="Archive", instrus=instrus) # ~ 15 hours
     # all_SNR_table(table="Archive", instrus=["MIRIMRS", "NIRCam", "NIRSpec", "VIPAPYRUS"])
     
