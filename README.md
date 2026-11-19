@@ -149,13 +149,12 @@ The expected structure is:
 
 ```text
 sim_data/
-├── Archive_table/
+├── planet_table/
 ├── Background/
 ├── ELT/
 ├── HWO/
 ├── PSF/
 ├── R_corr/
-├── Simulated_table/
 ├── Spectra/
     ├── planet_spectrum/
     └── star_spectrum/

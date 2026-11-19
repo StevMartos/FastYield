@@ -131,8 +131,7 @@ def set_sim_data_path(path):
     """
     global _sim_data_path
     global sim_data_path
-    global archive_path
-    global simulated_path
+    global planet_table_path
     path = Path(path).expanduser().resolve()
     if not path.exists():
         raise FileNotFoundError(f"sim_data path does not exist: {path}")
@@ -140,9 +139,8 @@ def set_sim_data_path(path):
         raise NotADirectoryError(f"sim_data path is not a directory: {path}")
     _sim_data_path = path
     # Keep backward-compatible module-level variables updated.
-    sim_data_path  = path
-    archive_path   = path / "Archive_table"
-    simulated_path = path / "Simulated_table"
+    sim_data_path     = path
+    planet_table_path = path / "planet_table"
 
 
 
@@ -156,8 +154,8 @@ def get_sim_data_path():
     3. local development path: PACKAGE_ROOT/sim_data
     4. current working directory: ./sim_data
 
-    The sim_data directory is expected to contain Spectra/, Archive_table/,
-    Background/, PSF/, R_corr/, Simulated_table/, Systematics/, and Transmission/.
+    The sim_data directory is expected to contain Spectra/, planet_table/,
+    Background/, PSF/, R_corr/, Systematics/, and Transmission/.
     """
     candidates = []
 
@@ -319,17 +317,17 @@ config_data_METIS_LSS = {
                        'name':           "METIS_LSS",                                 # Instrument name
                        'telescope_name': "ELT",                                       # Telescope name
                        'type':           "IFU",                                       # IFU approximation for an orientable long slit
-                       'gratings':      {"L":  GratingInfo(2.9, 4.2, 1_500),          # Spectral range [µm], resolving power
-                                         "M":  GratingInfo(4.5, 5.2, 1_900),
-                                         "N":  GratingInfo(7.5, 13.5, 400)},          # Spectral range [µm], resolving power
+                       'gratings':      {"L_spec":  GratingInfo(2.9, 4.2, 1_500),     # Spectral range [µm], resolving power
+                                         "M_spec":  GratingInfo(4.5, 5.2, 1_900),
+                                         "N_spec":  GratingInfo(7.5, 13.5, 400)},     # Spectral range [µm], resolving power
                        'lambda_range':  {"lambda_min": 2.9, "lambda_max": 13.5},      # Minimum and maximum instrumental wavelength range [µm]
                        'size_core':      3,                                           # Approximate PSF core size [px] (to be calibrated)
                        'apodizers':     {"NO_SP": ApodizerInfo(1)},                   # Available apodizers (transmission, IWA [mas])
                        'strehls':       ["MED"],                                      # Available strehls
                        'coronagraphs':  [None],                                       # No coronagraph in the LSS optical path
-                       'pxscale':      {"L": 0.00547,                                 # Pixel scale along the slit [arcsec/px]
-                                        "M": 0.00547,
-                                        "N": 0.00679},                                # Pixel scale along the slit [arcsec/px]
+                       'pxscale':      {"L_spec": 0.00547,                            # Pixel scale along the slit [arcsec/px]
+                                        "M_spec": 0.00547,
+                                        "N_spec": 0.00679},                           # Pixel scale along the slit [arcsec/px]
                        'FOV':            8.0,                                         # Slit length [arcsec], equivalent OWA = 4 arcsec
                        'sep_unit':       "mas",                                       # Unit for angular separation
                        'detector':      {"RON":          12,                          # Default L/M: H2RG fast-mode RON [e-/px/read]
@@ -339,7 +337,7 @@ config_data_METIS_LSS = {
                                          "minDIT":       0.04/60,                     # H2RG fast-mode Minimum DIT [mn]
                                          "maxDIT":       5,                           # Assumed Maximum DIT [mn], subject to saturation
                                          "saturation_e": 100_000},                    # H2RG full well capacity [e-]
-                       'detectors':     {"N": {"RON":          35,                    # ScopeSim GeoSnap low_capacity [e-/px/read]
+                       'detectors':     {"N_spec": {"RON":     35,                    # ScopeSim GeoSnap low_capacity [e-/px/read]
                                                "RON_lim":      35,                    # No assumed UTR reduction for GeoSnap [e-/px/DIT]
                                                "is_UTR":       False,                 # No UTR reduction (GeoSnap)
                                                "dark_current": 1e5,                   # ScopeSim GeoSnap [e-/px/s]
@@ -353,17 +351,17 @@ config_data_METIS_IMG = {
                        'name':           "METIS_IMG",                                 # Instrument name
                        'telescope_name': "ELT",                                       # Telescope name
                        'type':           "imager",                                    # Instrument type
-                       'gratings':      {"L": GratingInfo(2.9,  4.2,  R0_min),        # Spectral range [µm], numerical resolution for photometry
-                                         "M": GratingInfo(4.5,  5.3,  R0_min),
-                                         "N": GratingInfo(7.5, 13.5,  R0_min)},       # Full band coverage; actual filters must be modelled separately
+                       'gratings':      {"Lp": GratingInfo(2.9,  4.2,  R0_min),       # Spectral range [µm], numerical resolution for photometry
+                                         "Mp": GratingInfo(4.5,  5.3,  R0_min),
+                                         "N2": GratingInfo(7.5, 13.5,  R0_min)},      # Full band coverage; actual filters must be modelled separately
                        'lambda_range':  {"lambda_min": 2.9, "lambda_max": 13.5},      # Minimum and maximum instrumental wavelength range [µm]
                        'size_core':      5,                                           # Approximate PSF core size [px] (wavelength-dependent in reality)
                        'apodizers':     {"NO_SP": ApodizerInfo(1)},                   # Available apodizers (transmission, IWA [mas])
                        'strehls':       ["MED"],                                      # Available strehls
                        'coronagraphs':  [None, "CVC", "RAVC", "APP"],                 # Add CVC/RAVC once their PSF models are implemented
-                       'pxscale':      {"L": 0.00547,                                 # Pixel scale [arcsec/px]
-                                        "M": 0.00547,
-                                        "N": 0.00679},
+                       'pxscale':      {"Lp": 0.00547,                                # Pixel scale [arcsec/px]
+                                        "Mp": 0.00547,
+                                        "N2": 0.00679},
                        'FOV':            10.5,                                        # Conservative common FoV [arcsec] (N actually 13.5")
                        'sep_unit':       "mas",                                       # Unit for angular separation
                        'detector':      {"RON":          12,                          # Default L/M: H2RG fast-mode RON [e-/px/read]
@@ -373,7 +371,7 @@ config_data_METIS_IMG = {
                                          "minDIT":       0.04/60,                     # H2RG fast-mode Minimum DIT [mn]
                                          "maxDIT":       5,                           # Assumed Maximum DIT [mn], subject to saturation
                                          "saturation_e": 100_000},                    # H2RG full well capacity [e-]
-                       'detectors':     {"N": {"RON":          300,                   # ScopeSim GeoSnap high_capacity [e-/px/read]
+                       'detectors':     {"N2": {"RON":         300,                   # ScopeSim GeoSnap high_capacity [e-/px/read]
                                                "RON_lim":      300,                   # No assumed UTR reduction for GeoSnap [e-/px/DIT]
                                                "is_UTR":       False,                 # No UTR reduction (GeoSnap)
                                                "dark_current": 1e5,                   # ScopeSim GeoSnap [e-/px/s]
@@ -744,8 +742,8 @@ for cfg in config_data_list:
             lmin_bands[band_name] = float(g.lmin)
             lmax_bands[band_name] = float(g.lmax)
 
-# --- Add extra (non-instrument) filters/bands here directly into the dicts ---
-extra_bands = {
+# --- Add photometric (non-instrument) filters/bands here directly into the dicts ---
+photometric_bands = {
 
     # ------------------------------------------------------------------
     # Standard broad photometric bands
@@ -824,14 +822,14 @@ extra_bands = {
         
 }
 
-for b, (l0, l1) in extra_bands.items():
-    # keep the first definition if already present
+for b, (l0, l1) in photometric_bands.items():
+    # Photometric bands take priority over instrumental bands with the same name.
     if b not in lmin_bands:
-        lmin_bands[b] = l0
-        lmax_bands[b] = l1
-        LMIN          = min(LMIN, l0)
-        LMAX          = max(LMAX, l1) 
         bands.append(b)
+    lmin_bands[b] = l0
+    lmax_bands[b] = l1
+    LMIN          = min(LMIN, l0)
+    LMAX          = max(LMAX, l1)
 
 # convenience aliases if you really need them
 lmin_VIPA = lmin_bands["VIPAPYRUS"]

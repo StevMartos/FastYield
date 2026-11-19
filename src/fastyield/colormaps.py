@@ -3,7 +3,7 @@ from fastyield.config import c, R0_max, config_data_list, T_earth, lg_earth, vro
 from fastyield.get_specs import load_tell_trans, get_config_data, get_transmission, get_PSF_profile, get_R_instru
 from fastyield.spectrum import get_counts_from_density, load_vega_spectrum, get_wave_K, get_wave_band, get_wavelength_axis_constant_R, filtered_flux, Spectrum, load_star_spectrum, load_planet_spectrum, load_albedo_spectrum, get_spectrum_contribution_name_model, get_thermal_reflected_spectrum
 from fastyield.FastCurves import FastCurves
-from fastyield.FastYield import load_planet_table, get_SNR_from_table, build_match_dict, plot_matching_planets
+from fastyield.FastYield_helpers import load_planet_table, get_SNR_from_table, build_match_dict, plot_matching_planets
 from fastyield.signal_noise import compute_sigma_base_2_al_spec_fast
 
 # import matplotlib modules
@@ -2402,10 +2402,10 @@ def colormap_MM_DI_R_Tp(lmin=1, lmax=2.5, Rmin=1_000, Rmax=100_000, Tmin=200, Tm
     global _CM_CTX
     _CM_CTX = dict(T_arr=T_arr, lg_planet=lg_planet, delta_rv=delta_rv, vsini_planet=vsini_planet, airmass=airmass, trans_tell=trans_tell, spectrum_contributions=spectrum_contributions, model=model, star_spectrum=star_spectrum, wave_model=wave_model, wave_instru=wave_instru, R_arr=R_arr, Rc=Rc, filter_type=filter_type, wave_R=wave_R, dwave_R=dwave_R, star_R_HF=star_R_HF, star_R_LF=star_R_LF, trans_tell_R=trans_tell_R)
     
-    # Showing spectra at T_planet extrema
-    process_colormap_MM_DI_R_Tp(i=0,            show=True)
-    process_colormap_MM_DI_R_Tp(i=len(T_arr)-1, show=True)    
-        
+    # # Showing spectra at T_planet extrema
+    # process_colormap_MM_DI_R_Tp(i=0,            show=True)
+    # process_colormap_MM_DI_R_Tp(i=len(T_arr)-1, show=True)    
+
     # Parallel calculations
     with Pool(processes=cpu_count(), initializer=_init_cm_ctx, initargs=(_CM_CTX,)) as pool:
         for (i, residual_signal_1D) in tqdm(pool.imap(process_colormap_MM_DI_R_Tp, [(i) for i in range(num)]), total=num, desc=f"rocess_colormap_MM_DI_R_Tp(lmin={lmin}, lmax={lmax}, Rmin={Rmin}, Rmax={Rmax}, Tmin={Tmin}, Tmax={Tmax}, model={model})"):
@@ -2413,7 +2413,7 @@ def colormap_MM_DI_R_Tp(lmin=1, lmax=2.5, Rmin=1_000, Rmax=100_000, Tmin=200, Tm
     
     # Plots
     plt.figure(figsize=(10, 6), dpi=300)
-    plt.xlabel("Spectral resolution",    fontsize=18)
+    #plt.xlabel("Spectral resolution",    fontsize=18)
     plt.ylabel("Planet temperature [K]", fontsize=18)
     plt.ylim([T_arr[0], T_arr[-1]])
     plt.xlim(R_arr[0],  R_arr[-1])
@@ -2423,7 +2423,7 @@ def colormap_MM_DI_R_Tp(lmin=1, lmax=2.5, Rmin=1_000, Rmax=100_000, Tmin=200, Tm
     
     data       = 100 * residual_signal
     cmap       = plt.get_cmap(cmap_colormaps)
-    cbar_label = r'Residual MM signal fraction $(\alpha - \beta)$ $/$ $\delta$  [%]'
+    cbar_label = r'Retained MM signal fraction $(\alpha - \beta)$ $/$ $\delta$  [%]'
 
     # Heatmap with pcolormesh
     mesh = plt.pcolormesh(R_arr, T_arr, data, cmap=cmap, shading='auto', vmin=0, vmax=np.nanmax(data))
@@ -2445,7 +2445,7 @@ def colormap_MM_DI_R_Tp(lmin=1, lmax=2.5, Rmin=1_000, Rmax=100_000, Tmin=200, Tm
         title_text = (f"Molecular mapping residual signal fluctuations ({tell}) \n in {spectrum_contributions} light ({model}-model), $T_*$={T_star}K, "r"$\Delta$rv="f"{delta_rv}km/s")    
     else:
         title_text = title
-    plt.title(title_text, fontsize=20, weight="bold", pad=14)
+    plt.title(title_text, fontsize=20, weight="normal", pad=14)
     
     plt.tight_layout()
     if save:
