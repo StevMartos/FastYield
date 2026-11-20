@@ -155,20 +155,15 @@ def get_sim_data_path():
     Systematics/, Transmission/, and planet_table/<table>/<table>_*.ecsv.
     """
     candidates = []
-
     if _sim_data_path is not None:
         candidates.append(("set_sim_data_path()", _sim_data_path))
-
     env_path = os.getenv("FASTYIELD_SIM_DATA_PATH")
     if env_path is not None:
         candidates.append(("FASTYIELD_SIM_DATA_PATH", env_path))
-
     # Useful when running from a local editable clone.
     candidates.append(("local development path", PACKAGE_ROOT / "sim_data"))
-
     # Useful when running notebooks/scripts from a directory containing sim_data/.
     candidates.append(("current working directory", Path.cwd() / "sim_data"))
-
     return _find_first_existing_dir(candidates, "sim_data")
 
 
@@ -190,9 +185,7 @@ def get_planet_table_path(table, create=False):
 def get_spectra_path():
     """
     Return the Spectra path.
-
     Spectra is expected to be located inside sim_data:
-
         sim_data/Spectra
     """
     return get_sim_data_path() / "Spectra"

@@ -21,7 +21,7 @@ if __name__ == "__main__":
     #                       Graphic User Interface (GUI):                          #
     #------------------------------------------------------------------------------#
     
-    FastYield_interface()
+    #FastYield_interface()
 
 
 
@@ -120,13 +120,13 @@ if __name__ == "__main__":
     #              FastCurves (comparison with real JWST data cases):              #
     #------------------------------------------------------------------------------#
     
-    # ### CT Cha b / SNR(1MEDIUM) = 11.71 (3.0 s)
+    # ### CT Cha b / SNR(1MEDIUM) = 11.2 (3.0 s)
     # FastCurves(calculation="SNR", instru="MIRIMRS", systematics=True, input_DIT=138.75/60, model_planet="BT-Settl", separation_planet=2.5, T_planet=2600, lg_planet=3.5, planet_name="CT Cha b", mag_star=8.66, mag_planet=14.9, band0='K', T_star=4400, lg_star=3.5, exposure_time=56.426, rv_star=-2.9, rv_planet=15, vsini_star=10, vsini_planet=10, channel=False)
     
-    # ### HD 19467 b / SNR(G395H F290LP) = 20.69 (6.0 s)
+    # ### HD 19467 b / SNR(G395H F290LP) = 18.6 (6.0 s)
     # FastCurves(calculation="SNR", instru="NIRSpec", systematics=True, separation_planet=1.5, input_DIT=218.8/60, model_planet="BT-Settl", T_planet=950, lg_planet=5.0, planet_name='HD 19467 b', mag_star=5.4, band0='K', mag_planet=17.97, T_star=5680, lg_star=4.0, exposure_time=65.65)
     
-    # ### HIP 65426 b / SNR(F356W) = 779.17
+    # ### HIP 65426 b / SNR(F356W) = 733.32
     # FastCurves(calculation="SNR", instru="NIRCam", input_DIT=308/60, model_planet="BT-Settl", T_planet=1600, lg_planet=4.0, separation_planet=0.8, planet_name="HIP 65426 b", mag_planet=6.771+9.85, mag_star=6.771, band0='K', T_star=8000, lg_star=4.0, exposure_time=20.3, coronagraph="MASK335R")
     
 
