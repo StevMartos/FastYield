@@ -103,6 +103,12 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         self.planet_table           = None
         self.calculation            = None
         self.planet                 = None
+        self._selected_marker       = None
+        self._snr_scatter_artists    = []
+        self._detection_text        = None
+        self._drawn_table_path      = None
+        self._drawn_table_mtime_ns  = None
+        self._drawn_min_elevation   = None
         self.planet_name            = StringVar()
         self.date                   = datetime.now().strftime("%d/%m/%Y")
         self.date_obs               = StringVar(value=datetime.now().strftime("%d/%m/%Y"))
@@ -157,9 +163,9 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         self.__btn_contrast         = tk.Button(self.button_units_texp_name, text="Observational units", command=self.btn_observational_clicked, bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_contrast.grid(row=0, column=3, sticky="nsew") ; self.button_units_texp_name.grid_columnconfigure(3, weight=1)
         self.button_texp            = tk.LabelFrame(self.button_units_texp_name, bg=panel_color) ; self.button_texp.grid(row=0, column=1, sticky="nsew") ; self.button_texp.grid_columnconfigure(1, weight=1)
         self.__btn_exp              = Label(self.button_texp,  text = "Exposure time (in mn):", bg=panel_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_exp.grid(column=0, row=0)
-        self.__btn_exp              = Button(self.button_texp, text = "Enter", width=10, height=1, command=self.draw_table_plot, bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_exp.grid(column=2, row=0) 
+        self.__btn_exp              = Button(self.button_texp, text = "Enter", width=10, height=1, command=self.update_exposure_time_plot, bg=main_color, fg=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_exp.grid(column=2, row=0) 
         self.__btn_exp_entry        = Entry(self.button_texp, width=10, textvariable=self.exposure_time, justify=CENTER, bg=entry_color, fg=secondary_color, insertbackground=secondary_color, font=('Arial', 12, 'bold')) ; self.__btn_exp_entry.grid(column=1, row=0)
-        self.__btn_exp_entry.bind("<Return>", lambda _: self.draw_table_plot())
+        self.__btn_exp_entry.bind("<Return>", lambda _: self.update_exposure_time_plot())
         
         # On instancie le Canvas MPL.
         self.__fig = plt.figure(constrained_layout=True, dpi=75)        
@@ -199,7 +205,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
             self.planet       = self.planet_table[self.planet_index]
         else:
             self.planet = None
-        self.draw_table_plot()
+        self.update_selected_planet()
             
     def get_coords(self):
         self.latitude  = self.config_data["latitude"]  # °N
@@ -449,10 +455,14 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
     def draw_table_plot(self):
         if not self.valid_exposure_time():
             return
-        # Clearing the plot
+        # Full redraw: old Matplotlib artists are no longer valid.
         self.__plt.clear()
         self.__plt2.clear()
         self.__plt2.set_axis_off()
+        self._selected_marker    = None
+        self._snr_scatter_artists = []
+        self._detection_text     = None
+        self._drawn_table_path   = None
         
         # Loading the SNR catalog from the selected table directory.
         filename          = get_filename_table(table=self.table, instru=self.instru, apodizer=self.apodizer, strehl=self.strehl, coronagraph=self.coronagraph, systematics=self.systematics, PCA=self.PCA, name_model=self.model_planet)
@@ -468,6 +478,9 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
             self.__canvas.draw_idle()
             return
         self.planet_table = load_planet_table_cached(filename, table=self.table)
+        self._drawn_table_path     = path
+        self._drawn_table_mtime_ns = path.stat().st_mtime_ns
+        self._drawn_min_elevation  = self.min_elevation.get()
         
         # Filtrage des planètes non-visibles depuis le site d'observation (if necessary)
         if self.config_data["base"]=="ground":
@@ -541,10 +554,12 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         self.__plt.plot([], [], c='black', ls="", marker='s', ms=10, label=label_im_jup)
         self.__plt.plot([], [], c='black', ls="", marker='P', ms=10, label=label_ot_sol)
         scatter_kwargs = dict(cmap=self.cmap, norm=self.norm, edgecolors=sedgecolors, linewidths=slinewidths, alpha=salpha, zorder=3)
-        self.__plt.scatter(x_instru_tr_ter, y_instru_tr_ter, s=get_size_from_SNR(SNR=self.SNR[mask_instru_tr_ter], s0=s0, ds=ds, SNR_min=0, SNR_max=1_000*SNR_thresh), c=z_instru_tr_ter, marker="v", **scatter_kwargs)
-        self.__plt.scatter(x_instru_rv_nep, y_instru_rv_nep, s=get_size_from_SNR(SNR=self.SNR[mask_instru_rv_nep], s0=s0, ds=ds, SNR_min=0, SNR_max=1_000*SNR_thresh), c=z_instru_rv_nep, marker="o", **scatter_kwargs)
-        self.__plt.scatter(x_instru_im_jup, y_instru_im_jup, s=get_size_from_SNR(SNR=self.SNR[mask_instru_im_jup], s0=s0, ds=ds, SNR_min=0, SNR_max=1_000*SNR_thresh), c=z_instru_im_jup, marker="s", **scatter_kwargs)
-        self.__plt.scatter(x_instru_ot_sol, y_instru_ot_sol, s=get_size_from_SNR(SNR=self.SNR[mask_instru_ot_sol], s0=s0, ds=ds, SNR_min=0, SNR_max=1_000*SNR_thresh), c=z_instru_ot_sol, marker="P", **scatter_kwargs)
+        self._snr_scatter_artists = [
+            (self.__plt.scatter(x_instru_tr_ter, y_instru_tr_ter, s=get_size_from_SNR(SNR=self.SNR[mask_instru_tr_ter], s0=s0, ds=ds, SNR_min=0, SNR_max=1_000*SNR_thresh), c=z_instru_tr_ter, marker="v", **scatter_kwargs), mask_instru_tr_ter),
+            (self.__plt.scatter(x_instru_rv_nep, y_instru_rv_nep, s=get_size_from_SNR(SNR=self.SNR[mask_instru_rv_nep], s0=s0, ds=ds, SNR_min=0, SNR_max=1_000*SNR_thresh), c=z_instru_rv_nep, marker="o", **scatter_kwargs), mask_instru_rv_nep),
+            (self.__plt.scatter(x_instru_im_jup, y_instru_im_jup, s=get_size_from_SNR(SNR=self.SNR[mask_instru_im_jup], s0=s0, ds=ds, SNR_min=0, SNR_max=1_000*SNR_thresh), c=z_instru_im_jup, marker="s", **scatter_kwargs), mask_instru_im_jup),
+            (self.__plt.scatter(x_instru_ot_sol, y_instru_ot_sol, s=get_size_from_SNR(SNR=self.SNR[mask_instru_ot_sol], s0=s0, ds=ds, SNR_min=0, SNR_max=1_000*SNR_thresh), c=z_instru_ot_sol, marker="P", **scatter_kwargs), mask_instru_ot_sol),
+        ]
         if self.band == "INSTRU":
             self.lmin = self.config_data["lambda_range"]["lambda_min"] ; self.lmax = self.config_data["lambda_range"]["lambda_max"]
             self.R = 0.
@@ -553,15 +568,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         else:
             self.lmin = self.config_data['gratings'][self.band].lmin ; self.lmax = self.config_data['gratings'][self.band].lmax
             self.R = self.config_data["gratings"][self.band].R
-        if self.systematics:
-            txt_syst = "(with systematics+PCA)" if self.PCA else "(with systematics)"
-        else:
-            txt_syst = "(without systematics)"
-        catalog_label = "Known exoplanets" if self.table == "Archive" else self.table.replace("_", " ") + " planets"
-        if self.config_data["type"] == "imager":
-            self.__plt.set_title(f'{catalog_label} detection yield with {self.instru} ({self.spectrum_contributions} light) \n on {self.band}-band (from {self.lmin:.1f} to {self.lmax:.1f} µm) with ' + r'$t_{exp}$=' + str(round(self.exposure_time.get())) + 'mn ' + txt_syst, fontsize=18)
-        else:
-            self.__plt.set_title(f'{catalog_label} detection yield with {self.instru} ({self.spectrum_contributions} light) \n on {self.band}-band (from {self.lmin:.1f} to {self.lmax:.1f} µm with R ≈ {int(round(self.R, -2))}) with ' + r'$t_{exp}$=' + str(round(self.exposure_time.get())) + 'mn ' + txt_syst, fontsize=18)
+        self.update_plot_title()
         if self.units == "Observational":
             self.__plt.set_xlabel(f'Maximum angular separation (in {self.x_instru.unit})', fontsize=18)
             self.__plt.set_ylabel(f'Planet-to-star contrast (on {self.band}-band)', fontsize=18)
@@ -577,23 +584,90 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
             self.__plt.set_ylim(1e-1, 2.5e4) ; self.__plt.set_xlim(5e-3, 1e4)
         self.__plt.legend(loc="lower right", fontsize=16)
         self.__plt.text(.01, .99, f'Total number of planets: {len(self.planet_table)}', ha='left', va='top', transform=self.__plt.transAxes, fontsize=12)
-        self.__plt.text(.01, .965, f'Number of planets detected: {nb_detected} / {len(self.planet_table)}', ha='left', va='top', transform=self.__plt.transAxes, fontsize=12)
-        if self.planet is not None:
-            if self.planet["PlanetName"] in self.planet_table["PlanetName"]:
-                self.planet_index = get_planet_index(planet_table=self.planet_table, planet_name=self.planet["PlanetName"])
-                self.planet = self.planet_table[self.planet_index]
-                self.draw_table_parameters()
-                self.__plt.plot(self.x_instru[self.planet_index], self.y_instru[self.planet_index], "kX", ms=14, zorder=4)
-            else:
-                self.planet = None
-                self.planet_index = None
-                self.planet_name.set("")
+        self._detection_text = self.__plt.text(.01, .965, f'Number of planets detected: {nb_detected} / {len(self.planet_table)}', ha='left', va='top', transform=self.__plt.transAxes, fontsize=12)
+        self._selected_marker = self.__plt.plot([], [], "kX", ms=14, zorder=4)[0]
+        self.update_selected_planet(redraw=False)
         self.__plt.set_yscale('log')
         self.__plt.set_xscale('log')
         self.__plt.grid(True, which='both', linestyle='--', linewidth=0.5)
         self.__plt.minorticks_on()
         self.__canvas.draw_idle()
     
+    def update_plot_title(self):
+        """Update only the title, keeping the current instrument and band."""
+        txt_syst = "(with systematics+PCA)" if self.PCA else "(with systematics)"
+        if not self.systematics:
+            txt_syst = "(without systematics)"
+        catalog_label = "Known exoplanets" if self.table == "Archive" else self.table.replace("_", " ") + " planets"
+        spectral_range = f"from {self.lmin:.1f} to {self.lmax:.1f} µm"
+        if self.config_data["type"] != "imager":
+            spectral_range += f" with R ≈ {int(round(self.R, -2))}"
+        self.__plt.set_title(
+            f'{catalog_label} detection yield with {self.instru} ({self.spectrum_contributions} light) '
+            f'\n on {self.band}-band ({spectral_range}) with '
+            + r'$t_{exp}$=' + str(round(self.exposure_time.get())) + 'mn ' + txt_syst,
+            fontsize=18,
+        )
+
+    def update_exposure_time_plot(self):
+        """Update S/N colors/sizes without rebuilding the catalogue or scatter plot."""
+        if not self.valid_exposure_time():
+            return
+
+        # Rebuild if the ECSV has changed, or a pending visibility input was edited.
+        path = self._drawn_table_path
+        if (path is None or not path.is_file()
+                or path.stat().st_mtime_ns != self._drawn_table_mtime_ns
+                or (self.only_visible_targets and self.min_elevation.get() != self._drawn_min_elevation)
+                or len(self._snr_scatter_artists) != 4):
+            self.draw_table_plot()
+            return
+
+        self.SNR      = get_SNR_from_table(planet_table=self.planet_table, exposure_time=self.exposure_time.get(), band=self.band)
+        self.z_instru = np.copy(self.SNR)
+        self.z_instru[self.z_instru >= SNR_thresh] = SNR_thresh
+        for artist, mask in self._snr_scatter_artists:
+            artist.set_array(self.z_instru[mask])
+            artist.set_sizes(get_size_from_SNR(SNR=self.SNR[mask], s0=s0, ds=ds, SNR_min=0, SNR_max=1_000*SNR_thresh))
+
+        nb_detected = np.count_nonzero(self.SNR >= SNR_thresh)
+        self._detection_text.set_text(f'Number of planets detected: {nb_detected} / {len(self.planet_table)}')
+        self.update_plot_title()
+        if self.planet is not None:
+            self.draw_table_parameters()  # Its S/N value depends on exposure time.
+        self.__canvas.draw_idle()
+
+    def update_selected_planet(self, redraw=True):
+        """Update the selection marker/panel; the thousands of points are unchanged."""
+        if self._selected_marker is None:
+            if redraw:
+                self.draw_table_plot()
+            return
+
+        # Keep the same auto-reload behavior when an ECSV is replaced on disk.
+        path = self._drawn_table_path
+        if redraw and path is not None and (not path.is_file() or path.stat().st_mtime_ns != self._drawn_table_mtime_ns):
+            self.draw_table_plot()
+            return
+
+        self._selected_marker.set_data([], [])
+        if self.planet is not None:
+            matching = np.flatnonzero(self.planet_table["PlanetName"] == self.planet["PlanetName"])
+            if len(matching):
+                self.planet_index = int(matching[0])
+                self.planet       = self.planet_table[self.planet_index]
+                self.draw_table_parameters()
+                self._selected_marker.set_data([self.x_instru[self.planet_index].value], [self.y_instru[self.planet_index].value])
+            else:
+                self.planet = None
+                self.planet_index = None
+                self.planet_name.set("")
+        if self.planet is None:
+            self.__plt2.clear()
+            self.__plt2.set_axis_off()
+        if redraw:
+            self.__canvas.draw_idle()
+
     def _build_click_index(self):
         with np.errstate(divide="ignore", invalid="ignore"):
             self._xi = np.log10(np.asarray(self.x_instru.value, dtype=float))
@@ -613,7 +687,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         self.planet_index = int(np.argmin(idx))
         self.planet       = self.planet_table[self.planet_index]
         self.planet_name.set(self.planet["PlanetName"])
-        self.draw_table_plot()
+        self.update_selected_planet()
             
     def draw_table_parameters(self):
         self.__plt2.clear()
