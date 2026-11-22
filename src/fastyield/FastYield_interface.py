@@ -14,6 +14,7 @@ from astropy.time import Time
 # import matplotlib modules
 import matplotlib.pyplot as plt
 from matplotlib.cm import ScalarMappable
+from matplotlib.figure import Figure
 import matplotlib.dates as mdates
 
 # import numpy modules
@@ -106,6 +107,9 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         self._selected_marker       = None
         self._snr_scatter_artists    = []
         self._detection_text        = None
+        self._parameter_title       = None
+        self._parameter_table1      = None
+        self._parameter_table2      = None
         self._drawn_table_path      = None
         self._drawn_table_mtime_ns  = None
         self._drawn_min_elevation   = None
@@ -168,7 +172,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         self.__btn_exp_entry.bind("<Return>", lambda _: self.update_exposure_time_plot())
         
         # On instancie le Canvas MPL.
-        self.__fig = plt.figure(constrained_layout=True, dpi=75)        
+        self.__fig = Figure(constrained_layout=True, dpi=75)        
         self.__canvas = FigureCanvasTkAgg(self.__fig, master=self)
         self.__canvas.get_tk_widget().pack(fill=tk.BOTH, expand=1)
         self.__canvas.mpl_connect("button_press_event", self.canvas_clicked)        
@@ -459,6 +463,9 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         self.__plt.clear()
         self.__plt2.clear()
         self.__plt2.set_axis_off()
+        self._parameter_title    = None
+        self._parameter_table1   = None
+        self._parameter_table2   = None
         self._selected_marker    = None
         self._snr_scatter_artists = []
         self._detection_text     = None
@@ -474,6 +481,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
             self.planet_name.set("")
             self.SNR = np.array([])
             self._xi = self._yi = np.array([])
+            self._click_indices = np.array([], dtype=int)
             self.__plt.text(0.5, 0.5, f"S/N table not available for {self.table} / {self.instru}:\n{filename}", ha="center", va="center", transform=self.__plt.transAxes, fontsize=14)
             self.__canvas.draw_idle()
             return
@@ -634,7 +642,10 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         self._detection_text.set_text(f'Number of planets detected: {nb_detected} / {len(self.planet_table)}')
         self.update_plot_title()
         if self.planet is not None:
-            self.draw_table_parameters()  # Its S/N value depends on exposure time.
+            if self._parameter_table2 is not None:
+                self._parameter_table2[(0, 0)].get_text().set_text(format_quantity(self.SNR[self.planet_index], 1))
+            else:
+                self.draw_table_parameters()
         self.__canvas.draw_idle()
 
     def update_selected_planet(self, redraw=True):
@@ -665,6 +676,9 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         if self.planet is None:
             self.__plt2.clear()
             self.__plt2.set_axis_off()
+            self._parameter_title  = None
+            self._parameter_table1 = None
+            self._parameter_table2 = None
         if redraw:
             self.__canvas.draw_idle()
 
@@ -672,27 +686,31 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         with np.errstate(divide="ignore", invalid="ignore"):
             self._xi = np.log10(np.asarray(self.x_instru.value, dtype=float))
             self._yi = np.log10(np.asarray(self.y_instru.value, dtype=float))
+        self._click_indices = np.flatnonzero(np.isfinite(self._xi) & np.isfinite(self._yi))
 
     def canvas_clicked(self, event):
         if event.inaxes is not self.__plt or event.xdata is None or event.ydata is None:
             return
-        if not np.isfinite(event.xdata) or not np.isfinite(event.ydata) or event.xdata <= 0 or event.ydata <= 0 or not len(self._xi):
-            return
-        valid = np.isfinite(self._xi) & np.isfinite(self._yi)
-        if not np.any(valid):
+        if not np.isfinite(event.xdata) or not np.isfinite(event.ydata) or event.xdata <= 0 or event.ydata <= 0 or not len(self._click_indices):
             return
         lx, ly            = np.log10(event.xdata), np.log10(event.ydata)
-        idx               = np.square(self._xi - lx) + np.square(self._yi - ly)
-        idx[~valid]       = np.inf
-        self.planet_index = int(np.argmin(idx))
+        idx               = np.square(self._xi[self._click_indices] - lx) + np.square(self._yi[self._click_indices] - ly)
+        planet_index      = int(self._click_indices[np.argmin(idx)])
+        if self.planet is not None and self.planet_index == planet_index:
+            path = self._drawn_table_path
+            if path is not None and path.is_file() and path.stat().st_mtime_ns == self._drawn_table_mtime_ns:
+                return
+        self.planet_index = planet_index
         self.planet       = self.planet_table[self.planet_index]
         self.planet_name.set(self.planet["PlanetName"])
         self.update_selected_planet()
             
     def draw_table_parameters(self):
-        self.__plt2.clear()
-        self.__plt2.set_axis_off()
-        self.__plt2.text(0.5, 1, f"{self.planet['PlanetName']} ({self.planet['PlanetType']})\n on {self.band}-band of {self.instru}", fontsize=22, weight='bold', bbox=dict(facecolor='white', edgecolor=secondary_color, boxstyle='round,pad=0.5', alpha=0.9), va='center', ha='center', zorder=10)
+        title = f"{self.planet['PlanetName']} ({self.planet['PlanetType']})\n on {self.band}-band of {self.instru}"
+        if self._parameter_title is None:
+            self._parameter_title = self.__plt2.text(0.5, 1, title, fontsize=22, weight='bold', bbox=dict(facecolor='white', edgecolor=secondary_color, boxstyle='round,pad=0.5', alpha=0.9), va='center', ha='center', zorder=10)
+        else:
+            self._parameter_title.set_text(title)
         if self.band == "INSTRU":
             self.mag_planet = self.planet["Planet"+self.band+"mag("+self.instru+")("+self.spectrum_contributions+")"].value
             self.mag_star   = self.planet["Star"+self.band+"mag("+self.instru+")"].value
@@ -713,13 +731,18 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         cell_text1      = [row for row in data1]
         row_colors1     = [main_color] * len(row_headers1)
         col_colors1     = [main_color] * len(column_headers1)
-        table1          = self.__plt2.table(cellText=cell_text1, rowLabels=row_headers1, rowColours=row_colors1, rowLoc='center', colColours=col_colors1, colLabels=column_headers1, loc='center', bbox=[0.12, 0., 0.89, 0.4])
-        table1.set_fontsize(16) 
-        cells1 = table1.properties()["celld"]
-        for (i, j), cell in cells1.items():
-            cell.set_text_props(ha="center", va="center")
-            cell.set_edgecolor(secondary_color)
-            cell.set_linewidth(0.5)
+        if self._parameter_table1 is None:
+            table1 = self.__plt2.table(cellText=cell_text1, rowLabels=row_headers1, rowColours=row_colors1, rowLoc='center', colColours=col_colors1, colLabels=column_headers1, loc='center', bbox=[0.12, 0., 0.89, 0.4])
+            table1.set_fontsize(16)
+            for cell in table1.get_celld().values():
+                cell.set_text_props(ha="center", va="center")
+                cell.set_edgecolor(secondary_color)
+                cell.set_linewidth(0.5)
+            self._parameter_table1 = table1
+        else:
+            for i, row in enumerate(cell_text1, start=1):
+                for j, value in enumerate(row):
+                    self._parameter_table1[(i, j)].get_text().set_text(value)
         data2 =  [[ 'S/N',                 format_quantity(self.SNR[self.planet_index], 1)],
                   [ 'Flux ratio',          f'{self.flux_ratio:.1e}' ],
                   [ 'Max. sep.',           format_quantity(self.planet['AngSep'], 0)],
@@ -732,14 +755,18 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         row_headers2 = [row.pop(0) for row in data2]
         cell_text2   = [row for row in data2]
         row_colors2  = [main_color] * len(row_headers2)
-        table2       = self.__plt2.table(cellText=cell_text2, rowLabels=row_headers2, rowColours=row_colors2, rowLoc='center', loc='center', bbox=[0.49, 0.47, 0.52, 0.45])
-        table2.set_fontsize(16) 
-        cells2 = table2.properties()["celld"]
-        for (i, j), cell in cells2.items():
-            cell.set_text_props(ha="center", va="center")
-            cell.set_edgecolor(secondary_color)
-            cell.set_linewidth(0.5)
-        self.__plt2.text(1.05, -0.05, self.date, horizontalalignment='right', size=14, weight='light')
+        if self._parameter_table2 is None:
+            table2 = self.__plt2.table(cellText=cell_text2, rowLabels=row_headers2, rowColours=row_colors2, rowLoc='center', loc='center', bbox=[0.49, 0.47, 0.52, 0.45])
+            table2.set_fontsize(16)
+            for cell in table2.get_celld().values():
+                cell.set_text_props(ha="center", va="center")
+                cell.set_edgecolor(secondary_color)
+                cell.set_linewidth(0.5)
+            self._parameter_table2 = table2
+            self.__plt2.text(1.05, -0.05, self.date, horizontalalignment='right', size=14, weight='light')
+        else:
+            for i, row in enumerate(cell_text2):
+                self._parameter_table2[(i, 0)].get_text().set_text(row[0])
         
 
 
@@ -764,11 +791,6 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         if self.calculation == "corner plot" and self.config_data["type"] == "imager":
             messagebox.showinfo("FastYield", "Corner plots are not implemented for imagers.")
             return
-        planet_spectrum, planet_thermal, planet_reflected, star_spectrum = get_thermal_reflected_spectrum(planet=self.planet, thermal_model=self.thermal_model, reflected_model=self.reflected_model, instru=self.instru, wave_model=None, wave_K=None, counts_vega_K=None, show=True)
-        mag_p = self.planet[f"PlanetINSTRUmag({self.instru})({self.spectrum_contributions})"].value
-        mag_s = self.planet[f"StarINSTRUmag({self.instru})"].value
-        band0 = "instru"
-        
         # Parameters retrieval (corner plot)
         if self.calculation == "corner plot":
             
@@ -788,6 +810,13 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
             else:
                 band_only = self.band
             
+        # Load spectra only after confirming the requested calculation is possible.
+        planet_spectrum, planet_thermal, planet_reflected, star_spectrum = get_thermal_reflected_spectrum(planet=self.planet, thermal_model=self.thermal_model, reflected_model=self.reflected_model, instru=self.instru, wave_model=None, wave_K=None, counts_vega_K=None, show=True)
+        mag_p = self.planet[f"PlanetINSTRUmag({self.instru})({self.spectrum_contributions})"].value
+        mag_s = self.planet[f"StarINSTRUmag({self.instru})"].value
+        band0 = "instru"
+
+        if self.calculation == "corner plot":
             # Choosing the model for the retrieval
             if self.spectrum_contributions == "thermal+reflected":
                 if self.planet[f"Planet{band_only}mag(thermal)"].value < self.planet[f"Planet{band_only}mag(reflected)"].value:
@@ -822,7 +851,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
 
 
 
-@lru_cache(maxsize=32)
+@lru_cache(maxsize=4)
 def _load_planet_table_cached(path, mtime_ns):
     return QTable.read(path, format="ascii.ecsv")
 
