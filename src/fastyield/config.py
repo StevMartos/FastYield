@@ -18,6 +18,7 @@ filter_type_default = "gaussian_fast"
 # Defining constants
 # -------------------------------------------------------------------------
 
+# Global constants
 h          = const.h.value     # [J.s]
 c          = const.c.value     # [m/s]
 kB         = const.k_B.value   # [J/K]
@@ -29,23 +30,31 @@ m_u        = 1.66053906660e-27 # [kg] (atomic mass unit)
 AU         = 149_597_870_700   # [m]
 pc         = 3.085677581e16    # [m]
 
+# Earth
 T_earth       = 288             # [K]
 lg_earth      = 2.99            # [dex(cm/s2)]
-R_earth       = 6.371e6         # [m]
 M_earth       = 5.9722e24       # [kg]
+R_earth       = 6.371e6         # [m]
 drv_earth     = 29.8            # [km/s]
 vrot_earth    = 0.465           # [km/s]
 vesc_earth    = 11.186          # [km/s]
 airmass_earth = 2.0             # [dimensionless]
 
-vrot_jupiter = 12.6         # [km/s]
-lg_jupiter   = 3.39         # [dex(cm/s2)]
-M_jupiter    = 1.8981246e27 # [kg]
+# Jupiter
+T_jupiter      = 165            # [K]
+lg_jupiter     = 3.41           # [dex(cm/s2)]
+M_jupiter      = 1.89813e27     # [kg]
+R_jupiter      = 6.9911e7       # [m]
+drv_jupiter    = 13.06          # [km/s]
+vrot_jupiter   = 12.6           # [km/s]
+vesc_jupiter   = 59.5           # [km/s]
+SMA_jupiter    = 5.2044         # [AU]
 
+# Sun
 T_sun    = 5778        # [K]
+lg_sun   = 4.44        # [dex(cm/s2)]
 M_sun    = 1.98841e+30 # [kg]
 R_sun    = 695_700_000 # [m]
-lg_sun   = 4.44        # [dex(cm/s2)]
 vrot_sun = 2.0         # [km/s]
 MH_sun   = 0.          # [dex]
 

@@ -1093,7 +1093,7 @@ def get_archive_table(seed=None):
     planet_table["StarVrotFromPlanet"] = planet_table["StarVrot"].copy()
     svfp_valid                         = (get_valid_mask(planet_table["StarVrot"]) & get_valid_mask(planet_table["StarRadius"]) & get_valid_mask(P) & (planet_table["StarRadius"] > 0*u.R_sun) & (P > 0*u.d) & ~uncertain_sma)
     with np.errstate(invalid="ignore", divide="ignore"):
-        orbital_angular_velocity = (2*np.pi/P) * (1.+e*np.cos(nu))**2 / (1.-e**2)**1.5
+        orbital_angular_velocity = (2*np.pi/P) * (1.+e*np.cos(nu))**2 / (1-e**2)**1.5
     orbital_rotation_term                          = np.full(len(planet_table), np.nan) * u.km/u.s
     orbital_rotation_term[svfp_valid]              = (planet_table["StarRadius"][svfp_valid] * orbital_angular_velocity[svfp_valid]).to(u.km/u.s)
     planet_table["StarVrotFromPlanet"][svfp_valid] = np.abs(planet_table["StarVrot"][svfp_valid] - orbital_rotation_term[svfp_valid])

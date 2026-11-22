@@ -1,5 +1,5 @@
 # import FastYield modules
-from .config import c, R0_max, config_data_list, T_earth, lg_earth, vrot_earth, drv_earth, airmass_earth, T_sun, lg_sun, vrot_sun, M_earth, M_sun, AU, G, colormaps_path, get_sim_data_path, planet_types, planet_types_reduced, filter_type_default
+from .config import c, R0_max, config_data_list, T_earth, lg_earth, vrot_earth, drv_earth, airmass_earth, T_sun, lg_sun, vrot_sun, R_earth, M_earth, R_sun, M_sun, AU, G, colormaps_path, get_sim_data_path, planet_types, planet_types_reduced, filter_type_default, vrot_jupiter
 from .get_specs import load_tell_trans, get_config_data, get_transmission, get_PSF_profile, get_R_instru
 from .spectrum import get_counts_from_density, load_vega_spectrum, get_wave_K, get_wave_band, get_wavelength_axis_constant_R, filtered_flux, Spectrum, load_star_spectrum, load_planet_spectrum, load_albedo_spectrum, get_spectrum_contribution_name_model, get_thermal_reflected_spectrum
 from .FastCurves import FastCurves
@@ -1621,7 +1621,7 @@ def colormap_rv(instru="HARMONI", band="H", T_planet=T_earth, T_star=T_sun, lg_p
         
         # Contours
         cs = plt.contour(delta_rv_arr, rv_star_arr, data, colors='k', linewidths=0.5, alpha=0.7)
-        plt.clabel(cs, inline=True, fontsize=10, fmt="%d%%")
+        plt.clabel(cs, inline=True, fontsize=12, fmt="%d%%")
         
         # Colorbar
         ax   = plt.gca()
@@ -1632,22 +1632,21 @@ def colormap_rv(instru="HARMONI", band="H", T_planet=T_earth, T_star=T_sun, lg_p
         cbar.set_label(cbar_label, rotation=270, labelpad=16, fontsize=18)
         
         # c/R
-        c_kms      = c / 1000       # [km/s]
-        c_over_R   = c_kms / R_band # [km/s]   
-        line_color = "black"
-        alpha      = 0.4
-        line_style = "-"
-        line_width = 4.4
-        plt.axvline(-c_over_R, color=line_color, linestyle=line_style, linewidth=line_width, alpha=alpha, zorder=5)
-        plt.axvline(+c_over_R, color=line_color, linestyle=line_style, linewidth=line_width, alpha=alpha, zorder=5)
-        bbox=dict(boxstyle="round,pad=0.2", fc="black", ec="none", alpha=0.5)
+        lc       = "black"
+        alpha    = 0.6
+        ls       = "-"
+        lw       = 3
+        c_over_R = (c/1000) / R_band   # [km/s]
+        plt.axvline(-c_over_R, color=lc, linestyle=ls, linewidth=lw, alpha=alpha, zorder=5)
+        plt.axvline(+c_over_R, color=lc, linestyle=ls, linewidth=lw, alpha=alpha, zorder=5)
+        bbox = dict(boxstyle="round,pad=0.2", fc="black", ec="none", alpha=0.5)
         if c_over_R < 10:
-            plt.text(-c_over_R, 1.025, r"$-c/R$", color="black", fontsize=14, ha="right", va="center",  fontweight="bold", transform=ax.get_xaxis_transform())
-            plt.text(+c_over_R, 1.025, r"$+c/R$", color="black", fontsize=14, ha="left",  va="center",  fontweight="bold", transform=ax.get_xaxis_transform())
+            plt.text(-c_over_R, 1.025, r"$-c/R$", color="black", fontsize=15, ha="right", va="center",  fontweight="bold", transform=ax.get_xaxis_transform())
+            plt.text(+c_over_R, 1.025, r"$+c/R$", color="black", fontsize=15, ha="left",  va="center",  fontweight="bold", transform=ax.get_xaxis_transform())
         else:
-            plt.text(-c_over_R, 1.025, r"$-c/R$", color="black", fontsize=14, ha="center", va="center", fontweight="bold", transform=ax.get_xaxis_transform())
-            plt.text(+c_over_R, 1.025, r"$+c/R$", color="black", fontsize=14, ha="center", va="center", fontweight="bold", transform=ax.get_xaxis_transform())
-        plt.text(0.98, 0.98,  rf"$c/R \approx {c_over_R:.0f}\,\mathrm{{km\,s^{{-1}}}}$", color="white", fontsize=16, ha="right",  va="top", fontweight="bold", bbox=bbox, transform=plt.gca().transAxes)
+            plt.text(-c_over_R, 1.025, r"$-c/R$", color="black", fontsize=15, ha="center", va="center", fontweight="bold", transform=ax.get_xaxis_transform())
+            plt.text(+c_over_R, 1.025, r"$+c/R$", color="black", fontsize=15, ha="center", va="center", fontweight="bold", transform=ax.get_xaxis_transform())
+        plt.text(0.98, 0.98,  rf"$c/R = {c_over_R:.0f}\,\mathrm{{km\,s^{{-1}}}}$", color="white", fontsize=16, ha="right",  va="top", fontweight="bold", bbox=bbox, transform=plt.gca().transAxes)
             
         noise_regime = "stellar halo photon noise regime" if stellar_halo_photon_noise_limited else "detector noise regime"
         
@@ -1657,7 +1656,7 @@ def colormap_rv(instru="HARMONI", band="H", T_planet=T_earth, T_star=T_sun, lg_p
             title_text = (f"{instru} {band}-band {'S/N' if plot=='SNR' else 'Lost signal'} fluctuations in {noise_regime} ({tell}) \n in {spectrum_contributions} light ({model}-model), $T_*$={T_star}K, $T_p$={T_planet}K")
         else:
             title_text = title
-        plt.title(title_text, fontsize=16, pad=26, weight=title_weight)
+        plt.title(title_text, fontsize=20, pad=26, weight=title_weight)
         plt.tight_layout()
         
         if save:
@@ -1723,26 +1722,83 @@ def process_colormap_rv(i):
 # GAIN_SNR(STAR_Vsini VS PLANET_Vsini)
 #
 
-def colormap_vrot(instru="HARMONI", band="H", T_planet=T_earth, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, delta_rv=drv_earth, inc=90, spectrum_contributions="reflected", model="tellurics", airmass=airmass_earth, Rc=100, filter_type=filter_type_default, stellar_halo_photon_noise_limited=True, title=None, title_weight=None, save=False, num=100):
+def colormap_vrot(instru="HARMONI", band="H", T_star=T_sun, M_star_msun=1.0, R_star_rsun=1.0, T_planet=T_earth, M_planet_mearth=1.0, R_planet_rearth=1.0, sma_au=1.0, delta_rv=drv_earth, inc=90, spectrum_contributions="reflected", model="tellurics", airmass=airmass_earth, Rc=100, filter_type=filter_type_default, stellar_halo_photon_noise_limited=True, title=None, title_weight=None, save=False, num=100, scale="linear", add_symbol="Earth"):
     """
+    Rotation-velocity colormaps of molecular-mapping S/N and self-subtraction.
+
+    The x-axis is the planet equatorial rotation velocity V_p [km/s] and the
+    y-axis is the stellar equatorial rotation velocity V_star [km/s]. For the
+    directly observed stellar spectrum, the rotational broadening is set by
+    V_star*sin(i). For reflected light, the stellar spectrum seen by the planet
+    is broadened using V_star,p = |V_star - Omega_orb*R_star|, where Omega_orb
+    is computed from Kepler's third law for a circular orbit.
+
+    The stellar and planetary masses and radii are given explicitly as inputs.
+    Their corresponding surface gravities are inferred internally and converted
+    to log(g) [cgs] for the spectral models. Gray hatched regions indicate
+    velocities above the approximate breakup limits, and solid black c/R guides
+    are added on both axes.
+
+    Notes
+    -----
+    - M_star_msun and R_star_rsun are in solar units.
+    - M_planet_mearth and R_planet_rearth are in Earth units.
+    - sma_au is the orbital semi-major axis in astronomical units.
+    - Masses and radii are converted to SI using the constants in config.py;
+      log(g) [cgs] is then inferred for the spectral-model grids.
+    - The orbit is circular, prograde, and spin-orbit aligned.
+    - delta_rv is kept independent of the orbital geometry.
+    - scale="linear" samples both velocity axes from 0 to 100 km/s.
+    - scale="log" samples both axes logarithmically from 0.1 to 100 km/s
+      (zero velocity cannot be included on a logarithmic axis).
+    - add_symbol=None/"none", "earth", "jupiter" or "both"/"all" places
+      the standard Earth (♁) and/or Jupiter (♃) symbols at the solar
+      stellar rotation velocity and the respective planetary velocity.
+
+    Reference
+    ---------
     https://www.aanda.org/articles/aa/pdf/2022/03/aa42314-21.pdf
     """
     
+    add_symbol = add_symbol.lower() if add_symbol is not None else "none"
+    if add_symbol not in ("none", "earth", "jupiter", "both", "all"):
+        raise ValueError("add_symbol must be None, 'none', 'earth', 'jupiter', 'both' or 'all'")
+
     sini = np.sin(np.deg2rad(inc))
+
+    # Stellar and planetary masses/radii (input units: solar and Earth units)
+    M_star   = M_star_msun     * M_sun   # [kg]
+    R_star   = R_star_rsun     * R_sun   # [m]
+    M_planet = M_planet_mearth * M_earth # [kg]
+    R_planet = R_planet_rearth * R_earth # [m]
+    a        = sma_au          * AU      # [m]
     
+    if not (0 <= inc <= 180 and np.all(np.isfinite([M_star, R_star, M_planet, R_planet, a])) and min(M_star, R_star, M_planet, R_planet, a) > 0):
+        raise ValueError("inc must be in [0, 180]; masses, radii and sma_au must be finite and positive")
+
+    # Surface gravities, orbital angular velocity and rotational-breakup speeds
+    g_star      = G * M_star   / R_star**2              # [m/s2]
+    g_planet    = G * M_planet / R_planet**2            # [m/s2]
+    lg_star     = np.log10(100*g_star)                  # [dex(cm/s2)]
+    lg_planet   = np.log10(100*g_planet)                # [dex(cm/s2)]
+    omega_orb   = np.sqrt(G*(M_star + M_planet)/a**3)   # [rad/s], circular orbit
+    v_orb_star  = omega_orb * R_star / 1000             # [km/s], Omega_orb*R_star
+    vbreak_star = np.sqrt(G*M_star/R_star) / 1000       # [km/s]
+    vbreak_planet = np.sqrt(G*M_planet/R_planet) / 1000 # [km/s]
+
     # Get instru specs
     config_data = get_config_data(instru)
     if config_data["type"]=="imager":
         raise KeyError(f"{instru} is not a spectrograph but an {config_data['type']}")
 
-    # tellurics (or not)
+    # Tellurics (or not)
     if config_data["base"]=="space":
         tellurics = False
     else:
         tellurics = True
-    
+
     # Raw and bandwidth wavelength axis
-    R_band     = config_data['gratings'][band].R                   # [dimensionless] 
+    R_band     = config_data['gratings'][band].R                   # [dimensionless]
     lmin_band  = config_data['gratings'][band].lmin                # [µm]
     lmax_band  = config_data['gratings'][band].lmax                # [µm]
     wave_band  = get_wave_band(instru=instru, band=band)           # [µm]
@@ -1751,10 +1807,10 @@ def colormap_vrot(instru="HARMONI", band="H", T_planet=T_earth, T_star=T_sun, lg
     lmax_model = 1.1*lmax_band                                     # [µm] a bit larger for doppler shifts and to avoid edge effects
     dl_model   = lmin_model / (2*R_model)                          # [µm/bin] Nyquist sampling of a spectrum with max resolving power R_model: 2 samples per resolution element at lmin_model
     wave_model = np.arange(lmin_model, lmax_model, dl_model)       # [µm] Model wavelength axis (with constant dl step)
-    
+
     # Global instru-bandwidth (with constant resolution R_model) (intermediate wavelength axis with constant sampling resolution, between wave_model and wave_res)
     wave_instru = get_wavelength_axis_constant_R(lmin=lmin_model, lmax=lmax_model, R=R_model) # [µm] Model wavelength axis (with constant spectral resolution R_model)
-    
+
     # Getting star spectrum in [J/s/m2/µm]
     star_spectrum = load_star_spectrum(T_star, lg_star)
     star_spectrum = star_spectrum.interpolate_wavelength(wave_model, renorm=False)  # Interpolating on wave_model (constant dl)
@@ -1771,108 +1827,146 @@ def colormap_vrot(instru="HARMONI", band="H", T_planet=T_earth, T_star=T_sun, lg
         albedo_spectrum = None
     else:
         raise ValueError("spectrum_contributions must be 'reflected' or 'thermal'")
-    
+
     # Geting trans model (with tellurics or not)
     trans = get_transmission(instru=instru, wave_band=wave_band, band=band, tellurics=tellurics, apodizer="NO_SP") # the apodizer does not matter
-    
-    # Defining arrays
-    vrot_star_arr   = np.linspace(0, 100, num)
-    vrot_planet_arr = np.linspace(0, 100, num)
-    SNR              = np.zeros((num, num))
-    lost_signal      = np.zeros((num, num))
-    
+
+    # Defining arrays (velocity sampling matches the plot axes)
+    if scale == "linear":
+        vrot_star_arr   = np.linspace(0, 100, num)
+        vrot_planet_arr = np.linspace(0, 100, num)
+    elif scale == "log":
+        vrot_star_arr   = np.geomspace(0.1, 1_000, num)
+        vrot_planet_arr = np.geomspace(0.1, 100,   num)
+    else:
+        raise ValueError("scale must be 'linear' or 'log'")
+    SNR             = np.zeros((num, num))
+    lost_signal     = np.zeros((num, num))
+
     # Global context worker
     global _CM_CTX
-    _CM_CTX = dict(vrot_star_arr=vrot_star_arr, vrot_planet_arr=vrot_planet_arr, delta_rv=delta_rv, sini=sini, R_band=R_band, wave_band=wave_band, dwave_band=dwave_band, wave_model=wave_model, wave_instru=wave_instru, star_spectrum=star_spectrum, planet_spectrum=planet_spectrum, albedo_spectrum=albedo_spectrum, trans=trans, Rc=Rc, filter_type=filter_type, stellar_halo_photon_noise_limited=stellar_halo_photon_noise_limited)
-    
+    _CM_CTX = dict(vrot_star_arr=vrot_star_arr, vrot_planet_arr=vrot_planet_arr, v_orb_star=v_orb_star, delta_rv=delta_rv, sini=sini, R_band=R_band, wave_band=wave_band, dwave_band=dwave_band, wave_model=wave_model, wave_instru=wave_instru, star_spectrum=star_spectrum, planet_spectrum=planet_spectrum, albedo_spectrum=albedo_spectrum, trans=trans, Rc=Rc, filter_type=filter_type, stellar_halo_photon_noise_limited=stellar_halo_photon_noise_limited)
+
     # Parallel calculations
     print()
     with Pool(processes=cpu_count(), initializer=_init_cm_ctx, initargs=(_CM_CTX,)) as pool:
-        for (i, SNR_1D, lost_signal_1D) in tqdm(pool.imap_unordered(process_colormap_vrot, range(num)), total=num, desc=f"colormap_vrot(instru={instru}, band={band}, model={model}, delta_rv={delta_rv}, inc={inc}, Rc={Rc})",):
+        for (i, SNR_1D, lost_signal_1D) in tqdm(pool.imap_unordered(process_colormap_vrot, range(num)), total=num, desc=f"colormap_vrot(instru={instru}, band={band}, model={model}, delta_rv={delta_rv}, inc={inc}, Rc={Rc})"):
             SNR[i, :]         = SNR_1D
             lost_signal[i, :] = lost_signal_1D
-    
+
     # Normalizing
     SNR = np.maximum(SNR, 0)
     SNR = SNR / np.nanmax(SNR)
-    
+
     # Plots
     for plot in plots_colormaps:
         plt.figure(figsize=(10, 6), dpi=300)
+        plt.xscale(scale)
+        plt.yscale(scale)
         plt.xlabel(r"Planet equatorial rotation velocity $V_p$ [km/s]",     fontsize=18)
-        plt.ylabel(r"Star equatorial rotation velocity $V_{\star}$ [km/s]", fontsize=18)
+        plt.ylabel(r"Star equatorial rotation velocity $V_{\star}$ [km/s]", fontsize=16)
         plt.xlim(vrot_planet_arr[0], vrot_planet_arr[-1])
         plt.ylim(vrot_star_arr[0], vrot_star_arr[-1])
         plt.tick_params(axis='both', which='major', labelsize=14)
         plt.minorticks_on()
-        
+
         if plot == "SNR":
             data       = 100 * SNR
             cmap       = plt.get_cmap(cmap_colormaps)
             cbar_label = '$GAIN_{S/N}$ [%]'
         else:
-            data = 100 * lost_signal
-            cmap = plt.get_cmap(cmap_colormaps+'_r')
+            data       = 100 * lost_signal
+            cmap       = plt.get_cmap(cmap_colormaps+'_r')
             cbar_label = r'Lost signal $\beta/\alpha$ [%]'
         vmin = 0
         vmax = 100
-                
+
         # Heatmap with pcolormesh
         mesh = plt.pcolormesh(vrot_planet_arr, vrot_star_arr, data, cmap=cmap, shading='auto', vmin=vmin, vmax=vmax)
-        
+
         # Contours
         cs = plt.contour(vrot_planet_arr, vrot_star_arr, data, colors='k', linewidths=0.5, alpha=0.7)
-        plt.clabel(cs, inline=True, fontsize=10, fmt="%d%%")
-        
+        plt.clabel(cs, inline=True, fontsize=12, fmt="%d%%")
+
         # Colorbar
         ax   = plt.gca()
         cbar = plt.colorbar(mesh, ax=ax, pad=0.03, shrink=1)
         cbar.minorticks_on()
-        #cbar.set_ticks(contour_levels)
         cbar.ax.tick_params(labelsize=14)
         cbar.set_label(cbar_label, rotation=270, labelpad=16, fontsize=18)
 
-        # c/R
-        c_kms      = c/1000 # [km/s]
-        c_over_R   = c_kms / R_band        
-        line_color = "black"
-        alpha      = 0.4
-        line_style = "-"
-        line_width = 4.4
-        plt.axvline(+c_over_R, color=line_color, linestyle=line_style, linewidth=line_width, alpha=alpha, zorder=5)
-        bbox=dict(boxstyle="round,pad=0.2", fc="black", ec="none", alpha=0.5)
-        plt.text(+c_over_R, 1.025, r"$c/R$",                                                  color="black", fontsize=14, ha="center", va="center", fontweight="bold", transform=ax.get_xaxis_transform())
-        plt.text(0.98,      0.98,  rf"$c/R \approx {c_over_R:.0f}\,\mathrm{{km\,s^{{-1}}}}$", color="white", fontsize=14, ha="right",  va="top",    fontweight="bold", bbox=bbox, transform=plt.gca().transAxes)
-        
+        # c/R markers on the two axes
+        lw       = 2
+        c_over_R = (c/1000) / R_band   # [km/s]
+        bbox_cr  = dict(boxstyle="round,pad=0.25", fc="white", ec="black", alpha=1.0, lw=lw)
+        if vrot_planet_arr[0] < c_over_R < vrot_planet_arr[-1]:
+            plt.axvline(c_over_R, color="black", ls="-", lw=lw, alpha=1.0, zorder=25)
+        if vrot_star_arr[0] < c_over_R < vrot_star_arr[-1]:
+            plt.axhline(c_over_R, color="black", ls="-", lw=lw, alpha=1.0, zorder=25)
+        if (vrot_planet_arr[0] < c_over_R < vrot_planet_arr[-1]) and (vrot_star_arr[0] < c_over_R < vrot_star_arr[-1]):
+            ax.text(c_over_R, c_over_R, rf"$c/R \approx {c_over_R:.0f}\,\mathrm{{km\,s^{{-1}}}}$", ha="center", va="center", fontsize=15, fontweight="bold", bbox=bbox_cr, zorder=30)
+
+        # Breakup-velocity regions
+        bbox_break = dict(boxstyle="round,pad=0.25", fc="white", ec="dimgray", alpha=1.0, lw=3.0)
+        xmin, xmax = vrot_planet_arr[0], vrot_planet_arr[-1]
+        ymin, ymax = vrot_star_arr[0],   vrot_star_arr[-1]
+
+        if vbreak_planet < xmax:
+            x0 = max(vbreak_planet, xmin)
+            plt.axvspan(x0, xmax, facecolor="lightgray", edgecolor="gray", hatch="///", alpha=0.3, linewidth=0.0, zorder=20)
+            plt.axvline(vbreak_planet, color="dimgray", ls="-", lw=lw, zorder=21)
+            y_planet_box = np.sqrt(ymin * ymax) if scale == "log" else 0.5 * (ymin + ymax)
+            ax.text(vbreak_planet, y_planet_box, rf"$V_{{\mathrm{{break}},p}} \approx {vbreak_planet:.0f}\,\mathrm{{km\,s^{{-1}}}}$", ha="center", va="center", fontsize=15, fontweight="bold", bbox=bbox_break, zorder=30, rotation=270)
+
+        if vbreak_star < ymax:
+            y0 = max(vbreak_star, ymin)
+            plt.axhspan(y0, ymax, facecolor="lightgray", edgecolor="gray", hatch="\\\\", alpha=0.3, linewidth=0.0, zorder=20)
+            plt.axhline(vbreak_star, color="dimgray", ls="-", lw=lw, zorder=21)
+            x_star_box = np.sqrt(xmin * xmax) if scale == "log" else 0.5 * (xmin + xmax)
+            ax.text(x_star_box,vbreak_star, rf"$V_{{\mathrm{{break}},\star}} \approx {vbreak_star:.0f}\,\mathrm{{km\,s^{{-1}}}}$", ha="center", va="center", fontsize=15, fontweight="bold", bbox=bbox_break, zorder=30)
+
+        # Earth and Jupiter rotation-velocity references (stellar velocity: the Sun)
+        if add_symbol not in (None, "none"):
+            symbols = []
+            if add_symbol in ("earth", "both", "all"):
+                symbols.append((vrot_earth, "♁", "Earth"))
+            if add_symbol in ("jupiter", "both", "all"):
+                symbols.append((vrot_jupiter, "♃", "Jupiter"))
+            for vrot_planet, symbol, label in symbols:
+                if xmin <= vrot_planet <= xmax and ymin <= vrot_sun <= ymax:
+                    ax.text(vrot_planet, vrot_sun, symbol, ha="center", va="center", fontsize=26, fontfamily="DejaVu Sans", color="black", zorder=40)
+                    ax.annotate(label, xy=(vrot_planet, vrot_sun), xytext=(15, 9), textcoords="offset points", ha="left", va="bottom", fontsize=14, color="black",  zorder=41)
+
         noise_regime = "stellar halo photon noise regime" if stellar_halo_photon_noise_limited else "detector noise regime"
-        
+
         # Title
         if title is None:
             tell       = "with tellurics absorption" if tellurics else "without tellurics absorption"
             title_text = (f"{instru} {band}-band {'S/N' if plot=='SNR' else 'Lost signal'} fluctuations in {noise_regime} ({tell}) \n in {spectrum_contributions} light ({model}-model), $T_*$={T_star}K, $T_p$={T_planet}K, "r"$\Delta$rv="f"{delta_rv}km/s and i={inc:.0f}°")
         else:
             title_text = title
-        plt.title(title_text, fontsize=16, pad=24, weight=title_weight)
-
+        plt.title(title_text, fontsize=20, pad=24, weight=title_weight)
         plt.tight_layout()
-
+        
         if save:
-            output_dir = Path(colormaps_path) / "colormaps_bandwidth_resolution"
+            output_dir = Path(colormaps_path) / "colormaps_bandwidth_resolution" / "colormaps_vrot"
             output_dir.mkdir(parents=True, exist_ok=True)
-            filename   = f"colormaps_vrot/Colormap_vrot_{plot}_{instru}_{band}_{spectrum_contributions}_{model}_Rc{Rc}_Tp{T_planet}K_Ts{T_star}K_drv{delta_rv}kms_inc{inc}deg_{noise_regime.replace(' ', '_')}"
+            filename   = f"Colormap_vrot_{plot}_{instru}_{band}_{spectrum_contributions}_{model}_Rc{Rc}_Tp{T_planet}K_Ts{T_star}K_drv{delta_rv}kms_inc{inc}deg_{scale}_{noise_regime.replace(' ', '_')}_{add_symbol or 'none'}"
             if tellurics:
                 filename += "_with_tellurics"
             output_path = output_dir / f"{filename}.png"
             plt.savefig(output_path, format="png", bbox_inches="tight")
-            
+
         plt.show()
-    
+
     return vrot_planet_arr, vrot_star_arr, SNR, lost_signal
 
+
 def process_colormap_vrot(i):
-    
+
     vrot_star_arr                     = _CM_CTX["vrot_star_arr"]    # [km/s]
     vrot_planet_arr                   = _CM_CTX["vrot_planet_arr"]  # [km/s]
+    v_orb_star                        = _CM_CTX["v_orb_star"]       # [km/s]
     delta_rv                          = _CM_CTX["delta_rv"]         # [km/s]
     sini                              = _CM_CTX["sini"]             # [dimensionless]
     R_band                            = _CM_CTX["R_band"]           # [dimensionless]
@@ -1887,30 +1981,31 @@ def process_colormap_vrot(i):
     Rc                                = _CM_CTX["Rc"]
     filter_type                       = _CM_CTX["filter_type"]
     stellar_halo_photon_noise_limited = _CM_CTX["stellar_halo_photon_noise_limited"]
-    
+
     vrot_star  = vrot_star_arr[i]
-    vsini_star = vrot_star * sini 
-    
-    # Preparing the star spectrum
+    vsini_star = vrot_star * sini
+
+    # Preparing the directly observed star spectrum
     star_spectrum_broad = star_spectrum.broad(vsini_star)                                       # [J/µm]
     star_broad          = star_spectrum_broad.interpolate_wavelength(wave_instru, renorm=False) # [J/µm] Interpolating on wave_instru (constant R_model)
     star_broad.flux     = star_broad.flux * wave_instru                                         # [J/µm] => propto [ph/µm]
     star_broad          = star_broad.degrade_resolution(wave_band, renorm=False, filter_type=filter_type).flux           # [ph/µm]
     star_broad          = star_broad * dwave_band                                               # [ph/µm] => [ph/bin]
     star_HF, star_LF    = filtered_flux(star_broad, R=R_band, Rc=Rc, filter_type=filter_type)   # [ph/bin]
-    
+
     # Preparing the planet spectrum (if necessary)
     if planet_spectrum is None:
-        star_spectrum_broad_ref = star_spectrum.broad(vrot_star)          # [J/µm]
+        vrot_star_planet       = abs(vrot_star - v_orb_star)                                   # [km/s] apparent stellar rotation seen by the planet
+        star_spectrum_broad_ref = star_spectrum.broad(vrot_star_planet)                        # [J/µm]
         planet_spectrum         = Spectrum(wavelength=wave_model, flux=albedo_spectrum.flux*star_spectrum_broad_ref.flux, R=np.maximum.reduce([star_spectrum.R, albedo_spectrum.R]), T=albedo_spectrum.T, lg=albedo_spectrum.lg, model=albedo_spectrum.model, rv=0, vsini=0)
-        planet_spectrum         = planet_spectrum.doppler_shift(delta_rv) # Shifting the spectrum
+        planet_spectrum         = planet_spectrum.doppler_shift(delta_rv)                      # Shifting the spectrum
 
     SNR_1D         = np.zeros((len(vrot_planet_arr))) + np.nan
     lost_signal_1D = np.zeros((len(vrot_planet_arr))) + np.nan
     for j, vrot_planet in enumerate(vrot_planet_arr):
-        
+
         vsini_planet = vrot_planet * sini
-        
+
         # Preparing the planet spectrum
         planet_spectrum_broad = planet_spectrum.broad(vsini_planet)                                     # [J/µm]
         planet_broad          = planet_spectrum_broad.interpolate_wavelength(wave_instru, renorm=False) # [J/µm] Interpolating on wave_instru (constant R_model)
@@ -1918,8 +2013,8 @@ def process_colormap_vrot(i):
         planet_broad          = planet_broad.degrade_resolution(wave_band, renorm=False, filter_type=filter_type).flux           # [ph/µm]
         planet_broad          = planet_broad * dwave_band                                               # [ph/µm] => [ph/bin]
         planet_HF, planet_LF  = filtered_flux(planet_broad, R=R_band, Rc=Rc, filter_type=filter_type)   # [ph/bin]
-        
-        template = trans*planet_HF 
+
+        template = trans*planet_HF
         template = template / np.sqrt(np.nansum(template**2))
         alpha    = np.nansum(trans*planet_HF * template)
         beta     = np.nansum(trans*star_HF*planet_LF/star_LF * template)
@@ -1929,7 +2024,7 @@ def process_colormap_vrot(i):
             sigma_CCF = 1. # wavelength and resolution-independent limiting noise (e.g. RON and dark current - detector noise - domination)
         SNR_1D[j]         = (alpha - beta) / (sigma_CCF)
         lost_signal_1D[j] = beta / alpha
-                    
+
     return i, SNR_1D, lost_signal_1D
 
 
