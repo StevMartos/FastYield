@@ -24,6 +24,8 @@ import numpy as np
 from functools import lru_cache
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+import subprocess
+import sys
 from PIL import Image, ImageTk
 import tkinter as tk
 from tkinter import ttk, messagebox, DoubleVar, StringVar, Label, Button, Entry, CENTER
@@ -79,6 +81,88 @@ def format_quantity(value, decimals=1):
     unit = getattr(value, "unit", None)
     suffix = f" {unit}" if unit is not None and str(unit) else ""
     return f"{number:.{decimals}f}{suffix}"
+
+
+# Lightweight, independent Tk window: FastCurves and Matplotlib stay on the main thread.
+_FASTCURVES_PROGRESS_SCRIPT = r"""
+import queue
+import sys
+import threading
+import tkinter as tk
+from tkinter import ttk
+
+commands = queue.Queue()
+
+def receive_commands():
+    for line in sys.stdin:
+        commands.put(line.strip())
+    commands.put("QUIT")
+
+root = tk.Tk()
+root.withdraw()
+root.title("FastYield - Computing")
+root.configure(bg="#111827")
+root.resizable(False, False)
+root.protocol("WM_DELETE_WINDOW", lambda: None)
+
+frame = tk.Frame(root, bg="#111827", padx=28, pady=24)
+frame.pack(fill="both", expand=True)
+tk.Label(frame, text=sys.argv[1], bg="#111827", fg="#F5F7FA",
+         font=("Arial", 16, "bold")).pack(pady=(0, 9))
+tk.Label(frame, text=sys.argv[2], bg="#111827", fg="#6F8FAF",
+         font=("Arial", 10), wraplength=440).pack(pady=(0, 20))
+style = ttk.Style(root)
+try:
+    style.theme_use("clam")
+except tk.TclError:
+    pass
+style.configure("FastYield.Horizontal.TProgressbar", background="#6F8FAF",
+                troughcolor="#E2E6EA", borderwidth=0, thickness=12)
+progress = ttk.Progressbar(frame, length=420, mode="indeterminate",
+                           style="FastYield.Horizontal.TProgressbar")
+progress.pack(pady=(0, 12))
+tk.Label(frame, text="Running FastCurves calculations...", bg="#111827",
+         fg="#E2E6EA", font=("Arial", 10)).pack()
+
+root.update_idletasks()
+w, h = root.winfo_reqwidth(), root.winfo_reqheight()
+x = max(0, min(int(sys.argv[3]) - w // 2, root.winfo_screenwidth() - w))
+y = max(0, min(int(sys.argv[4]) - h // 2, root.winfo_screenheight() - h))
+root.geometry(f"+{x}+{y}")
+
+wanted = True
+
+def show():
+    if wanted and not root.winfo_viewable():
+        root.deiconify()
+        root.lift()
+        progress.start(12)
+
+def poll():
+    global wanted
+    try:
+        while True:
+            cmd = commands.get_nowait()
+            if cmd == "QUIT":
+                root.quit()
+                return
+            if cmd == "HIDE":
+                wanted = False
+                progress.stop()
+                root.withdraw()
+            elif cmd == "SHOW":
+                wanted = True
+                root.after(150, show)
+    except queue.Empty:
+        pass
+    root.after(35, poll)
+
+root.after(150, show)  # No flash for very short calculations.
+root.after(35, poll)
+threading.Thread(target=receive_commands, daemon=True).start()
+root.mainloop()
+root.destroy()
+"""
 
 
 
@@ -259,6 +343,63 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
             if popup.grab_current() is popup:
                 popup.grab_release()
             popup.destroy()
+
+    def _run_fastcurves_with_progress(self):
+        """Animate a separate Tk popup without moving Matplotlib off the main thread."""
+        titles = {"SNR": "Calculating S/N curves",
+                  "contrast": "Calculating contrast curves",
+                  "corner plot": "Calculating corner plot"}
+        label = titles.get(self.calculation, "Running FastCurves")
+        details = f"{self.planet['PlanetName']}  ·  {self.instru}  ·  {self.band}"
+        center_x = self.winfo_rootx() + self.winfo_width() // 2
+        center_y = self.winfo_rooty() + self.winfo_height() // 2
+
+        try:
+            progress = subprocess.Popen(
+                [sys.executable, "-c", _FASTCURVES_PROGRESS_SCRIPT,
+                 label, details, str(center_x), str(center_y)],
+                stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except OSError:
+            progress = None  # Never prevent a scientific calculation if the UI fails.
+
+        def notify(command):
+            if progress is not None and progress.poll() is None:
+                try:
+                    progress.stdin.write((command + "\n").encode("ascii"))
+                    progress.stdin.flush()
+                except (OSError, ValueError):
+                    pass
+
+        # FastCurves displays diagnostic plots mid-calculation. Hide the progress
+        # popup while the user interacts with them, then show it on resume.
+        original_show = plt.show
+
+        def show_plot(*args, **kwargs):
+            notify("HIDE")
+            try:
+                return original_show(*args, **kwargs)
+            finally:
+                notify("SHOW")
+
+        plt.show = show_plot
+        try:
+            return self._compute_fastcurves()
+        finally:
+            plt.show = original_show
+            if progress is not None:
+                notify("QUIT")
+                try:
+                    progress.stdin.close()
+                except OSError:
+                    pass
+                try:
+                    progress.wait(timeout=0.2)
+                except subprocess.TimeoutExpired:
+                    progress.terminate()
+                    progress.wait()
 
     def enter_planet_name(self):
         if self.planet_name.get() in self.planet_table["PlanetName"]:
@@ -848,6 +989,9 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         if self.calculation == "corner plot" and self.config_data["type"] == "imager":
             messagebox.showinfo("FastYield", "Corner plots are not implemented for imagers.")
             return
+        return self._run_fastcurves_with_progress()
+
+    def _compute_fastcurves(self):
         # Parameters retrieval (corner plot)
         if self.calculation == "corner plot":
             
