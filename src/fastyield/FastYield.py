@@ -4,10 +4,9 @@ from .get_specs import get_config_data, get_band_lims, get_wa, get_R_instru, get
 from .utils import faded
 from .spectrum import load_vega_spectrum, get_mag, get_spectrum_contribution_name_model, get_thermal_reflected_spectrum, get_counts_from_density, get_wave_K, get_wave_model
 from .FastCurves import FastCurves
-from .FastYield_helpers import load_planet_table, get_filename_table, get_planet_type, get_valid_mask, get_invalid_mask, get_SNR_from_table, build_match_dict, get_contrast_from_saved_SNR, get_contrast_from_table, get_size_from_SNR, mass_to_size, get_mask_planet_type, get_planet_index, PlainLogFormatter
+from .FastYield_helpers import load_planet_table, get_filename_table, get_planet_type, get_valid_mask, get_invalid_mask, get_SNR_from_table, build_match_dict, get_contrast_from_saved_SNR, get_contrast_from_table, get_size_from_SNR, mass_to_size, get_mask_planet_type, get_planet_index, PlainLogFormatter, read_planet_table, write_planet_table
 
 # import astropy modules
-from astropy.table import QTable
 from astropy import units as u
 from astropy.io import fits
 
@@ -474,7 +473,7 @@ def get_planet_table_SNR(instru, table="Archive", thermal_model="None", reflecte
 
     print(f"\n Calculating SNR took {(time.time()-time1)/60:.1f} mn")
     filename = get_filename_table(table=table, instru=instru, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, systematics=systematics, PCA=PCA, name_model=name_model)
-    planet_table.write(path / filename, format='ascii.ecsv', overwrite=True)
+    write_planet_table(planet_table, path / filename)
     print(f"Table saved: {path / filename}")
 
 
@@ -2468,7 +2467,7 @@ def get_planet_table_contrast(instru, planet_table, exposure_time, table="Archiv
         print(f"\nOpening existing table: {filename}")
         if force_table_calc:
             raise ValueError("Forcing table calculation: force_table_calc=True")
-        planet_table = QTable.read(filename, format="ascii.ecsv")
+        planet_table = read_planet_table(filename)
         separation   = fits.getdata(filename.replace(".ecsv", "_separation.fits"))
 
     except Exception as e:
@@ -2524,7 +2523,7 @@ def get_planet_table_contrast(instru, planet_table, exposure_time, table="Archiv
                 planet_table[idx]["contrast_5sigma"]                               = contrast_5sigma
 
         print(f"\n Calculating 5sigma-contrasts took {(time.time()-time1)/60:.1f} mn")
-        planet_table.write(filename, format='ascii.ecsv', overwrite=True)
+        write_planet_table(planet_table, filename)
         fits.writeto(filename.replace(".ecsv", "_separation.fits"), separation, overwrite=True)
         print(f"\nSaving table: {filename}")
 

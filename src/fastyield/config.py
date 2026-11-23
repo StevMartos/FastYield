@@ -11,6 +11,7 @@ from pathlib import Path
 
 dpi_fig             = 300
 filter_type_default = "gaussian_fast"
+dtype_planet_table  = np.float32  # Storage precision for floating-point catalog columns
 
 
 

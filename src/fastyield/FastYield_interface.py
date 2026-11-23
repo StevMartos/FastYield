@@ -3,11 +3,10 @@ from .config import instrus, instrus_with_systematics, SNR_thresh, ignore_reflec
 from .get_specs import get_config_data, get_wa
 from .spectrum import get_spectrum_contribution_name_model, get_thermal_reflected_spectrum
 from .FastCurves import FastCurves
-from .FastYield_helpers import get_filename_table, get_planet_index, get_valid_mask, get_SNR_from_table, get_size_from_SNR
+from .FastYield_helpers import get_filename_table, get_planet_index, get_valid_mask, get_SNR_from_table, get_size_from_SNR, read_planet_table
 
 # import astropy modules
 from astropy import units as u
-from astropy.table import QTable
 from astropy.coordinates import EarthLocation, AltAz, get_body, SkyCoord
 from astropy.time import Time
 
@@ -913,7 +912,7 @@ _table_reader = ThreadPoolExecutor(max_workers=1)
 
 @lru_cache(maxsize=16)
 def _load_planet_table_cached(path, mtime_ns):
-    return _table_reader.submit(QTable.read, path, format="ascii.ecsv")
+    return _table_reader.submit(read_planet_table, path)
 
 
 

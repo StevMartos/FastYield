@@ -1,7 +1,7 @@
 # import FastYield modules
 from .config import m_u, kB, G, vesc_earth, T_sun, get_planet_table_path, instrus, bands
 from .prints_helpers import print_warning
-from .FastYield_helpers import get_valid_mask, get_invalid_mask, load_planet_table, chen_kipping_mass_from_radius, chen_kipping_radius_from_mass, get_evolutionary_model, get_planet_type, get_mask_planet_type
+from .FastYield_helpers import get_valid_mask, get_invalid_mask, load_planet_table, chen_kipping_mass_from_radius, chen_kipping_radius_from_mass, get_evolutionary_model, get_planet_type, get_mask_planet_type, write_planet_table
 
 # import astropy modules
 from astropy import constants as const
@@ -705,7 +705,7 @@ def get_archive_table(seed=None):
         planet_table.replace_column(colname, vals * (unit if unit is not None else u.dimensionless_unscaled))
 
     # Keep the raw ECSV/reload convention expected by existing FastYield tools.
-    planet_table.write(get_planet_table_path("Archive", create=True) / "Archive_Pull_Raw.ecsv", format="ascii.ecsv", overwrite=True)
+    write_planet_table(planet_table, get_planet_table_path("Archive", create=True) / "Archive_Pull_Raw.ecsv")
     planet_table = load_planet_table("Archive_Pull_Raw.ecsv", table="Archive")
     planet_table_classification_histogram(planet_table)
     report_stat("Raw snapshot", "Archive_Pull_Raw.ecsv")
@@ -1376,7 +1376,7 @@ def get_archive_table(seed=None):
     # -----------------------------------------------------------------------------
     report_step(16, "Synthetic magnitudes and final catalog")
     planet_table = get_planet_table_magnitudes(planet_table)
-    planet_table.write(get_planet_table_path("Archive", create=True) / "Archive_Pull_For_FastYield.ecsv", format="ascii.ecsv", overwrite=True)
+    write_planet_table(planet_table, get_planet_table_path("Archive", create=True) / "Archive_Pull_For_FastYield.ecsv")
     final_stars = np.asarray(planet_table["StarName"], dtype=str)
     final_names = np.asarray(planet_table["PlanetName"], dtype=str)
     final_stars = np.where(np.char.str_len(np.char.strip(final_stars)) > 0, final_stars, final_names)

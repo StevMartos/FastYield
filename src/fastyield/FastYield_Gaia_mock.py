@@ -32,7 +32,7 @@ FastYield's shared Sonora Bobcat grid is expected in planet_table/Archive/.
 
 # import FastYield modules
 from .config import get_planet_table_path, instrus, bands, T_sun
-from .FastYield_helpers import chen_kipping_radius_from_mass, get_evolutionary_model, get_planet_type
+from .FastYield_helpers import chen_kipping_radius_from_mass, get_evolutionary_model, get_planet_type, write_planet_table
 from .FastYield import get_planet_table_magnitudes
 
 # import astropy modules
@@ -354,7 +354,7 @@ def get_gaia_mock_table(release="DR4", seed=42, age_gyr=5.):
     n_usable   = valid_snr.sum()
     q          = q[valid_snr]
     output     = path / f"{table}_Pull_For_FastYield.ecsv"
-    q.write(output, format="ascii.ecsv", overwrite=True)
+    write_planet_table(q, output)
     report_stat("Planets usable for SNR", f"{n_usable}/{n}")
     report_stat("Saved catalog",          output)
     report_stat("Elapsed time",          f"{(time.time()-time1)/60:.1f} mn")

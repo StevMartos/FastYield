@@ -1,5 +1,5 @@
 # import FastYield modules
-from .config import rad2arcsec, dpi_fig, SNR_thresh, planet_types, get_planet_table_path, planet_table_path
+from .config import rad2arcsec, dpi_fig, SNR_thresh, planet_types, get_planet_table_path, planet_table_path, dtype_planet_table
 from .signal_noise import compute_sigma_base_2_speck_numba, compute_sigma_base_2_al_spat_numba, compute_sigma_base_2_al_spec_fast
 from .get_specs import get_detector_specs
 
@@ -62,9 +62,36 @@ def get_filename_table(table, instru, apodizer, strehl, coronagraph, systematics
 
 
 
+def set_planet_table_dtype(planet_table):
+    """Convert floating columns in place, preserving Astropy units and masks.
+
+    Integer identifiers, boolean flags, and text columns remain unchanged.
+    """
+    dtype = np.dtype(dtype_planet_table)
+    for name in planet_table.colnames:
+        col = planet_table[name]
+        if getattr(col, "dtype", None) is not None and col.dtype.kind == "f" and col.dtype != dtype:
+            planet_table[name] = col.astype(dtype)
+    return planet_table
+
+
+
+def read_planet_table(path):
+    """Read an ECSV QTable using the configured floating-point dtype."""
+    return set_planet_table_dtype(QTable.read(path, format="ascii.ecsv"))
+
+
+
+def write_planet_table(planet_table, path):
+    """Save an ECSV QTable after casting floating columns in place."""
+    set_planet_table_dtype(planet_table)
+    planet_table.write(path, format="ascii.ecsv", overwrite=True)
+
+
+
 def load_planet_table(table_name, table="Archive"):
     """Read sim_data/planet_table/<table>/<table_name> as an ECSV QTable."""
-    return QTable.read(get_planet_table_path(table) / table_name, format="ascii.ecsv")
+    return read_planet_table(get_planet_table_path(table) / table_name)
 
 
 
