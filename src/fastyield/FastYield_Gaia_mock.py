@@ -2,23 +2,23 @@
 Build a FastYield planet table from the Gaia DR4/DR5 mock catalogs of Lammers & Winn (2026).
 
 Each release is read and saved independently in sim_data/planet_table/:
-    GAIA_DR4_mock/
+    Gaia_DR4_mock/
         DR4_mock_exoplanet_catalog.csv
         DR4_mock_planet_impostor_catalog.csv
-        GAIA_DR4_mock_Pull_For_FastYield.ecsv        (output)
-    GAIA_DR5_mock/
+        Gaia_DR4_mock_Pull_For_FastYield.ecsv        (output)
+    Gaia_DR5_mock/
         DR5_mock_exoplanet_catalog.csv
         DR5_mock_planet_impostor_catalog.csv
-        GAIA_DR5_mock_Pull_For_FastYield.ecsv        (output)
+        Gaia_DR5_mock_Pull_For_FastYield.ecsv        (output)
 
 Usage:
-    from fastyield.FastYield_GAIA import get_gaia_mock_table
+    from fastyield.FastYield_Gaia import get_gaia_mock_table
     get_gaia_mock_table(release="DR4")
     get_gaia_mock_table(release="DR5")
 
     # Then, for example:
     from fastyield.FastYield import get_planet_table_SNR
-    get_planet_table_SNR(instru="ANDES", table="GAIA_DR4_mock")
+    get_planet_table_SNR(instru="ANDES", table="Gaia_DR4_mock")
 
 Only the exoplanet CSV is converted. The planet-impostor CSV contains stellar
 binaries: these are counted but excluded from the FastYield planet table.
@@ -92,7 +92,7 @@ def get_gaia_mock_table(release="DR4", seed=42, age_gyr=5.):
     Parameters
     ----------
     release : str, optional
-        "DR4" or "DR5". Reads and writes in GAIA_<release>_mock/.
+        "DR4" or "DR5". Reads and writes in Gaia_<release>_mock/.
         The two releases are kept separate.
     seed : int, optional
         Random seed for the explicitly assumed stellar and planetary rotations
@@ -125,7 +125,7 @@ def get_gaia_mock_table(release="DR4", seed=42, age_gyr=5.):
     # 1) Load the chosen Gaia mock catalog (planet impostors are excluded)
     # -----------------------------------------------------------------------------
     report_step(1, "Lammers & Winn (2026) mock Gaia catalogs")
-    table          = f"GAIA_{release}_mock"
+    table          = f"Gaia_{release}_mock"
     path           = get_planet_table_path(table)
     planets_file   = path / f"{release}_mock_exoplanet_catalog.csv"
     impostors_file = path / f"{release}_mock_planet_impostor_catalog.csv"

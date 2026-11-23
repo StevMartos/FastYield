@@ -22,6 +22,7 @@ import numpy as np
 
 # import other modules
 from functools import lru_cache
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from PIL import Image, ImageTk
 import tkinter as tk
@@ -191,7 +192,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         self.__plt2.tick_params(left=False, right=False, labelleft=False, labelbottom=False, bottom=False)
 
         # On initie la table de planète raw (afin d'avoir la liste de tous les noms des planètes)
-        self.planet_table = load_planet_table_cached("Archive_Pull_For_FastYield.ecsv")
+        self.planet_table = load_planet_table_cached("Archive_Pull_For_FastYield.ecsv", on_loading=self._show_table_loading)
         
         # Entrée du nom de la planète
         self.button_name      = tk.LabelFrame(self.button_units_texp_name, bg=panel_color) ; self.button_name.grid(row=0, column=2, sticky="nsew") ; self.button_name.grid_columnconfigure(2, weight=1)
@@ -203,6 +204,62 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         # On initie le plot
         self.btn_instru_clicked()
         
+    def _show_table_loading(self, future, filename):
+        """Show an animated modal only while an uncached ECSV is being read."""
+        popup = tk.Toplevel(self)
+        popup.withdraw()  # Avoid flashing the window for very fast reads.
+        popup.title("FastYield - Loading")
+        popup.transient(self)
+        popup.resizable(False, False)
+        popup.configure(bg=secondary_color)
+        popup.protocol("WM_DELETE_WINDOW", lambda: None)
+
+        frame = tk.Frame(popup, bg=secondary_color, padx=28, pady=24)
+        frame.pack(fill="both", expand=True)
+        tk.Label(frame, text="Loading planet catalogue", bg=secondary_color,
+                 fg=entry_color, font=("Arial", 16, "bold")).pack(pady=(0, 9))
+        tk.Label(frame, text=filename, bg=secondary_color, fg=main_color,
+                 font=("Arial", 10), wraplength=440).pack(pady=(0, 20))
+
+        ttk.Style(self).configure("FastYield.Horizontal.TProgressbar",
+                                  background=main_color, troughcolor=panel_color,
+                                  borderwidth=0, thickness=12)
+        progress = ttk.Progressbar(frame, length=420, mode="indeterminate",
+                                   style="FastYield.Horizontal.TProgressbar")
+        progress.pack(pady=(0, 12))
+        tk.Label(frame, text="Reading ECSV data...", bg=secondary_color,
+                 fg=panel_color, font=("Arial", 10)).pack()
+
+        popup.update_idletasks()
+        x = (self.winfo_screenwidth() - popup.winfo_reqwidth()) // 2
+        y = (self.winfo_screenheight() - popup.winfo_reqheight()) // 2
+        popup.geometry(f"+{x}+{y}")
+        finished = tk.BooleanVar(master=self, value=False)
+
+        def show():
+            if not future.done():
+                popup.deiconify()
+                popup.lift()
+                popup.grab_set()
+                progress.start(12)
+
+        def check():
+            if future.done():
+                finished.set(True)
+            else:
+                self.after(40, check)
+
+        # Keep Tk's event loop running while the worker reads the file.
+        self.after(150, show)
+        self.after(40, check)
+        try:
+            self.wait_variable(finished)
+        finally:
+            progress.stop()
+            if popup.grab_current() is popup:
+                popup.grab_release()
+            popup.destroy()
+
     def enter_planet_name(self):
         if self.planet_name.get() in self.planet_table["PlanetName"]:
             self.planet_index = get_planet_index(planet_table=self.planet_table, planet_name=self.planet_name.get())
@@ -221,7 +278,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         self.planet = None
         self.planet_name.set("")
         self.only_visible_targets = False
-        self.__btn_name_entry.set_completion_list(list(load_planet_table_cached(f"{table}_Pull_For_FastYield.ecsv", table=table)["PlanetName"]))
+        self.__btn_name_entry.set_completion_list(list(load_planet_table_cached(f"{table}_Pull_For_FastYield.ecsv", table=table, on_loading=self._show_table_loading)["PlanetName"]))
         self.btn_instru_clicked()
 
     def btn_instru_clicked(self, instru=None):
@@ -475,7 +532,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
         filename          = get_filename_table(table=self.table, instru=self.instru, apodizer=self.apodizer, strehl=self.strehl, coronagraph=self.coronagraph, systematics=self.systematics, PCA=self.PCA, name_model=self.model_planet)
         path = get_planet_table_path(self.table) / filename
         if not path.is_file():
-            self.planet_table = load_planet_table_cached(f"{self.table}_Pull_For_FastYield.ecsv", table=self.table)
+            self.planet_table = load_planet_table_cached(f"{self.table}_Pull_For_FastYield.ecsv", table=self.table, on_loading=self._show_table_loading)
             self.planet = None
             self.planet_index = None
             self.planet_name.set("")
@@ -485,7 +542,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
             self.__plt.text(0.5, 0.5, f"S/N table not available for {self.table} / {self.instru}:\n{filename}", ha="center", va="center", transform=self.__plt.transAxes, fontsize=14)
             self.__canvas.draw_idle()
             return
-        self.planet_table = load_planet_table_cached(filename, table=self.table)
+        self.planet_table = load_planet_table_cached(filename, table=self.table, on_loading=self._show_table_loading)
         self._drawn_table_path     = path
         self._drawn_table_mtime_ns = path.stat().st_mtime_ns
         self._drawn_min_elevation  = self.min_elevation.get()
@@ -851,16 +908,22 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
 
 
 
+_table_reader = ThreadPoolExecutor(max_workers=1)
+
+
 @lru_cache(maxsize=16)
 def _load_planet_table_cached(path, mtime_ns):
-    return QTable.read(path, format="ascii.ecsv")
+    return _table_reader.submit(QTable.read, path, format="ascii.ecsv")
 
 
 
-def load_planet_table_cached(filename: str, table="Archive"):
+def load_planet_table_cached(filename: str, table="Archive", on_loading=None):
     """Cache catalogs by path and modification time (reload updated ECSV files)."""
     path = get_planet_table_path(table) / filename
-    return _load_planet_table_cached(path, path.stat().st_mtime_ns)
+    future = _load_planet_table_cached(path, path.stat().st_mtime_ns)
+    if on_loading is not None and not future.done():
+        on_loading(future, filename)
+    return future.result()
 
     
 
