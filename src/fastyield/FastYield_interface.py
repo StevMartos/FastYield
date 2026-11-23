@@ -851,7 +851,7 @@ class MyWindow(tk.Tk): # https://koor.fr/Python/Tutoriel_Scipy_Stack/matplotlib_
 
 
 
-@lru_cache(maxsize=4)
+@lru_cache(maxsize=16)
 def _load_planet_table_cached(path, mtime_ns):
     return QTable.read(path, format="ascii.ecsv")
 

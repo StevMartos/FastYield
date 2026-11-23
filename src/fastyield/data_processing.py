@@ -1,5 +1,5 @@
 # import FastYield modules
-from .config import c, R0_max, filter_type_default
+from .config import c, R0_max
 from .utils import cut_spectral_frequencies, get_logL
 from .spectrum import get_wavelength_axis_constant_dl, Spectrum, get_resolution, filtered_flux, get_psd, load_star_spectrum, load_planet_spectrum, load_albedo_spectrum, load_mol_spectrum, get_model_grid, get_spectrum_band
 from .get_specs import get_config_data
@@ -32,8 +32,6 @@ import warnings
 from astropy.io.fits.verify import VerifyWarning
 warnings.simplefilter("ignore",   category=VerifyWarning)
 warnings.filterwarnings("ignore", message="Header block contains null bytes*")
-
-
 
 dtype = np.float32
 
@@ -2164,7 +2162,7 @@ def process_parameters_estimation(args):
     trans_w_Ss_HF_LF_ratio = _TLG_CTX['trans_w_Ss_HF_LF_ratio']
     SNR_estimate           = _TLG_CTX['SNR_estimate']
     mask_noise             = _TLG_CTX['mask_noise']
-    mask_prior              = _TLG_CTX['mask_prior']
+    mask_prior             = _TLG_CTX['mask_prior']
     stellar_component      = _TLG_CTX['stellar_component']
     degrade_resolution     = _TLG_CTX['degrade_resolution']
     d_sim                  = _TLG_CTX['d_sim']

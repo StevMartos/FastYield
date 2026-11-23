@@ -923,9 +923,6 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
             # Corner plot
             # -----------
             if calculation == "corner plot" and instru_type != "imager":
-                
-                stellar_component = True
-                
                 wave_model = planet_spectrum.wavelength # [µm]
                 
                 # airmass value, if model == "tellurics"
@@ -945,7 +942,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
                 # From the planet_spectrum template
                 d = get_d_sim(instru=instru, d=None, wave=wave_band, trans=trans, R=R_band, Rc=Rc, filter_type=filter_type, model=None,         T=None,     lg=None,      rv=None,      vsini=None,         epsilon=None, fastbroad=None, airmass=None,    star_spectrum=None,          wave_model=None,       template=planet_spectrum_instru_tot, degrade_resolution=True, stellar_component=stellar_component, trans_Ss=trans_Ss, pca=pca, cut_fringes=False, Rmin=None, Rmax=None, target_name=None, renorm_d_sim=False, sigma_l=None, Mp=Mp, verbose=verbose)
                 # From scratch (more similar to the templates used in parameters_retrieval), only with the model_planet contribution
-                # d = get_d_sim(instru=instru, d=d,    wave=wave_band, trans=trans, R=R_band, Rc=Rc, filter_type=filter_type, model=model_planet, T=T_planet, lg=lg_planet, rv=rv_planet, vsini=vsini_planet, epsilon=0.8,  fastbroad=True, airmass=airmass, star_spectrum=star_spectrum, wave_model=wave_model, template=None,                       degrade_resolution=True, stellar_component=stellar_component, trans_Ss=trans_Ss, pca=pca, cut_fringes=False, Rmin=None, Rmax=None, target_name=None, renorm_d_sim=True,  sigma_l=None, Mp=Mp, verbose=verbose)
+                #d = get_d_sim(instru=instru, d=d,    wave=wave_band, trans=trans, R=R_band, Rc=Rc, filter_type=filter_type, model=model_planet, T=T_planet, lg=lg_planet, rv=rv_planet, vsini=vsini_planet, epsilon=0.8,  fastbroad=True, airmass=airmass, star_spectrum=star_spectrum, wave_model=wave_model, template=None,                       degrade_resolution=True, stellar_component=stellar_component, trans_Ss=trans_Ss, pca=pca, cut_fringes=False, Rmin=None, Rmax=None, target_name=None, renorm_d_sim=True,  sigma_l=None, Mp=Mp, verbose=verbose)
                 
                 # Expected CCF SNR of the planet
                 SNR_CCF = SNR[idx_planet_sep]
@@ -958,10 +955,10 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
                 
                 # Displaying CCF
                 if show_plot:
-                    n     = np.random.normal(0, sigma_fund, len(wave_band))
-                    n_HF  = filtered_flux(flux=n, R=R_band, Rc=Rc, filter_type=filter_type)[0]
-                    d_n   = d + n_HF
-                    d_bkg = np.random.normal(0, sigma_fund, size=(100, len(wave_band)))
+                    n                                   = np.random.normal(0, sigma_fund, len(wave_band))
+                    n_HF                                = filtered_flux(flux=n, R=R_band, Rc=Rc, filter_type=filter_type)[0]
+                    d_n                                 = d + n_HF
+                    d_bkg                               = np.random.normal(0, sigma_fund, size=(100, len(wave_band)))
                     planet_spectrum_instru_tot_wo_shift = planet_spectrum_instru_tot.doppler_shift(-planet_spectrum_instru_tot.rv)
                     plot_CCF_1D_rv(instru=instru, band=band, target_name=planet_name, d=d_n, d_bkg=d_bkg, wave=wave_band, trans=trans, R=R_band, Rc=Rc, filter_type=filter_type, model=model_planet, T=T_planet, lg=lg_planet, rv_arr=np.linspace(-1_000, 1_000, 4_000), rv=rv_planet, vsini=vsini_planet, epsilon=0.8, fastbroad=True, airmass=airmass, star_spectrum=star_spectrum, wave_model=wave_model, template_wo_shift=planet_spectrum_instru_tot_wo_shift, degrade_resolution=True, stellar_component=stellar_component, trans_Ss=trans_Ss, pca=pca, cut_fringes=False, Rmin=None, Rmax=None, renorm_d_sim=False, sigma_l=sigma_fund, calc_logL=False, method_logL=None, weight=None, compare_data=False, verbose=True, show=True, smooth_PSD=1, noise=None, rv_star=rv_star, zoom_CCF=True)
                     
@@ -970,13 +967,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
                 T_arr     = np.linspace(T_planet-300,            T_planet+300,    N)
                 lg_arr    = np.linspace(lg_planet-1,             lg_planet+1,     N)
                 vsini_arr = np.linspace(max(vsini_planet-10, 0), vsini_planet+10, N)
-                vsini_arr = np.array([vsini_planet])
                 rv_arr    = np.linspace(rv_planet-20,            rv_planet+20,    N)
-                
-                # T_arr = lg_arr = vsini_arr = rv_arr = None
-                
-                # if "telluric albedo" in model_planet.lower():
-                #     model_planet = "PSG(earth_like)"
                 
                 # Running retrieval and displaying corner plot
                 uncertainties = parameters_retrieval(instru=instru, band=band, target_name=planet_name, d=d, wave=wave_band, trans=trans, R=R_band, Rc=Rc, filter_type=filter_type, model=model_planet, T_arr=T_arr, lg_arr=lg_arr, rv_arr=rv_arr, vsini_arr=vsini_arr, T=T_planet, lg=lg_planet, rv=rv_planet, vsini=vsini_planet, epsilon=0.8, fastbroad=True, airmass=airmass, star_spectrum=star_spectrum, wave_model=wave_model, template=planet_spectrum_instru_tot, degrade_resolution=True, stellar_component=stellar_component, trans_Ss=trans_Ss, pca=pca, calc_d_sim=False, renorm_d_sim=False, sigma_l=sigma_fund, calc_logL=True, method_logL="classic", weight=None, SNR_estimate=False, SNR_CCF=SNR_CCF, force_new_est=True, save=False, fastcurves=True, exposure_time=exposure_time, show=show_plot, verbose=verbose)
@@ -1068,9 +1059,9 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
             fig_t_syst.tight_layout()  
             fig_t_syst.show()
         
-        # =======================
+        # ============================================
         # Optional Systematic (+speckles) noise budget
-        # =======================
+        # ============================================
         if show_syst_budget and post_processing.lower() in {"molecular mapping", "mm"} and instru_type != "imager" and not return_FastYield:
             
             # Computing the stellar halo profile in [e-/bin/FWHM] (if there is a coronagraph, PSF_profile already contain the coronagraphic transmission for the star)
