@@ -68,7 +68,7 @@ def get_wave_model(lmin, lmax, R):
 
 
 
-@lru_cache(maxsize=64)
+@lru_cache(maxsize=128)
 def get_wave_band(instru, band):
     """
     Return the wavelength grid associated with a given spectral band.

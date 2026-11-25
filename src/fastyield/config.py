@@ -306,7 +306,8 @@ config_data_METIS_LMS = {
                        'size_core':      3,                                           # Size in pixels of the FWHM  (here: side of the PSF core box)
                        'apodizers':     {"NO_SP":   ApodizerInfo(1)},                 # Available apodizers (transmission, IWA [mas])
                        'strehls':       ["MED"],                                      # Available strehls
-                       'coronagraphs':  [None, "CVC", "RAVC", "APP"],                 # Available coronagraphs
+                       #'coronagraphs':  [None, "CVC", "RAVC", "APP"],                # Available coronagraphs
+                       'coronagraphs':  ["CVC"],                                      # Available coronagraphs
                        'pxscale':        0.0082,                                      # [arcsec/px] along a slice
                        'FOV':            0.9,                                         # Field Of View [arcsec]
                        'sep_unit':       "mas",                                       # Unit for angular separation
@@ -662,8 +663,8 @@ config_data_list = [
                     config_data_HARMONI,
                     config_data_ANDES,
                     config_data_METIS_LMS,
-                    config_data_METIS_LSS,
-                    config_data_METIS_IMG,
+                    # config_data_METIS_LSS,
+                    # config_data_METIS_IMG,
                     config_data_ERIS,
                     config_data_HiRISE,
                     config_data_CRIRES,

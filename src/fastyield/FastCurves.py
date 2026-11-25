@@ -1,6 +1,6 @@
 # import FastYield modules
 from .config import instrus, bands, rad2arcsec, filter_type_default
-from .get_specs import get_transmission, get_PSF_profile, get_config_data, get_wa, get_band_lims, get_R_instru, get_logit_coronagraphic_profile_interp, get_R_corr_interp, get_bkg_flux_band
+from .get_specs import get_transmission, get_PSF_profile, get_config_data, get_wa, get_band_lims, get_R_instru, get_logit_coronagraphic_profile_interp, get_R_corr_interp, get_bkg_flux_band, is_telluric_opaque
 from .utils import airy_profile, get_r_core, power_law_extrapolation
 from .spectrum import Spectrum, get_wavelength_axis_constant_R, filtered_flux, get_mag, get_resolution, get_spectrum_instru, get_wave_band, get_spectrum_band, load_star_spectrum, load_planet_spectrum, load_vega_spectrum, get_counts_from_density
 from .signal_noise import get_DIT_RON, get_delta_cos_theta_syst, get_alpha_cos_theta_syst, get_beta, get_fn_HF_LF, get_systematics, compute_sigma_base_2_al_spat_numba, compute_sigma_base_2_al_spec_numba, compute_sigma_base_2_speck_numba, compress_h_for_sigma_base_2, compute_sigma_base_2_al_spec_fast
@@ -271,6 +271,22 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
     for nb, band in enumerate(config_data["gratings"]):
         if (band_only is not None and band != band_only) or (instru=="HARMONI" and strehl=="MED" and band not in ["H", "K"]):
             continue # If you want to calculate for band_only only
+        
+        # ------------------------------------
+        # Total system transmission in [e-/ph]
+        # ------------------------------------
+        trans = get_transmission(instru=instru, band=band, tellurics=tellurics, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, fill_value=np.nan)
+        
+        # Check whether the spectral band is observable
+        if not np.any(np.isfinite(trans) & (trans > 0)):
+            if tellurics and is_telluric_opaque(instru=instru, band=band, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph):
+                if band_only is not None:
+                    raise ValueError(f"{instru}/{band}: fully opaque telluric transmission")
+                if verbose:
+                    print_warning(f"Skipping {instru}/{band}: fully opaque telluric transmission.")
+                continue
+            raise ValueError(f"Invalid total transmission for {instru}/{band}")
+
         detector       = config_data.get("detectors", {}).get(band, config_data["detector"]) # Optional band-dependent detector (METIS N = GeoSnap)
         saturation_e   = detector["saturation_e"] # Full well capacity [e-]
         min_DIT        = detector["minDIT"]       # Minimal integration time [mn]
@@ -304,11 +320,6 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
                 mag_planet_band = get_mag(wave=wave_instru[mask_band], density_obs=planet_spectrum_density.flux[mask_band], density_vega=None, counts_vega=counts_vega)
             else:
                 mag_planet_band = None
-        
-        # ------------------------------------
-        # Total system transmission in [e-/ph]
-        # ------------------------------------
-        trans = get_transmission(instru=instru, band=band, tellurics=tellurics, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph, fill_value=np.nan)
         
         # --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
         # PSF profiles (radial mean of Ms) [FoV flux fraction/px], fraction_core [FoV flux fraction/FWHM], separation axis [sep_unit], pxscale [sep_unit/px] (+ coronagraphic radial transmission, if any)
@@ -473,6 +484,17 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
                     template_MM += - trans * Ss_HF * Sp_LF / Ss_LF    # Adding the stellar residual component (if needed)
                 template_MM     /= np.sqrt(np.nansum(template_MM**2)) # Normalizing the template
                 template         = template_MM
+
+                if not np.any(np.isfinite(trans * Mp_Sp_HF) & (trans * Mp_Sp_HF != 0)):
+                    print(
+                        f"INVALID MM SIGNAL: {planet_name} | {instru} | {band} | "
+                        f"model={planet_spectrum.model} | "
+                        f"mag_planet={mag_planet} | "
+                        f"finite Sp={np.count_nonzero(np.isfinite(Sp))}/{len(Sp)} | "
+                        f"nonzero Sp={np.count_nonzero(np.isfinite(Sp) & (Sp != 0))} | "
+                        f"finite trans={np.count_nonzero(np.isfinite(trans))}/{len(trans)}",
+                        flush=True
+                    )
 
                 # Useful signal (α) and self-subtraction (β) in [e-/DIT] (total e- over the FoV) (with systematic modulations, if any)
                 alpha, cos_theta_syst_MM = get_alpha_cos_theta_syst(Mp_Sp_HF=Mp_Sp_HF, trans=trans, template=template_MM, R=R_nyquist, Rc=Rc, filter_type=filter_type)
@@ -1208,7 +1230,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
             
             # ---- Non-coronagraphic PSF ---- 
             if coronagraph is not None:
-                H_ref, _, _, _ = get_PSF_profile(band=band, strehl=strehl, apodizer=apodizer, coronagraph=None, instru=instru, separation_planet=separation_planet, return_FastYield=return_FastYield)
+                H_ref, _, _, _ = get_PSF_profile(band=band, strehl=strehl, apodizer=apodizer, coronagraph=None, instru=instru, separation=separation)
             else:
                 H_ref = np.copy(PSF_profile)
 
@@ -1226,7 +1248,7 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
             edges[-1]   = r[-1] + 0.5 * (r[-1] - r[-2]) if len(r) > 1 else r[0]
             area        = np.pi * (edges[1:]**2 - edges[:-1]**2)
             try:
-                H_diff_ref, _, _, _ = get_PSF_profile(band=band, strehl="DL", apodizer=apodizer, coronagraph=None, instru=instru, separation_planet=separation_planet, return_FastYield=return_FastYield)
+                H_diff_ref, _, _, _ = get_PSF_profile(band=band, strehl="DL", apodizer=apodizer, coronagraph=None, instru=instru, separation=separation)
             except Exception as e:
                 if verbose:
                     print_warning(f"WARNING: Estimating the DL PSF as the Airy profile (with central obstruction): {e}")
@@ -1333,6 +1355,9 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
     if show_plot:
         plt.show()
         
+    if not name_bands:
+        raise ValueError(f"No observable spectral bands for {instru}")
+    
     IWA_FPM = np.max(iwa_FPM_bands)
         
     # ---------------------------------------
@@ -1413,6 +1438,10 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
     elif calculation == "SNR" and show_plot:
         
         if channel and instru == "MIRIMRS":
+            if band_only is not None:
+                raise ValueError("channel=True requires all MIRI MRS sub-bands")
+            if return_FastYield or return_quantity:
+                raise ValueError("channel=True is incompatible with return_FastYield and return_quantity")
             # Each MIRIMRS channel consists of 3 sub-bands (SHORT, MEDIUM, LONG).
             # To combine them, scale exposure time accordingly.
             exposure_time     = exposure_time * 3  
@@ -1424,12 +1453,15 @@ def FastCurves_process(calculation, instru, exposure_time, mag_star, band0_star,
             for ch in range(NbChannels):
                 start_idx = ch * bands_per_channel
                 end_idx   = start_idx + bands_per_channel
-                # Combine SNR curves from the 3 sub-bands via quadrature sum
-                snr_combined = np.sqrt(np.nansum(np.array(SNR_bands[start_idx:end_idx])**2, axis=0))
+                # Common separation grid for the 3 sub-bands
+                separation_ref = np.unique(np.concatenate(separation_bands[start_idx:end_idx]))
+                # Interpolate the SNR curves onto the common separation grid
+                SNR_interp = np.array([np.interp(separation_ref, sep, snr, left=np.nan, right=np.nan) for sep, snr in zip(separation_bands[start_idx:end_idx], SNR_bands[start_idx:end_idx])])
+                # Combine SNR curves via quadrature sum
+                snr_combined = np.sqrt(np.nansum(SNR_interp**2, axis=0))
+                snr_combined[np.all(np.isnan(SNR_interp), axis=0)] = np.nan
                 SNR_channels.append(snr_combined)
-                # Use the separation values from the first sub-band (SHORT) as reference
-                separation_channels.append(separation_bands[start_idx])
-                # Assign channel name for later display
+                separation_channels.append(separation_ref)
                 name_channels.append(f"Channel {ch + 1}")
             # If a planet separation is specified, find its maximum SNR
             SNR_max_planet = 0.0

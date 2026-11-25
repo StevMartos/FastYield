@@ -4,7 +4,7 @@ from fastyield.FastCurves import FastCurves
 from fastyield.FastYield_interface import FastYield_interface
 from fastyield.FastYield import planet_table_classification, planet_table_classification_histogram, planet_table_statistics, yield_plot_instrus_texp, yield_plot_bands_texp, yield_hist_instrus_ptypes, yield_hist_instrus_ptypes_ELT, yield_corner_instru, yield_corner_instrus, yield_contrast_instru, yield_contrast_ELT_earthlike, all_SNR_table, get_planet_table_SNR, yield_heatmap_ELT, yield_population_plot, yield_plot_instrus_contrast
 from fastyield.FastYield_archive import get_archive_table
-from fastyield.colormaps import colormap_bandwidth_resolution_with_constant_Nlambda, colormap_bandwidth_resolution_with_constant_Dlambda, colormap_bandwidth_Tp, colormap_bands_Tp, colormap_bands_ptypes_SNR, colormap_bands_ptypes_parameters, colormap_rv, colormap_vrot, colormap_maxsep_phase_inc
+from fastyield.colormaps import colormap_bandwidth_resolution, colormap_bandwidth_Tp, colormap_bands_Tp, colormap_bands_ptypes_SNR, colormap_bands_ptypes_parameters, colormap_rv, colormap_vrot, colormap_maxsep_phase_inc
 
 # Required if FASTYIELD_SIM_DATA_PATH is not defined:
 # set the path to your local FastYield sim_data directory.
@@ -81,6 +81,8 @@ if __name__ == "__main__":
     # all_SNR_table(table="Archive", instrus=instrus[5:]) # ~ 15 hours
     # all_SNR_table(table="Archive", instrus=["MIRIMRS", "NIRCam", "NIRSpec", "VIPAPYRUS"])
     
+    all_SNR_table(table="Archive", instrus=["METIS_LMS"]) # ~ 15 hours
+
     # get_planet_table_SNR(instru="HARMONI", table="Archive", thermal_model="auto", reflected_model="auto",  apodizer="NO_SP",   strehl="JQ1", coronagraph=None, systematics=False) # ~ 3mn
     # get_planet_table_SNR(instru="HARMONI", table="Archive", thermal_model="auto", reflected_model="auto",  apodizer="SP_Prox", strehl="JQ1", coronagraph=None, systematics=False) # ~ 3mn
     # get_planet_table_SNR(instru="HARMONI", table="Archive", thermal_model="auto", reflected_model="auto",  apodizer="SP1",     strehl="JQ1", coronagraph=None, systematics=False) # ~ 3mn
@@ -136,9 +138,9 @@ if __name__ == "__main__":
     #                                Colormaps:                                    #
     #------------------------------------------------------------------------------#
     
-    # colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_planet=1000, T_star=6000, delta_rv=30, spectrum_contributions="thermal", model="BT-Settl", Rc=100, filter_type="gaussian", noise_regime="photon")
-    # colormap_bandwidth_resolution_with_constant_Dlambda(instru="HARMONI", T_planet=1000, T_star=6000, delta_rv=30, vsini_planet=100, spectrum_contributions="thermal", model="BT-Settl", Rc=100, filter_type="gaussian", noise_regime="photon")
-    
+    # colormap_bandwidth_resolution(instru="HARMONI", T_planet=1000, T_star=6000, delta_rv=30, spectrum_contributions="thermal", model="BT-Settl", Rc=100, filter_type="gaussian", noise_regime="photon", fixed="Nl")
+    # colormap_bandwidth_resolution(instru="HARMONI", T_planet=1000, T_star=6000, delta_rv=30, spectrum_contributions="thermal", model="BT-Settl", Rc=100, filter_type="gaussian", noise_regime="photon", fixed="Dl")
+
     # colormap_bandwidth_Tp(instru="HARMONI", T_star=5000, delta_rv=30, spectrum_contributions="reflected", model="PICASO albedo(gas giant)",  Rc=100, filter_type="gaussian", stellar_halo_photon_noise_limited=True)
     # colormap_bandwidth_Tp(instru="HARMONI", T_star=5000, delta_rv=30, spectrum_contributions="reflected", model="PICASO albedo(earth like)", Rc=100, filter_type="gaussian", stellar_halo_photon_noise_limited=True)
     # colormap_bandwidth_Tp(instru="HARMONI", T_star=5000, delta_rv=30, spectrum_contributions="thermal",   model="BT-Settl",                  Rc=100, filter_type="gaussian", stellar_halo_photon_noise_limited=True)

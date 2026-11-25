@@ -42,10 +42,41 @@ def _init_cm_ctx(ctx):
 
 
 #
-# GAIN_SNR(Bandwidth vs Resolution) (with constant Nlambda)
+# GAIN_SNR(Bandwidth vs Resolution) (with constant Nlambda or constant Dlambda)
 #
 
-def colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_planet=T_earth, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, delta_rv=drv_earth, vsini_planet=vrot_earth, vsini_star=vrot_sun, spectrum_contributions="reflected", model="tellurics", airmass=airmass_earth, Rc=100, filter_type=filter_type_default, noise_regime="photon", Nlambda=None, title=None, title_weight=None, save=False, num=100):
+def colormap_bandwidth_resolution(instru="HARMONI", T_planet=T_earth, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, delta_rv=drv_earth, vsini_planet=vrot_earth, vsini_star=vrot_sun, spectrum_contributions="reflected", model="tellurics", airmass=airmass_earth, Rc=100, filter_type=filter_type_default, noise_regime="photon", Nlambda=None, title=None, title_weight=None, save=False, num=100, fixed="Nl", Dlambda=None):
+    """
+    Normalized molecular-mapping S/N versus central wavelength and resolution.
+
+    fixed="Nl": keep the number of Nyquist-sampled spectral channels fixed.
+                The wavelength interval is centered in ln(lambda), so its
+                edges are l0 * exp(+-Nlambda/(4*R)).
+    fixed="Dl": keep a fixed linear wavelength coverage Dlambda [micrometers].
+                Its edges are l0 +- Dlambda/2.
+
+    If omitted, Nlambda or Dlambda is estimated from the instrument gratings
+    (median channel count or median grating width). With instru="all", an
+    explicit Dlambda is required for fixed="Dl". A ground-based telluric
+    spectrum is included in either mode; fixed="Dl" is an idealized
+    contiguous window, not necessarily an available instrument setting.
+
+    Returns
+    -------
+    l0_arr, R_arr, SNR, lost_signal, signal, sigma, planet, star
+        SNR and signal are normalized; lost_signal = beta/alpha is not.
+        The output convention is identical for both fixed modes.
+    """
+
+    if not isinstance(fixed, str):
+        raise ValueError("fixed must be 'Nl' or 'Dl'")
+    fixed = fixed.strip().lower()
+    if fixed not in ("nl", "dl"):
+        raise ValueError("fixed must be 'Nl' or 'Dl'")
+    if fixed == "nl" and Dlambda is not None:
+        raise ValueError("Dlambda is only used when fixed='Dl'")
+    if fixed == "dl" and Nlambda is not None:
+        raise ValueError("Nlambda is only used when fixed='Nl'")
     
     # Get instru specs
     if instru != "all":
@@ -53,30 +84,46 @@ def colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_plan
         if config_data["type"] == "imager":
             raise KeyError(f"{instru} is not a spectrograph but an {config_data['type']}")
     
-    # tellurics (or not)
-    #if instru=="all" or config_data["base"]=="space":
+    # Tellurics (or not)
     if instru != "all" and config_data["base"]=="space":
         tellurics = False
     else:
         tellurics = True
         
-    # Number of pixels (spectral channels/bins) considered to sample a spectrum
-    if Nlambda is not None:
-        Nl = Nlambda
-    else:
-        if instru=="all":
+    # Spectral format: fixed number of channels or fixed wavelength coverage
+    if fixed == "nl":
+        if Nlambda is not None:
+            if not np.isfinite(Nlambda) or Nlambda != int(Nlambda):
+                raise ValueError("Nlambda must be a finite integer")
+            Nl = int(Nlambda)
+        elif instru == "all":
             Nl = 4096
         else:
-            Nl = np.zeros((len(config_data["gratings"])))
-            for iband, band in enumerate(config_data["gratings"]):
-                Nl[iband] = len(get_wave_band(instru=instru, band=band))
-            Nl = int(round(np.nanmedian(Nl)))
-    
-    # Global model-bandwidth (with constant dl step, must be evenly spaced in order to create the model spectra, for the rotational broadening with Vsini)
-    lmin = 0.4
+            Nl = int(round(np.nanmedian([
+                len(get_wave_band(instru=instru, band=band))
+                for band in config_data["gratings"]
+            ])))
+        if Nl < 2:
+            raise ValueError("Nlambda must be at least 2")
+        Dl = None
+    else:
+        if Dlambda is not None:
+            Dl = float(Dlambda)
+        elif instru == "all":
+            raise ValueError("Dlambda must be provided when fixed='Dl' and instru='all'")
+        else:
+            Dl = float(np.nanmedian([
+                config_data["gratings"][band].lmax - config_data["gratings"][band].lmin
+                for band in config_data["gratings"]
+            ]))
+        if not np.isfinite(Dl) or Dl <= 0:
+            raise ValueError("Dlambda must be finite and strictly positive [µm]")
+        Nl = None
+
+    # Global model wavelength grid (constant dl for rotational broadening)
+    lmin = 0.1
     if spectrum_contributions == "reflected" or tellurics:
         lmax = 3
-        #lmax = 6 # [µm]
     else:
         lmax = 12 # [µm]    
     lmin_model = 0.9*lmin                                    # [µm] a bit larger for doppler shifts and to avoid edge effects
@@ -117,7 +164,7 @@ def colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_plan
     
     # Tellurics transmission spectrum (from SkyCalc), if needed  
     if tellurics:
-        wave_tell, trans_tell = load_tell_trans(airmass=1.0)
+        wave_tell, trans_tell = load_tell_trans(airmass=1.2)
         trans_tell            = Spectrum(wavelength=wave_tell, flux=trans_tell).interpolate_wavelength(wave_output=wave_instru, renorm=False, fill_value=(trans_tell[0], trans_tell[-1])) 
     else:
         trans_tell = None
@@ -132,35 +179,33 @@ def colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_plan
     
     # Global context worker
     global _CM_CTX
-    _CM_CTX = dict(R_arr=R_arr, Nl=Nl, lmin_model=lmin_model, lmax_model=lmax_model, planet=planet, star=star, trans_tell=trans_tell, l0_arr=l0_arr, Rc=Rc, filter_type=filter_type, noise_regime=noise_regime)
-    
-    # # Debugging
-    # for i in tqdm(range(num)):
-    #     process_colormap_bandwidth_resolution_with_constant_Nlambda(i)
+    _CM_CTX = dict(R_arr=R_arr, fixed=fixed, Nl=Nl, Dl=Dl, lmin_model=lmin_model, lmax_model=lmax_model, planet=planet, star=star, trans_tell=trans_tell, l0_arr=l0_arr, Rc=Rc, filter_type=filter_type, noise_regime=noise_regime)
     
     # Parallel calculations
     print()
     with Pool(processes=cpu_count(), initializer=_init_cm_ctx, initargs=(_CM_CTX,)) as pool:
-        for (i, SNR_1D, lost_signal_1D, signal_1D, sigma_1D) in tqdm(pool.imap_unordered(process_colormap_bandwidth_resolution_with_constant_Nlambda, range(num)), total=num, desc=f"colormap_bandwidth_resolution_with_constant_Nlambda(instru={instru}, model={model}, Rc={Rc})",):
+        for (i, SNR_1D, lost_signal_1D, signal_1D, sigma_1D) in tqdm(pool.imap_unordered(process_colormap_bandwidth_resolution, range(num)), total=num, desc=f"colormap_bandwidth_resolution(instru={instru}, fixed={fixed}, model={model}, Rc={Rc})",):
             SNR[i, :]         = SNR_1D
             lost_signal[i, :] = lost_signal_1D
             signal[i, :]      = signal_1D
             sigma[i, :]       = sigma_1D 
 
-    # Normalizing
-    SNR         = np.nan_to_num(SNR / np.nanmax(SNR))
+    # Normalizing (the same convention for both spectral-format choices)
+    max_SNR    = np.nanmax(SNR)    if np.any(np.isfinite(SNR))    else np.nan
+    max_signal = np.nanmax(signal) if np.any(np.isfinite(signal)) else np.nan
+    SNR        = np.nan_to_num(SNR / max_SNR)       if np.isfinite(max_SNR)    and max_SNR > 0    else np.zeros_like(SNR)
     lost_signal = np.nan_to_num(lost_signal)
-    signal      = np.nan_to_num(signal / np.nanmax(signal))
-    
+    signal     = np.nan_to_num(signal / max_signal) if np.isfinite(max_signal) and max_signal > 0 else np.zeros_like(signal)
+
     # Plots
     for plot in plots_colormaps:
         plt.figure(figsize=(10, 6), dpi=300)
         plt.yscale('log')
-        plt.xlabel(r"Central wavelength $\lambda_0$ [$\mu$m]", fontsize=16)
-        plt.ylabel("Spectral resolution $R$",                  fontsize=16)
+        plt.xlabel(r"Central wavelength $\lambda_0$ [$\mu$m]", fontsize=18)
+        plt.ylabel("Spectral resolution $R$",                  fontsize=18)
         plt.ylim(R_arr[0], R_arr[-1])
         plt.xlim(lmin, lmax)
-        plt.tick_params(axis='both', which='major', labelsize=14)
+        plt.tick_params(axis='both', which='major', labelsize=16)
         plt.minorticks_on()
         
         if plot == "SNR":
@@ -177,24 +222,24 @@ def colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_plan
         
         # Contours
         cs = plt.contour(l0_arr, R_arr, data, levels=contour_levels, colors='k', linewidths=0.5, alpha=0.7)
-        plt.clabel(cs, inline=True, fontsize=8, fmt="%d%%")
+        plt.clabel(cs, inline=True, fontsize=10, fmt="%d%%")
         
         # Colorbar
-        ax = plt.gca()
+        ax   = plt.gca()
         cbar = plt.colorbar(mesh, ax=ax, pad=0.03, shrink=1)
         cbar.minorticks_on()
         cbar.set_ticks(contour_levels)
-        cbar.ax.tick_params(labelsize=14)
-        cbar.set_label(cbar_label, rotation=270, labelpad=16, fontsize=16)
+        cbar.ax.tick_params(labelsize=16)
+        cbar.set_label(cbar_label, rotation=270, labelpad=18, fontsize=18)
         
         # Title
         if title is None:
             tell       = "with tellurics absorption" if tellurics else "without tellurics absorption"
-            title_text = (f"{'S/N' if plot=='SNR' else 'Lost signal'} fluctuations in {noise_regime} noise regime ({tell}) \n in {spectrum_contributions} light ({model}-model), $T_*$={T_star:.0f}K, $T_p$={T_planet:.0f}K, "r"$\Delta$rv="f"{delta_rv:.0f}km/s, "r"$N_\lambda$="f"{Nl:.0f}")
+            format_text = rf"$N_\lambda={Nl:d}$" if fixed == "nl" else rf"$\Delta\lambda={Dl:.2f}\,\mu\mathrm{{m}}$"
+            title_text = (f"{'S/N' if plot=='SNR' else 'Lost signal'} fluctuations in {noise_regime} noise regime ({tell}) \n in {spectrum_contributions} light ({model}-model), $T_*$={T_star:.0f}K, $T_p$={T_planet:.0f}K, "r"$\Delta$rv="f"{delta_rv:.0f}km/s, {format_text}")
         else:
             title_text = title
-        plt.title(title_text, weight=title_weight, fontsize=16, pad=14)
-        #plt.title(r"$N_\lambda$="f"{np.round(Nl, -2):.0f} channels", fontsize=20, pad=14)
+        plt.title(title_text, weight=title_weight, fontsize=20, pad=14)
 
         # Scatter & errorbars for bands
         if instru=="all":
@@ -235,15 +280,16 @@ def colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_plan
                 x_dl.append(Dl_band / 2)
             plt.errorbar(x_instru, y_instru, xerr=x_dl, fmt='o', color='k', linestyle='None', capsize=5, label=f"{instru}")
             for i, l in enumerate(labels):
-                plt.annotate(l, (x_instru[i], 1.2*y_instru[i]), ha='center', fontsize=12, fontweight="bold")
+                plt.annotate(l, (x_instru[i], 1.2*y_instru[i]), ha='center', fontsize=16, fontweight="bold")
 
-        plt.legend(fontsize=14, loc="lower right", frameon=True, edgecolor="gray", facecolor="whitesmoke")        
+        plt.legend(fontsize=18, loc="lower right", frameon=True, edgecolor="gray", facecolor="whitesmoke")        
         plt.tight_layout()
         
         if save:
             output_dir = Path(colormaps_path) / "colormaps_bandwidth_resolution"
             output_dir.mkdir(parents=True, exist_ok=True)
-            filename = f"colormaps_bandwidth_resolution/Colormap_bandwidth_resolution_with_constant_Nlambda_{plot}_{instru}_{spectrum_contributions}_{model}_Rc{Rc:.0f}_Tp{T_planet:.0f}K_Ts{T_star:.0f}K_drv{delta_rv:.0f}kms_broad{vsini_planet:.0f}kms_Nl{Nl:.0f}_{noise_regime}"
+            format_tag = f"Nl{Nl:d}" if fixed == "nl" else f"Dl{Dl:.3f}um"
+            filename = f"Colormap_bandwidth_resolution_{fixed}_{plot}_{instru}_{spectrum_contributions}_{model}_Rc{Rc:.0f}_Tp{T_planet:.0f}K_Ts{T_star:.0f}K_drv{delta_rv:.0f}kms_broad{vsini_planet:.0f}kms_{format_tag}_{noise_regime}"
             if tellurics:
                 filename += "_with_tellurics"
             output_path = output_dir / f"{filename}.png"
@@ -253,10 +299,12 @@ def colormap_bandwidth_resolution_with_constant_Nlambda(instru="HARMONI", T_plan
         
     return l0_arr, R_arr, SNR, lost_signal, signal, sigma, planet, star
 
-def process_colormap_bandwidth_resolution_with_constant_Nlambda(i):
+def process_colormap_bandwidth_resolution(i):
     
     R_arr                             = _CM_CTX["R_arr"]
+    fixed                             = _CM_CTX["fixed"]
     Nl                                = _CM_CTX["Nl"]
+    Dl                                = _CM_CTX["Dl"]
     lmin_model                        = _CM_CTX["lmin_model"]
     lmax_model                        = _CM_CTX["lmax_model"]
     planet                            = _CM_CTX["planet"] # propto [ph/µm]
@@ -265,7 +313,7 @@ def process_colormap_bandwidth_resolution_with_constant_Nlambda(i):
     l0_arr                            = _CM_CTX["l0_arr"]
     Rc                                = _CM_CTX["Rc"]
     filter_type                       = _CM_CTX["filter_type"]
-    noise_regime = _CM_CTX["noise_regime"]
+    noise_regime                      = _CM_CTX["noise_regime"]
 
     R = R_arr[i]
     
@@ -289,11 +337,10 @@ def process_colormap_bandwidth_resolution_with_constant_Nlambda(i):
     wave_R  = lmin_model * np.exp(np.arange(n) * dln)             # [µm]
     dwave_R = np.gradient(wave_R)                                 # [µm/bin]
 
-    # --- Build, for each (l0, Nl), the index range of a contiguous spectral window ---
-    # On a log-λ grid, a window of Nl pixels corresponds to a multiplicative span in λ.
-    # Half-window in ln(λ) is: half = (Nl/2) * Δln(λ)
-    half = Nl * dln / 2
-    
+    # Fixed Nlambda: half-window in ln(lambda); fixed Dlambda: half-width in µm
+    if fixed == "nl":
+        half = Nl * dln / 2
+
     # Degrading to wave_R and converting from [ph/µm] to [ph]
     planet_R = planet.degrade_resolution(wave_R, renorm=False, filter_type=filter_type).flux # [ph/µm]
     star_R   = star.degrade_resolution(wave_R,   renorm=False, filter_type=filter_type).flux # [ph/µm]
@@ -309,14 +356,18 @@ def process_colormap_bandwidth_resolution_with_constant_Nlambda(i):
     sigma_1D       = np.zeros((len(l0_arr))) + np.nan
     for j, l0 in enumerate(l0_arr):
         
-        # Convert the ±half span in ln(λ) into wavelength bounds around the central wavelength λ0:
-        l0_min = l0 * np.exp(-half)
-        l0_max = l0 * np.exp(+half)
-        
-        # # Keeping only the cases inside the model range
-        # if (l0_min < lmin_model) or (l0_max > lmax_model):
-        #     continue
-        
+        # Spectral-window bounds for the selected format constraint
+        if fixed == "nl":
+            l0_min = l0 * np.exp(-half)
+            l0_max = l0 * np.exp(+half)
+        else:
+            l0_min = l0 - Dl/2
+            l0_max = l0 + Dl/2
+
+        # Keep the original boundary clipping, while rejecting empty windows
+        if l0_max <= wave_R[0] or l0_min >= wave_R[-1]:
+            continue
+
         idx_lo = np.searchsorted(wave_R, l0_min, side="left")
         idx_hi = np.searchsorted(wave_R, l0_max, side="right")
         idx_lo = np.clip(idx_lo, 0, len(wave_R)-1)
@@ -344,286 +395,20 @@ def process_colormap_bandwidth_resolution_with_constant_Nlambda(i):
         beta      = np.nansum(trans*star_HF*planet_LF/star_LF * template)
         if "photon" in noise_regime or "halo" in noise_regime:
             sigma_CCF = np.sqrt(np.nansum(trans*star_R_crop * template**2)) # stellar halo photon noise
-            #sigma     = np.sqrt(trans*star_R_crop)
         elif "RON" in noise_regime or "detector" in noise_regime:
             sigma_CCF = 1. # wavelength and resolution-independent limiting noise (e.g. RON and dark current - detector noise - domination)                
-            #sigma     = np.ones_like(template)
         elif "systematic" in noise_regime:
             h         = trans*star_R_crop * template
             sigma_CCF = np.sqrt(compute_sigma_base_2_al_spec_fast(h=h))
         
-        #from .signal_noise import get_fn_MM, get_fn_MM_exact, get_fn_HF_LF
-        #fn_MM, _          = get_fn_HF_LF(N=len(template), R=R, Rc=Rc, filter_type=filter_type, empirical=False)
-        #fn_MM             = get_fn_MM_exact(trans=trans, Ss=star_R_crop, template=template, R=R, Rc=Rc, filter_type=filter_type, sigma=sigma)
-        #fn_MM             = get_fn_MM(template=template, R=R, Rc=Rc, filter_type=filter_type, sigma=sigma)
-        #sigma_CCF        *= np.sqrt(fn_MM)
-        
-        SNR_1D[j]         = (alpha - beta) / (sigma_CCF)
-        lost_signal_1D[j] = beta / alpha
+        if not np.isfinite(sigma_CCF) or sigma_CCF <= 0:
+            continue
+        SNR_1D[j]         = (alpha - beta) / sigma_CCF
+        lost_signal_1D[j] = beta / alpha if np.isfinite(alpha) and alpha != 0 else np.nan
         signal_1D[j]      = alpha - beta
         sigma_1D[j]       = sigma_CCF
     
     return i, SNR_1D, lost_signal_1D, signal_1D, sigma_1D
-
-
-
-#
-# GAIN_SNR(Bandwidth vs Resolution) (with constant Dlambda)
-#
-
-def colormap_bandwidth_resolution_with_constant_Dlambda(instru="HARMONI", T_planet=T_earth, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, delta_rv=drv_earth, vsini_planet=vrot_earth, vsini_star=vrot_earth, spectrum_contributions="reflected", model="tellurics", airmass=airmass_earth, Rc=100, filter_type=filter_type_default, noise_regime="photon", save=False, num=100):
-    
-    # Get instru specs
-    config_data = get_config_data(instru)
-    if config_data["type"]=="imager":
-        raise KeyError(f"{instru} is not a spectrograph but an {config_data['type']}")
-
-    # tellurics (or not)
-    if config_data["base"]=="space":
-        tellurics = False
-    else:
-        tellurics = True
-    
-    # Bandwidth considered to sample a spectrum
-    Dl = np.zeros((len(config_data["gratings"])))
-    for iband, band in enumerate(config_data["gratings"]):
-        Dl[iband] = config_data["gratings"][band].lmax - config_data["gratings"][band].lmin
-    Dl = np.nanmedian(Dl)
-    
-    # Global model-bandwidth (with constant dl step, must be evenly spaced in order to create the model spectra, for the rotational broadening with Vsini)
-    lmin = 0.6
-    if spectrum_contributions == "reflected" or tellurics :
-        lmax = 3  # [µm]
-    else:
-        lmax = 12 # [µm]      
-    lmin_model = 0.9*lmin                                    # [µm] a bit larger for doppler shifts and to avoid edge effects
-    lmax_model = 1.1*lmax                                    # [µm] a bit larger for doppler shifts and to avoid edge effects
-    dl_model   = lmin_model / (2*R_model)                    # [µm/bin] Nyquist sampling of a spectrum with max resolving power R_model: 2 samples per resolution element at lmin_model
-    wave_model = np.arange(lmin_model, lmax_model, dl_model) # [µm] Model wavelength axis (with constant dl step)
-    
-    # Global instru-bandwidth (with constant resolution R_model) (intermediate wavelength axis with constant sampling resolution, between wave_model and wave_res)
-    wave_instru = get_wavelength_axis_constant_R(lmin=lmin_model, lmax=lmax_model, R=R_model) # [µm] Model wavelength axis (with constant spectral resolution R_model)
-    
-    # Effective model range
-    lmin_model = max(wave_model[0],  wave_instru[0])  # [µm] effective lmin 
-    lmax_model = min(wave_model[-1], wave_instru[-1]) # [µm] effective lmax 
-    
-    # Getting star spectrum in [J/s/m2/µm]
-    star_spectrum = load_star_spectrum(T_star, lg_star)
-    star_spectrum = star_spectrum.interpolate_wavelength(wave_model, renorm=False)  # Interpolating on wave_model (constant dl)
-    star_spectrum = star_spectrum.broad(vsini_star)                                 # Broadening the spectrum
-    star          = star_spectrum.interpolate_wavelength(wave_instru, renorm=False) # Interpolating on wave_instru (constant R_model)
-    
-    # Getting planet spectrum in [J/s/m2/µm]
-    if spectrum_contributions=="reflected":
-        albedo_spectrum = load_albedo_spectrum(T_planet, lg_planet, model=model, airmass=airmass)
-        albedo_spectrum = albedo_spectrum.interpolate_wavelength(wave_model, renorm=False) # Interpolating on wave_model (constant dl)
-        planet_spectrum = Spectrum(wavelength=wave_model, flux=albedo_spectrum.flux*star_spectrum.flux, R=np.maximum.reduce([star_spectrum.R, albedo_spectrum.R]), T=T_planet, lg=lg_planet, model=model, rv=0, vsini=0)
-    elif spectrum_contributions=="thermal":
-        planet_spectrum = load_planet_spectrum(T_planet, lg_planet, model, instru=instru)
-        planet_spectrum = planet_spectrum.interpolate_wavelength(wave_model, renorm=False) # Interpolating on wave_model (constant dl)
-    else:
-        raise ValueError("spectrum_contributions must be 'reflected' or 'thermal'")
-    planet_spectrum = planet_spectrum.broad(vsini_planet)                               # Broadening the spectrum
-    planet_spectrum = planet_spectrum.doppler_shift(delta_rv)                           # Shifting the spectrum
-    planet          = planet_spectrum.interpolate_wavelength(wave_instru, renorm=False) # Interpolating on wave_instru (constant R_model)
-
-    # To be homogenous to photons
-    star.flux   = star.flux   * wave_instru # [J/s/m2/µm] => propto [ph/µm]
-    planet.flux = planet.flux * wave_instru # [J/s/m2/µm] => propto [ph/µm]
-    
-    # Tellurics transmission spectrum (from SkyCalc), if needed  
-    if tellurics :
-        wave_tell, trans_tell = load_tell_trans(airmass=1.0)
-        trans_tell            = Spectrum(wavelength=wave_tell, flux=trans_tell).interpolate_wavelength(wave_output=wave_instru, renorm=False, fill_value=(trans_tell[0], trans_tell[-1])) 
-    else:
-        trans_tell = None
-    
-    # Defining arrays
-    R_arr       = np.logspace(np.log10(Rc), np.log10(R_model), num=num)
-    l0_arr      = np.linspace(lmin,         lmax,              num=num)
-    SNR         = np.zeros((num, num))
-    lost_signal = np.zeros((num, num))
-    
-    # Global context worker
-    global _CM_CTX
-    _CM_CTX = dict(R_arr=R_arr, Dl=Dl, lmin_model=lmin_model, lmax_model=lmax_model, planet=planet, star=star, trans_tell=trans_tell, l0_arr=l0_arr, Rc=Rc, filter_type=filter_type, noise_regime=noise_regime)
-    
-    # Parallel calculations
-    print()
-    with Pool(processes=cpu_count(), initializer=_init_cm_ctx, initargs=(_CM_CTX,)) as pool:
-        for (i, SNR_1D, lost_signal_1D) in tqdm(pool.imap_unordered(process_colormap_bandwidth_resolution_with_constant_Dlambda, range(num)), total=num, desc=f"colormap_bandwidth_resolution_with_constant_Dlambda(instru={instru}, model={model}, Rc={Rc})",):
-            SNR[i, :]         = SNR_1D
-            lost_signal[i, :] = lost_signal_1D
-    
-    # Normalizing
-    SNR = SNR / np.nanmax(SNR)
-    
-    # Plots
-    for plot in plots_colormaps:
-        plt.figure(figsize=(10, 6), dpi=300)
-        plt.yscale('log')
-        plt.xlabel(r"Central wavelength $\lambda_0$ [$\mu$m]", fontsize=14)
-        plt.ylabel("Spectral resolution $R$", fontsize=14)
-        plt.ylim([R_arr[0], R_arr[-1]])
-        plt.xlim(lmin, lmax)
-        plt.tick_params(axis='both', which='major', labelsize=12)
-        plt.minorticks_on()
-        
-        if plot == "SNR":
-            data       = 100 * SNR
-            cmap       = plt.get_cmap(cmap_colormaps)
-            cbar_label = '$GAIN_{S/N}$ [%]'
-        else:
-            data = 100 * lost_signal
-            cmap = plt.get_cmap(cmap_colormaps+'_r')
-            cbar_label = r'Lost signal $\beta/\alpha$ [%]'
-        
-        # Heatmap with pcolormesh
-        mesh = plt.pcolormesh(l0_arr, R_arr, data, cmap=cmap, shading='auto', vmin=0, vmax=100)
-        
-        # Contours
-        cs = plt.contour(l0_arr, R_arr, data, levels=contour_levels, colors='k', linewidths=0.5, alpha=0.7)
-        plt.clabel(cs, inline=True, fontsize=8, fmt="%d%%")
-        
-        # Colorbar
-        ax = plt.gca()
-        cbar = plt.colorbar(mesh, ax=ax, pad=0.03, shrink=1)
-        cbar.minorticks_on()
-        cbar.set_ticks(contour_levels)
-        cbar.ax.tick_params(labelsize=12)
-        cbar.set_label(cbar_label, rotation=270, labelpad=14, fontsize=14)
-        
-        # Title
-        tell         = "with tellurics absorption" if tellurics else "without tellurics absorption"
-        title_text   = (f"{'S/N' if plot=='SNR' else 'Lost signal'} fluctuations in {noise_regime} ({tell}) \n in {spectrum_contributions} light ({model}-model), $T_*$={T_star:.0f}K, $T_p$={T_planet:.0f}K, "r"$\Delta$rv="f"{delta_rv:.0f}km/s, "r"$\Delta\lambda$="f"{Dl:.2f}µm")
-        plt.title(title_text, fontsize=16, pad=14)
-        
-        # Scatter & errorbars for bands
-        x_instru, y_instru, labels, x_dl = [], [], [], []
-        for iband, band in enumerate(config_data['gratings']):
-            if (instru=="MIRIMRS" or instru=="HARMONI") and  band != "H_high":
-                labels.append(band[:2])
-            elif instru=="ANDES" and iband==0:
-                labels.append(band[:3])
-            else:
-                labels.append(band.replace('_', ' '))
-            R_band    = config_data['gratings'][band].R
-            lmin_band = config_data['gratings'][band].lmin
-            lmax_band = config_data['gratings'][band].lmax
-            l0_band   = (lmax_band + lmin_band) / 2
-            Dl_band   = lmax_band - lmin_band
-            x_instru.append(l0_band)
-            y_instru.append(R_band)
-            x_dl.append(Dl_band / 2)
-        plt.errorbar(x_instru, y_instru, xerr=x_dl, fmt='o', color='k', linestyle='None', capsize=5, label=f"{instru} bands")
-        for i, l in enumerate(labels):
-            plt.annotate(l, (x_instru[i], 1.2*y_instru[i]), ha='center', fontsize=12)
-        plt.legend(fontsize=14, loc="upper left", frameon=True, edgecolor="gray", facecolor="whitesmoke")        
-        plt.tight_layout()
-        
-        if save:
-            output_dir = Path(colormaps_path) / "colormaps_bandwidth_resolution"
-            output_dir.mkdir(parents=True, exist_ok=True)
-            filename = f"colormaps_bandwidth_resolution/Colormap_bandwidth_resolution_with_constant_Dlambda_{plot}_{instru}_{spectrum_contributions}_{model}_Rc{Rc}_Tp{T_planet}K_Ts{T_star}K_drv{delta_rv}kms_broad{vsini_planet}kms_Dl{Dl}um_{noise_regime.replace(' ', '_')}"
-            if tellurics:
-                filename += "_with_tellurics"
-            output_path = output_dir / f"{filename}.png"
-            plt.savefig(output_path, format="png", bbox_inches="tight")
-
-        plt.show()
-        
-    return l0_arr, R_arr, SNR, lost_signal
-
-def process_colormap_bandwidth_resolution_with_constant_Dlambda(i):
-    
-    R_arr        = _CM_CTX["R_arr"]
-    Dl           = _CM_CTX["Dl"]
-    lmin_model   = _CM_CTX["lmin_model"]
-    lmax_model   = _CM_CTX["lmax_model"]
-    planet       = _CM_CTX["planet"] # propto [ph/µm]
-    star         = _CM_CTX["star"]   # propto [ph/µm]
-    trans_tell   = _CM_CTX["trans_tell"]
-    l0_arr       = _CM_CTX["l0_arr"]
-    Rc           = _CM_CTX["Rc"]
-    filter_type  = _CM_CTX["filter_type"]
-    noise_regime = _CM_CTX["noise_regime"]
-    
-    R = R_arr[i]
-    
-    # --- Build a wavelength grid with *constant resolving power* R = res ---
-    # For a spectrograph with resolving power R, one resolution element is:
-    #   Δλ_res = λ / R
-    # Nyquist sampling requires 2 samples per resolution element, hence a pixel step:
-    #   Δλ_pix ≈ (λ / R) / 2  =>  Δλ_pix / λ ≈ 1 / (2R)
-    # This means the natural uniform grid is in ln(λ), with constant step: dln(λ)/dλ = 1/λ => dln(λ) = dλ/λ = 1 / (2R)
-    #   Δln(λ) = ln(λ_{i+1}) - ln(λ_i) ≈ Δλ_pix / λ ≈ 1/(2R) = constant
-    dln = 1.0 / (2.0 * R)
-    
-    # Number of samples needed to cover [lmin_model, lmax_model] with that constant Δln(λ)
-    # ln(λ_i) = ln(λ_min) + k*Δln(λ) => λ_i = λ_min * exp(k*Δln(λ))
-    # If we have n points, it means that we have n - 1 between l_min and l_max
-    # because: ln(l_max/l_min) = (n-1) * dln  =>  n ≈ ln(l_max/l_min)/dln + 1
-    n = int(np.floor(np.log(lmax_model / lmin_model) / dln)) + 1
-    
-    # Log-uniform wavelength grid: λ_i = λ_min * exp(i * Δln(λ))
-    # This keeps λ/Δλ (i.e., R) approximately constant across the whole band.
-    wave_R  = lmin_model * np.exp(np.arange(n) * dln)             # [µm]
-    dwave_R = np.gradient(wave_R)                                 # [µm/bin]
-    
-    # Degrading to wave_R and converting from [ph/µm] to [ph]
-    planet_R = planet.degrade_resolution(wave_R, renorm=False, filter_type=filter_type).flux # [ph/µm]
-    star_R   = star.degrade_resolution(wave_R,   renorm=False, filter_type=filter_type).flux # [ph/µm]
-    planet_R = planet_R * dwave_R # [ph/µm] => [ph/bin]
-    star_R   = star_R   * dwave_R # [ph/µm] => [ph/bin]
-    
-    if trans_tell is not None:
-        trans_tell_R = trans_tell.degrade_resolution(wave_R, renorm=False, filter_type=filter_type).flux
-    
-    SNR_1D         = np.zeros((len(l0_arr))) + np.nan
-    lost_signal_1D = np.zeros((len(l0_arr))) + np.nan
-    for j, l0 in enumerate(l0_arr):
-        
-        # Ranges
-        l0_min = l0 - Dl/2
-        l0_max = l0 + Dl/2
-        
-        # # Keeping only the cases inside the model range
-        # if (l0_min < lmin_model) or (l0_max > lmax_model):
-        #     continue
-        
-        idx_lo = np.searchsorted(wave_R, l0_min, side="left")
-        idx_hi = np.searchsorted(wave_R, l0_max, side="right")
-        idx_lo = np.clip(idx_lo, 0, len(wave_R)-1)
-        idx_hi = np.clip(idx_hi, 1, len(wave_R))
-        idx_hi = np.maximum(idx_hi, idx_lo + 1)
-        sl     = slice(idx_lo, idx_hi)        
-        
-        if trans_tell is not None:
-            trans = trans_tell_R[sl]
-        else:
-            trans = 1 
-        star_R_crop          = star_R[sl]
-        planet_R_crop        = planet_R[sl]
-        planet_HF, planet_LF = filtered_flux(planet_R_crop, R=R, Rc=Rc, filter_type=filter_type)
-        star_HF, star_LF     = filtered_flux(star_R_crop,   R=R, Rc=Rc, filter_type=filter_type)
-        template             = trans*planet_HF 
-        template             = template / np.sqrt(np.nansum(template**2))
-        alpha                = np.nansum(trans*planet_HF * template)
-        beta                 = np.nansum(trans*star_HF*planet_LF/star_LF * template)
-        
-        if noise_regime in ("photon", "halo"):
-            sigma_CCF = np.sqrt(np.nansum(trans * star_R_crop * template**2))
-        elif noise_regime in ("RON", "ron", "detector"):
-            sigma_CCF = 1.
-        elif noise_regime == "systematic":
-            h         = trans * star_R_crop * template
-            sigma_CCF = np.sqrt(compute_sigma_base_2_al_spec_fast(h=h))
-        
-        SNR_1D[j]         = (alpha - beta) / sigma_CCF
-        lost_signal_1D[j] = beta / alpha
-                    
-    return i, SNR_1D, lost_signal_1D
 
 
 
@@ -680,7 +465,7 @@ def colormap_bandwidth_Tp(instru, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_s
         
     # Tellurics transmission spectrum (from SkyCalc), if needed  
     if tellurics :
-        wave_tell, trans_tell = load_tell_trans(airmass=1.0)
+        wave_tell, trans_tell = load_tell_trans(airmass=1.2)
         trans_tell            = Spectrum(wavelength=wave_tell, flux=trans_tell).interpolate_wavelength(wave_output=wave_instru, renorm=False, fill_value=(trans_tell[0], trans_tell[-1])) 
     else:
         trans_tell = None
@@ -943,7 +728,7 @@ def colormap_bands_Tp(instru, T_star=T_sun, lg_planet=lg_earth, lg_star=lg_sun, 
         
     # Tellurics transmission spectrum (from SkyCalc), if needed  
     if tellurics :
-        wave_tell, trans_tell = load_tell_trans(airmass=1.0)
+        wave_tell, trans_tell = load_tell_trans(airmass=1.2)
         trans_tell            = Spectrum(wavelength=wave_tell, flux=trans_tell).interpolate_wavelength(wave_output=wave_instru, renorm=False, fill_value=(trans_tell[0], trans_tell[-1])) 
     else:
         trans_tell = None
@@ -2301,7 +2086,7 @@ def colormap_maxsep_phase_inc(instru="HARMONI", band="H", apodizer="NO_SP", stre
                     ax.set_yticklabels([])
         
         # Title
-        fig.suptitle(title_list[idx_snr], weight=title_weight, fontsize=18, x=0.69, y=0.85)
+        fig.suptitle(title_list[idx_snr], weight=title_weight, fontsize=20, x=0.69, y=0.85)
         plt.show()
     
     return max_sep_arr, phase_arr, inc_arr, SNR_halo_3D, SNR_syst_3D
@@ -2463,7 +2248,7 @@ def colormap_MM_DI_R_Tp(lmin=1, lmax=2.5, Rmin=1_000, Rmax=100_000, Tmin=200, Tm
     
     # Tellurics transmission spectrum (from SkyCalc), if needed  
     if tellurics :
-        wave_tell, trans_tell = load_tell_trans(airmass=1.0)
+        wave_tell, trans_tell = load_tell_trans(airmass=1.2)
         trans_tell            = Spectrum(wavelength=wave_tell, flux=trans_tell).interpolate_wavelength(wave_output=wave_instru, renorm=False, fill_value=(trans_tell[0], trans_tell[-1])) 
     else:
         trans_tell = None

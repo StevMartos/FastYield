@@ -3,6 +3,8 @@ README.md
 pyproject.toml
 src/fastyield/FastCurves.py
 src/fastyield/FastYield.py
+src/fastyield/FastYield_Gaia_mock.py
+src/fastyield/FastYield_archive.py
 src/fastyield/FastYield_helpers.py
 src/fastyield/FastYield_interface.py
 src/fastyield/__init__.py
@@ -10,6 +12,7 @@ src/fastyield/colormaps.py
 src/fastyield/config.py
 src/fastyield/data_processing.py
 src/fastyield/get_specs.py
+src/fastyield/metis_lms_settings.py
 src/fastyield/prints_helpers.py
 src/fastyield/rotbroad.py
 src/fastyield/signal_noise.py

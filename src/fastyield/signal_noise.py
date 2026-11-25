@@ -110,7 +110,13 @@ def get_DIT_RON(config_data, instru_type, apodizer, PSF_profile, separation, sta
         bkg_rate = np.where(np.isfinite(bkg_rate), np.maximum(bkg_rate, 0.), 0.)
 
     dark_rate = 60. * dark_current # [e-/px/mn]
-    peak_psf  = np.nanmax(PSF_profile[separation >= iwa_FPM]) # [stellar flux fraction/px]
+    owa       = config_data["FOV"] / 2
+    if config_data["sep_unit"] == "mas":
+        owa *= 1000
+    mask = (separation >= iwa_FPM) & (separation <= owa) & np.isfinite(PSF_profile)
+    if not np.any(mask):
+        raise ValueError("No valid PSF samples within the working angles")
+    peak_psf = np.max(PSF_profile[mask]) # [stellar flux fraction/px]
 
     # Imaging integrates all wavelengths; spectroscopy retains the brightest bin.
     if instru_type == "imager":

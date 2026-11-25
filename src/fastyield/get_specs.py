@@ -31,7 +31,20 @@ warnings.filterwarnings("ignore", message="Header block contains null bytes*")
 # Load & caches
 # -------------------------------------------------------------------------
 
-@lru_cache(maxsize=32)
+@lru_cache(maxsize=128)
+def is_telluric_opaque(instru, band, apodizer, strehl=None, coronagraph=None):
+    """Check whether all usable instrumental channels are fully opaque to tellurics."""
+    from .spectrum import Spectrum, get_wave_band
+    wave_band    = get_wave_band(instru=instru, band=band)
+    trans_instru = get_transmission(instru=instru, band=band, tellurics=False, apodizer=apodizer, strehl=strehl, coronagraph=coronagraph)
+    valid        = np.isfinite(trans_instru) & (trans_instru > 0)
+    if not np.any(valid):
+        raise ValueError(f"No valid instrumental transmission for {instru}/{band}")
+    wave_tell, tell = load_tell_trans(airmass=1.2)
+    trans_tell      = Spectrum(wave_tell, tell).degrade_resolution(wave_band, renorm=False).flux
+    return bool(np.all(trans_tell[valid] == 0))
+
+@lru_cache(maxsize=128)
 def _load_instru_trans(instru, band):
     """Load *once* the native instrument-throughput curve for (instru, band)."""
     sim_data_path = get_sim_data_path()
@@ -58,7 +71,7 @@ def load_tell_trans(airmass, return_R=False):
     else:
         return np.copy(wave_tell), np.copy(tell)
 
-@lru_cache(maxsize=32)
+@lru_cache(maxsize=128)
 def _load_psf_profile(instru, band, strehl, apodizer, coronagraph):
     """Load *once* the PSF profile arrays + header for (instru, band, strehl, apodizer, coronagraph)."""
     sim_data_path = get_sim_data_path()
@@ -72,14 +85,14 @@ def _load_psf_profile(instru, band, strehl, apodizer, coronagraph):
     hdul.close()
     return hdr, sep, prof, psf_file
 
-@lru_cache(maxsize=32)
+@lru_cache(maxsize=128)
 def _load_corona_profile(instru, band, strehl, apodizer, coronagraph):
     """Load *once* the coronagraphic profile arrays."""
     sim_data_path                           = get_sim_data_path()
     sep, fraction_core, radial_transmission = fits.getdata(f"{sim_data_path}/PSF/PSF_{instru}/fraction_core_radial_transmission_{band}_{coronagraph}_{strehl}_{apodizer}.fits")
     return sep, fraction_core, radial_transmission
 
-@lru_cache(maxsize=32)
+@lru_cache(maxsize=128)
 def _load_stellar_modulation_function(instru, band, on_sky_data, T_star_sim, correction):
     """Load *once* stellar modulation functions [no unit]."""
     sim_data_path = get_sim_data_path()
@@ -93,21 +106,21 @@ def _load_stellar_modulation_function(instru, band, on_sky_data, T_star_sim, cor
         wave    = fits.getdata(f"{sim_data_path}/Systematics/{instru}/wave_sim_star_center_T{T_star_sim}K_mag7_s3d_{band}_{correction}.fits")            # Wavelength axis of the data
     return Ms, wave, pxscale
 
-@lru_cache(maxsize=32)
+@lru_cache(maxsize=128)
 def _load_corr_factor(instru, band):
     """Load *once* the corrective factor."""
     sim_data_path = get_sim_data_path()
     sep, r_corr   = fits.getdata(f"{sim_data_path}/R_corr/R_corr_{instru}/R_corr_{band}.fits")
     return sep, r_corr
 
-@lru_cache(maxsize=32)
+@lru_cache(maxsize=128)
 def _load_bkg_flux(instru, band, background):
     """Load *once* the background flux in [e-/px/s]."""
     sim_data_path     = get_sim_data_path()
     raw_wave, raw_bkg = fits.getdata(f"{sim_data_path}/Background/{instru}/{background}/background_{band}.fits")
     return raw_wave, raw_bkg
 
-@lru_cache(maxsize=32)
+@lru_cache(maxsize=128)
 def _load_phi_m(post_processing, Rc):
     """Load *once* the effective correlation drift of systematics/speckles."""
     sim_data_path = get_sim_data_path()
@@ -120,7 +133,7 @@ def _load_phi_m(post_processing, Rc):
 # Get config data
 # -------------------------------------------------------------------------
 
-@lru_cache(maxsize=64)
+@lru_cache(maxsize=128)
 def get_config_data(instru):
     """
     Retrieve the specifications of a given instrument.
@@ -189,7 +202,7 @@ def get_R_instru(instru, spectra=None):
 
 
 
-@lru_cache(maxsize=64)
+@lru_cache(maxsize=128)
 def get_instru_lims(instru):
     config_data = get_config_data(instru=instru)
     lmin_instru = config_data["lambda_range"]["lambda_min"] # [µm]
@@ -198,7 +211,7 @@ def get_instru_lims(instru):
 
 
 
-@lru_cache(maxsize=64)
+@lru_cache(maxsize=128)
 def get_band_lims(band):
     return lmin_bands[band], lmax_bands[band]
 
@@ -210,7 +223,7 @@ def get_band_lims(band):
 # Get working angles
 # -------------------------------------------------------------------------
 
-@lru_cache(maxsize=64)
+@lru_cache(maxsize=128)
 def get_annular_pupil_fwhm_factor(eps):
     """
     Return the FWHM coefficient k(eps) such that
@@ -241,7 +254,7 @@ def get_annular_pupil_fwhm_factor(eps):
 
 
 
-@lru_cache(maxsize=64)
+@lru_cache(maxsize=128)
 def get_DL_FWHM(instru, sep_unit=None, band="instru"):
     config_data = get_config_data(instru=instru)
     if band.lower() == "instru":
@@ -268,7 +281,7 @@ def get_DL_FWHM(instru, sep_unit=None, band="instru"):
 
 
     
-@lru_cache(maxsize=64)
+@lru_cache(maxsize=128)
 def get_wa(instru, sep_unit=None, band="instru"):
     """
     Return IWA and OWA in the requested separation unit.
@@ -326,7 +339,7 @@ def _build_transmission(instru, wave_band, band, tellurics, apodizer, strehl=Non
     trans[trans <= 0] = np.nan
     return trans
 
-@lru_cache(maxsize=64)
+@lru_cache(maxsize=128)
 def _get_transmission(instru, band, tellurics, apodizer, strehl=None, coronagraph=None, fill_value=np.nan, gaussian_filtering=True):
     """
     Cached transmission on the default wavelength grid of the band.
@@ -355,7 +368,7 @@ def get_transmission(instru, wave_band=None, band=None, tellurics=True, apodizer
 # Get PSF radial profile (+ extrapolation if needed)
 # -------------------------------------------------------------------------
 
-@lru_cache(maxsize=64)
+@lru_cache(maxsize=128)
 def get_pxscale(instru, band, sep_unit):
     config_data = get_config_data(instru=instru)
     # Pixel scale in output unit
@@ -371,7 +384,7 @@ def get_pxscale(instru, band, sep_unit):
 
 
 
-@lru_cache(maxsize=64)
+@lru_cache(maxsize=128)
 def get_separation_axis(instru, sep_unit, separation_planet, return_FastYield, sampling=10):
     
     config_data = get_config_data(instru=instru)
@@ -412,7 +425,7 @@ def get_separation_axis(instru, sep_unit, separation_planet, return_FastYield, s
 
 
 
-@lru_cache(maxsize=64)
+@lru_cache(maxsize=128)
 def get_log_profile_interp(instru, band, strehl, apodizer, coronagraph, sep_unit):
     
     config_data = get_config_data(instru=instru)
@@ -424,10 +437,10 @@ def get_log_profile_interp(instru, band, strehl, apodizer, coronagraph, sep_unit
     valid          = np.isfinite(raw_separation) & np.isfinite(raw_profile) # Valid mask on the profile
     raw_separation = raw_separation[valid]                                  # [sep_unit] ([arcsec] or [mas])
     raw_profile    = raw_profile[valid]                                     # [FOV flux fraction/arcsec**2] or [FOV flux fraction/mas**2]
-    if instru == "MIRIMRS":
-        raw_profile = raw_profile * config_data["pxscale0"][band]**2 # pxscale (non-dithered) (because all the values are considered in the detector space in the first place, then multiplied by R_corr, to take into account the transformation into the 3D cube sapce)
-    else:
-        raw_profile = raw_profile * pxscale**2
+    
+    # Convert the raw profile to flux per detector pixel using the native
+    # (non-dithered) pixel scale when available, otherwise the default pixel scale.
+    raw_profile *= config_data.get("pxscale0", {}).get(band, pxscale)**2
     
     # Interpolation of the raw profile
     log_profile_interp = interp1d(raw_separation, np.log(raw_profile), bounds_error=False, fill_value="extrapolate")
@@ -539,7 +552,15 @@ def get_PSF_profile(band, strehl, apodizer, coronagraph, instru, separation_plan
     # Build separation grid (if not input)
     if separation is None:
         separation = get_separation_axis(instru=instru, sep_unit=sep_unit, separation_planet=separation_planet, return_FastYield=return_FastYield, sampling=sampling)
-        
+        # Include the PSF peak for detector saturation estimation
+        _, owa     = get_wa(instru=instru, sep_unit=sep_unit)
+        separation = np.unique(np.append(separation, owa))
+        iwa_FPM    = max((x for x in config_data.get("FPMs", []) if separation_planet is not None and x < separation_planet), default=0.)
+        mask       = (raw_separation >= iwa_FPM) & (raw_separation <= owa) & np.isfinite(raw_profile)
+        if np.any(mask):
+            separation_peak = raw_separation[mask][np.argmax(raw_profile[mask])]
+            separation      = np.unique(np.append(separation, separation_peak))
+            
     # Extrapolation of the separation axis to the planet's separation (if needed)
     if separation[-1] > raw_separation[-1]:
         from .utils import power_law_extrapolation
@@ -572,10 +593,12 @@ def get_PSF_profile(band, strehl, apodizer, coronagraph, instru, separation_plan
             get_log_profile_interp.cache_clear()
             _load_psf_profile.cache_clear()
         
-        PSF_profile            = np.exp(log_profile_interp(separation))
-        mask_tail              = separation >= raw_separation[-1]
-        PSF_profile[mask_tail] = power_law_extrapolation(x=separation[mask_tail], x0=raw_separation[-1], y0=raw_profile[-1], slope=slope)
         
+        mask_tail               = separation >= raw_separation[-1]
+        PSF_profile             = np.empty_like(separation, dtype=float)
+        PSF_profile[~mask_tail] = np.exp(log_profile_interp(separation[~mask_tail]))
+        PSF_profile[mask_tail]  = power_law_extrapolation(x=separation[mask_tail], x0=raw_separation[-1], y0=raw_profile[-1], slope=slope)
+                
         if new_extrapolation: # Sanity check Plot
             plt.figure(dpi=300, figsize=(10, 6))
             plt.xlim(pxscale, separation[-1])
@@ -603,7 +626,7 @@ def get_PSF_profile(band, strehl, apodizer, coronagraph, instru, separation_plan
 
 
 
-@lru_cache(maxsize=64)
+@lru_cache(maxsize=128)
 def get_logit_coronagraphic_profile_interp(instru, band, strehl, apodizer, coronagraph):
     raw_separation, raw_fraction_core, raw_radial_transmission = _load_corona_profile(instru=instru, band=band, strehl=strehl, apodizer=apodizer, coronagraph=coronagraph)
     logit_fraction_core_interp                                 = interp1d(raw_separation, logit(raw_fraction_core),       bounds_error=False, fill_value=(logit(raw_fraction_core[0]),       logit(raw_fraction_core[-1])))
@@ -613,7 +636,7 @@ def get_logit_coronagraphic_profile_interp(instru, band, strehl, apodizer, coron
     
 
     
-@lru_cache(maxsize=64)
+@lru_cache(maxsize=128)
 def get_R_corr_interp(instru, band):
     raw_separation, raw_R_corr = _load_corr_factor(instru=instru, band=band)
     valid                      = np.isfinite(raw_R_corr)
@@ -622,7 +645,7 @@ def get_R_corr_interp(instru, band):
 
 
 
-@lru_cache(maxsize=64)
+@lru_cache(maxsize=128)
 def get_bkg_flux_band(instru, band, background_level):
     from .spectrum import get_wave_band
     wave_band         = get_wave_band(instru=instru, band=band)        # [µm]
