@@ -16,18 +16,20 @@ from fastyield.get_specs import get_config_data, get_R_instru
 from fastyield.spectrum import get_thermal_reflected_spectrum, get_wave_model, load_vega_spectrum, get_mag
 
 instru        = "METIS_LMS"
-exposure_time = 60.          # Total on-source integration time [min], not wall-clock time
+exposure_time = 60.     # Total on-source integration time [min], not wall-clock time
 band_only     = None#"O29_Ep00"   # LMS setting ID; None evaluates all 107 settings
-config_data = get_config_data(instru)
+config_data   = get_config_data(instru)
 # Available LMS settings: print(list(config_data["gratings"]))
+
 
 
 # %% 1. FastYield graphical interface (optional)
 
 # Uncomment and run this cell to explore precomputed planet populations.
 # The GUI blocks execution until closed and requires a graphical session.
-# from fastyield.FastYield_interface import FastYield_interface
-# FastYield_interface()
+from fastyield.FastYield_interface import FastYield_interface
+FastYield_interface()
+
 
 
 # %% 2. FastCurves: 5-sigma contrast for a user-defined star and planet
